@@ -1,0 +1,528 @@
+/*!
+ * \mainpage imquic (internal documentation)
+ *
+ * \par Internal Documentation for the imquic QUIC library
+ * This is the main internal documentation for the imquic QUIC library, generated with the help of
+ * <a target="_blank" href="http://www.doxygen.org">Doxygen</a>.
+ *
+ * It contains information about the functions and structures that
+ * implement all the internal functionality of the imquic library itself,
+ * e.g., with respect to QUIC parsing and building, establishing and
+ * managing connections, event loop, networking, and so on and so forth.
+ * exposes in order to be used in third party applications (e.g., our
+ * If you're not interested in modifying imquic, but only in using it
+ * as part of a third party application, please refer to the
+ * <a href="../public/">public API documentation</a> instead.
+ *
+ * To learn about how the code is structured, please refer to the
+ * \ref architecture documentation, which will provide an overview on the
+ * different resources the library is made of, and how they interact
+ * with each other.
+ */
+
+/*! \page architecture imquic architecture
+ *
+ * The imquic library is structured to try and keep its different features
+ * mostly separated in different files, for better understanding of the
+ * internals and a cleaner separation of responsibilities. At the moment,
+ * the code is mainly structured like this:
+ *
+ * - an endpoint abstraction, to represent the entry point to a QUIC
+ * client or server, and deal with networking (\ref network.c,
+ * \ref network.h and \ref configuration.h);
+ * - a connection abstraction, that mantains a QUIC connection from the
+ * perspective of the imquic endpoint that received or originated it
+ * (\ref connection.c and \ref connection.h);
+ * - the QUIC stack itself, that can parse incoming messages, keeps state,
+ * triggers transitions and can originate messafes of its own (\ref quic.c
+ * and \ref quic.h);
+ * - cryptographic utilities, for the sole purpose of dealing with
+ * header protection and payload encryption/decryption
+ * (\ref crypto.c and \ref crypto.h);
+ * - a \c STREAM abstraction, that keeps a chunk-based buffer that
+ * can be added to in any order, and/or popped from in an ordered way
+ * (\ref stream.c and \ref stream.h);
+ * - a public API to access those features in a transparent way
+ * (see the <a href="../public/">public API documentation</a>).
+ *
+ * All this is tied by an event loop (\ref loop.c and \ref loop.h),
+ * and relies on a few utilities, namely:
+ *
+ * - gap-aware buffers, mainly for \c CRYPTO and \c STREAM
+ * (\ref buffer.c and \ref buffer.h);
+ * - logging (\ref debug.h);
+ * - locking (\ref mutex.h);
+ * - reference counting (\ref refcount.h);
+ * - generic utilities (\ref utils.c and \ref utils.h).
+ *
+ * On top of the raw QUIC stack, other parts of the code deal with a
+ * more application level overlay, specifically:
+ *
+ * - WebTransport support (\ref http3.c and \ref http3.h); notice that,
+ * despite the name of the source files, we don't support the whole
+ * HTTP/3 protocol, but only the limited set of functionality that allow
+ * for the establishment of WebTransport connections (\c CONNECT request),
+ * by leveraging a custom QPACK stack (\ref qpack.c, \ref qpack.h and
+ * \ref huffman.h);
+ * - native RTP Over QUIC (RoQ) support (\ref roq.c and \ref internal/roq.h);
+ * - native Media Over QUIC (MoQ) support (\ref moq.c and \ref internal/moq.h).
+ *
+ * <hr>
+ *
+ * \section init Library initialization
+ *
+ * The library needs a one-time initialization, to initialize different
+ * parts of its stack. In order to do that it relies on an atomic
+ * \c initialized property that refers to values defined in \ref imquic_init_state
+ * to figure out what the initialization state is.
+ *
+ * The initialization method simply calls, in sequence, \ref imquic_quic_init
+ * and \ref imquic_tls_init for the core, and \ref imquic_moq_init and
+ * \ref imquic_roq_init to initialize the native support for MoQ and RoQ.
+ * To conclude, it uses \ref imquic_loop_init to initialize the event loop.
+ *
+ * \subsection logging Logging
+ *
+ * The library currently only logs to stdout, and can log messages with
+ * different levels of debugging. Specifically, when a debugging level
+ * is configured in the application, only messages that have an associated
+ * level lower than the configured level will be displayed on the logs.
+ * By default, this value is \c IMQUIC_LOG_VERB but a different level
+ * can be configured at any given time via \ref imquic_set_log_level.
+ *
+ * <div class="alert alert-warning">
+ * <b>Note:</b> In the future, we should expand on the logging functionality,
+ * e.g., to allow logging to be done to file instead, and/or allow
+ * applications to provide their own logging function, so that whatever
+ * the library generates can be printed within the context of the logging
+ * mechanism the application is based upon.
+ * </div>
+ *
+ * \subsection versioning Versioning
+ *
+ * The versioning information is in a dynamically generated \ref version.c
+ * file, that is filled in at compile time out of the configuration and
+ * building process. It is then exposed to the library via some \c extern
+ * variables defined in \ref version.h.
+ *
+ * \subsection lockref Locking and reference counting
+ *
+ * Most resources that this documentation covers involve mutexes for
+ * thread-safeness, and reference counting to keep track of memory
+ * usage in order to avoid race conditions or use-after-free uses.
+ *
+ * <hr>
+ *
+ * \section loop Event loop
+ *
+ * The event loop is basically a GLib implementation, so built on top
+ * of \c GMainContext and \c GMainLoop . At the moment, this consists
+ * in a single loop running on a dedicated thread, that's launched at
+ * initialization time. Plans for the future include refactoring this
+ * part, so that we can, e.g., have either different loops per endpoint,
+ * or possibly a configurable number of loops/threads each responsible
+ * for a higher number of endpoints.
+ *
+ * There's mainly two sources that can be attached to this event loop:
+ *
+ * -# \ref imquic_network_source, added with a call to
+ * \ref imquic_loop_poll_endpoint, which has the loop monitor a UDP
+ * socket for incoming traffic;
+ * -# \ref imquic_connection_source, added with a call to
+ * \ref imquic_loop_poll_connection, where the loop monitors such a
+ * custom source that just checks if the connection asked the loop to
+ * do something.
+ *
+ * There's also a separate source for timed firing of callbacks, using
+ * \ref imquic_loop_add_timer, but at  the moment that's only used to trigger
+ * the automated and regular delivery of keep-alives  via \c PING frames.
+ *
+ * Each \ref imquic_network_source is associated to a specific endpoint
+ * in the library (a client or a server), and so to a \ref imquic_network_endpoint
+ * (more on that later). When incoming traffic is detected on such a
+ * source, the loop passes that to the \ref imquic_process_message
+ * function in the QUIC stack, along to a reference to the endpoint.
+ * As we'll see later, this may get the stack to detect and create a new
+ * connection, that will be handled within the context of the library.
+ *
+ * When a connection is created by the QUIC stack (more on that later too),
+ * it's added to the loop as a source via the above mentioned
+ * \ref imquic_connection_source instance, whose  purpose is just to
+ * reference the connection in the loop. More precisely, any time the
+ * QUIC stack wants something done on a connection, it updates some
+ * internal properties, and then sets the \c wakeup atomic to signal
+ * the loop it wants it handled. In order to ensure the loop sees in
+ * in a timely fashion, \ref imquic_loop_wakeup is called too.
+ *
+ * <div class="alert alert-warning">
+ * <b>Note:</b> As anticipated, the whole event loop mechanism is at the
+ * moment a bit flaky, and definitely not the best in terms of performance.
+ * This will probably be refactored, especially the part that concerns
+ * the integration of connections in the loop and their events.
+ * </div>
+ *
+ * <hr>
+ *
+ * \section stack QUIC stack
+ *
+ * As we've seen in the intro to this documentation, the QUIC stack is
+ * actually made of different moving parts that work together. The next
+ * subsections will cover each of those in more detail, starting from
+ * the concept of endpoint in the library, and then moving to connections,
+ * processing of QUIC messages and how messages are crafted and sent back.
+ *
+ * \subsection endpoints Endpoints
+ *
+ * As a QUIC library, imquic obviously starts from the concept of endpoint,
+ * and as such on whether a user wants to create a QUIC server or a QUIC
+ * client, which will have different requirements in terms of how they're
+ * configured and then managed.
+ *
+ * The <a href="../public/">public API documentation</a> explains how
+ * these endpoints are created from the perspective of someone using
+ * the library. Internally, both clients and servers are represented
+ * by the same abstraction, called \ref imquic_network_endpoint, which
+ * represents an endpoint in the library capable of sending and receiving
+ * messages, independently of whether it's a server or client. This
+ * abstraction obviously mantains different pieces of information associated
+ * to the role of the endpoint and how it's configured.
+ *
+ * Specifically, creating an endpoint starts from a \ref imquic_configuration
+ * object, that the public API code fills in according to what was passed by
+ * the user. This configuration object is passed to \ref imquic_network_endpoint_create
+ * and returns a \ref imquic_network_endpoint instance. Before this
+ * resource becomes "operative" it must first be added to the loop in
+ * order to be monitored, which as we've seen is done with a call to
+ * \ref imquic_loop_poll_endpoint. For servers, that's enough, because
+ * a server will wait for incoming connection attempts and react to them.
+ * For new clients, \ref imquic_start_quic_client must be called too,
+ * in order to initiate the steps to send QUIC messages to establish a
+ * new connection.
+ *
+ * \subsection connections Connections
+ *
+ * The library uses the \ref imquic_connection structure as an abstraction
+ * for a connection: this identifies a specific connection an imquic
+ * endpoint is part of. For clients, an \ref imquic_connection instance
+ * is automatically created when \ref imquic_start_quic_client is
+ * called, since that's when an attempt to establish a connection is
+ * performed. For servers, an instance is instead created when an endpoint
+ * receives a packet, and the call to \ref imquic_parse_packet identifies
+ * the message as coming from a new connection.
+ *
+ * When a connection is created via a call to \ref imquic_connection_create,
+ * it is initialized and mapped to the \ref imquic_network_endpoint that originated
+ * it (which is used for sending and receiving messages on that connection).
+ * In case a WebTransport must be established on the connection, a
+ * \ref imquic_http3_connection instance is created as well (more on
+ * that later). Finally, the connection is added to the loop via the
+ * already mentioned \ref imquic_loop_poll_connection.
+ *
+ * At this point, all actions on this connection refer to that instance:
+ * this includes creating streams, sending and receiving data, handling
+ * callbacks and so on. This \ref imquic_connection instance is also
+ * what is passed to end users of the library as an opaque pointer:
+ * considering this structure is reference counted, the public API
+ * provides an interface to end users to add themselves as users of
+ * the connection as well.
+ *
+ * \subsection quic Parsing and building QUIC messages
+ *
+ * An existing connection envisages sending and receiving QUIC messages,
+ * which includes a need to be able to build and parse them accordingly.
+ * The QUIC stack in \ref quic.c and \ref quic.h provides that functionality,
+ * where the \ref imquic_packet structure provides an abstraction to
+ * QUIC packets, and a way to parse, build and serialize them. Cryptographic
+ * operations are performed there as well, via dedicated cryptographic
+ * utilities (more on that later).
+ *
+ * Receiving a message works pretty much like this:
+ *
+ * -# as we've seen, the loop monitors a socket for a \ref imquic_network_endpoint
+ * so that, when there's data available, the \ref imquic_process_message callback
+ * is called;
+ * -# this callback invokes \ref imquic_parse_packet one or more times
+ * on the buffer, until all QUIC messages in the data have been found
+ * and processed; this will in some cases generate a new instance of
+ * \ref imquic_connection, as we've seen (for servers);
+ * -# \ref imquic_parse_packet will process the packet, meaning that it
+ * will attempt to parse the clear-text portion of the header, optionally
+ * derive initial secrets (if this is a new connection), attempt to
+ * unprotect the header, and then decrypt the payload;
+ * -# once the payload has been decrypted, \ref imquic_parse_frames is
+ * called in order to traverse all the QUIC frames and process them;
+ * -# \ref imquic_parse_frames will iterate on all the frames it finds,
+ * and process them in sequence; some of those frames will update buffers
+ * (e.g., \c CRYPTO and \c STREAM ), while others may update the state
+ * of the connection and/or trigger actions to perform;
+ * -# once all frames have been processed and \ref imquic_parse_packet
+ * returns, the stack checks if there are operations to do right away
+ * (e.g., send \c ACK or \c CRYPTO frames), and then it moves on.
+ *
+ * Sending a message can instead be originated either by the end user
+ * (e.g., in an attempt to send data to the peer) or by the stack itself
+ * (e.g., as part of regular checks, or triggers from the event loop).
+ * There are different helpers to generate a new message to send, which
+ * will all populate their own \ref imquic_packet instance: in order to
+ * turn that in something that can be sent on the wire, the
+ * \ref imquic_serialize_packet method is used, which takes care of
+ * serializing the structure to a QUIC packet, whose header will then
+ * be protected and whose payload encrypted: after that, a call to
+ * \ref imquic_send_packet will invoke \ref imquic_network_send on
+ * the endpoint associated to the connection, which will actually send
+ * the packet via UDP.
+ *
+ * Loss detection is handled via a timed callback that's updated at
+ * regular times, depending on incoming and outgoing packets. More
+ * specifically, any time an ACK is received or an ACK eliciting packet
+ * is sent, the \ref imquic_connection_update_loss_timer is called to
+ * re-initialize the loss detection timer: when the timer fires, the
+ * \ref imquic_connection_loss_detection_timeout callback is invoked,
+ * which is where checks are performed to, e.g., figure out if any
+ * packet has been lost, or if the PTO timer expired. As a result,
+ * packets may be retransmitted or a new \c PING sent, after which the
+ * loss detection timer is reset again.
+ *
+ * <div class="alert alert-warning">
+ * <b>Note:</b> The loss detection code is mostly a reimplementation of
+ * <a href="https://datatracker.ietf.org/doc/html/rfc9002#section-appendix.a">Appendix A</a>
+ * in RFC 9002, and so may need some fine tuning. Notably missing at the
+ * moment is Appendix B, which deals with congestion control (which is,
+ * at the time of writing, entirely missing in the library).
+ * </div>
+ *
+ * \subsection tls Cryptographic utilities
+ *
+ * We mentioned how the QUIC stack relies on a set of cryptographic
+ * utilities to take care of header protection and packet encryption.
+ *
+ * This is done, first of all, by leveraging a TLS context, structured
+ * in \ref imquic_tls, which contains certificate and key to use,
+ * besides the actual OpenSSL (actually quictls) \c SSL_CTX context.
+ * Multiple endpoints can share the same context, or create their own.
+ * Any time a new connection is spawned out of an endpoint, a dedicated
+ * \c SSL structure that will be used for the TLS exchanges.
+ *
+ * Each connection also has a set of \ref imquic_protection instances,
+ * one per each encryption level in QUIC. Each of those is made of
+ * two separate \ref imquic_encryption instances, one for the local
+ * side (protecting, encrypting) and one for the remote side (removing
+ * the protection, decrypting). This structure contains all the info
+ * needed to take care of cryptographic operations, including the
+ * hashing algorithm, secrets, IVs, etc., all taking into account
+ * key phasing that may occur during a QUIC session.
+ *
+ * Deriving initial keys for a connection is done with the
+ * \ref imquic_derive_initial_secret function, which updates one
+ * \ref imquic_protection instance (local or remote). Other encryption
+ * levels have their instances automatically updated as part of the
+ * quictls \c set_read_secret and \c set_write_secret (search
+ * \c SSL_QUIC_METHOD for more information). Deriving secrets and
+ * being notified about them both involve internal HKDF utilities based
+ * on quictls primitives.
+ *
+ * Reacting to a key phase bit change is done in \ref imquic_update_keys.
+ *
+ * Protecting and unprotecting headers is performed in the \ref imquic_protect_header
+ * and \ref imquic_unprotect_header helper methods specifically. Both
+ * are unaware of the context, and just work on buffers that the QUIC
+ * and TLS helper stacks provide. Again, HKDF helper functions are
+ * leveraged within the context of these operations.
+ *
+ * Encrypting and dencrypting payloads is performed in the \ref imquic_encrypt_payload
+ * and \ref imquic_decrypt_payload respectively. As the header protection
+ * equivalents, they're unaware of context, and work on generic buffers
+ * leveraging the existing HKDF utilities.
+ *
+ * \subsection buffers Sending and receiving data
+ *
+ * When not using self containing messages for delivering data (e.g.,
+ * using \c DATAGRAM ), QUIC can send and receive data in chunks, e.g.,
+ * as part of \c CRYPTO or \c STREAM . By chunking we mean that, although
+ * the overall stream of data in each context is assumed to be in order
+ * (as in TCP), different portions of the buffer to send can actually
+ * be delivered in any order you want, by providing offset and length
+ * values to let the user know which portion of the overall data this
+ * "chunk" should fit in.
+ *
+ * In order to provide a streamlined API to end users, while at the same
+ * time simplifying the library interals, a structure called \ref imquic_buffer
+ * provides a gap-aware buffer of chunks. The insertion API allows both
+ * for specific placement in a buffer, via \ref imquic_buffer_put, and
+ * a simple appending of data at the end of the existing buffer, via
+ * \ref imquic_buffer_append. Retrieving data from a buffer, instead,
+ * is always done in an orderly fashion: you can either check if there's
+ * data to read, via \ref imquic_buffer_peek, or retrieve it and update the
+ * internal buffer index, via \ref imquic_buffer_get. This means that,
+ * in case the buffer does contain data, but the current index is waiting
+ * on a gap because there's a chunk that hasn't been delivered yet,
+ * the buffer will wait there until the gap is filled, thus guaranteeing
+ * that reading data on a buffer is always performed in order.
+ *
+ * <div class="alert alert-warning">
+ * <b>Note:</b> We may want to reevaluate this constraint in the future,
+ * depending on whether or not it will make sense not to wait in some
+ * specific application contexts.
+ * </div>
+ *
+ * As mentioned, these buffers are currently used by the QUIC stack for
+ * two specific frames, \c CRYPTO and \c STREAM , since both provide
+ * a stream-based delivery of data that can envisage data sent in
+ * unordered chunks at different offsets. For \c CRYPTO these buffers
+ * are part of the \ref imquic_connection itself: for \c STREAM ,
+ * considering the multistream nature of QUIC, imquic exposes a
+ * dedicated structure called \ref imquic_stream, that provides an
+ * abstraction to an actual QUIC stream.
+ *
+ * This \ref imquic_stream structure contains all the required info
+ * needed to manage a specific stream, including its ID, who originated
+ * it, whether it's bidirectional or unidirectional, and two separate
+ * buffers, one for sending and one for receiving (although only one
+ * may be needed, depending on the nature of the stream). State is
+ * also mantained, in order to figure out, e.g., when a stream is complete.
+ *
+ * A list/map of such \ref imquic_stream instances is kept in the
+ * \ref imquic_connection that is managing them. New \ref imquic_stream
+ * instances can be created either because the stack sees an incoming
+ * \c STREAM frame from the peer for a new ID, or because the end user
+ * or the QUIC stack locally create one. In both cases, \ref imquic_stream_create
+ * is used to create a new stream the connection should be aware of,
+ * since any attempt to interact with such a stream (e.g., for the purpose
+ * of delivering data) will fail if the stream ID is unknown.
+ *
+ * In order to ensure a monotonically increasing allocation of locally
+ * created stream IDs to end users (and native protocols, as we'll see
+ * later), the internal \ref imquic_connection API provides a helper
+ * function called \ref imquic_connection_new_stream_id for the purpose.
+ *
+ * Once a stream exists, incoming \c STREAM data will be notified via
+ * internal callbacks on the connection (and from there to the end user
+ * or, if mediated, to the native protocol handling them), while data
+ * can be sent on a \c STREAM using \ref imquic_connection_send_on_stream.
+ * It's important to point out that this function only adds the data to
+ * send as a new chunk in the above mentioned \ref imquic_buffer instance:
+ * in order to trigger the actual delivery of data for that \c STREAM ,
+ * the \ref imquic_connection_flush_stream method must be called, which
+ * updates an internal property in the connection and wakes the loop,
+ * so that the callback to send all pending \c STREAM data is called.
+ *
+ * To conclude, as anticipated data can be exchanged in self-contained
+ * messages in QUIC too, specifically using \c DATAGRAM if support for
+ * that frame was negotiated. In that case, internal buffering is only
+ * performed to mediate between the end user and the actual delivery
+ * of the data, which as we explained is always triggered in a scheduled
+ * way by the event loop, and not directly when the user calls the
+ * function to send it. If we exclude the missing \ref imquic_buffer,
+ * that isn't involved for \c DATAGRAM frames, the process is similar:
+ * incoming \c DATAGRAM frames  will be notified via internal callbacks
+ * on the connection (and from there to the end user or, if mediated, to
+ * the native protocol handling them), while data can be sent on a
+ * \c DATAGRAM using \ref imquic_connection_send_on_datagram, which will
+ * also involve the loop as in the \c STREAM case.
+ *
+ * <hr>
+ *
+ * \section native Native protocols
+ *
+ * While imquic itself provides a raw QUIC stack that should be usable
+ * for different use cases and applications, it also comes, out of the
+ * box, with native support for a few applition level protocols, in order
+ * to simplify the life of developers interested in some specific use cases.
+ *
+ * \subsection webtransport WebTransport
+ *
+ * WebTransport is a "first class citizen" in imquic, meaning that it's
+ * exposed as an option as part of the public APIs, independently of
+ * the protocols that will be build on top of that. The native support
+ * of MoQ, for instance, builds on top of this WebTransport support.
+ *
+ * As explained in the intro, this is achieved in the core by implementing
+ * the basics of HTTP/3 \c CONNECT for the sole purpose of establishing
+ * a WebTransport connection, when needed. When a user is interested
+ * in WebTransport, a \ref imquic_http3_connection instance is created
+ * and associated to the \ref imquic_connection instance. This new
+ * HTTP/3 specific resource is then used any time data is sent or
+ * received over the associated QUIC connection: any time there's incoming
+ * \c STREAM data, for instance, rather than pass it to the application
+ * as the stack would normally do, it's passed to the WebTransport stack
+ * first instead, via a call to imquic_http3_process_stream_data. This
+ * function checks if it's a Control stream, if it's a stream related
+ * to QPACK, or if's a stream meant for exchanging data. For WebTransport,
+ * this means checking the codes that identify the usage of those streams,
+ * and handle them accordingly. After that, the WebTransport layer becomes
+ * a transparent "proxy" between the connection and the application,
+ * with \c STREAM offsets shifted in order to mask this intermediate
+ * layer from the application perspective.
+ *
+ * In order to set up a WebTransport on a QUIC connection, some HTTP/3
+ * messages must be exchanged first. Specifically, both endpoints need
+ * to exchange a \c SETTINGS frame to negotiate some parameters. Parsing
+ * a remote \c SETTINGS is done in \ref imquic_http3_parse_settings,
+ * while preparing the local one is done in \ref imquic_http3_prepare_settings.
+ * After that, a client is supposed send a \c CONNECT request, while
+ * the server will (hopefully) send a \c 200 back. If the imquic endpoint
+ * is acting as a client, it will use \ref imquic_http3_check_send_connect
+ * to prepare a \c CONNECT message to send, and then wait for a response.
+ * For both clients and servers, parsing HTTP/3 requests/responses is done
+ * by \ref imquic_http3_parse_request, which will in turn parse the
+ * \c HEADERS frame using \ref imquic_http3_parse_request_headers.
+ * This would conclude the setup for clients, while servers will need
+ * to send a response back, which is done in \ref imquic_http3_prepare_headers_response.
+ *
+ * The QPACK portion of the exchange is performed via a custom QPACK stack
+ * that uses static tables for taking care of Huffman encoding and decoding.
+ * Specifically, the HTTP/3 stack creates a \ref imquic_qpack_context
+ * that controls two dynamic tables (\ref imquic_qpack_dynamic_table).
+ * Incoming QPACK messages are processed either in \ref imquic_qpack_decode
+ * (for messages coming from the peer's encoder stream) or in
+ * \ref imquic_qpack_process (for actual HTTP/3 requests/responses
+ * compressed with QPACK). The first method decodes Huffman codes where
+ * needed, and updates the remote dynamic table accordingly; the second
+ * one references static and dynamic tables to reconstruct headers to
+ * return back to the HTTP/3 stack. Outgoing messages, instead, are
+ * passed to the \ref imquic_qpack_encode method, which checks if new
+ * additions must be made to the local dynamic table (and in case prepares
+ * QPACK encoder stream with Huffman codes to send to the peer), and then
+ * references the static and dynamic tables to encode requests/responses
+ * via QPACK.
+ *
+ * <div class="alert alert-warning">
+ * <b>Note:</b>  At the time of writing, the stack is a bit naive as it doesn't
+ * really ever add anything to the local table, preferring the inline usage
+ * of <a target="_blank" href="https://datatracker.ietf.org/doc/html/rfc9204#name-indexed-field-line">Indexed Field Line</a>,
+ * <a target="_blank" href="https://datatracker.ietf.org/doc/html/rfc9204#name-literal-field-line-with-nam">Literal Field Line with Name Reference</a> and
+ * <a target="_blank" href="https://datatracker.ietf.org/doc/html/rfc9204#name-literal-field-line-with-lit">Literal Field Line with Literal Name</a>,
+ * without any encoder instruction on the QPACK encoder stream. Besides,
+ * on the way in it currently assumes a referenced entry will be in the
+ * table already, which means it may not work as expected if encoder
+ * instructions are delayed or out of order.
+ * </div>
+ *
+ * \subsection roqinternal RTP Over QUIC (RoQ)
+ *
+ * TBD.
+ *
+ * \subsection moqinternal Media Over QUIC (MoQ)
+ *
+ * TBD.
+ */
+
+/** \defgroup Core imquic core
+ * @{
+ * @}
+ */
+
+/** \defgroup API imquic API
+ * @{
+ * @}
+ */
+
+/** \defgroup MoQ Media Over QUIC (MoQ)
+ * @{
+ * @}
+ */
+
+/** \defgroup RoQ RTP Over QUIC (RoQ)
+ * @{
+ * @}
+ */

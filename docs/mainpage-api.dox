@@ -1,0 +1,40 @@
+/*!
+ * \mainpage imquic (public documentation)
+ *
+ * \par Public Documentation for the imquic QUIC library
+ * This is the main public API documentation for the imquic QUIC library, generated with the help of
+ * <a href="http://www.doxygen.org">Doxygen</a>.
+ *
+ * It contains information about the functions and structures that imquic
+ * exposes in order to be used in third party applications (e.g., our
+ * own QUIC/WebTransport/RoQ/MoQ examples). If you're interested in
+ * exploring the internals of the library, e.g., for the purpose of
+ * modifying the behavour of the library itself or contribute changes
+ * you deem relevant, please refer to the <a href="../internal/">internal documentation</a>
+ * instead.
+ *
+ * To learn about how to initialize and use imquic, you can refer to the
+ * \ref publicapi documentation, which will also introduce you to how
+ * you can set up generic QUIC endpoint, configure callbacks to be notified
+ * about relevant events, and interacting with connections.
+ *
+ * Should you be interested in the native support that imquic has for
+ * some protocols, after studying the API basics you can refer to the
+ * dedicated APIs the library provides for those protocols instead. At
+ * the time of writing, imquic has \ref moqapi and \ref roqapi.
+ */
+
+/** \defgroup API imquic API
+ * @{
+ * @}
+ */
+
+/** \defgroup MoQ Media Over QUIC (MoQ)
+ * @{
+ * @}
+ */
+
+/** \defgroup RoQ RTP Over QUIC (RoQ)
+ * @{
+ * @}
+ */

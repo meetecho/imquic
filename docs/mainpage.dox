@@ -1,0 +1,214 @@
+/*!
+ * \mainpage imquic - QUIC library
+ *
+ * \par Developer Documentation for the imquic QUIC library
+ * This is the main developer documentation for the imquic QUIC library, generated with the help of
+ * <a href="http://www.doxygen.org">Doxygen</a>. Make sure you
+ * check the \ref deps before attempting a compilation. If you are
+ * interested in how to compile, install and use imquic,
+ * checkout the \ref readme information. A \ref faq page is also available,
+ * as well as an overview on \ref changelog.
+ *
+ * \par An open source QUIC library tailored for media
+ * imquic was specifically written to study, explore and prototype the
+ * delivery of real-time media on top of QUIC, as a potential alternative,
+ * or complement, to what WebRTC provides (e.g., via the
+ * <a href="https://janus.conf.meetecho.com">Janus WebRTC Server</a>).
+ * As such, while it can in theory be used for generic QUIC applications
+ * as well, it has been mostly used to test new media protocols like
+ * RTP Over QUIC (RoQ) and Media Over QUIC (MoQ). Different blog posts
+ * are available that provide more context, like this
+ * <a href="https://www.meetecho.com/blog/quic-journey/">QUIC intro</a>,
+ * a <a href="https://www.meetecho.com/blog/roq-n-roll/">RoQ devblog</a>
+ * and <a href="https://www.meetecho.com/blog/roq-n-roll/">one on MoQ</a>.
+ * The imquic repo also comes with a few \ref examples that
+ * demonstrate the usage of all those protocols in different roles and
+ * scenarios.
+ *
+ * While you can write your own RoQ and MoQ parsers on top of the raw
+ * imquic QUIC functionality, the library also provides an internal
+ * implementation of both protocols, with ad-hoc interfaces aimed at
+ * making their use in an application as simple as possible.
+ *
+ * \par Public (API) and internal documentation
+ * The documentation is divided in two parts:
+ *
+ * - a <a href="public/">public documentation</a>, in case you're interested
+ * in using imquic in your application;
+ * - an <a href="internal/">internal documentation</a>, in case you're interested
+ * in studying imquic and/oc contributing changes and fixes.
+ *
+ * \section copyright Copyright and author
+ *
+ * imquic © 2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ *
+ * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref credits )
+ *
+ * \section lcns License
+ * This program is free software, distributed under the terms of the MIT
+ * License. For more details and information, see the \ref license page.
+ *
+ */
+
+/*! \page readme README
+ *  \verbinclude README.md
+ */
+
+/*! \page deps Dependencies
+ *
+ * The library and the examples depend on the following open source
+ * software and libraries, so make sure you install the related development
+ * versions before attempting a compilation:
+ *
+ * - \b GLib: http://library.gnome.org/devel/glib/
+ * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
+ * - \b quictls: https://quictls.github.io/ (QUIC TLS)
+ *
+ */
+
+/*! \page examples Examples
+ *  \verbinclude examples/README.md
+ */
+
+/*! \page debug Debugging imquic
+ *
+ * In the magical world of fairies and unicorns, the sun always shines
+ * and everything always works smoothly and without issues. Unfortunately,
+ * this is not the world we live in, and so you might still encounter
+ * issues using imquic, e.g., unexpected crashes and the like. We always
+ * try and tackle bugs as soon as we spot them, but some issues may be
+ * always lingering in the background.
+ *
+ * Should you encounter a bug or a crash, open a new
+ * <a href="https://github.com/meetecho/imquic/issues/new">issue</a>
+ * on GitHub. Make sure you carefully read the
+ * <a href="https://github.com/meetecho/imquic/blob/master/.github/CONTRIBUTING.md">guidelines</a>
+ * for contributing, or otherwise we may decide to close the issue and
+ * not even look at it.
+ *
+ * What's important for us to look into issues and bugs definitely is
+ * having enough information to do so. As such, whenever possible try to
+ * provide as many details and data as possible. Quite useful to us are
+ * GDB stacktraces and/or AddressSanitizer output. The following sections
+ * give a quick overview on how you can collect this information after
+ * a crash, but for a more detailed description of the tools you should
+ * refer to the related documentation pages and tutorials.
+ *
+ * \section gdb GDB
+ * GDB is the <a href="http://www.gnu.org/software/gdb/">GNU Project Debugger</a>
+ * and is an effective tool for looking at what has happened (or is
+ * happening) inside an application. As such, it's quite useful to spot
+ * bugs and the like, as it can provide information about the values of
+ * variables when they were used and the application crashed.
+ *
+ * First of all make sure that debugging symbols are enabled by reconfiguring imquic like this:
+ *
+ \verbatim
+CFLAGS="-Og -g3 -ggdb3 -fno-omit-frame-pointer" ./configure [..]
+ \endverbatim
+ *
+ * Once done configuring, do a \c make \c clean (to make sure
+ * everything is recompiled from scratch) and then a \c make and \c make \c install.
+ *
+ * When imquic crashes, you should get a core dump file somewhere. This is
+ * a recorded state of the application memory at the time of crashing, and
+ * so a backtrace of what lead to an issue can help. You can open such
+ * a core dump file via gdb this way:
+ *
+ \verbatim
+gdb /path/to/bin/your-imquic-app /path/to/coredump
+gdb bt
+ \endverbatim
+ *
+ * The \c bt command retrieves the backtrace, and is what you should provide
+ * as part of your new issue.
+ *
+ * \note Please \c DON'T paste this backtrace in the issue text. Use a
+ * service like <a href="https://gist.github.com/">Gist</a> or
+ * <a href="http://pastebin.com/">Pastebin</a> and pass the generated
+ * link instead.
+ *
+ * \section sanitizer Address Sanitizer
+ * An even better tool for spotting issues is
+ * <a href="https://code.google.com/p/address-sanitizer/">Address Sanitizer</a>,
+ * a fast memory error detector. Since it can spot memory errors, it's
+ * very useful to find out about hidden race conditions and the like.
+ *
+ * Unlike GDB which can be used as is, though, to use Address Sanitizer
+ * you'll first need to recompile imquic with some new settings, as it
+ * requires a specific dependency on a library, libasan, which you'll need
+ * to install through your repository manager if needed. Besides, you'll
+ * need at least gcc 4.8 for this to work: older versions of gcc won't
+ * work.
+ *
+ * Once you've installed libasan, reconfigure imquic like this:
+ *
+ \verbatim
+CFLAGS="-O0 -g3 -ggdb3 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address -fsanitize-address-use-after-scope -fno-sanitize-recover=all" LDFLAGS="-fsanitize=address" ./configure [..]
+ \endverbatim
+ *
+ * Of course you're free to add whatever additional configuration parameter
+ * you were using before: the important parts are the environment variables
+ * before that. Once done configuring, do a \c make \c clean (to make sure
+ * everything is recompiled from scratch) and then a \c make and \c make \c install
+ * as usual.
+ *
+ * At this point, your imquic version should be Address Sanitizer compliant.
+ * To make sure, try using \c ldd to check whether libasan is indeed a
+ * dependency or not:
+ *
+ \verbatim
+ldd src/.libs/libimquic.so | grep asan
+ \endverbatim
+ *
+ * If it is, you're done: whenever imquic crashes for any reason, you'll
+ * get additional output from Address Sanitizer automatically with details
+ * on what went wrong, and that's what you should provide as part of the
+ * issue content. Just as a side note, please beware that using Address
+ * Sanitizer imquic will run just a bit slower, even though not to the
+ * point of being unusable (as when using, e.g., valgrind).
+ *
+ * \note Please \c DON'T paste Address Sanitizer output in the issue text.
+ * Use a service like <a href="https://gist.github.com/">Gist</a> or
+ * <a href="http://pastebin.com/">Pastebin</a> and pass the generated
+ * link instead.
+ *
+ */
+
+/*! \page credits Credits
+ *
+ * imquic © 2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ *
+ * \b Author:
+ *         Lorenzo Miniero <lorenzo@meetecho.com>
+ *
+ * Several open source components have been used to implement this software:
+ *
+ * - \b GLib: http://library.gnome.org/devel/glib/
+ * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
+ * - \b quictls: https://quictls.github.io/ (QUIC TLS)
+ *
+ */
+
+/*! \page license License
+ *
+ * This program is free software, distributed under the terms of the MIT License.
+ *
+ *  \verbinclude LICENSE
+ */
+
+/*! \page changelog Tagged versions and Changelog
+ *
+ * There are different tagged versions on the imquic repository. We plan to
+ * tag a new version any time a breaking change and/or a set of comprehensive
+ * changes and fixes is going to be merged/applied to imquic, and so the
+ * Changelog below can act as a simple and quick summary of which changes
+ * are available in each version.
+ *
+ *  \verbinclude CHANGELOG.md
+ */
+
+/*! \page faq Frequently Asked Questions
+ *
+ * TBD.
+ */
