@@ -93,12 +93,22 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, &auth);
 		} else {
 			/* Send a FETCH */
-			imquic_moq_fetch_range range = { 0 };
-			range.start.group = 0;
-			range.start.object = 0;
-			range.end.group = 1000;	/* FIXME */
-			range.end.object = 0;
-			imquic_moq_fetch(conn, subscribe_id, &tns[0], &tn, !strcasecmp(options.fetch, "descending"), &range, &auth);
+			if(options.join_offset < 0) {
+				/* Standalone Fetch */
+				imquic_moq_fetch_range range = { 0 };
+				range.start.group = 0;
+				range.start.object = 0;
+				range.end.group = 1000;	/* FIXME */
+				range.end.object = 0;
+				imquic_moq_standalone_fetch(conn, subscribe_id, &tns[0], &tn,
+					!strcasecmp(options.fetch, "descending"), &range, &auth);
+			} else {
+				/* Send a SUBSCRIBE first */
+				imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, &auth);
+				/* Now send a Joining Fetch referencing that subscription */
+				imquic_moq_joining_fetch(conn, subscribe_id + 1, subscribe_id,
+					options.join_offset, !strcasecmp(options.fetch, "descending"), &auth);
+			}
 		}
 		i++;
 		subscribe_id++;
@@ -118,7 +128,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t subscr
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t subscribe_id, int status_code, const char *reason) {
+static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t subscribe_id, int status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done: status %d (%s)\n",
 		imquic_get_connection_name(conn), subscribe_id, status_code, reason);
@@ -139,21 +149,33 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t subscribe_
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->subscribe_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id, object->object_send_order,
-		object->payload_len, imquic_moq_delivery_str(object->delivery),
+		object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	if(object->payload == NULL || object->payload_len == 0) {
 		if(object->end_of_stream) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d on empty packet)\n",
 				imquic_get_connection_name(conn), imquic_moq_object_status_str(object->object_status), object->end_of_stream);
-			if(object->delivery == IMQUIC_MOQ_USE_TRACK || object->delivery == IMQUIC_MOQ_USE_FETCH) {
+			if(object->delivery == IMQUIC_MOQ_USE_TRACK || (object->delivery == IMQUIC_MOQ_USE_FETCH && options.join_offset < 0)) {
 				/* Stop here */
 				g_atomic_int_inc(&stop);
 			}
 		}
 		return;
+	}
+	if(object->extensions != NULL) {
+		GList *temp = object->extensions;
+		while(temp) {
+			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			if(ext->id % 2 == 0) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' = %"SCNu64"\n", ext->id, ext->value.number);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' = %.*s\n", ext->id, (int)ext->value.data.length, ext->value.data.buffer);
+			}
+			temp = temp->next;
+		}
 	}
 	if(file != NULL)
 		fwrite(object->payload, 1, object->payload_len, file);
@@ -224,7 +246,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
 			imquic_get_connection_name(conn), imquic_moq_object_status_str(object->object_status), object->end_of_stream);
-		if(object->delivery == IMQUIC_MOQ_USE_TRACK || object->delivery == IMQUIC_MOQ_USE_FETCH) {
+		if(object->delivery == IMQUIC_MOQ_USE_TRACK || (object->delivery == IMQUIC_MOQ_USE_FETCH && options.join_offset < 0)) {
 			/* Last object received, stop here */
 			g_atomic_int_inc(&stop);
 		}
@@ -251,6 +273,7 @@ int main(int argc, char *argv[]) {
 
 	/* Initialize some command line options defaults */
 	options.debug_level = IMQUIC_LOG_INFO;
+	options.join_offset = -1;
 	/* Let's call our cmdline parser */
 	if(!demo_options_parse(&options, argc, argv)) {
 		demo_options_show_usage();
@@ -290,9 +313,6 @@ int main(int argc, char *argv[]) {
 		} else if(!strcasecmp(options.moq_version, "legacy")) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and 5\n", IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
-		} else if(!strcasecmp(options.moq_version, "7p")) {
-			moq_version = IMQUIC_MOQ_VERSION_07_PATCH;
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %s\n", imquic_moq_version_str(moq_version));
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {

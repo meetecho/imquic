@@ -293,7 +293,7 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
-		void (* subscribe_done)(imquic_connection *conn, uint64_t subscribe_id, int status_code, const char *reason)) {
+		void (* subscribe_done)(imquic_connection *conn, uint64_t subscribe_id, int status_code, uint64_t streams_count, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -311,6 +311,17 @@ void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 			return;
 		}
 		endpoint->callbacks.moq.incoming_unsubscribe = incoming_unsubscribe;
+	}
+}
+
+void imquic_set_subscribes_blocked_cb(imquic_endpoint *endpoint,
+		void (* subscribes_blocked)(imquic_connection *conn, uint64_t max_subscribe_id)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.subscribes_blocked = subscribes_blocked;
 	}
 }
 
@@ -358,14 +369,25 @@ void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_incoming_fetch_cb(imquic_endpoint *endpoint,
-		void (* incoming_fetch)(imquic_connection *conn, uint64_t subscribe_id, imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth)) {
+void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
+		void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t subscribe_id, imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.incoming_fetch = incoming_fetch;
+		endpoint->callbacks.moq.incoming_standalone_fetch = incoming_standalone_fetch;
+	}
+}
+
+void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
+		void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id, uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_joining_fetch = incoming_joining_fetch;
 	}
 }
 
@@ -438,6 +460,8 @@ void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
 /* Roles */
 const char *imquic_moq_role_str(imquic_moq_role role) {
 	switch(role) {
+		case IMQUIC_MOQ_ENDPOINT:
+			return "Endpoint";
 		case IMQUIC_MOQ_PUBLISHER:
 			return "Publisher";
 		case IMQUIC_MOQ_SUBSCRIBER:
@@ -462,8 +486,8 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-06";
 		case IMQUIC_MOQ_VERSION_07:
 			return "draft-ietf-moq-transport-07";
-		case IMQUIC_MOQ_VERSION_07_PATCH:
-			return "draft-ietf-moq-transport-07-PATCH";
+		case IMQUIC_MOQ_VERSION_08:
+			return "draft-ietf-moq-transport-08";
 		case IMQUIC_MOQ_VERSION_ANY:
 			return "draft-ietf-moq-transport-XX";
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:

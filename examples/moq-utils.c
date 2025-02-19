@@ -75,10 +75,20 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 	return new_obj;
 }
 
+/* Helper to destroy an object extension */
+static void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
+	if(extension != NULL) {
+		if(extension->value.data.buffer != NULL)
+			g_free(extension->value.data.buffer);
+		g_free(extension);
+	}
+}
+
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object) {
 	if(object) {
 		g_free(object->payload);
+		g_list_free_full(object->extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 		g_free(object);
 	}
 }

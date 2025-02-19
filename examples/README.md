@@ -87,3 +87,7 @@ Assuming [moq-rs](https://github.com/kixelated/moq-rs)'s `moq-pub` application i
 Assuming Meta's [moxygen](https://github.com/facebookexperimental/moxygen) relay is running on that address and that a [moq-encoder-player](https://github.com/facebookexperimental/moq-encoder-player/) instance is publishing audio and video, this creates a MoQ subscriber (on WebTransport) to both tracks that prints the LOC header (`-t loc`) of each incoming object:
 
 	./examples/imquic-moq-sub -r 127.0.0.1 -R 4433 -w -H /moq -n vc -N 12345678-audio -N 12345678-video -a secret -t loc -w -s ../key_log.log
+
+`imquic-moq-sub` also supports `FETCH` to obtain objects from a relay, both in standalone and (assuming v08 of the draft is used) joining mode. You enable `FETCH` by specifying the order you want using `-f`: by default this enables standalone fetch, but if you want a joining one (meaning a `SUBSCRIBE` is sent too) you also need to specify the preceding group offset via the `-j` property. This is an example of subscribing to the current time with a joining fetch that's just interested in all objects from the latest group (`-j 0`):
+
+	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -w -n clock -N now -t text -M 8 -f ascending -j 0

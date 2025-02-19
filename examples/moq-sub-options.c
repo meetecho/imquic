@@ -20,6 +20,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_name, "MoQ track name to subscribe to (can be called multiple times; default=none)", "name" },
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to subscribe, if needed (default=none)", "string" },
 		{ "fetch", 'f', 0, G_OPTION_ARG_STRING, &options->fetch, "Use FETCH instead of SUBSCRIBE, in the specified order (ascending/descending)", "order" },
+		{ "join", 'j', 0, G_OPTION_ARG_INT, &options->join_offset, "When using FETCH, use a Joining Fetch and get the specified number of preceding groups (default=-1, no joining fetch)", "offset" },
 		{ "media-type", 't', 0, G_OPTION_ARG_STRING, &options->media_type, "Kind of media to subscribe to (default=none)", "mediatype" },
 		{ "output-file", 'o', 0, G_OPTION_ARG_STRING, &options->output_file, "File to save MoQ object payloads to (default=none)", "path" },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
