@@ -47,6 +47,8 @@ int imquic_init(const char *secrets_log) {
 	imquic_quic_init();
 	/* Initialize the TLS code */
 	imquic_tls_init(secrets_log);
+	/* Initialize the network stack */
+	imquic_network_init();
 	/* Register the protocols the library supports natively */
 	imquic_moq_init();
 	imquic_roq_init();
@@ -60,6 +62,7 @@ int imquic_init(const char *secrets_log) {
 void imquic_deinit(void) {
 	g_atomic_int_set(&initialized, IMQUIC_UNINITIALIZED);
 	imquic_quic_deinit();
+	imquic_network_deinit();
 	imquic_moq_deinit();
 	imquic_roq_deinit();
 #ifdef IMQUIC_REFCOUNT_DEBUG
