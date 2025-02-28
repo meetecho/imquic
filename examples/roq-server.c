@@ -187,7 +187,8 @@ int main(int argc, char *argv[]) {
 
 done:
 	imquic_deinit();
-	g_hash_table_unref(connections);
+	if(connections != NULL)
+		g_hash_table_unref(connections);
 	if(ret == 1)
 		demo_options_show_usage();
 	demo_options_destroy();

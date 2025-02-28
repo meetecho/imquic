@@ -1061,12 +1061,18 @@ int main(int argc, char *argv[]) {
 
 done:
 	imquic_deinit();
-	g_hash_table_unref(connections);
-	g_hash_table_unref(publishers);
-	g_hash_table_unref(subscribers);
-	g_hash_table_unref(namespaces);
-	g_hash_table_unref(subscriptions);
-	g_hash_table_unref(subscriptions_by_id);
+	if(connections != NULL)
+		g_hash_table_unref(connections);
+	if(publishers != NULL)
+		g_hash_table_unref(publishers);
+	if(subscribers != NULL)
+		g_hash_table_unref(subscribers);
+	if(namespaces != NULL)
+		g_hash_table_unref(namespaces);
+	if(subscriptions != NULL)
+		g_hash_table_unref(subscriptions);
+	if(subscriptions_by_id != NULL)
+		g_hash_table_unref(subscriptions_by_id);
 	g_list_free_full(monitors, (GDestroyNotify)imquic_demo_moq_monitor_destroy);
 	if(ret == 1)
 		demo_options_show_usage();

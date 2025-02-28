@@ -484,8 +484,10 @@ int main(int argc, char *argv[]) {
 
 done:
 	imquic_deinit();
-	g_hash_table_unref(participants);
-	g_hash_table_unref(participants_byns);
+	if(participants != NULL)
+		g_hash_table_unref(participants);
+	if(participants_byns != NULL)
+		g_hash_table_unref(participants_byns);
 	if(ret == 1)
 		demo_options_show_usage();
 	demo_options_destroy();
