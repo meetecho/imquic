@@ -150,10 +150,10 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t subscribe_
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->subscribe_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id, object->object_send_order,
-		object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
+		object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	if(object->payload == NULL || object->payload_len == 0) {
 		if(object->end_of_stream) {
@@ -166,8 +166,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
-	if(object->extensions != NULL) {
-		GList *temp = object->extensions;
+	if(object->extensions != NULL && object->extensions_len > 0) {
+		GList *extensions = imquic_moq_parse_object_extensions(object->extensions_count, object->extensions, object->extensions_len);
+		GList *temp = extensions;
 		while(temp) {
 			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
 			if(ext->id % 2 == 0) {
@@ -177,6 +178,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			}
 			temp = temp->next;
 		}
+		g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 	}
 	if(file != NULL)
 		fwrite(object->payload, 1, object->payload_len, file);

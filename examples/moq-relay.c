@@ -848,10 +848,10 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->subscribe_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id, object->object_send_order,
-		object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
+		object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	/* Find the track associated to this subscription */
 	g_mutex_lock(&mutex);
@@ -878,9 +878,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		temp = temp->next;
 	}
-	/* Set extensions to NULL in the object we received, as we copied
-	 * it in our cache and it would be freed by the library otherwise */
-	object->extensions = NULL;
 	/* Done */
 	g_mutex_unlock(&track->mutex);
 	g_mutex_unlock(&mutex);

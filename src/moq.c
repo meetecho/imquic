@@ -2781,7 +2781,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	uint8_t priority = 0;
 	if(moq->version == IMQUIC_MOQ_VERSION_03 || moq->version == IMQUIC_MOQ_VERSION_04) {
 		object_send_order = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken OBJECT_STREAM");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken OBJECT_DATAGRAM");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object Send Order: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), object_send_order);
@@ -2791,14 +2791,15 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 			imquic_get_connection_name(moq->conn), priority);
 	}
+	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	GList *extensions = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
 		ext_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken OBJECT_STREAM");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken OBJECT_DATAGRAM");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Count:   %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), ext_count);
+		ext_offset = offset;
 		if(ext_count > 0) {
 			/* Parse extensions */
 			uint64_t i = 0;
@@ -2806,7 +2807,6 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 				uint64_t ext_type = imquic_read_varint(&bytes[offset], blen-offset, &length);
 				if(length == 0 || length >= blen-offset) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "%s\n", "Broken OBJECT_DATAGRAM");
-					g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 					return 0;
 				}
 				offset += length;
@@ -2815,39 +2815,26 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 					uint64_t ext_val = imquic_read_varint(&bytes[offset], blen-offset, &length);
 					if(length == 0 || length >= blen-offset) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "%s\n", "Broken OBJECT_DATAGRAM");
-						g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 						return 0;
 					}
-					offset += length;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": %"SCNu64"\n",
 						imquic_get_connection_name(moq->conn), i, ext_val);
-					imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-					extension->id = ext_type;
-					extension->value.number = ext_val;
-					extensions = g_list_prepend(extensions, extension);
+					offset += length;
 				} else {
 					/* Odd typed are followed by a length and a value */
 					uint64_t ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 					if(length == 0 || length >= blen-offset || ext_len >= blen-offset) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "%s\n", "Broken OBJECT_DATAGRAM");
-						g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 						return 0;
 					}
 					offset += length;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": (%"SCNu64" bytes)\n",
 						imquic_get_connection_name(moq->conn), i, ext_len);
 					imquic_print_hex(IMQUIC_MOQ_LOG_HUGE, &bytes[offset], ext_len);
-					imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-					extension->id = ext_type;
-					if(ext_len > 0) {
-						extension->value.data.length = ext_len;
-						extension->value.data.buffer = g_malloc(ext_len);
-						memcpy(extension->value.data.buffer, &bytes[offset], ext_len);
-					}
-					extensions = g_list_prepend(extensions, extension);
 					offset += ext_len;
 				}
 			}
+			ext_len = offset - ext_offset;
 		}
 	}
 	uint64_t object_status = 0;
@@ -2855,7 +2842,6 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		object_status = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length > blen-offset) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "%s\n", "Broken OBJECT_DATAGRAM");
-			g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 			return 0;
 		}
 		offset += length;
@@ -2876,13 +2862,14 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		.priority = priority,
 		.payload = &bytes[offset],
 		.payload_len = blen-offset,
-		.extensions = g_list_reverse(extensions),
+		.extensions = &bytes[ext_offset],
+		.extensions_len = ext_len,
+		.extensions_count = ext_count,
 		.delivery = IMQUIC_MOQ_USE_DATAGRAM,
 		.end_of_stream = FALSE	/* No stream is involved here */
 	};
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
-	g_list_free_full(object.extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3228,82 +3215,59 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	if(length == 0 || length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
 	offset += length;
+	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	GList *extensions = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
 		ext_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		if(length == 0 || length >= blen-offset)
-			return -1;	/* Not enough data, try again later */
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken OBJECT_DATAGRAM");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Count:   %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), ext_count);
+		ext_offset = offset;
 		if(ext_count > 0) {
-			/* TODO Parse extensions */
+			/* Parse extensions */
 			uint64_t i = 0;
 			for(i=0; i<ext_count; i++) {
 				uint64_t ext_type = imquic_read_varint(&bytes[offset], blen-offset, &length);
-				if(length == 0 || length >= blen-offset) {
-					g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+				if(length == 0 || length >= blen-offset)
 					return -1;	/* Not enough data, try again later */
-				}
 				offset += length;
 				if(ext_type % 2 == 0) {
 					/* Even types are followed by a numeric value */
 					uint64_t ext_val = imquic_read_varint(&bytes[offset], blen-offset, &length);
-					if(length == 0 || length >= blen-offset) {
-						g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+					if(length == 0 || length >= blen-offset)
 						return -1;	/* Not enough data, try again later */
-					}
-					offset += length;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": %"SCNu64"\n",
 						imquic_get_connection_name(moq->conn), i, ext_val);
-					imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-					extension->id = ext_type;
-					extension->value.number = ext_val;
-					extensions = g_list_prepend(extensions, extension);
+					offset += length;
 				} else {
 					/* Odd typed are followed by a length and a value */
 					uint64_t ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-					if(length == 0 || length >= blen-offset || ext_len >= blen-offset) {
-						g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+					if(length == 0 || length >= blen-offset || ext_len >= blen-offset)
 						return -1;	/* Not enough data, try again later */
-					}
 					offset += length;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": (%"SCNu64" bytes)\n",
 						imquic_get_connection_name(moq->conn), i, ext_len);
 					imquic_print_hex(IMQUIC_MOQ_LOG_HUGE, &bytes[offset], ext_len);
-					imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-					extension->id = ext_type;
-					if(ext_len > 0) {
-						extension->value.data.length = ext_len;
-						extension->value.data.buffer = g_malloc(ext_len);
-						memcpy(extension->value.data.buffer, &bytes[offset], ext_len);
-					}
-					extensions = g_list_prepend(extensions, extension);
 					offset += ext_len;
 				}
 			}
+			ext_len = offset - ext_offset;
 		}
 	}
 	uint64_t p_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	if(length == 0 || length >= blen-offset) {
-		g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	if(length == 0 || length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
-	}
 	offset += length;
 	uint64_t object_status = 0;
 	if(p_len == 0) {
 		object_status = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		if(length == 0 || length > blen-offset) {
-			g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+		if(length == 0 || length > blen-offset)
 			return -1;	/* Not enough data, try again later */
-		}
 		offset += length;
 	}
-	if(p_len > blen-offset) {
-		g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	if(p_len > blen-offset)
 		return -1;	/* Not enough data, try again later */
-	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object ID:      %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), object_id);
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Payload Length: %"SCNu64"\n",
@@ -3324,13 +3288,14 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		.priority = moq_stream->priority,
 		.payload = bytes + offset,
 		.payload_len = p_len,
-		.extensions = g_list_reverse(extensions),
+		.extensions = &bytes[ext_offset],
+		.extensions_len = ext_len,
+		.extensions_count = ext_count,
 		.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 		.end_of_stream = complete
 	};
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
-	g_list_free_full(object.extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 	/* Move on */
 	offset += p_len;
 	imquic_moq_buffer_shift(moq_stream->buffer, offset);
@@ -3387,83 +3352,59 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	offset += length;
 	uint8_t priority = bytes[offset];
 	offset++;
+	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	GList *extensions = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
 		ext_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		if(length == 0 || length >= blen-offset)
-			return -1;	/* Not enough data, try again later */
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken OBJECT_DATAGRAM");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Count:   %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), ext_count);
+		ext_offset = offset;
 		if(ext_count > 0) {
-			/* TODO Parse extensions */
+			/* Parse extensions */
 			uint64_t i = 0;
 			for(i=0; i<ext_count; i++) {
 				uint64_t ext_type = imquic_read_varint(&bytes[offset], blen-offset, &length);
-				if(length == 0 || length >= blen-offset) {
-					g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+				if(length == 0 || length >= blen-offset)
 					return -1;	/* Not enough data, try again later */
-				}
 				offset += length;
 				if(ext_type % 2 == 0) {
 					/* Even types are followed by a numeric value */
 					uint64_t ext_val = imquic_read_varint(&bytes[offset], blen-offset, &length);
-					if(length == 0 || length >= blen-offset) {
-						g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+					if(length == 0 || length >= blen-offset)
 						return -1;	/* Not enough data, try again later */
-					}
-					offset += length;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": %"SCNu64"\n",
 						imquic_get_connection_name(moq->conn), i, ext_val);
-					imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-					extension->id = ext_type;
-					extension->value.number = ext_val;
-					extensions = g_list_prepend(extensions, extension);
+					offset += length;
 				} else {
 					/* Odd typed are followed by a length and a value */
 					uint64_t ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 					if(length == 0 || length >= blen-offset || ext_len >= blen-offset)
-					if(extensions != NULL) {
-						g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 						return -1;	/* Not enough data, try again later */
-					}
 					offset += length;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": (%"SCNu64" bytes)\n",
 						imquic_get_connection_name(moq->conn), i, ext_len);
 					imquic_print_hex(IMQUIC_MOQ_LOG_HUGE, &bytes[offset], ext_len);
-					imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-					extension->id = ext_type;
-					if(ext_len > 0) {
-						extension->value.data.length = ext_len;
-						extension->value.data.buffer = g_malloc(ext_len);
-						memcpy(extension->value.data.buffer, &bytes[offset], ext_len);
-					}
-					extensions = g_list_prepend(extensions, extension);
 					offset += ext_len;
 				}
 			}
+			ext_len = offset - ext_offset;
 		}
 	}
 	uint64_t p_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	if(length == 0 || length >= blen-offset) {
-		g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	if(length == 0 || length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
-	}
 	offset += length;
 	uint64_t object_status = 0;
 	if(p_len == 0) {
 		object_status = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		if(length == 0 || length > blen-offset) {
-			g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+		if(length == 0 || length > blen-offset)
 			return -1;	/* Not enough data, try again later */
-		}
 		offset += length;
 	}
-	if(p_len > blen-offset) {
-		g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	if(p_len > blen-offset)
 		return -1;	/* Not enough data, try again later */
-	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subgroup ID:    %"SCNu64"\n",
@@ -3488,13 +3429,14 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		.priority = priority,
 		.payload = bytes + offset,
 		.payload_len = p_len,
-		.extensions = g_list_reverse(extensions),
+		.extensions = &bytes[ext_offset],
+		.extensions_len = ext_len,
+		.extensions_count = ext_count,
 		.delivery = IMQUIC_MOQ_USE_FETCH,
 		.end_of_stream = complete
 	};
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
-	g_list_free_full(object.extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 	/* Move on */
 	offset += p_len;
 	imquic_moq_buffer_shift(moq_stream->buffer, offset);
@@ -4529,7 +4471,7 @@ size_t imquic_moq_add_object_stream(imquic_moq_context *moq, uint8_t *bytes, siz
 
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t subscribe_id, uint64_t track_alias,
 		uint64_t group_id, uint64_t object_id, uint64_t object_status, uint64_t object_send_order, uint8_t priority,
-		uint8_t *payload, size_t plen, GList *extensions) {
+		uint8_t *payload, size_t plen, size_t extensions_count, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM, moq->version));
@@ -4548,7 +4490,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 		offset++;
 	}
 	if(moq->version >= IMQUIC_MOQ_VERSION_08)
-		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions);
+		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions_count, extensions, elen);
 	if(moq->version >= IMQUIC_MOQ_VERSION_04)
 		offset += imquic_write_varint(object_status, &bytes[offset], blen-offset);
 	if(payload != NULL && plen > 0) {
@@ -4713,7 +4655,8 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, uint8_t *bytes, s
 }
 
 size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen, GList *extensions) {
+		uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen,
+		size_t extensions_count, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_SUBGROUP_HEADER, moq->version));
@@ -4728,7 +4671,7 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, uint8_t *b
 	size_t offset = 0;
 	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
 	if(moq->version >= IMQUIC_MOQ_VERSION_08)
-		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions);
+		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions_count, extensions, elen);
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_varint(plen, &bytes[offset], blen-offset);
@@ -4760,7 +4703,8 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
-		uint64_t object_status, uint8_t *payload, size_t plen, GList *extensions) {
+		uint64_t object_status, uint8_t *payload, size_t plen,
+		size_t extensions_count, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_FETCH_HEADER, moq->version));
@@ -4779,7 +4723,7 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 	bytes[offset] = priority;
 	offset++;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08)
-		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions);
+		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions_count, extensions, elen);
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_varint(plen, &bytes[offset], blen-offset);
@@ -4807,7 +4751,8 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t ble
 	return offset;
 }
 
-size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes, size_t blen, GList *extensions) {
+size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		size_t extensions_count, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't serialize MoQ object extensions: invalid arguments\n",
 			imquic_get_connection_name(moq->conn));
@@ -4815,28 +4760,21 @@ size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes,
 	}
 	if(moq->version < IMQUIC_MOQ_VERSION_08)
 		return 0;
-	uint count = g_list_length(extensions);
+	if(extensions == NULL || elen == 0) {
+		extensions_count = 0;
+		extensions = NULL;
+		elen = 0;
+	}
 	size_t offset = 0;
-	offset += imquic_write_varint(count, &bytes[offset], blen-offset);
-	GList *temp = extensions;
-	while(temp) {
-		imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-		offset += imquic_write_varint(ext->id, &bytes[offset], blen-offset);
-		if(ext->id % 2 == 0) {
-			offset += imquic_write_varint(ext->value.number, &bytes[offset], blen-offset);
-		} else {
-			offset += imquic_write_varint(ext->value.data.length, &bytes[offset], blen-offset);
-			if(ext->value.data.length > 0) {
-				memcpy(&bytes[offset], ext->value.data.buffer, ext->value.data.length);
-				offset += ext->value.data.length;
-			}
-		}
-		temp = temp->next;
+	offset += imquic_write_varint(extensions_count, &bytes[offset], blen-offset);
+	if(extensions_count > 0 && extensions != NULL && elen > 0) {
+		memcpy(&bytes[offset], extensions, elen);
+		offset += elen;
 	}
 	return offset;
 }
 
-/* FIXME Parameters parsing */
+/* Parameters parsing */
 size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		imquic_moq_parsed_setup_parameter *param, uint8_t *error) {
 	if(error)
@@ -4937,7 +4875,7 @@ size_t imquic_moq_parse_subscribe_parameter(imquic_moq_context *moq, uint8_t *by
 	return offset;
 }
 
-/* FIXME Adding parameters to a buffer */
+/* Adding parameters to a buffer */
 size_t imquic_moq_parameter_add_int(imquic_moq_context *moq, uint8_t *bytes, size_t blen, int param, uint64_t number) {
 	if(bytes == NULL || blen == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter: invalid arguments\n",
@@ -5123,6 +5061,82 @@ int imquic_moq_set_max_subscribe_id(imquic_connection *conn, uint64_t max_subscr
 
 }
 
+/* Object extensions management */
+GList *imquic_moq_parse_object_extensions(size_t count, uint8_t *extensions, size_t elen) {
+	if(count == 0 || extensions == NULL || elen == 0)
+		return NULL;
+	GList *exts = NULL;
+	size_t offset = 0;
+	uint8_t length = 0;
+	if(count > 0) {
+		/* Parse extensions */
+		uint64_t i = 0;
+		for(i=0; i<count; i++) {
+			uint64_t ext_type = imquic_read_varint(&extensions[offset], elen-offset, &length);
+			if(length == 0 || length >= elen-offset) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken object extensions\n");
+				g_list_free_full(exts, (GDestroyNotify)imquic_moq_object_extension_free);
+				return 0;
+			}
+			offset += length;
+			if(ext_type % 2 == 0) {
+				/* Even types are followed by a numeric value */
+				uint64_t ext_val = imquic_read_varint(&extensions[offset], elen-offset, &length);
+				if(length == 0 || length >= elen-offset) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken object extensions\n");
+				g_list_free_full(exts, (GDestroyNotify)imquic_moq_object_extension_free);
+					return 0;
+				}
+				offset += length;
+				imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
+				extension->id = ext_type;
+				extension->value.number = ext_val;
+				exts = g_list_prepend(exts, extension);
+			} else {
+				/* Odd typed are followed by a length and a value */
+				uint64_t ext_len = imquic_read_varint(&extensions[offset], elen-offset, &length);
+				if(length == 0 || length >= elen-offset || ext_len >= elen-offset) {
+					IMQUIC_LOG(IMQUIC_LOG_ERR, "%s\n", "Broken OBJECT_DATAGRAM");
+					g_list_free_full(exts, (GDestroyNotify)imquic_moq_object_extension_free);
+					return 0;
+				}
+				offset += length;
+				imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
+				extension->id = ext_type;
+				if(ext_len > 0) {
+					extension->value.data.length = ext_len;
+					extension->value.data.buffer = g_malloc(ext_len);
+					memcpy(extension->value.data.buffer, &extensions[offset], ext_len);
+				}
+				exts = g_list_prepend(exts, extension);
+				offset += ext_len;
+			}
+		}
+	}
+	return g_list_reverse(exts);
+}
+
+size_t imquic_moq_build_object_extensions(GList *extensions, uint8_t *bytes, size_t blen) {
+	if(extensions == NULL || bytes == NULL || blen == 0)
+		return 0;
+	size_t offset = 0;
+	GList *temp = extensions;
+	while(temp) {
+		imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+		offset += imquic_write_varint(ext->id, &bytes[offset], blen-offset);
+		if(ext->id % 2 == 0) {
+			offset += imquic_write_varint(ext->value.number, &bytes[offset], blen-offset);
+		} else {
+			offset += imquic_write_varint(ext->value.data.length, &bytes[offset], blen-offset);
+			if(ext->value.data.length > 0) {
+				memcpy(&bytes[offset], ext->value.data.buffer, ext->value.data.length);
+				offset += ext->value.data.length;
+			}
+		}
+		temp = temp->next;
+	}
+	return offset;
+}
 
 /* Namespaces and subscriptions */
 int imquic_moq_announce(imquic_connection *conn, imquic_moq_namespace *tns) {
@@ -5657,7 +5671,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		if(has_payload || moq->version < IMQUIC_MOQ_VERSION_08) {
 			size_t dg_len = imquic_moq_add_object_datagram(moq, buffer, sizeof(buffer),
 				object->subscribe_id, object->track_alias, object->group_id, object->object_id, object->object_status,
-				object->object_send_order, object->priority, object->payload, object->payload_len, object->extensions);
+				object->object_send_order, object->priority, object->payload, object->payload_len,
+				object->extensions_count, object->extensions, object->extensions_len);
 			imquic_connection_send_on_datagram(conn, buffer, dg_len);
 		} else if(!has_payload && moq->version >= IMQUIC_MOQ_VERSION_08) {
 			size_t dg_len = imquic_moq_add_object_datagram_status(moq, buffer, sizeof(buffer),
@@ -5781,7 +5796,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		size_t shgo_len = 0;
 		if(valid_pkt) {
 			shgo_len = imquic_moq_add_subgroup_header_object(moq, buffer, sizeof(buffer),
-				object->object_id, object->object_status, object->payload, object->payload_len, object->extensions);
+				object->object_id, object->object_status, object->payload, object->payload_len,
+				object->extensions_count, object->extensions, object->extensions_len);
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 			buffer, moq_stream->stream_offset, shgo_len,
@@ -5894,7 +5910,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		if(valid_pkt) {
 			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, sizeof(buffer),
 				object->group_id, object->subgroup_id, object->object_id, object->priority,
-				object->object_status, object->payload, object->payload_len, object->extensions);
+				object->object_status, object->payload, object->payload_len,
+				object->extensions_count, object->extensions, object->extensions_len);
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 			buffer, moq_stream->stream_offset, shto_len,

@@ -143,18 +143,25 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 }
 
 static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object_id, gboolean last) {
-	GList *extensions = NULL;
-	imquic_moq_object_extension numext = { 0 }, dataext = { 0 };
+	uint8_t extensions[256];
+	size_t extensions_len = 0;
+	size_t extensions_count = 0;
 	if(options.extensions) {
 		/* Just for fun, we add a couple of fake extensions to the object: a numeric
 		 * extension set to the length of the text, and a data extension with a string */
+		GList *exts = NULL;
+		imquic_moq_object_extension numext = { 0 };
 		numext.id = 6;
 		numext.value.number = text ? strlen(text) : 0;
-		extensions = g_list_append(extensions, &numext);
+		exts = g_list_append(exts, &numext);
+		imquic_moq_object_extension dataext = { 0 };
 		dataext.id = 7;
 		dataext.value.data.buffer = (uint8_t *)"lminiero";
 		dataext.value.data.length = strlen("lminiero");
-		extensions = g_list_append(extensions, &dataext);
+		exts = g_list_append(exts, &dataext);
+		extensions_len = imquic_moq_build_object_extensions(exts, extensions, sizeof(extensions));
+		extensions_count = 2;
+		g_list_free(exts);
 	}
 	/* Prepare the object and send it */
 	imquic_moq_object object = {
@@ -168,11 +175,12 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
 		.extensions = extensions,
+		.extensions_len = extensions_len,
+		.extensions_count = extensions_count,
 		.delivery = delivery,
 		.end_of_stream = (last && imquic_moq_get_version(moq_conn) == IMQUIC_MOQ_VERSION_03)
 	};
 	imquic_moq_send_object(moq_conn, &object);
-	g_list_free(extensions);
 	if(last && imquic_moq_get_version(moq_conn) > IMQUIC_MOQ_VERSION_03 &&
 			(delivery == IMQUIC_MOQ_USE_GROUP || delivery == IMQUIC_MOQ_USE_SUBGROUP || delivery == IMQUIC_MOQ_USE_TRACK)) {
 		/* Send an empty object with status "end of X" */
@@ -186,6 +194,8 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 		object.payload_len = 0;
 		object.payload = NULL;
 		object.extensions = NULL;
+		object.extensions_len = 0;
+		object.extensions_count = 0;
 		object.end_of_stream = TRUE;
 		imquic_moq_send_object(moq_conn, &object);
 	}

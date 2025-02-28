@@ -72,23 +72,29 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 		new_obj->payload = g_malloc(object->payload_len);
 		memcpy(new_obj->payload, object->payload, object->payload_len);
 	}
-	return new_obj;
-}
-
-/* Helper to destroy an object extension */
-static void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
-	if(extension != NULL) {
-		if(extension->value.data.buffer != NULL)
-			g_free(extension->value.data.buffer);
-		g_free(extension);
+	if(object->extensions_len == 0) {
+		new_obj->extensions = NULL;
+	} else {
+		new_obj->extensions = g_malloc(object->extensions_len);
+		memcpy(new_obj->extensions, object->extensions, object->extensions_len);
 	}
+	return new_obj;
 }
 
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object) {
 	if(object) {
 		g_free(object->payload);
-		g_list_free_full(object->extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+		g_free(object->extensions);
 		g_free(object);
+	}
+}
+
+/* Helper to destroy an object extension */
+void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
+	if(extension != NULL) {
+		if(extension->value.data.buffer != NULL)
+			g_free(extension->value.data.buffer);
+		g_free(extension);
 	}
 }
