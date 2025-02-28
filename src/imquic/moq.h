@@ -170,8 +170,10 @@
  * for intercepting incoming \c SUBSCRIBE requests via \ref imquic_set_incoming_subscribe_cb,
  * and another for intercepting an \c UNSUBSCRIBE via \ref imquic_set_incoming_unsubscribe_cb.
  * In both cases, the publisher is supposed to answer with either a success or an error.
- * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_fetch_cb,
- * while a \c FETCH_CANCEL can be intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
+ * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_standalone_fetch_cb
+ * (for standalone \c FETCH requests) or \ref imquic_set_incoming_joining_fetch_cb
+ * (for joining \c FETCH requests), while a \c FETCH_CANCEL can be
+ * intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
  *
  * That said, once callbacks have been configured, the endpoint started, and the publisher
  * role set, a publisher can start sending requests. To announce a new
@@ -289,11 +291,13 @@
  * \ref imquic_moq_subscribe function, while to unsubscribe the corresponding
  * \ref imquic_moq_unsubscribe function can be used instead.
  *
- * Issuing \c FETCH related requests is similar, as \ref imquic_moq_fetch
- * allows you to try and fetch some objects, while \ref imquic_moq_cancel_fetch
+ * Issuing \c FETCH related requests is similar, as \ref imquic_moq_standalone_fetch
+ * and \ref imquic_moq_joining_fetch allow you to try and fetch some objects
+ * (in standalone or joining more, respectively), while \ref imquic_moq_cancel_fetch
  * is what you use to stop the delivery and cancel the request. Just as
  * with \c SUBSCRIBE requests, a \c subscribe_id identifier is used to
- * address a specific \c FETCH context.
+ * address a specific \c FETCH context. Notice that for a joining \c FETCH
+ * you need to provide an existing \c SUBSCRIBE identifier as well.
  *
  * \section moqrelay MoQ Relays
  *
@@ -654,14 +658,14 @@ void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
 /*! \brief Configure the callback function to be notified when there's
  * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_fetch Pointer to the function that will handle the incoming \c FETCH */
+ * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t subscribe_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_fetch Pointer to the function that will handle the incoming \c FETCH */
+ * @param incoming_joining_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
 		uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth));
