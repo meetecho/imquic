@@ -1217,8 +1217,12 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken ANNOUNCE");
 	}
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_announce)
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_announce) {
 		moq->conn->socket->callbacks.moq.incoming_announce(moq->conn, &tns[0]);
+	} else {
+		/* FIXME No handler for this request, let's reject it ourselves */
+		imquic_moq_reject_announce(moq->conn, &tns[0], 500, "Not handled");
+	}
 	if(error)
 		*error = 0;
 	return offset;
@@ -1693,8 +1697,12 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		g_hash_table_insert(moq->subscriptions, imquic_dup_uint64(track_alias), moq_sub);
 		imquic_mutex_unlock(&moq->mutex);
 		/* Notify the application */
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe)
+		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe) {
 			moq->conn->socket->callbacks.moq.incoming_subscribe(moq->conn, subscribe_id, track_alias, &tns[0], &tn, &auth);
+		} else {
+			/* FIXME No handler for this request, let's reject it ourselves */
+			imquic_moq_reject_subscribe(moq->conn, subscribe_id, 500, "Not handled", track_alias);
+		}
 	}
 	g_free(auth.buffer);
 	if(error)
@@ -2035,8 +2043,12 @@ size_t imquic_moq_parse_subscribe_announces(imquic_moq_context *moq, uint8_t *by
 		}
 	}
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_announces)
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_announces) {
 		moq->conn->socket->callbacks.moq.incoming_subscribe_announces(moq->conn, &tns[0], &auth);
+	} else {
+		/* FIXME No handler for this request, let's reject it ourselves */
+		imquic_moq_reject_subscribe_announces(moq->conn, &tns[0], 500, "Not handled");
+	}
 	if(error)
 		*error = 0;
 	return offset;
@@ -2367,11 +2379,19 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	imquic_mutex_unlock(&moq->mutex);
 	/* Notify the application */
 	if(moq->version < IMQUIC_MOQ_VERSION_08 || type == IMQUIC_MOQ_FETCH_STANDALONE) {
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_standalone_fetch)
+		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_standalone_fetch) {
 			moq->conn->socket->callbacks.moq.incoming_standalone_fetch(moq->conn, subscribe_id, &tns[0], &tn, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), &range, &auth);
+		} else {
+			/* FIXME No handler for this request, let's reject it ourselves */
+			imquic_moq_reject_fetch(moq->conn, subscribe_id, 500, "Not handled");
+		}
 	} else {
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_joining_fetch)
+		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_joining_fetch) {
 			moq->conn->socket->callbacks.moq.incoming_joining_fetch(moq->conn, subscribe_id, joining_subscribe_id, preceding_group_offset, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), &auth);
+		} else {
+			/* FIXME No handler for this request, let's reject it ourselves */
+			imquic_moq_reject_fetch(moq->conn, subscribe_id, 500, "Not handled");
+		}
 	}
 	g_free(auth.buffer);
 	if(error)

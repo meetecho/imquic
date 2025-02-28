@@ -143,8 +143,9 @@ static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t subscri
 static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error fetching via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), subscribe_id, error_code, reason);
-	/* Stop here */
-	g_atomic_int_inc(&stop);
+	/* Stop here, unless it was a joining FETCH */
+	if(options.join_offset < 0)
+		g_atomic_int_inc(&stop);
 }
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
