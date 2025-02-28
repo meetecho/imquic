@@ -266,6 +266,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 				} else if(result->ai_family == AF_INET) {
 					/* IPv4 */
 					resolved = TRUE;
+					family = AF_INET;
 					remote.addrlen = sizeof(*remote_addr);
 					struct sockaddr_in *addr = (struct sockaddr_in *)result->ai_addr;
 					memcpy(remote_addr, addr, sizeof(*addr));
@@ -275,6 +276,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 				} else if(result->ai_family == AF_INET6) {
 					/* IPv6 */
 					resolved = TRUE;
+					family = AF_INET6;
 					remote.addrlen = sizeof(*remote_addr6);
 					struct sockaddr_in6 *addr = (struct sockaddr_in6 *)result->ai_addr;
 					memcpy(remote_addr6, addr, sizeof(*addr));
