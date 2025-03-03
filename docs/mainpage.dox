@@ -40,7 +40,7 @@
  *
  * \section copyright Copyright and author
  *
- * imquic © 2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * imquic © 2024-2025 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \author Lorenzo Miniero <lorenzo@meetecho.com> ( \ref credits )
  *
@@ -177,7 +177,7 @@ ldd src/.libs/libimquic.so | grep asan
 
 /*! \page credits Credits
  *
- * imquic © 2024 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
+ * imquic © 2024-2025 <a href="https://www.meetecho.com/">Meetecho</a> (https://www.meetecho.com/)
  *
  * \b Author:
  *         Lorenzo Miniero <lorenzo@meetecho.com>
