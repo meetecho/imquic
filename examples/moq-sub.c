@@ -167,7 +167,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		return;
 	}
 	if(object->extensions != NULL && object->extensions_len > 0) {
-		GList *extensions = imquic_moq_parse_object_extensions(object->extensions_count, object->extensions, object->extensions_len);
+		GList *extensions = imquic_moq_parse_object_extensions(object->extensions, object->extensions_len);
 		GList *temp = extensions;
 		while(temp) {
 			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;

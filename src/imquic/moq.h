@@ -146,7 +146,7 @@
  * called \c IMQUIC_MOQ_VERSION_ANY_LEGACY is available, to negotiate any supported
  * version that is lower than v06. At the time of writing, this stack
  * supports MoQ versions from v03 ( \c IMQUIC_MOQ_VERSION_03 ) up to
- * v08 ( \c IMQUIC_MOQ_VERSION_08 ), but not all versions will be supported
+ * v09 ( \c IMQUIC_MOQ_VERSION_09 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
@@ -439,11 +439,10 @@ typedef struct imquic_moq_object_extension {
 } imquic_moq_object_extension;
 /*! \brief Helper mode to parse an extensions buffer to a GList of imquic_moq_object_extension
  * \note The caller owns the list, and is responsible of freeing it and its content
- * @param count How many extensions are contained in the buffer
  * @param extensions The buffer containing the extensions data
  * @param elen The size of the buffer containing the extensions data
  * @returns A GList instance containing a set of imquic_moq_object_extension, if successful, or NULL if no extensions were found */
-GList *imquic_moq_parse_object_extensions(size_t count, uint8_t *extensions, size_t elen);
+GList *imquic_moq_parse_object_extensions(uint8_t *extensions, size_t elen);
 /*! \brief Helper mode to craft an extensions buffer out of a GList of imquic_moq_object_extension
  * @param[in] extensions The buffer containing the extensions data
  * @param[out] bytes The buffer to write the extensions data to
@@ -480,7 +479,7 @@ typedef struct imquic_moq_object {
 	uint8_t *extensions;
 	/*! \brief Size of the MoQ object extensions (only since v08) */
 	size_t extensions_len;
-	/*! \brief Count of the MoQ object extensions (only since v08) */
+	/*! \brief Count of the MoQ object extensions (only v08, deprecated in v09) */
 	size_t extensions_count;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
@@ -767,7 +766,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_07 = 0xff000007,
 	/* Draft version -08 */
 	IMQUIC_MOQ_VERSION_08 = 0xff000008,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_08,
+	/* Draft version -09 */
+	IMQUIC_MOQ_VERSION_09 = 0xff000009,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_09,
 	/* Any post-v06 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,

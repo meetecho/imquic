@@ -1053,7 +1053,7 @@ size_t imquic_moq_add_object_stream(imquic_moq_context *moq, uint8_t *bytes, siz
  * @param priority The publisher priority to put in the message (only after v05)
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
- * @param extensions_count The number of object extensions, if any (only since v08)
+ * @param extensions_count The number of object extensions, if any (only in v08, deprecated in v09)
  * @param extensions The buffer containing the object extensions, if any (only since v08)
  * @param elen The size of the object extensions buffer (only since v08)
  * @returns The size of the generated message, if successful, or 0 otherwise */
@@ -1070,9 +1070,12 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
  * @param object_id The object ID to put in the message
  * @param priority The publisher priority to put in the message (only after v05)
  * @param object_status The object status (only added if the payload length is 0)
+ * @param extensions The buffer containing the object extensions, if any (only since v09)
+ * @param elen The size of the object extensions buffer (only since v09)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t track_alias, uint64_t group_id, uint64_t object_id, uint8_t priority, uint64_t object_status);
+	uint64_t track_alias, uint64_t group_id, uint64_t object_id, uint8_t priority,
+	uint64_t object_status, uint8_t *extensions, size_t elen);
 /*! \brief Helper to add a \c STREAM_HEADER_TRACK message to a buffer (only before v06)
  * @note This will create a new \c STREAM and send the header: after
  * that, imquic_moq_add_stream_header_track_object is used to send
@@ -1151,7 +1154,7 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, uint8_t *bytes, s
  * @param object_status The object status (only added if the payload length is 0)
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
- * @param extensions_count The number of object extensions, if any (only since v08)
+ * @param extensions_count The number of object extensions, if any (only in v08, deprecated in v09)
  * @param extensions The buffer containing the object extensions, if any (only since v08)
  * @param elen The size of the object extensions buffer (only since v08)
  * @returns The size of the generated object, if successful, or 0 otherwise */
@@ -1180,7 +1183,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param object_status The object status (only added if the payload length is 0)
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
- * @param extensions_count The number of object extensions, if any (only since v08)
+ * @param extensions_count The number of object extensions, if any (only in v08, deprecated in v09)
  * @param extensions The buffer containing the object extensions, if any (only since v08)
  * @param elen The size of the object extensions buffer (only since v08)
  * @returns The size of the generated object, if successful, or 0 otherwise */
@@ -1201,7 +1204,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t ble
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the extensions to
  * @param blen The size of the buffer
- * @param extensions_count The number of object extensions, if any
+ * @param extensions_count The number of object extensions, if any (ignored after v08, since v09 deprecated it)
  * @param extensions The buffer containing the object extensions, if any
  * @param elen The size of the object extensions buffer
  * @returns The size of the generated extensions block, if successful, or 0 otherwise */
