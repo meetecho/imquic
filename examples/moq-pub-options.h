@@ -20,6 +20,7 @@ typedef struct demo_options {
 	const char *track_name;
 	const char *auth_info;
 	const char *delivery;
+	gboolean extensions;
 	const char *ip;
 	int port;
 	const char *remote_host;

@@ -20,6 +20,7 @@ typedef struct demo_options {
 	const char **track_name;
 	const char *auth_info;
 	const char *fetch;
+	int join_offset;
 	const char *media_type;
 	const char *output_file;
 	const char *ip;

@@ -25,6 +25,11 @@
 #include "roq.h"
 #include "refcount.h"
 
+/*! \brief Initialize the network stack at startup */
+void imquic_network_init(void);
+/*! \brief Uninitialize the network stack */
+void imquic_network_deinit(void);
+
 /*! \brief Abstraction of a network address */
 typedef struct imquic_network_address {
 	/*! \brief Network address */

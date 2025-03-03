@@ -29,6 +29,30 @@
 #include "internal/utils.h"
 #include "imquic/debug.h"
 
+/* Initialization*/
+static gboolean ipv6_disabled = FALSE;
+void imquic_network_init(void) {
+	/* Let's check if IPv6 is disabled, as we may need when creating sockets */
+	int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if(fd < 0) {
+		ipv6_disabled = TRUE;
+	} else {
+		int v6only = 0;
+		if(setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) != 0)
+			ipv6_disabled = TRUE;
+	}
+	if(fd >= 0)
+		close(fd);
+	if(ipv6_disabled) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "IPv6 disabled, will only use IPv4 sockets\n");
+	}
+}
+
+void imquic_network_deinit(void) {
+	/* Nothing here, for the moment */
+}
+
+
 /* Network address stringification */
 char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen) {
 	if(address == NULL || output == NULL || outlen == 0)
@@ -177,9 +201,10 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Missing session ticket file for client early-data\n", config->name);
 		return NULL;
 	}
-	/* In case we need to bind to a specific interface or IP address, validate it */
-	int family = AF_INET6;	/* By default we use an IPv6 socket to use for both families */
-	gboolean both = TRUE;
+	/* In case we need to bind to a specific interface or IP address, validate it:
+	 * by default, we bind to both IPv4 and IPv6, unless IPv6 is disabled */
+	int family = ipv6_disabled ? AF_INET : AF_INET6;
+	gboolean both = ipv6_disabled ? FALSE : TRUE;
 	struct sockaddr_in address = {};
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
@@ -192,6 +217,10 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 			family = AF_INET;
 			both = FALSE;
 		} else if(!strcmp(config->ip, "::")) {
+			if(ipv6_disabled) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't bind to IPv6 address, IPv6 is disabled\n", config->name);
+				return NULL;
+			}
 			family = AF_INET6;
 			both = TRUE;
 		} else {
@@ -209,9 +238,6 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 					continue;
 				/* Skip interfaces which are not up and running */
 				if(!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
-					continue;
-				/* Skip loopback interfaces */
-				if(ifa->ifa_flags & IFF_LOOPBACK)
 					continue;
 				if(ifa->ifa_addr->sa_family != AF_INET && ifa->ifa_addr->sa_family != AF_INET6)
 					continue;
@@ -266,6 +292,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 				} else if(result->ai_family == AF_INET) {
 					/* IPv4 */
 					resolved = TRUE;
+					family = AF_INET;
 					remote.addrlen = sizeof(*remote_addr);
 					struct sockaddr_in *addr = (struct sockaddr_in *)result->ai_addr;
 					memcpy(remote_addr, addr, sizeof(*addr));
@@ -274,7 +301,12 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 					break;
 				} else if(result->ai_family == AF_INET6) {
 					/* IPv6 */
+					if(ipv6_disabled) {
+						IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't connect to IPv6 address, IPv6 is disabled\n", config->name);
+						return NULL;
+					}
 					resolved = TRUE;
+					family = AF_INET6;
 					remote.addrlen = sizeof(*remote_addr6);
 					struct sockaddr_in6 *addr = (struct sockaddr_in6 *)result->ai_addr;
 					memcpy(remote_addr6, addr, sizeof(*addr));

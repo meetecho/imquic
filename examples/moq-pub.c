@@ -143,6 +143,27 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 }
 
 static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object_id, gboolean last) {
+	uint8_t extensions[256];
+	size_t extensions_len = 0;
+	size_t extensions_count = 0;
+	if(options.extensions) {
+		/* Just for fun, we add a couple of fake extensions to the object: a numeric
+		 * extension set to the length of the text, and a data extension with a string */
+		GList *exts = NULL;
+		imquic_moq_object_extension numext = { 0 };
+		numext.id = 6;
+		numext.value.number = text ? strlen(text) : 0;
+		exts = g_list_append(exts, &numext);
+		imquic_moq_object_extension dataext = { 0 };
+		dataext.id = 7;
+		dataext.value.data.buffer = (uint8_t *)"lminiero";
+		dataext.value.data.length = strlen("lminiero");
+		exts = g_list_append(exts, &dataext);
+		extensions_len = imquic_moq_build_object_extensions(exts, extensions, sizeof(extensions));
+		extensions_count = 2;
+		g_list_free(exts);
+	}
+	/* Prepare the object and send it */
 	imquic_moq_object object = {
 		.subscribe_id = moq_subscribe_id,
 		.track_alias = moq_track_alias,
@@ -153,6 +174,9 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 		.object_send_order = 0,
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
+		.extensions = extensions,
+		.extensions_len = extensions_len,
+		.extensions_count = extensions_count,
 		.delivery = delivery,
 		.end_of_stream = (last && imquic_moq_get_version(moq_conn) == IMQUIC_MOQ_VERSION_03)
 	};
@@ -169,6 +193,9 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 			object.object_status = IMQUIC_MOQ_END_OF_TRACK_AND_GROUP;
 		object.payload_len = 0;
 		object.payload = NULL;
+		object.extensions = NULL;
+		object.extensions_len = 0;
+		object.extensions_count = 0;
 		object.end_of_stream = TRUE;
 		imquic_moq_send_object(moq_conn, &object);
 	}
@@ -224,9 +251,6 @@ int main(int argc, char *argv[]) {
 		} else if(!strcasecmp(options.moq_version, "legacy")) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and 5\n", IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
-		} else if(!strcasecmp(options.moq_version, "7p")) {
-			moq_version = IMQUIC_MOQ_VERSION_07_PATCH;
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %s\n", imquic_moq_version_str(moq_version));
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
@@ -320,16 +344,9 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 		if(g_atomic_int_get(&send_objects) == 1) {
-			/* Someone just subscribed, send all objects in the group */
+			/* Someone just subscribed */
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Starting to send MoQ objects\n");
 			g_atomic_int_set(&send_objects, 2);
-			GList *temp = objects;
-			uint64_t counter = 0;
-			while(temp) {
-				imquic_demo_send_data((char *)temp->data, group_id, counter, !strcasecmp((char *)temp->data, "59"));
-				counter++;
-				temp = temp->next;
-			}
 		}
 		/* Update the time every second */
 		now = g_get_monotonic_time();

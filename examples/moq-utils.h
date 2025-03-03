@@ -28,4 +28,7 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object);
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object);
 
+/* Helper to destroy an object extension */
+void imquic_moq_object_extension_free(imquic_moq_object_extension *extension);
+
 #endif

@@ -146,7 +146,7 @@
  * called \c IMQUIC_MOQ_VERSION_ANY_LEGACY is available, to negotiate any supported
  * version that is lower than v06. At the time of writing, this stack
  * supports MoQ versions from v03 ( \c IMQUIC_MOQ_VERSION_03 ) up to
- * v07 ( \c IMQUIC_MOQ_VERSION_07 ), but not all versions will be supported
+ * v08 ( \c IMQUIC_MOQ_VERSION_08 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
@@ -170,8 +170,10 @@
  * for intercepting incoming \c SUBSCRIBE requests via \ref imquic_set_incoming_subscribe_cb,
  * and another for intercepting an \c UNSUBSCRIBE via \ref imquic_set_incoming_unsubscribe_cb.
  * In both cases, the publisher is supposed to answer with either a success or an error.
- * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_fetch_cb,
- * while a \c FETCH_CANCEL can be intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
+ * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_standalone_fetch_cb
+ * (for standalone \c FETCH requests) or \ref imquic_set_incoming_joining_fetch_cb
+ * (for joining \c FETCH requests), while a \c FETCH_CANCEL can be
+ * intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
  *
  * That said, once callbacks have been configured, the endpoint started, and the publisher
  * role set, a publisher can start sending requests. To announce a new
@@ -289,11 +291,13 @@
  * \ref imquic_moq_subscribe function, while to unsubscribe the corresponding
  * \ref imquic_moq_unsubscribe function can be used instead.
  *
- * Issuing \c FETCH related requests is similar, as \ref imquic_moq_fetch
- * allows you to try and fetch some objects, while \ref imquic_moq_cancel_fetch
+ * Issuing \c FETCH related requests is similar, as \ref imquic_moq_standalone_fetch
+ * and \ref imquic_moq_joining_fetch allow you to try and fetch some objects
+ * (in standalone or joining more, respectively), while \ref imquic_moq_cancel_fetch
  * is what you use to stop the delivery and cancel the request. Just as
  * with \c SUBSCRIBE requests, a \c subscribe_id identifier is used to
- * address a specific \c FETCH context.
+ * address a specific \c FETCH context. Notice that for a joining \c FETCH
+ * you need to provide an existing \c SUBSCRIBE identifier as well.
  *
  * \section moqrelay MoQ Relays
  *
@@ -416,6 +420,37 @@ typedef enum imquic_moq_object_status {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_object_status_str(imquic_moq_object_status status);
 
+/*! \brief MoQ Object Extension
+ * \note This may contain info related to different MoQ versions, and so
+ * should be considered a higher level abstraction that the internal
+ * MoQ stack may (and often will) use and notify differently */
+typedef struct imquic_moq_object_extension {
+	/*! \brief MoQ extension ID */
+	uint32_t id;
+	/*! \brief Extension value, which could be either a number (even
+	 * extension ID) or an octet of data with length (odd extension ID) */
+	union {
+		uint64_t number;
+		struct imquic_moq_object_extension_data {
+			uint64_t length;
+			uint8_t *buffer;
+		} data;
+	} value;
+} imquic_moq_object_extension;
+/*! \brief Helper mode to parse an extensions buffer to a GList of imquic_moq_object_extension
+ * \note The caller owns the list, and is responsible of freeing it and its content
+ * @param count How many extensions are contained in the buffer
+ * @param extensions The buffer containing the extensions data
+ * @param elen The size of the buffer containing the extensions data
+ * @returns A GList instance containing a set of imquic_moq_object_extension, if successful, or NULL if no extensions were found */
+GList *imquic_moq_parse_object_extensions(size_t count, uint8_t *extensions, size_t elen);
+/*! \brief Helper mode to craft an extensions buffer out of a GList of imquic_moq_object_extension
+ * @param[in] extensions The buffer containing the extensions data
+ * @param[out] bytes The buffer to write the extensions data to
+ * @param[in] blen The size of the buffer to write to
+ * @returns How many bytes were written, if successful */
+size_t imquic_moq_build_object_extensions(GList *extensions, uint8_t *bytes, size_t blen);
+
 /*! \brief MoQ Object
  * \note This may contain info related to different MoQ versions, and so
  * should be considered a higher level abstraction that the internal
@@ -441,6 +476,12 @@ typedef struct imquic_moq_object {
 	uint8_t *payload;
 	/*! \brief Size of the MoQ object payload */
 	size_t payload_len;
+	/*! \brief MoQ object extensions, if any (only since v08) */
+	uint8_t *extensions;
+	/*! \brief Size of the MoQ object extensions (only since v08) */
+	size_t extensions_len;
+	/*! \brief Count of the MoQ object extensions (only since v08) */
+	size_t extensions_count;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
 	/*! \brief Whether this signals the end of the stream */
@@ -594,13 +635,19 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_done Pointer to the function that will fire when an \c SUBSCRIBE is done */
 void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
-	void (* subscribe_done)(imquic_connection *conn, uint64_t subscribe_id, int status_code, const char *reason));
+	void (* subscribe_done)(imquic_connection *conn, uint64_t subscribe_id, int status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe Pointer to the function that will handle the incoming \c UNSUBSCRIBE */
 void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t subscribe_id));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c SUBSCRIBES_BLOCKED request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param subscribes_blocked Pointer to the function that will handle the incoming \c SUBSCRIBES_BLOCKED */
+void imquic_set_subscribes_blocked_cb(imquic_endpoint *endpoint,
+	void (* subscribes_blocked)(imquic_connection *conn, uint64_t max_subscribe_id));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE_ANNOUNCES request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -626,11 +673,19 @@ void imquic_set_subscribe_announces_error_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
 	void (* incoming_unsubscribe_announces)(imquic_connection *conn, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c FETCH request.
+ * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_fetch Pointer to the function that will handle the incoming \c FETCH */
-void imquic_set_incoming_fetch_cb(imquic_endpoint *endpoint,
-	void (* incoming_fetch)(imquic_connection *conn, uint64_t subscribe_id, imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth));
+ * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
+void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
+	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t subscribe_id,
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming joining \c FETCH request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_joining_fetch Pointer to the function that will handle the incoming \c FETCH */
+void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
+	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
+		uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c FETCH_CANCEL request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -672,6 +727,7 @@ void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
 
 /*! \brief Roles that can be specified once connected */
 typedef enum imquic_moq_role {
+	IMQUIC_MOQ_ENDPOINT,	/* Since -08, there are no roles anymore */
 	IMQUIC_MOQ_PUBLISHER,
 	IMQUIC_MOQ_SUBSCRIBER,
 	IMQUIC_MOQ_PUBSUB
@@ -709,9 +765,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_06 = 0xff000006,
 	/* Draft version -07 */
 	IMQUIC_MOQ_VERSION_07 = 0xff000007,
-	/* Draft version -07 with a twist? */
-	IMQUIC_MOQ_VERSION_07_PATCH = 0xff070001,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_07_PATCH,
+	/* Draft version -08 */
+	IMQUIC_MOQ_VERSION_08 = 0xff000008,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_08,
 	/* Any post-v06 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,
@@ -823,7 +879,7 @@ int imquic_moq_reject_subscribe_announces(imquic_connection *conn, imquic_moq_na
  * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns);
-/*! \brief Function to send a \c FETCH request
+/*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param subscribe_id A unique numeric identifier to associate to this subscription
  * @param tns The imquic_moq_namespace namespace the track to fetch to belongs to
@@ -832,8 +888,19 @@ int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespa
  * @param range The range of groups/objects to fetch
  * @param auth The imquic_moq_auth_info authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_fetch(imquic_connection *conn, uint64_t subscribe_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id,
+	imquic_moq_namespace *tns, imquic_moq_name *tn,
 	gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth);
+/*! \brief Function to send a joining \c FETCH request
+ * @param conn The imquic_connection to send the request on
+ * @param subscribe_id A unique numeric identifier to associate to this subscription
+ * @param joining_subscribe_id Existing subscription to join
+ * @param preceding_group_offset How many groups to retrieve before the current one
+ * @param descending Whether objects should be fetched in descending group order
+ * @param auth The imquic_moq_auth_info authentication info, if needed
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
+	uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth);
 /*! \brief Function to accept an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param subscribe_id The unique \c subscribe_id value associated to the subscription to accept
