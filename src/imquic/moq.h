@@ -146,7 +146,7 @@
  * called \c IMQUIC_MOQ_VERSION_ANY_LEGACY is available, to negotiate any supported
  * version that is lower than v06. At the time of writing, this stack
  * supports MoQ versions from v03 ( \c IMQUIC_MOQ_VERSION_03 ) up to
- * v09 ( \c IMQUIC_MOQ_VERSION_09 ), but not all versions will be supported
+ * v10 ( \c IMQUIC_MOQ_VERSION_10 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
@@ -768,7 +768,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_08 = 0xff000008,
 	/* Draft version -09 */
 	IMQUIC_MOQ_VERSION_09 = 0xff000009,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_09,
+	/* Draft version -10 */
+	IMQUIC_MOQ_VERSION_10 = 0xff000010,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_10,
 	/* Any post-v06 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,

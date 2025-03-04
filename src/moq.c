@@ -105,6 +105,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		GList *versions = NULL;
 		if(moq->version == IMQUIC_MOQ_VERSION_ANY) {
 			/* Offer all newer supported versions */
+			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_10));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_09));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_08));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_07));
@@ -5056,6 +5057,7 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) 
 		case IMQUIC_MOQ_VERSION_07:
 		case IMQUIC_MOQ_VERSION_08:
 		case IMQUIC_MOQ_VERSION_09:
+		case IMQUIC_MOQ_VERSION_10:
 		case IMQUIC_MOQ_VERSION_ANY:
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
 			moq->version = version;
