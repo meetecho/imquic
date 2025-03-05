@@ -5144,7 +5144,7 @@ GList *imquic_moq_parse_object_extensions(uint8_t *extensions, size_t elen) {
 		if(ext_type % 2 == 0) {
 			/* Even types are followed by a numeric value */
 			uint64_t ext_val = imquic_read_varint(&extensions[offset], elen-offset, &length);
-			if(length == 0 || length >= elen-offset) {
+			if(length == 0 || length > elen-offset) {
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken object extensions\n");
 				g_list_free_full(exts, (GDestroyNotify)imquic_moq_object_extension_free);
 				return 0;
