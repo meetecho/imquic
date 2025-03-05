@@ -64,7 +64,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	int i = 0;
 	uint64_t subscribe_id = 0;
 	uint64_t track_alias = 0;
-	imquic_moq_namespace tns[5];	/* FIXME */
+	imquic_moq_namespace tns[32];	/* FIXME */
 	while(options.track_namespace[i] != NULL) {
 		const char *track_namespace = options.track_namespace[i];
 		tns[i].buffer = (uint8_t *)track_namespace;
@@ -223,7 +223,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		uint64_t subscribe_id = 1;
 		uint64_t track_alias = 1;
 		const char *track_name = "1.m4s";
-		imquic_moq_namespace tns[5];	/* FIXME */
+		imquic_moq_namespace tns[32];	/* FIXME */
 		int i = 0;
 		while(options.track_namespace[i] != NULL) {
 			const char *track_namespace = options.track_namespace[i];

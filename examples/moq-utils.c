@@ -17,7 +17,7 @@ const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, si
 	*buffer = '\0';
 	char temp[256];
 	size_t offset = 0;
-	while(tns != NULL && tns->buffer != NULL && tns->length > 0) {
+	while(tns != NULL && tns->buffer != NULL) {
 		if(blen - offset == 0)
 			goto trunc;
 		if(offset > 0) {

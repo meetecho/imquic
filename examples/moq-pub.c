@@ -64,7 +64,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	moq_version = imquic_moq_get_version(conn);
 	g_atomic_int_set(&connected, 1);
 	/* Let's announce our namespace */
-	imquic_moq_namespace tns[5];	/* FIXME */
+	imquic_moq_namespace tns[32];	/* FIXME */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace ", imquic_get_connection_name(conn));
 	int i = 0;
 	while(options.track_namespace[i] != NULL) {
@@ -390,7 +390,7 @@ int main(int argc, char *argv[]) {
 	}
 	g_list_free_full(objects, (GDestroyNotify)g_free);
 	/* We're done, unannounce */
-	imquic_moq_namespace tns[5];	/* FIXME */
+	imquic_moq_namespace tns[32];	/* FIXME */
 	int i = 0;
 	while(options.track_namespace[i] != NULL) {
 		const char *track_namespace = options.track_namespace[i];
