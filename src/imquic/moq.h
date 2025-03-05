@@ -410,10 +410,10 @@ typedef enum imquic_moq_object_status {
 	IMQUIC_MOQ_OBJECT_DOESNT_EXIST = 0x1,
 	/*! \brief End of group */
 	IMQUIC_MOQ_END_OF_GROUP = 0x3,
-	/*! \brief End of track */
+	/*! \brief End of track and group */
 	IMQUIC_MOQ_END_OF_TRACK_AND_GROUP = 0x4,
-	/*! \brief End of subgroup */
-	IMQUIC_MOQ_END_OF_SUBGROUP = 0x5,
+	/*! \brief End of track */
+	IMQUIC_MOQ_END_OF_TRACK = 0x5,
 } imquic_moq_object_status;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_object_status property.
  * @param status The imquic_moq_object_status property

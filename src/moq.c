@@ -5863,10 +5863,10 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 			buffer, moq_stream->stream_offset, shgo_len,
-			(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_GROUP || object->object_status == IMQUIC_MOQ_END_OF_SUBGROUP));
+			(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_GROUP));
 		moq_stream->stream_offset += shgo_len;
 		imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
-		if(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_GROUP || object->object_status == IMQUIC_MOQ_END_OF_SUBGROUP) {
+		if(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_GROUP) {
 			imquic_mutex_lock(&moq->mutex);
 			g_hash_table_remove(moq_sub->streams_by_subgroup, &lookup_id);
 			imquic_mutex_unlock(&moq->mutex);

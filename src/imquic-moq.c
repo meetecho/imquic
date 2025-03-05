@@ -532,8 +532,8 @@ const char *imquic_moq_object_status_str(imquic_moq_object_status status) {
 			return "END_OF_GROUP";
 		case IMQUIC_MOQ_END_OF_TRACK_AND_GROUP:
 			return "END_OF_TRACK_AND_GROUP";
-		case IMQUIC_MOQ_END_OF_SUBGROUP:
-			return "END_OF_SUBGROUP";
+		case IMQUIC_MOQ_END_OF_TRACK:
+			return "END_OF_TRACK";
 		default: break;
 	}
 	return NULL;
