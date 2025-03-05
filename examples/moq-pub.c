@@ -185,10 +185,8 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 			(delivery == IMQUIC_MOQ_USE_GROUP || delivery == IMQUIC_MOQ_USE_SUBGROUP || delivery == IMQUIC_MOQ_USE_TRACK)) {
 		/* Send an empty object with status "end of X" */
 		object.object_id++;
-		if(delivery == IMQUIC_MOQ_USE_GROUP)
+		if(delivery == IMQUIC_MOQ_USE_GROUP || delivery == IMQUIC_MOQ_USE_SUBGROUP)
 			object.object_status = IMQUIC_MOQ_END_OF_GROUP;
-		else if(delivery == IMQUIC_MOQ_USE_SUBGROUP)
-			object.object_status = IMQUIC_MOQ_END_OF_SUBGROUP;
 		else if(delivery == IMQUIC_MOQ_USE_TRACK)
 			object.object_status = IMQUIC_MOQ_END_OF_TRACK_AND_GROUP;
 		object.payload_len = 0;
