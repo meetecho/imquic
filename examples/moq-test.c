@@ -497,10 +497,15 @@ static void *imquic_demo_tester_thread(void *data) {
 	uint64_t group_id = s->test[TUPLE_FIELD_START_GROUP];
 	uint64_t subgroup_id = 0;
 	uint64_t object_id = s->test[TUPLE_FIELD_START_OBJECT];
+	if(s->descending) {
+		object_id += ((s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) * s->test[TUPLE_FIELD_OBJ_INC]);
+		if(group_id == (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP])
+			object_id = s->test[TUPLE_FIELD_LAST_OBJECT];
+	}
 	if(s->test[TUPLE_FIELD_FORWARDING] == 2)
 		subgroup_id = object_id % 2;
 	int64_t num_objects = 0;
-	gboolean last_object = FALSE;
+	gboolean next_group = FALSE, last_object = FALSE;
 	/* Buffers */
 	uint8_t *obj0_p = s->test[TUPLE_FIELD_OBJ0_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJ0_SIZE]) : NULL;
 	if(obj0_p)
@@ -531,11 +536,12 @@ static void *imquic_demo_tester_thread(void *data) {
 			before += frequency;
 		}
 		/* Time to send an object */
-		if((group_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP] ||
-				(group_id + (uint64_t)s->test[TUPLE_FIELD_GROUP_INC]) > (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP]) &&
-					object_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_OBJECT]) {
-			/* This is going to be the last object in the track */
-			last_object = TRUE;
+		if(group_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP] ||
+				(group_id + (uint64_t)s->test[TUPLE_FIELD_GROUP_INC]) > (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP]) {
+			/* Check if this is going to be the last object in the track */
+			if((!s->descending && object_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_OBJECT]) ||
+					(s->descending && (object_id == 0 || (group_id == (uint64_t)s->test[TUPLE_FIELD_START_GROUP] && object_id <= (uint64_t)s->test[TUPLE_FIELD_START_OBJECT]))))
+				last_object = TRUE;
 		}
 		if(extensions_count > 0) {
 			GList *exts = NULL;
@@ -574,13 +580,9 @@ static void *imquic_demo_tester_thread(void *data) {
 		};
 		imquic_moq_send_object(conn, &object);
 		/* Update IDs for the next object */
-		object_id += s->test[TUPLE_FIELD_OBJ_INC];
-		if(s->test[TUPLE_FIELD_FORWARDING] == 1)
-			subgroup_id++;
-		else if(s->test[TUPLE_FIELD_FORWARDING] == 2)
-			subgroup_id = object_id % 2;
 		num_objects++;
-		if(last_object || num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]) {
+		next_group = (num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]);
+		if(last_object || (!s->fetch && next_group)) {
 			/* We've sent all objects in this group, do we need to send an end of group? */
 			if(s->test[TUPLE_FIELD_SEND_EOG]) {
 				object.subgroup_id = subgroup_id;
@@ -594,10 +596,31 @@ static void *imquic_demo_tester_thread(void *data) {
 				object.end_of_stream = TRUE;
 				imquic_moq_send_object(conn, &object);
 			}
-			/* Now let's reset/update the IDs */
+			next_group = TRUE;
+		} else {
+			if(!s->descending) {
+				object_id += s->test[TUPLE_FIELD_OBJ_INC];
+			} else {
+				if(object_id >= (uint64_t)s->test[TUPLE_FIELD_OBJ_INC])
+					object_id -= s->test[TUPLE_FIELD_OBJ_INC];
+				else
+					next_group = TRUE;
+			}
+			if(s->test[TUPLE_FIELD_FORWARDING] == 1)
+				subgroup_id++;
+			else if(s->test[TUPLE_FIELD_FORWARDING] == 2)
+				subgroup_id = object_id % 2;
+		}
+		if(next_group) {
+			/* Let's reset/update the IDs */
 			group_id += s->test[TUPLE_FIELD_GROUP_INC];
 			subgroup_id = 0;
-			object_id = s->test[TUPLE_FIELD_START_OBJECT];
+			object_id = 0;
+			if(s->descending) {
+				object_id += ((s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) * s->test[TUPLE_FIELD_OBJ_INC]);
+				if(group_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP])
+					object_id = s->test[TUPLE_FIELD_LAST_OBJECT];
+			}
 			if(s->test[TUPLE_FIELD_FORWARDING] == 2)
 				subgroup_id = object_id % 2;
 			num_objects = 0;
@@ -611,6 +634,7 @@ static void *imquic_demo_tester_thread(void *data) {
 				g_mutex_unlock(&mutex);
 				break;
 			}
+			next_group = FALSE;
 		}
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping delivery thread\n", imquic_get_connection_name(conn));
