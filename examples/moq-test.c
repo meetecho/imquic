@@ -120,6 +120,8 @@ typedef struct imquic_demo_moq_subscription {
 	imquic_demo_moq_subscriber *sub;
 	uint64_t subscribe_id;
 	uint64_t track_alias;
+	gboolean fetch;
+	gboolean descending;
 	int64_t test[IMQUIC_DEMO_TEST_MAX];
 	GThread *thread;
 	volatile int destroyed;
@@ -207,14 +209,16 @@ static int imquic_demo_tuple_to_test(imquic_connection *conn, imquic_moq_namespa
 					case TUPLE_FIELD_START_OBJECT:
 					case TUPLE_FIELD_LAST_GROUP:
 					case TUPLE_FIELD_LAST_OBJECT:
-					case TUPLE_FIELD_OBJS_x_GROUP:
 					case TUPLE_FIELD_OBJ0_SIZE:
 					case TUPLE_FIELD_OBJS_SIZE:
+						if(test[count] < 0)
+							invalid = TRUE;
+						break;
+					case TUPLE_FIELD_OBJS_x_GROUP:
 					case TUPLE_FIELD_OBJS_FREQ:
 					case TUPLE_FIELD_GROUP_INC:
 					case TUPLE_FIELD_OBJ_INC:
-					case TUPLE_FIELD_TIMEOUT:
-						if(test[count] < 0)
+						if(test[count] <= 0)
 							invalid = TRUE;
 						break;
 					case TUPLE_FIELD_SEND_EOG:
@@ -223,6 +227,7 @@ static int imquic_demo_tuple_to_test(imquic_connection *conn, imquic_moq_namespa
 						break;
 					case TUPLE_FIELD_EXT_INT:
 					case TUPLE_FIELD_EXT_VAR:
+					case TUPLE_FIELD_TIMEOUT:
 					case TUPLE_FIELD_PROTOCOL:
 					default:
 						break;
@@ -238,8 +243,24 @@ static int imquic_demo_tuple_to_test(imquic_connection *conn, imquic_moq_namespa
 		count++;
 		temp = temp->next;
 	}
+	if(test[TUPLE_FIELD_START_GROUP] > test[TUPLE_FIELD_LAST_GROUP]) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid tuple fields, '%s' is larger than '%s'\n",
+			imquic_get_connection_name(conn), imquic_demo_tuple_field_str(TUPLE_FIELD_START_GROUP),
+			imquic_demo_tuple_field_str(TUPLE_FIELD_LAST_GROUP));
+		g_snprintf(error, error_len, "Conflicting tuple fields %"SCNu8" and %"SCNu8,
+			TUPLE_FIELD_START_GROUP, TUPLE_FIELD_LAST_GROUP);
+		return 400;
+	}
 	if(test[TUPLE_FIELD_LAST_OBJECT] == -1)
 		test[TUPLE_FIELD_LAST_OBJECT] = test[TUPLE_FIELD_OBJS_x_GROUP];
+	if(test[TUPLE_FIELD_START_OBJECT] > test[TUPLE_FIELD_LAST_OBJECT]) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid tuple fields, '%s' is larger than '%s'\n",
+			imquic_get_connection_name(conn), imquic_demo_tuple_field_str(TUPLE_FIELD_START_OBJECT),
+			imquic_demo_tuple_field_str(TUPLE_FIELD_LAST_OBJECT));
+		g_snprintf(error, error_len, "Conflicting tuple fields %"SCNu8" and %"SCNu8,
+			TUPLE_FIELD_START_OBJECT, TUPLE_FIELD_LAST_OBJECT);
+		return 400;
+	}
 	/* Summarize the test */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Requested test:\n", imquic_get_connection_name(conn));
 	uint8_t i = 0;
@@ -340,7 +361,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t s
 	}
 	/* Get rid of the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &subscribe_id);
-	if(s) {
+	if(s && !s->fetch) {
 		g_hash_table_remove(sub->subscriptions_by_id, &subscribe_id);
 		g_hash_table_remove(sub->subscriptions, &s->track_alias);
 	}
@@ -360,16 +381,58 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %.*s\n",
 			imquic_get_connection_name(conn), (int)auth->length, auth->buffer);
 	}
-	/* Evaluate the namespace tuple and create a test profile */
-	ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), FALSE);
-	if(strcasecmp(ns, IMQUIC_DEMO_TEST_NAME)) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid test protocol '%s' in tuple field 0 (should be '%s')\n",
-			imquic_get_connection_name(conn), ns, IMQUIC_DEMO_TEST_NAME);
-		imquic_moq_reject_fetch(conn, subscribe_id, 400, "Invalid tuple field 0");
+	/* Parse the namespace tuple to a test profile */
+	int64_t test[IMQUIC_DEMO_TEST_MAX];
+	char err[256];
+	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
+	if(res != 0) {
+		imquic_moq_reject_fetch(conn, subscribe_id, res, err);
 		return;
 	}
-	/* TODO Add support for standalone FETCH */
-	imquic_moq_reject_fetch(conn, subscribe_id, 500, "Not implemented yet");
+	g_mutex_lock(&mutex);
+	/* Create a subscriber, if needed */
+	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
+	if(sub == NULL) {
+		/* Create a new one */
+		sub = imquic_demo_moq_subscriber_create(conn);
+		g_hash_table_insert(subscribers, conn, sub);
+	}
+	/* Make sure we don't know this subscription already */
+	if(g_hash_table_lookup(sub->subscriptions_by_id, &subscribe_id) != NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Already subscribed with ID %"SCNu64"\n",
+			imquic_get_connection_name(conn), subscribe_id);
+		return;
+	}
+	/* Create a subscription to this track */
+	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, subscribe_id, 0);
+	s->fetch = TRUE;
+	s->descending = descending;
+	memcpy(s->test, test, sizeof(test));
+	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(subscribe_id), s);
+	g_mutex_unlock(&mutex);
+	/* Accept and serve the test subscription */
+	imquic_moq_position largest = {
+		.group = test[TUPLE_FIELD_START_GROUP],
+		.object = test[TUPLE_FIELD_START_OBJECT]
+	};
+	while(largest.group < (uint64_t)test[TUPLE_FIELD_LAST_GROUP])
+		largest.group += test[TUPLE_FIELD_GROUP_INC];
+	int64_t i = 0;
+	for(i=0; i<test[TUPLE_FIELD_OBJS_x_GROUP]; i++) {
+		largest.object += test[TUPLE_FIELD_OBJ_INC];
+		if(largest.object >= (uint64_t)test[TUPLE_FIELD_LAST_OBJECT])
+			break;
+	}
+	imquic_moq_accept_fetch(conn, subscribe_id, descending, &largest);
+	/* Spawn thread to send objects */
+	GError *error = NULL;
+	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
+	if(error != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Got error %d (%s) trying to launch a new test thread\n",
+			imquic_get_connection_name(conn), error->code, error->message ? error->message : "??");
+		g_error_free(error);
+	}
 }
 
 static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id ,
@@ -388,6 +451,20 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t subscribe_id) {
 	/* We received an unsubscribe */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming fetch cancel for subscription %"SCNu64"\n", imquic_get_connection_name(conn), subscribe_id);
+	/* Find the subscriber */
+	g_mutex_lock(&mutex);
+	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
+	if(sub == NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
+			imquic_get_connection_name(conn));
+		return;
+	}
+	/* Get rid of the subscription */
+	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &subscribe_id);
+	if(s && s->fetch)
+		g_hash_table_remove(sub->subscriptions_by_id, &subscribe_id);
+	g_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_connection_gone(imquic_connection *conn) {
@@ -415,12 +492,15 @@ static void *imquic_demo_tester_thread(void *data) {
 	/* Resources */
 	imquic_moq_delivery delivery = s->test[TUPLE_FIELD_FORWARDING] == 3 ?
 		IMQUIC_MOQ_USE_DATAGRAM : IMQUIC_MOQ_USE_SUBGROUP;
+	if(s->fetch)
+		delivery = IMQUIC_MOQ_USE_FETCH;
 	uint64_t group_id = s->test[TUPLE_FIELD_START_GROUP];
 	uint64_t subgroup_id = 0;
 	uint64_t object_id = s->test[TUPLE_FIELD_START_OBJECT];
 	if(s->test[TUPLE_FIELD_FORWARDING] == 2)
 		subgroup_id = object_id % 2;
 	int64_t num_objects = 0;
+	gboolean last_object = FALSE;
 	/* Buffers */
 	uint8_t *obj0_p = s->test[TUPLE_FIELD_OBJ0_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJ0_SIZE]) : NULL;
 	if(obj0_p)
@@ -441,13 +521,22 @@ static void *imquic_demo_tester_thread(void *data) {
 	int64_t now = g_get_monotonic_time(), before = now - frequency;
 	/* Loop */
 	while(!g_atomic_int_get(&s->destroyed)) {
-		now = g_get_monotonic_time();
-		if((now-before) < frequency) {
-			g_usleep(sleep_time);
-			continue;
+		if(!s->fetch) {
+			/* For SUBSCRIBE, we send objects at the right time */
+			now = g_get_monotonic_time();
+			if((now-before) < frequency) {
+				g_usleep(sleep_time);
+				continue;
+			}
+			before += frequency;
 		}
-		before += frequency;
 		/* Time to send an object */
+		if((group_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP] ||
+				(group_id + (uint64_t)s->test[TUPLE_FIELD_GROUP_INC]) > (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP]) &&
+					object_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_OBJECT]) {
+			/* This is going to be the last object in the track */
+			last_object = TRUE;
+		}
 		if(extensions_count > 0) {
 			GList *exts = NULL;
 			imquic_moq_object_extension numext = { 0 }, dataext = { 0 };
@@ -481,7 +570,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			.extensions_len = extensions_len,
 			.extensions_count = extensions_count,
 			.delivery = delivery,
-			.end_of_stream = (num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG])
+			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
 		imquic_moq_send_object(conn, &object);
 		/* Update IDs for the next object */
@@ -491,12 +580,12 @@ static void *imquic_demo_tester_thread(void *data) {
 		else if(s->test[TUPLE_FIELD_FORWARDING] == 2)
 			subgroup_id = object_id % 2;
 		num_objects++;
-		if(num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]) {
+		if(last_object || num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]) {
 			/* We've sent all objects in this group, do we need to send an end of group? */
 			if(s->test[TUPLE_FIELD_SEND_EOG]) {
 				object.subgroup_id = subgroup_id;
 				object.object_id = object_id;
-				object.object_status = IMQUIC_MOQ_END_OF_GROUP;
+				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK_AND_GROUP : IMQUIC_MOQ_END_OF_GROUP;
 				object.payload_len = 0;
 				object.payload = NULL;
 				object.extensions = NULL;
@@ -517,7 +606,8 @@ static void *imquic_demo_tester_thread(void *data) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] All groups sent\n", imquic_get_connection_name(conn));
 				g_mutex_lock(&mutex);
 				g_hash_table_remove(s->sub->subscriptions_by_id, &s->subscribe_id);
-				g_hash_table_remove(s->sub->subscriptions, &s->track_alias);
+				if(!s->fetch)
+					g_hash_table_remove(s->sub->subscriptions, &s->track_alias);
 				g_mutex_unlock(&mutex);
 				break;
 			}
@@ -652,7 +742,7 @@ int main(int argc, char *argv[]) {
 	default_test[TUPLE_FIELD_SEND_EOG] = 0;
 	default_test[TUPLE_FIELD_EXT_INT] = -1;					/* Don't add any numeric extension by default */
 	default_test[TUPLE_FIELD_EXT_VAR] = -1;					/* Don't add any variable extension by default */
-	default_test[TUPLE_FIELD_TIMEOUT] = 0;
+	default_test[TUPLE_FIELD_TIMEOUT] = -1;					/* No delivery timeout by default */
 
 	/* Initialize the resources we'll need */
 	connections = g_hash_table_new(NULL, NULL);
