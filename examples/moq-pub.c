@@ -64,7 +64,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	moq_version = imquic_moq_get_version(conn);
 	g_atomic_int_set(&connected, 1);
 	/* Let's announce our namespace */
-	imquic_moq_namespace tns[5];	/* FIXME */
+	imquic_moq_namespace tns[32];	/* FIXME */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace ", imquic_get_connection_name(conn));
 	int i = 0;
 	while(options.track_namespace[i] != NULL) {
@@ -185,10 +185,8 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 			(delivery == IMQUIC_MOQ_USE_GROUP || delivery == IMQUIC_MOQ_USE_SUBGROUP || delivery == IMQUIC_MOQ_USE_TRACK)) {
 		/* Send an empty object with status "end of X" */
 		object.object_id++;
-		if(delivery == IMQUIC_MOQ_USE_GROUP)
+		if(delivery == IMQUIC_MOQ_USE_GROUP || delivery == IMQUIC_MOQ_USE_SUBGROUP)
 			object.object_status = IMQUIC_MOQ_END_OF_GROUP;
-		else if(delivery == IMQUIC_MOQ_USE_SUBGROUP)
-			object.object_status = IMQUIC_MOQ_END_OF_SUBGROUP;
 		else if(delivery == IMQUIC_MOQ_USE_TRACK)
 			object.object_status = IMQUIC_MOQ_END_OF_TRACK_AND_GROUP;
 		object.payload_len = 0;
@@ -390,7 +388,7 @@ int main(int argc, char *argv[]) {
 	}
 	g_list_free_full(objects, (GDestroyNotify)g_free);
 	/* We're done, unannounce */
-	imquic_moq_namespace tns[5];	/* FIXME */
+	imquic_moq_namespace tns[32];	/* FIXME */
 	int i = 0;
 	while(options.track_namespace[i] != NULL) {
 		const char *track_namespace = options.track_namespace[i];

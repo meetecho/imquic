@@ -42,6 +42,33 @@ static void imquic_demo_handle_signal(int signum) {
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 
+/* Object processing type */
+typedef enum imquic_demo_media_type {
+	DEMO_TYPE_NONE = 0,	/* Don't print the object payload */
+	DEMO_TYPE_TEXT,		/* Print the object payload as text */
+	DEMO_TYPE_HEX,		/* Print the object payload as a hex string */
+	DEMO_TYPE_LOC,		/* Parse the object payload as LOC (moq-encoder-player's version) */
+	DEMO_TYPE_MP4		/* Save the object payload to an mp4 file (moq-rs's version) */
+} imquic_demo_media_type;
+static const char *imquic_demo_media_type_str(imquic_demo_media_type type) {
+	switch(type) {
+		case DEMO_TYPE_NONE:
+			return "none";
+		case DEMO_TYPE_TEXT:
+			return "text";
+		case DEMO_TYPE_HEX:
+			return "hex";
+		case DEMO_TYPE_LOC:
+			return "loc";
+		case DEMO_TYPE_MP4:
+			return "mp4";
+		default:
+			break;
+	}
+	return NULL;
+}
+static imquic_demo_media_type media_type = DEMO_TYPE_NONE;
+
 /* File to save objects to, if any */
 static FILE *file = NULL;
 
@@ -64,7 +91,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	int i = 0;
 	uint64_t subscribe_id = 0;
 	uint64_t track_alias = 0;
-	imquic_moq_namespace tns[5];	/* FIXME */
+	imquic_moq_namespace tns[32];	/* FIXME */
 	while(options.track_namespace[i] != NULL) {
 		const char *track_namespace = options.track_namespace[i];
 		tns[i].buffer = (uint8_t *)track_namespace;
@@ -83,7 +110,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		const char *track_name = options.track_name[i];
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s'/'%s' (%s), using ID %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn), (options.fetch == NULL ? "Subscribing" : "Fetching"),
-			ns, track_name, options.media_type, subscribe_id, track_alias);
+			ns, track_name, imquic_demo_media_type_str(media_type), subscribe_id, track_alias);
 		imquic_moq_name tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
@@ -96,9 +123,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			if(options.join_offset < 0) {
 				/* Standalone Fetch */
 				imquic_moq_fetch_range range = { 0 };
+				/* FIXME We should make this range configurable via command line */
 				range.start.group = 0;
 				range.start.object = 0;
-				range.end.group = 1000;	/* FIXME */
+				range.end.group = 1000;
 				range.end.object = 0;
 				imquic_moq_standalone_fetch(conn, subscribe_id, &tns[0], &tn,
 					!strcasecmp(options.fetch, "descending"), &range, &auth);
@@ -182,14 +210,14 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	}
 	if(file != NULL)
 		fwrite(object->payload, 1, object->payload_len, file);
-	if(strstr(options.media_type, "text") != NULL) {
+	if(media_type == DEMO_TYPE_TEXT) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", (int)object->payload_len, object->payload);
-	} else if(strstr(options.media_type, "hex") != NULL) {
+	} else if(media_type == DEMO_TYPE_HEX) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- ");
 		for(size_t i=0; i<object->payload_len; ++i)
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", object->payload[i]);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
-	} else if(strstr(options.media_type, "loc") != NULL) {
+	} else if(media_type == DEMO_TYPE_LOC) {
 		/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/ */
 		uint8_t length = 0;
 		size_t offset = 0;
@@ -218,12 +246,12 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			offset += metadata_size;
 		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Payload:    %"SCNu64" bytes\n", object->payload_len-offset);
-	} else if(object->subscribe_id == 0 && !strcasecmp(options.media_type, "mp4")) {
+	} else if(object->subscribe_id == 0 && media_type == DEMO_TYPE_MP4) {
 		/* FIXME Ugly hack: if this is mp4, and our response to subscribe ID 0, subscribe to another track */
 		uint64_t subscribe_id = 1;
 		uint64_t track_alias = 1;
 		const char *track_name = "1.m4s";
-		imquic_moq_namespace tns[5];	/* FIXME */
+		imquic_moq_namespace tns[32];	/* FIXME */
 		int i = 0;
 		while(options.track_namespace[i] != NULL) {
 			const char *track_namespace = options.track_namespace[i];
@@ -235,7 +263,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		char tns_buffer[256];
 		const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"/%"SCNu64"\n",
-			imquic_get_connection_name(conn), ns, track_name, options.media_type, subscribe_id, track_alias);
+			imquic_get_connection_name(conn), ns, track_name, imquic_demo_media_type_str(media_type), subscribe_id, track_alias);
 		imquic_moq_name tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
@@ -341,10 +369,20 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	if(options.media_type == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing media type\n");
-		ret = 1;
-		goto done;
+	if(options.media_type != NULL) {
+		if(!strcasecmp(options.media_type, "none")) {
+			media_type = DEMO_TYPE_NONE;
+		} else if(!strcasecmp(options.media_type, "text")) {
+			media_type = DEMO_TYPE_TEXT;
+		} else if(!strcasecmp(options.media_type, "hex")) {
+			media_type = DEMO_TYPE_HEX;
+		} else if(!strcasecmp(options.media_type, "loc")) {
+			media_type = DEMO_TYPE_LOC;
+		} else if(!strcasecmp(options.media_type, "mp4")) {
+			media_type = DEMO_TYPE_MP4;
+		} else {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Unsupported media type '%s', falling back to 'none'", options.media_type);
+		}
 	}
 	if(options.output_file != NULL) {
 		file = fopen(options.output_file, "wb");

@@ -490,6 +490,8 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-08";
 		case IMQUIC_MOQ_VERSION_09:
 			return "draft-ietf-moq-transport-09";
+		case IMQUIC_MOQ_VERSION_10:
+			return "draft-ietf-moq-transport-10";
 		case IMQUIC_MOQ_VERSION_ANY:
 			return "draft-ietf-moq-transport-XX";
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
@@ -530,8 +532,8 @@ const char *imquic_moq_object_status_str(imquic_moq_object_status status) {
 			return "END_OF_GROUP";
 		case IMQUIC_MOQ_END_OF_TRACK_AND_GROUP:
 			return "END_OF_TRACK_AND_GROUP";
-		case IMQUIC_MOQ_END_OF_SUBGROUP:
-			return "END_OF_SUBGROUP";
+		case IMQUIC_MOQ_END_OF_TRACK:
+			return "END_OF_TRACK";
 		default: break;
 	}
 	return NULL;
