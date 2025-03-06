@@ -172,45 +172,16 @@ static void imquic_demo_moq_subscription_destroy(imquic_demo_moq_subscription *s
 	}
 }
 
-/* Callbacks */
-static void imquic_demo_new_connection(imquic_connection *conn, void *user_data) {
-	/* Got new connection */
-	imquic_connection_ref(conn);
-	g_mutex_lock(&mutex);
-	g_hash_table_insert(connections, conn, conn);
-	g_mutex_unlock(&mutex);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection\n", imquic_get_connection_name(conn));
-	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBLISHER);
-	imquic_moq_set_version(conn, moq_version);
-	imquic_moq_set_max_subscribe_id(conn, 1000);	/* FIXME */
-}
-
-static void imquic_demo_ready(imquic_connection *conn) {
-	/* Negotiation was done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection ready (%s)\n",
-		imquic_get_connection_name(conn), imquic_moq_version_str(imquic_moq_get_version(conn)));
-}
-
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_auth_info *auth) {
-	/* We received a subscribe */
-	char tns_buffer[256], tn_buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
-	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, subscribe_id, track_alias);
-	if(auth && auth->buffer && auth->length > 0) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %.*s\n",
-			imquic_get_connection_name(conn), (int)auth->length, auth->buffer);
-	}
+static int imquic_demo_tuple_to_test(imquic_connection *conn, imquic_moq_namespace *tns, int64_t *test, char *error, size_t error_len) {
 	/* Evaluate the namespace tuple and create a test profile */
-	ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), FALSE);
+	char tns_buffer[20];
+	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), FALSE);
 	if(strcasecmp(ns, IMQUIC_DEMO_TEST_NAME)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid test protocol '%s' in tuple field 0 (should be '%s')\n",
 			imquic_get_connection_name(conn), ns, IMQUIC_DEMO_TEST_NAME);
-		imquic_moq_reject_subscribe(conn, subscribe_id, 400, "Invalid tuple field 0", track_alias);
-		return;
+		g_snprintf(error, error_len, "Invalid tuple field 0");
+		return 400;
 	}
-	int64_t test[IMQUIC_DEMO_TEST_MAX];
 	memcpy(test, default_test, sizeof(default_test));
 	uint8_t count = 0;
 	gboolean invalid = FALSE;
@@ -219,8 +190,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t sub
 		if(count >= IMQUIC_DEMO_TEST_MAX) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid namespace tuple, too many fields (> %d)\n",
 				imquic_get_connection_name(conn), IMQUIC_DEMO_TEST_MAX);
-			imquic_moq_reject_subscribe(conn, subscribe_id, 400, "Too many tuple fields", track_alias);
-			return;
+			g_snprintf(error, error_len, "Too many tuple fields");
+			return 400;
 		}
 		if(count > 0) {
 			ns = imquic_moq_namespace_str(temp, tns_buffer, sizeof(tns_buffer), FALSE);
@@ -259,8 +230,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t sub
 				if(invalid) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid tuple field '%s', out of range\n",
 						imquic_get_connection_name(conn), imquic_demo_tuple_field_str(count));
-					imquic_moq_reject_subscribe(conn, subscribe_id, 400, "Invalud tuple field", track_alias);
-					return;
+					g_snprintf(error, error_len, "Invalid tuple field %"SCNu8, count);
+					return 400;
 				}
 			}
 		}
@@ -280,6 +251,47 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t sub
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- #%d (%s) = (don't add)\n",
 				i, imquic_demo_tuple_field_str(i));
 		}
+	}
+	return 0;
+}
+
+/* Callbacks */
+static void imquic_demo_new_connection(imquic_connection *conn, void *user_data) {
+	/* Got new connection */
+	imquic_connection_ref(conn);
+	g_mutex_lock(&mutex);
+	g_hash_table_insert(connections, conn, conn);
+	g_mutex_unlock(&mutex);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection\n", imquic_get_connection_name(conn));
+	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBLISHER);
+	imquic_moq_set_version(conn, moq_version);
+	imquic_moq_set_max_subscribe_id(conn, 1000);	/* FIXME */
+}
+
+static void imquic_demo_ready(imquic_connection *conn) {
+	/* Negotiation was done */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection ready (%s)\n",
+		imquic_get_connection_name(conn), imquic_moq_version_str(imquic_moq_get_version(conn)));
+}
+
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_auth_info *auth) {
+	/* We received a subscribe */
+	char tns_buffer[256], tn_buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, subscribe_id, track_alias);
+	if(auth && auth->buffer && auth->length > 0) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %.*s\n",
+			imquic_get_connection_name(conn), (int)auth->length, auth->buffer);
+	}
+	/* Parse the namespace tuple to a test profile */
+	int64_t test[IMQUIC_DEMO_TEST_MAX];
+	char err[256];
+	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
+	if(res != 0) {
+		imquic_moq_reject_subscribe(conn, subscribe_id, res, err, track_alias);
+		return;
 	}
 	g_mutex_lock(&mutex);
 	/* Create a subscriber, if needed */
