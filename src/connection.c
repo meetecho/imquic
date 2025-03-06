@@ -192,6 +192,19 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	imquic_refcount_init(&conn->ref, imquic_connection_free);
 	imquic_network_endpoint_add_connection(conn->socket, conn, TRUE);
 	conn->loop_source = imquic_loop_poll_connection(conn);
+#ifdef HAVE_QLOG
+	/* Check if we need to generate a QLOG file */
+	if(conn->socket->qlog_path != NULL) {
+		if(conn->is_server) {
+			char filename[1024];
+			g_snprintf(filename, sizeof(filename), "%s/imquic-%"SCNi64"-%"SCNu64".json",
+				conn->socket->qlog_path, g_get_real_time(), id);
+			conn->qlog = imquic_qlog_create(conn->name, TRUE, filename);
+		} else {
+			conn->qlog = imquic_qlog_create(conn->name, FALSE, (char *)conn->socket->qlog_path);
+		}
+	}
+#endif
 	conn->last_activity = g_get_monotonic_time();
 	conn->idle_timer = imquic_loop_add_timer(1000, imquic_connection_idle_timeout, conn);
 	return conn;
@@ -215,6 +228,10 @@ void imquic_connection_destroy(imquic_connection *conn) {
 			g_list_free(conn->connection_ids);
 			conn->connection_ids = NULL;
 		}
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL)
+			imquic_qlog_destroy(conn->qlog);
+#endif
 		imquic_refcount_decrease(&conn->ref);
 	}
 }

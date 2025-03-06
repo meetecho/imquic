@@ -98,6 +98,8 @@ typedef struct imquic_network_endpoint {
 		imquic_moq_callbacks moq;
 		imquic_roq_callbacks roq;
 	} callbacks;
+	/*! \brief Path to save QLOG files to, if needed/supported: a filename for clients, a folder for servers */
+	char *qlog_path;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection has been started */

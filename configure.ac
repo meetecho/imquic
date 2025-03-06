@@ -112,12 +112,30 @@ AS_IF([test "x${boringssl_dir}" != "x"],
        AC_SUBST(BORINGSSL_LIBS)
 	   AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
 	                    [AC_DEFINE(HAVE_BORINGSSL)],
-	                    [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}, use --disable-boringssl if you want to use OpenSSL instead])])
+	                    [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}])])
       ],
       [
        PKG_CHECK_MODULES([QUICTLS],[openssl+quictls])
       ])
 AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x${boringssl_dir}" != "x"])
+
+AC_ARG_ENABLE([qlog],
+              [AS_HELP_STRING([--enable-qlog],
+                              [Enable QLOG support (requires Jansson)])],
+              [],
+              [enable_qlog=no])
+AM_CONDITIONAL([ENABLE_QLOG], false)
+AS_IF([test "x$enable_qlog" != "xno"],
+      [PKG_CHECK_MODULES([JANSSON],
+                         [jansson >= 2.5.0],
+                         [
+                          AC_DEFINE(HAVE_QLOG)
+                          enable_qlog=yes
+                          AM_CONDITIONAL([ENABLE_QLOG], true)
+                         ],
+                         [
+                          AC_MSG_ERROR([Jansson headers not found])])
+                         ])
 
 ##
 # Examples
@@ -201,6 +219,9 @@ echo "Compiler:      $CC"
 AM_COND_IF([ENABLE_BORINGSSL],
 	[echo "Encryption:    BoringSSL"],
 	[echo "Encryption:    quictls"])
+AM_COND_IF([ENABLE_QLOG],
+	[echo "QLOG Support:  yes"],
+	[echo "QLOG Support:  no"])
 AM_COND_IF([ENABLE_DOCS],
 	[echo "Documentation: yes"],
 	[echo "Documentation: no"])

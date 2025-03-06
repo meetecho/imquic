@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -105,6 +106,7 @@ static void imquic_network_endpoint_free(const imquic_refcount *ne_ref) {
 	g_free(ne->alpn);
 	g_free(ne->h3_path);
 	g_free(ne->subprotocol);
+	g_free(ne->qlog_path);
 	g_hash_table_unref(ne->connections);
 	imquic_tls_destroy(ne->tls);
 	if(ne->fd > -1)
@@ -395,6 +397,33 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		if(config->h3_path && strlen(config->h3_path) > 0)
 			ne->h3_path = g_strdup(config->h3_path);
 		ne->subprotocol = config->subprotocol ? g_strdup(config->subprotocol) : NULL;
+	}
+	if(config->qlog_path != NULL) {
+#ifndef HAVE_QLOG
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG support not compiled, ignoring\n", config->name);
+#else
+		/* Make sure that it's a folder, if this is a server, or a file if a client */
+		struct stat s;
+		int err = stat(config->qlog_path, &s);
+		if(config->is_server) {
+			if(err == -1) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder (%d: %s), ignoring\n",
+					config->name, config->qlog_path, errno, g_strerror(errno));
+			} else if(!S_ISDIR(s.st_mode)) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder, ignoring\n",
+					config->name, config->qlog_path);
+			} else {
+				ne->qlog_path = g_strdup(config->qlog_path);
+			}
+		} else {
+			if(err == 0 && S_ISDIR(s.st_mode)) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is a folder, ignoring\n",
+					config->name, config->qlog_path);
+			} else {
+				ne->qlog_path = g_strdup(config->qlog_path);
+			}
+		}
+#endif
 	}
 	ne->connections = g_hash_table_new_full(NULL, NULL,
 		NULL, (GDestroyNotify)imquic_connection_destroy);

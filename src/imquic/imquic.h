@@ -209,6 +209,14 @@ const char *imquic_get_build_sha(void);
 void imquic_set_log_level(int level);
 ///@}
 
+/** @name QLOG
+ */
+///@{
+/*! \brief Check if QLOG is supported at runtime
+ * @returns TRUE if supported, FALSE otherwise */
+gboolean imquic_is_qlog_supported(void);
+///@}
+
 /** @name Debugging
  */
 ///@{
@@ -254,6 +262,11 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_HTTP3_PATH,
 	/*! \brief Subprotocol to negotiate on the main ALPN, if any (string) */
 	IMQUIC_CONFIG_SUBPROTOCOL,
+	/*! \brief Save a QLOG file to this path
+	 * \note For servers, this will need to be a folder, and not a specific
+	 * filename, as servers will handle multiple connections. This property
+	 * is ignored (apart from a warning) if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_PATH,
 	/*! \brief Generic user data, if any (void pointer) */
 	IMQUIC_CONFIG_USER_DATA,
 	/*! \brief Must be the last property, followed by NULL */

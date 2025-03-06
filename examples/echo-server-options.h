@@ -25,6 +25,7 @@ typedef struct demo_options {
 	const char *alpn;
 	gboolean webtransport;
 	gboolean early_data;
+	const char *qlog_path;
 	int debug_level;
 	gboolean debug_locks;
 	gboolean debug_refcounts;

@@ -67,6 +67,8 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 		} else if(property == IMQUIC_CONFIG_SNI || property == IMQUIC_CONFIG_HTTP3_PATH) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating servers\n", imquic_config_str(property));
 			va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
+			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {
@@ -148,6 +150,8 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			config.sni = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_HTTP3_PATH) {
 			config.h3_path = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
+			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {
