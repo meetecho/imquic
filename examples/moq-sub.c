@@ -123,9 +123,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			if(options.join_offset < 0) {
 				/* Standalone Fetch */
 				imquic_moq_fetch_range range = { 0 };
+				/* FIXME We should make this range configurable via command line */
 				range.start.group = 0;
 				range.start.object = 0;
-				range.end.group = 1000;	/* FIXME */
+				range.end.group = 1000;
 				range.end.object = 0;
 				imquic_moq_standalone_fetch(conn, subscribe_id, &tns[0], &tn,
 					!strcasecmp(options.fetch, "descending"), &range, &auth);

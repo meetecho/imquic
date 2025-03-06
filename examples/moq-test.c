@@ -122,6 +122,7 @@ typedef struct imquic_demo_moq_subscription {
 	uint64_t track_alias;
 	gboolean fetch;
 	gboolean descending;
+	imquic_moq_fetch_range range;
 	int64_t test[IMQUIC_DEMO_TEST_MAX];
 	GThread *thread;
 	volatile int destroyed;
@@ -389,6 +390,29 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		imquic_moq_reject_fetch(conn, subscribe_id, res, err);
 		return;
 	}
+	/* Intersect the test settings with the provided range */
+	imquic_moq_position largest = {
+		.group = test[TUPLE_FIELD_START_GROUP],
+		.object = test[TUPLE_FIELD_START_OBJECT]
+	};
+	while((largest.group + test[TUPLE_FIELD_GROUP_INC]) <= (uint64_t)test[TUPLE_FIELD_LAST_GROUP])
+		largest.group += test[TUPLE_FIELD_GROUP_INC];
+	int64_t i = 0;
+	for(i=0; i<test[TUPLE_FIELD_OBJS_x_GROUP]; i++) {
+		largest.object += test[TUPLE_FIELD_OBJ_INC];
+		if(largest.object >= (uint64_t)test[TUPLE_FIELD_LAST_OBJECT]) {
+			if(largest.object > (uint64_t)test[TUPLE_FIELD_LAST_OBJECT])
+				largest.object -= test[TUPLE_FIELD_LAST_OBJECT];
+			break;
+		}
+	}
+	if(range->start.group > largest.group || range->end.group < (uint64_t)test[TUPLE_FIELD_START_GROUP] ||
+			(range->start.group == largest.group && range->start.object > largest.object) ||
+			(range->end.group == (uint64_t)test[TUPLE_FIELD_START_GROUP] && range->end.object < (uint64_t)test[TUPLE_FIELD_START_OBJECT])) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] FETCH range outside of test range\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_fetch(conn, subscribe_id, 400, "FETCH range outside of test range");
+		return;
+	}
 	g_mutex_lock(&mutex);
 	/* Create a subscriber, if needed */
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
@@ -408,22 +432,11 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, subscribe_id, 0);
 	s->fetch = TRUE;
 	s->descending = descending;
+	s->range = *range;
 	memcpy(s->test, test, sizeof(test));
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(subscribe_id), s);
 	g_mutex_unlock(&mutex);
 	/* Accept and serve the test subscription */
-	imquic_moq_position largest = {
-		.group = test[TUPLE_FIELD_START_GROUP],
-		.object = test[TUPLE_FIELD_START_OBJECT]
-	};
-	while(largest.group < (uint64_t)test[TUPLE_FIELD_LAST_GROUP])
-		largest.group += test[TUPLE_FIELD_GROUP_INC];
-	int64_t i = 0;
-	for(i=0; i<test[TUPLE_FIELD_OBJS_x_GROUP]; i++) {
-		largest.object += test[TUPLE_FIELD_OBJ_INC];
-		if(largest.object >= (uint64_t)test[TUPLE_FIELD_LAST_OBJECT])
-			break;
-	}
 	imquic_moq_accept_fetch(conn, subscribe_id, descending, &largest);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
@@ -505,7 +518,8 @@ static void *imquic_demo_tester_thread(void *data) {
 	if(s->test[TUPLE_FIELD_FORWARDING] == 2)
 		subgroup_id = object_id % 2;
 	int64_t num_objects = 0;
-	gboolean next_group = FALSE, last_object = FALSE;
+	gboolean send_object = TRUE, next_group = FALSE, last_object = FALSE;
+	uint64_t last_group_id = 0, last_subgroup_id = 0, last_object_id = 0;
 	/* Buffers */
 	uint8_t *obj0_p = s->test[TUPLE_FIELD_OBJ0_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJ0_SIZE]) : NULL;
 	if(obj0_p)
@@ -536,6 +550,13 @@ static void *imquic_demo_tester_thread(void *data) {
 			before += frequency;
 		}
 		/* Time to send an object */
+		send_object = TRUE;
+		if(s->fetch && ((group_id < s->range.start.group || group_id > s->range.end.group) ||
+				(group_id == s->range.start.group && object_id < s->range.start.object) ||
+				(group_id == s->range.end.group && s->range.end.object > 0 && object_id > s->range.end.object))) {
+			/* Outside of the FETCH range: progress but don't send the object */
+			send_object = FALSE;
+		}
 		if(group_id >= (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP] ||
 				(group_id + (uint64_t)s->test[TUPLE_FIELD_GROUP_INC]) > (uint64_t)s->test[TUPLE_FIELD_LAST_GROUP]) {
 			/* Check if this is going to be the last object in the track */
@@ -578,15 +599,25 @@ static void *imquic_demo_tester_thread(void *data) {
 			.delivery = delivery,
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
-		imquic_moq_send_object(conn, &object);
+		if(send_object) {
+			imquic_moq_send_object(conn, &object);
+			last_group_id = object.group_id;
+			last_subgroup_id = object.subgroup_id;
+			last_object_id = object.object_id;
+		}
 		/* Update IDs for the next object */
 		num_objects++;
 		next_group = (num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]);
 		if(last_object || (!s->fetch && next_group)) {
 			/* We've sent all objects in this group, do we need to send an end of group? */
 			if(s->test[TUPLE_FIELD_SEND_EOG]) {
-				object.subgroup_id = subgroup_id;
-				object.object_id = object_id;
+				object.group_id = last_group_id;
+				object.object_id = last_object_id + s->test[TUPLE_FIELD_OBJ_INC];
+				object.subgroup_id = last_subgroup_id;
+				if(s->test[TUPLE_FIELD_FORWARDING] == 1)
+					object.subgroup_id++;
+				else if(s->test[TUPLE_FIELD_FORWARDING] == 2)
+					object.subgroup_id = object.object_id % 2;
 				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK_AND_GROUP : IMQUIC_MOQ_END_OF_GROUP;
 				object.payload_len = 0;
 				object.payload = NULL;
@@ -594,7 +625,8 @@ static void *imquic_demo_tester_thread(void *data) {
 				object.extensions_len = 0;
 				object.extensions_count = 0;
 				object.end_of_stream = TRUE;
-				imquic_moq_send_object(conn, &object);
+				if(send_object || last_object)
+					imquic_moq_send_object(conn, &object);
 			}
 			next_group = TRUE;
 		} else {
