@@ -30,6 +30,11 @@
  * @param level The SSL encryption level
  * @returns The encryption level name as a string, if valid, or NULL otherwise */
 const char *imquic_encryption_level_str(enum ssl_encryption_level_t level);
+/*! \brief Helper function to serialize to string the key type of an SSL encryption level.
+ * @param level The SSL encryption level
+ * @param server Server or client
+ * @returns The key type as a string, if valid, or NULL otherwise */
+const char *imquic_encryption_key_type_str(enum ssl_encryption_level_t level, gboolean server);
 
 /*! \brief Initialize the TLS stack at startup
  * @param secrets_log File to use to store QUIC secret, e.g., for Wireshark debugging (see SSLKEYLOGFILE)

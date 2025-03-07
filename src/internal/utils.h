@@ -126,6 +126,14 @@ uint64_t imquic_full_packet_number(uint64_t largest, uint64_t pn_pkt, uint8_t p_
  * @param buflen How many bytes in the buffer should be printed */
 void imquic_print_hex(int level, uint8_t *buf, size_t buflen);
 
+/*! \brief Helper method to stringify a buffer to a hex string
+ * @param[in] buf The buffer to stringify
+ * @param[in] buflen The size of the buffer to stringify
+ * @param[out] buffer The output buffer where the string will be written
+ * @param[in] blen Size of the string output buffer
+ * @returns A pointer to buffer, if successful, or NULL otherwise */
+const char *imquic_hex_str(uint8_t *buf, size_t buflen, char *buffer, size_t blen);
+
 /** @name Generic data buffer
  */
 ///@{

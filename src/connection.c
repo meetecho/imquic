@@ -168,26 +168,24 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	conn->incoming_data = g_queue_new();
 	conn->outgoing_data = g_queue_new();
 	conn->outgoing_datagram = g_queue_new();
-	if(!conn->is_server) {
-		/* We'll set the ALPN(s) manually: 1 byte prefix + the string itself for each of them */
-		size_t length = 0, offset = 0, alpn_len = 0;
-		if(conn->socket->raw_quic) {
-			alpn_len = strlen(conn->socket->alpn);
-			length = alpn_len + 1;
-		}
-		if(conn->socket->webtransport)
-			length += 3;	/* h3 */
-		conn->alpn.length = length;
-		conn->alpn.buffer = g_malloc(conn->alpn.length);
-		if(conn->socket->raw_quic) {
-			conn->alpn.buffer[0] = alpn_len;
-			memcpy(conn->alpn.buffer + 1, conn->socket->alpn, alpn_len);
-			offset = alpn_len + 1;
-		}
-		if(conn->socket->webtransport) {
-			conn->alpn.buffer[offset] = 2;
-			memcpy(conn->alpn.buffer + offset + 1, "h3", 2);
-		}
+	/* We'll set the ALPN(s) manually: 1 byte prefix + the string itself for each of them */
+	size_t length = 0, offset = 0, alpn_len = 0;
+	if(conn->socket->raw_quic) {
+		alpn_len = strlen(conn->socket->alpn);
+		length = alpn_len + 1;
+	}
+	if(conn->socket->webtransport)
+		length += 3;	/* h3 */
+	conn->alpn.length = length;
+	conn->alpn.buffer = g_malloc(conn->alpn.length);
+	if(conn->socket->raw_quic) {
+		conn->alpn.buffer[0] = alpn_len;
+		memcpy(conn->alpn.buffer + 1, conn->socket->alpn, alpn_len);
+		offset = alpn_len + 1;
+	}
+	if(conn->socket->webtransport) {
+		conn->alpn.buffer[offset] = 2;
+		memcpy(conn->alpn.buffer + offset + 1, "h3", 2);
 	}
 	imquic_refcount_init(&conn->ref, imquic_connection_free);
 	imquic_network_endpoint_add_connection(conn->socket, conn, TRUE);

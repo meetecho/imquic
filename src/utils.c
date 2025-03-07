@@ -224,6 +224,23 @@ void imquic_print_hex(int level, uint8_t *buf, size_t buflen) {
 	IMQUIC_LOG(level, "\n");
 }
 
+const char *imquic_hex_str(uint8_t *buf, size_t buflen, char *buffer, size_t blen) {
+	if(buf == NULL || buflen == 0 || buffer == NULL || blen == 0)
+		return NULL;
+	if(buflen*2 >= blen) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Insufficient buffer to render data as a string (truncation would occur)\n");
+		return NULL;
+	}
+	*buffer = '\0';
+	char hex[3];
+	size_t offset = 0;
+	for(size_t i=0; i<buflen; i++) {
+		g_snprintf(hex, sizeof(hex), "%02x", buf[i]);
+		imquic_strlcat_fast(buffer, hex, blen, &offset);
+	}
+	return buffer;
+}
+
 /* Generic data buffer */
 imquic_data *imquic_data_create(uint8_t *buffer, size_t length) {
 	if(length > 0 && buffer == NULL)

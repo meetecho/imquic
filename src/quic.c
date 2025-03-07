@@ -252,7 +252,8 @@ void imquic_sent_packet_destroy(imquic_sent_packet *sent_pkt) {
 }
 
 /* Helper to parse an incoming packet */
-int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address *sender, imquic_connection **pconn, imquic_packet *pkt, uint8_t *quic, size_t bytes) {
+int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address *sender,
+		imquic_connection **pconn, imquic_packet *pkt, uint8_t *quic, size_t bytes, size_t tot) {
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "Parsing packet (exploring %zu bytes)\n", bytes);
 	*pconn = NULL;
 	imquic_connection *conn = NULL;
@@ -343,6 +344,10 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		if(type == IMQUIC_RETRY) {
 			/* We got a Retry */
 			conn = g_hash_table_lookup(connections, &pkt->destination);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && bytes == tot)
+				imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+#endif
 			if(conn == NULL || conn->is_server || conn->level > ssl_encryption_initial) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring invalid Retry packet\n");
 				return bytes;
@@ -379,6 +384,14 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error deriving initial secret\n", imquic_get_connection_name(conn));
 				return bytes;
 			}
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL) {
+				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
+				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+					conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
+			}
+#endif
 			/* Updated the Initial packet and resend it */
 			uint64_t last_pkn = conn->pkn[ssl_encryption_initial] - 1;
 			imquic_sent_packet *sent_pkt = imquic_listmap_find(conn->sent_pkts[ssl_encryption_initial], &last_pkn);
@@ -406,6 +419,10 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			return bytes;
 		} else if(type == IMQUIC_0RTT) {
 			conn = g_hash_table_lookup(connections, &pkt->destination);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && bytes == tot)
+				imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+#endif
 			if(conn == NULL || !conn->is_server || conn->keys[ssl_encryption_early_data].remote.md == NULL) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring 0-RTT\n");
 				return bytes;
@@ -459,6 +476,10 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 				conn->initial_cid.len = pkt->destination.len;
 				memcpy(conn->initial_cid.id, pkt->destination.id, pkt->destination.len);
 				imquic_quic_connection_add(conn, &conn->initial_cid);
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL)
+					imquic_qlog_set_odcid(conn->qlog, &conn->initial_cid);
+#endif
 			}
 			uint64_t local_cid = imquic_random_uint64();
 			conn->local_cid.len = sizeof(local_cid);
@@ -467,7 +488,15 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			memcpy(conn->local_cid.token, &st1, sizeof(st1));
 			memcpy(&conn->local_cid.token[sizeof(st1)], &st2, sizeof(st2));
 			imquic_quic_connection_add(conn, &conn->local_cid);
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL)
+				imquic_qlog_transport_version_information(conn->qlog, 1, 1);
+#endif
 		}
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && bytes == tot)
+			imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+#endif
 		*pconn = conn;
 		imquic_refcount_increase(&conn->ref);
 		if(pkt->source.len > 0 && conn->remote_cid.len == 0) {
@@ -476,11 +505,21 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		}
 
 		/* Unprotect the header */
-		if(conn->just_started && pkt->is_protected && imquic_derive_initial_secret(&conn->keys[ssl_encryption_initial],
-				pkt->destination.id, pkt->destination.len, conn->is_server) < 0) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error deriving initial secret\n");
-			pkt->is_valid = FALSE;
-			return -1;
+		if(conn->just_started) {
+			if(pkt->is_protected && imquic_derive_initial_secret(&conn->keys[ssl_encryption_initial],
+					pkt->destination.id, pkt->destination.len, conn->is_server) < 0) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Error deriving initial secret\n");
+				pkt->is_valid = FALSE;
+				return -1;
+			}
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL) {
+				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
+				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+					conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
+			}
+#endif
 		}
 		conn->just_started = FALSE;
 		/* Check which key we should use */
@@ -564,6 +603,10 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			pkt->is_valid = FALSE;
 			return -1;
 		}
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && bytes == tot)
+			imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+#endif
 		*pconn = conn;
 		imquic_refcount_increase(&conn->ref);
 
@@ -604,6 +647,16 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Detected key update to phase %d\n", pkt->key_phase);
 			imquic_update_keys(&conn->keys[ssl_encryption_application], pkt->key_phase);
 			conn->current_phase = pkt->key_phase;
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL) {
+				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, conn->is_server),
+					conn->keys[ssl_encryption_application].local.key[conn->current_phase],
+					conn->keys[ssl_encryption_application].local.key_len, conn->current_phase);
+				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, !conn->is_server),
+					conn->keys[ssl_encryption_application].remote.key[conn->current_phase],
+					conn->keys[ssl_encryption_application].remote.key_len, conn->current_phase);
+			}
+#endif
 		}
 		/* There's no payload length in Short headers, so the rest of the data is payload */
 		p_len = blen - pn_offset;
@@ -1697,6 +1750,15 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Parsing transport parameters (%zu bytes)\n",
 		imquic_get_connection_name(conn), blen);
 	imquic_print_hex(IMQUIC_LOG_HUGE, bytes, blen);
+#ifdef HAVE_QLOG
+	/* Trace events, if needed */
+	json_t *data = NULL;
+	if(conn != NULL && conn->qlog != NULL) {
+		/* TODO Set resumption properly */
+		data = imquic_qlog_transport_prepare_parameters_set(conn->qlog, FALSE, FALSE, conn->socket->tls->early_data);
+	}
+#endif
+	int res = 0;
 	size_t offset = 0, param_offset;
 	uint8_t length = 0;
 	uint64_t param = 0, p_len = 0;
@@ -1710,7 +1772,8 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Broken transport parameters at offset %zu (%"SCNu64" > %zu)\n",
 				imquic_get_connection_name(conn), offset, p_len, blen - offset);
 			imquic_print_hex(IMQUIC_LOG_HUGE, bytes + param_offset, blen - offset);
-			return -1;
+			res = -1;
+			goto done;
 		}
 		switch(param) {
 			case IMQUIC_ORIGINAL_DESTINATION_CONNECTION_ID:
@@ -1721,28 +1784,35 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid connection ID (len=%"SCNu64")\n",
 						imquic_get_connection_name(conn), p_len);
 					imquic_print_hex(IMQUIC_LOG_HUGE, bytes + param_offset, p_len);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL && conn->is_server && param == IMQUIC_ORIGINAL_DESTINATION_CONNECTION_ID) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] A client can't send 'original_destination_connection_id'\n",
 						imquic_get_connection_name(conn));
-					return -1;
+					res = -1;
+					goto done;
 				}
 				imquic_connection_id cid;
 				cid.len = p_len;
 				if(p_len > 0)
 					memcpy(cid.id, bytes + offset, p_len);
 				char cid_str[41];
+				const char *cid_str_ = imquic_connection_id_str(&cid, cid_str, sizeof(cid_str));
 				size_t cid_len = p_len * 2;
 				IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- [%"SCNu64"][%s][%"SCNu64"] %.*s\n",
 					param, imquic_transport_parameter_str(param),
-					p_len, (int)cid_len, imquic_connection_id_str(&cid, cid_str, sizeof(cid_str)));
+					p_len, (int)cid_len, cid_str_);
 				/* TODO We should check if things match */
 				if(conn != NULL && param == IMQUIC_INITIAL_SOURCE_CONNECTION_ID) {
 					/* FIXME Replace the remote ID */
 					memcpy(conn->remote_cid.id, cid.id, cid.len);
 					conn->remote_cid.len = cid.len;
 				}
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_string(cid_str_));
+#endif
 				break;
 			}
 			case IMQUIC_STATELESS_RESET_TOKEN: {
@@ -1750,6 +1820,13 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- [%"SCNu64"][%s][%"SCNu64"]\n",
 					param, imquic_transport_parameter_str(param), p_len);
 				imquic_print_hex(IMQUIC_LOG_HUGE, bytes + offset, p_len);
+#ifdef HAVE_QLOG
+				if(data != NULL) {
+					char st[33];
+					const char *st_str = imquic_hex_str(bytes + offset, p_len, st, sizeof(st));
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_string(st_str));
+				}
+#endif
 				break;
 			}
 			case IMQUIC_MAX_IDLE_TIMEOUT: {
@@ -1759,6 +1836,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.max_idle_timeout = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_MAX_UDP_PAYLOAD_SIZE: {
@@ -1769,10 +1850,15 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value < 1200 || value > 65527) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'max_udp_payload_size' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL)
 					conn->remote_params.max_udp_payload_size = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_DATA: {
@@ -1782,6 +1868,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_data = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_LOCAL: {
@@ -1791,6 +1881,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_stream_data_bidi_local = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_REMOTE: {
@@ -1800,6 +1894,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_stream_data_bidi_remote = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAM_DATA_UNI: {
@@ -1809,6 +1907,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_stream_data_uni = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAMS_BIDI: {
@@ -1818,6 +1920,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_streams_bidi = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAMS_UNI: {
@@ -1827,6 +1933,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_streams_uni = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_ACK_DELAY_EXPONENT: {
@@ -1837,10 +1947,15 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value > 20) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'ack_delay_exponent' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL)
 					conn->remote_params.ack_delay_exponent = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_MAX_ACK_DELAY: {
@@ -1851,10 +1966,15 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value > 16384) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'max_ack_delay' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL)
 					conn->remote_params.max_ack_delay = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_DISABLE_ACTIVE_MIGRATION: {
@@ -1863,6 +1983,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len);
 				if(conn != NULL)
 					conn->remote_params.disable_active_migration = TRUE;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_true());
+#endif
 				break;
 			}
 			case IMQUIC_ACTIVE_CONNECTION_ID_LIMIT: {
@@ -1872,6 +1996,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.active_connection_id_limit = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_MAX_DATAGRAM_FRAME_SIZE: {
@@ -1882,12 +2010,17 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value > 65536) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'max_datagram_frame_size' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(value == 65536)	/* Make browsers happy */
 					value = 65535;
 				if(conn != NULL)
 					conn->remote_params.max_datagram_frame_size = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			default:
@@ -1898,7 +2031,16 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 		}
 		offset += p_len;
 	}
-	return 0;
+done:
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL) {
+		if(res < 0 && data != NULL)
+			json_decref(data);
+		else
+			imquic_qlog_transport_parameters_set(conn->qlog, data);
+	}
+#endif
+	return res;
 }
 
 /* Sending packets */
@@ -2487,6 +2629,10 @@ int imquic_send_packet(imquic_connection *conn, imquic_packet *pkt) {
 	//~ if(pkt->packet_number != 6 && pkt->packet_number != 7 && pkt->packet_number != 9)
 		//~ res = imquic_network_send(conn, pkt->data.buffer, pkt->data.length);
 	int res = imquic_network_send(conn, pkt->data.buffer, pkt->data.length);
+#ifdef HAVE_QLOG
+	if(res > 0 && conn->qlog != NULL)
+		imquic_qlog_transport_udp_datagrams_sent(conn->qlog, pkt->data.length);
+#endif
 	/* Track when we sent this packet */
 	if(pkt->retransmit_if_lost && !pkt->ack_eliciting)
 		pkt->retransmit_if_lost = FALSE;
@@ -2545,14 +2691,14 @@ int imquic_retransmit_packet(imquic_connection *conn, imquic_sent_packet *sent_p
 /* Processing messages */
 void imquic_process_message(imquic_network_endpoint *socket, imquic_network_address *sender, uint8_t *bytes, size_t blen) {
 	/* Parse the packet(s) */
-	size_t offset = 0;
+	size_t offset = 0, tot = blen;
 	int ret = 0;
 	imquic_packet pkt;
 	imquic_connection *conn = NULL;
 	while(blen > 0) {
 		/* Parse the buffer as a QUIC packet */
 		memset(&pkt, 0, sizeof(pkt));
-		ret = imquic_parse_packet(socket, sender, &conn, &pkt, &bytes[offset], blen);
+		ret = imquic_parse_packet(socket, sender, &conn, &pkt, &bytes[offset], blen, tot);
 		if(ret < 0 || !pkt.is_valid) {
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Couldn't parse packet of size %zu, ignoring\n", blen);
 			if(conn != NULL)
@@ -2640,6 +2786,33 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 						imquic_get_connection_name(conn), ERR_reason_error_string(ERR_get_error()));
 					continue;
 				}
+#ifdef HAVE_QLOG
+				/* Trace events, if needed */
+				if(conn->qlog != NULL) {
+					/* TODO Set resumption properly */
+					json_t *data = imquic_qlog_transport_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
+					char cid[41];
+					const char *cid_str = imquic_connection_id_str(&conn->initial_cid, cid, sizeof(cid));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ORIGINAL_DESTINATION_CONNECTION_ID), json_string(cid_str));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_IDLE_TIMEOUT), json_integer(conn->local_params.max_idle_timeout));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_UDP_PAYLOAD_SIZE), json_integer(conn->local_params.max_udp_payload_size));
+					cid_str = imquic_hex_str(conn->local_cid.token, sizeof(conn->local_cid.token), cid, sizeof(cid));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_STATELESS_RESET_TOKEN), json_string(cid_str));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_DATA), json_integer(conn->local_params.initial_max_data));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_REMOTE), json_integer(conn->local_params.initial_max_stream_data_bidi_remote));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_LOCAL), json_integer(conn->local_params.initial_max_stream_data_bidi_local));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_UNI), json_integer(conn->local_params.initial_max_stream_data_uni));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_BIDI), json_integer(conn->local_params.initial_max_streams_bidi));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_UNI), json_integer(conn->local_params.initial_max_streams_uni));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACK_DELAY_EXPONENT), json_integer(conn->local_params.ack_delay_exponent));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_ACK_DELAY), json_integer(conn->local_params.max_ack_delay));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACTIVE_CONNECTION_ID_LIMIT), json_integer(conn->local_params.active_connection_id_limit));
+					cid_str = imquic_connection_id_str(&conn->local_cid, cid, sizeof(cid));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_SOURCE_CONNECTION_ID), json_string(cid_str));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_DATAGRAM_FRAME_SIZE), json_integer(conn->local_params.max_datagram_frame_size));
+					imquic_qlog_transport_parameters_set(conn->qlog, data);
+				}
+#endif
 			}
 			if(level == ssl_encryption_application && !conn->is_server && !conn->connected) {
 				imquic_connection_change_level(conn, level);
@@ -2705,6 +2878,10 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 		g_snprintf(alpn, alpn_len, "%.*s", data_len, (char *)data);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
 			imquic_get_connection_name(conn), alpn);
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL)
+			imquic_qlog_transport_alpn_information(conn->qlog, NULL, 0, NULL, 0, alpn);
+#endif
 		if(conn->socket->webtransport && !strcasecmp(alpn, "h3"))
 			conn->http3 = imquic_http3_connection_create(conn, conn->socket->subprotocol);
 	}
@@ -2748,6 +2925,10 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 	memcpy(conn->initial_cid.id, &dest_id, conn->initial_cid.len);
 	conn->remote_cid.len = sizeof(dest_id);
 	memcpy(conn->remote_cid.id, &dest_id, conn->remote_cid.len);
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL)
+		imquic_qlog_set_odcid(conn->qlog, &conn->remote_cid);
+#endif
 	uint64_t local_cid = imquic_random_uint64();
 	conn->local_cid.len = sizeof(local_cid);
 	memcpy(conn->local_cid.id, &local_cid, conn->local_cid.len);
@@ -2798,6 +2979,34 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 			imquic_get_connection_name(conn), ERR_reason_error_string(ERR_get_error()));
 		return -1;
 	}
+#ifdef HAVE_QLOG
+	/* Trace events, if needed */
+	if(conn->qlog != NULL) {
+		imquic_qlog_transport_version_information(conn->qlog, 1, 1);
+		imquic_qlog_transport_alpn_information(conn->qlog, NULL, 0, conn->alpn.buffer, conn->alpn.length, 0);
+		json_t *data = imquic_qlog_transport_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_IDLE_TIMEOUT), json_integer(conn->local_params.max_idle_timeout));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_UDP_PAYLOAD_SIZE), json_integer(conn->local_params.max_udp_payload_size));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_DATA), json_integer(conn->local_params.initial_max_data));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_REMOTE), json_integer(conn->local_params.initial_max_stream_data_bidi_remote));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_LOCAL), json_integer(conn->local_params.initial_max_stream_data_bidi_local));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_UNI), json_integer(conn->local_params.initial_max_stream_data_uni));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_BIDI), json_integer(conn->local_params.initial_max_streams_bidi));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_UNI), json_integer(conn->local_params.initial_max_streams_uni));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACK_DELAY_EXPONENT), json_integer(conn->local_params.ack_delay_exponent));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_ACK_DELAY), json_integer(conn->local_params.max_ack_delay));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACTIVE_CONNECTION_ID_LIMIT), json_integer(conn->local_params.active_connection_id_limit));
+		char cid[41];
+		const char *cid_str = imquic_connection_id_str(&conn->local_cid, cid, sizeof(cid));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_SOURCE_CONNECTION_ID), json_string(cid_str));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_DATAGRAM_FRAME_SIZE), json_integer(conn->local_params.max_datagram_frame_size));
+		imquic_qlog_transport_parameters_set(conn->qlog, data);
+		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+			conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
+		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+			conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
+	}
+#endif
 	/* Perform the handshake */
 	int res = SSL_do_handshake(conn->ssl);
 	if(res != 1 && SSL_get_error(conn->ssl, res) != SSL_ERROR_WANT_READ) {

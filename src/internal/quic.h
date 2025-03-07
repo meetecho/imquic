@@ -238,8 +238,10 @@ void imquic_process_message(imquic_network_endpoint *socket, imquic_network_addr
  * @param[out] pkt The imquic_packet instance to write the result of the parsing to
  * @param[in] quic The buffer containing the QUIC packet
  * @param[in] bytes Size of the buffer containing the QUIC packet
+ * @param[in] tot Size of the whole datagram containing buffer
  * @returns The size of the parsed packet, if successfuk, or a negative integer otherwise */
-int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address *sender, imquic_connection **pconn, imquic_packet *pkt, uint8_t *quic, size_t bytes);
+int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address *sender,
+	imquic_connection **pconn, imquic_packet *pkt, uint8_t *quic, size_t bytes, size_t tot);
 /*! \brief Helper method to check if we received \c CRYPTO frames we need
  * to go through, and in case pass them to the TLS stack for processing
  * @param conn The imquic_connection to check */

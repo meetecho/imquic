@@ -11,6 +11,7 @@
 
 #include "internal/quic.h"
 #include "internal/crypto.h"
+#include "internal/qlog.h"
 #include "internal/utils.h"
 #include "internal/version.h"
 #include "imquic/debug.h"
@@ -42,6 +43,21 @@ const char *imquic_encryption_level_str(enum ssl_encryption_level_t level) {
 			return "handshake";
 		case ssl_encryption_application:
 			return "application";
+		default: break;
+	}
+	return NULL;
+}
+
+const char *imquic_encryption_key_type_str(enum ssl_encryption_level_t level, gboolean server) {
+	switch(level) {
+		case ssl_encryption_initial:
+			return server ? "server_initial_secret" : "client_initial_secret";
+		case ssl_encryption_early_data:
+			return server ? "server_0rtt_secret" : "client_0rtt_secret";
+		case ssl_encryption_handshake:
+			return server ? "server_handshake_secret" : "client_handshake_secret";
+		case ssl_encryption_application:
+			return server ? "server_1rtt_secret" : "client_1rtt_secret";
 		default: break;
 	}
 	return NULL;
@@ -162,6 +178,12 @@ static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char
 		/* No match */
 		return SSL_TLSEXT_ERR_ALERT_FATAL;
 	}
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL) {
+		imquic_qlog_transport_alpn_information(conn->qlog,
+			conn->alpn.buffer, conn->alpn.length, (uint8_t *)in, inlen, alpn);
+	}
+#endif
 	/* Return the selected ALPN */
 	if(out)
 		*out = selected;
@@ -831,6 +853,13 @@ static int imquic_tls_set_read_secret(SSL *ssl, enum ssl_encryption_level_t leve
 	conn->keys[level].remote.iv_len = 12;
 	conn->keys[level].remote.hp_len = (secret_len == 48 ? 32 : 16);	/* FIXME */
 	imquic_expand_secret((conn->is_server ? "Client" : "Server"), &conn->keys[level].remote, TRUE, 0);
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL) {
+		/* TODO The key phase should be the full thing, not the bit */
+		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(level, !conn->is_server),
+			conn->keys[level].remote.key[0], conn->keys[level].remote.key_len, 0);
+	}
+#endif
 	return 1;
 }
 static int imquic_tls_set_write_secret(SSL *ssl, enum ssl_encryption_level_t level,
@@ -847,6 +876,13 @@ static int imquic_tls_set_write_secret(SSL *ssl, enum ssl_encryption_level_t lev
 	conn->keys[level].local.iv_len = 12;
 	conn->keys[level].local.hp_len = (secret_len == 48 ? 32 : 16);	/* FIXME */
 	imquic_expand_secret((conn->is_server ? "Server" : "Client"), &conn->keys[level].local, TRUE, 0);
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL) {
+		/* TODO The key phase should be the full thing, not the bit */
+		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(level, conn->is_server),
+			conn->keys[level].local.key[0], conn->keys[level].local.key_len, 0);
+	}
+#endif
 	return 1;
 }
 #ifndef IMQUIC_BORINGSSL
