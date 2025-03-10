@@ -346,7 +346,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			conn = g_hash_table_lookup(connections, &pkt->destination);
 #ifdef HAVE_QLOG
 			if(conn != NULL && conn->qlog != NULL && bytes == tot)
-				imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+				imquic_qlog_udp_datagrams_received(conn->qlog, bytes);
 #endif
 			if(conn == NULL || conn->is_server || conn->level > ssl_encryption_initial) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring invalid Retry packet\n");
@@ -386,9 +386,9 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			}
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL) {
-				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
 					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
-				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
 					conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
 			}
 #endif
@@ -421,7 +421,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			conn = g_hash_table_lookup(connections, &pkt->destination);
 #ifdef HAVE_QLOG
 			if(conn != NULL && conn->qlog != NULL && bytes == tot)
-				imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+				imquic_qlog_udp_datagrams_received(conn->qlog, bytes);
 #endif
 			if(conn == NULL || !conn->is_server || conn->keys[ssl_encryption_early_data].remote.md == NULL) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring 0-RTT\n");
@@ -490,12 +490,12 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			imquic_quic_connection_add(conn, &conn->local_cid);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL)
-				imquic_qlog_transport_version_information(conn->qlog, 1, 1);
+				imquic_qlog_version_information(conn->qlog, 1, 1);
 #endif
 		}
 #ifdef HAVE_QLOG
 		if(conn->qlog != NULL && bytes == tot)
-			imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+			imquic_qlog_udp_datagrams_received(conn->qlog, bytes);
 #endif
 		*pconn = conn;
 		imquic_refcount_increase(&conn->ref);
@@ -514,9 +514,9 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			}
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL) {
-				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
 					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
-				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
 					conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
 			}
 #endif
@@ -605,7 +605,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		}
 #ifdef HAVE_QLOG
 		if(conn->qlog != NULL && bytes == tot)
-			imquic_qlog_transport_udp_datagrams_received(conn->qlog, bytes);
+			imquic_qlog_udp_datagrams_received(conn->qlog, bytes);
 #endif
 		*pconn = conn;
 		imquic_refcount_increase(&conn->ref);
@@ -649,10 +649,10 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			conn->current_phase = pkt->key_phase;
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL) {
-				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, conn->is_server),
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, conn->is_server),
 					conn->keys[ssl_encryption_application].local.key[conn->current_phase],
 					conn->keys[ssl_encryption_application].local.key_len, conn->current_phase);
-				imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, !conn->is_server),
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, !conn->is_server),
 					conn->keys[ssl_encryption_application].remote.key[conn->current_phase],
 					conn->keys[ssl_encryption_application].remote.key_len, conn->current_phase);
 			}
@@ -1755,7 +1755,7 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 	json_t *data = NULL;
 	if(conn != NULL && conn->qlog != NULL) {
 		/* TODO Set resumption properly */
-		data = imquic_qlog_transport_prepare_parameters_set(conn->qlog, FALSE, FALSE, conn->socket->tls->early_data);
+		data = imquic_qlog_prepare_parameters_set(conn->qlog, FALSE, FALSE, conn->socket->tls->early_data);
 	}
 #endif
 	int res = 0;
@@ -2037,7 +2037,7 @@ done:
 		if(res < 0 && data != NULL)
 			json_decref(data);
 		else
-			imquic_qlog_transport_parameters_set(conn->qlog, data);
+			imquic_qlog_parameters_set(conn->qlog, data);
 	}
 #endif
 	return res;
@@ -2631,7 +2631,7 @@ int imquic_send_packet(imquic_connection *conn, imquic_packet *pkt) {
 	int res = imquic_network_send(conn, pkt->data.buffer, pkt->data.length);
 #ifdef HAVE_QLOG
 	if(res > 0 && conn->qlog != NULL)
-		imquic_qlog_transport_udp_datagrams_sent(conn->qlog, pkt->data.length);
+		imquic_qlog_udp_datagrams_sent(conn->qlog, pkt->data.length);
 #endif
 	/* Track when we sent this packet */
 	if(pkt->retransmit_if_lost && !pkt->ack_eliciting)
@@ -2790,7 +2790,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 				/* Trace events, if needed */
 				if(conn->qlog != NULL) {
 					/* TODO Set resumption properly */
-					json_t *data = imquic_qlog_transport_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
+					json_t *data = imquic_qlog_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
 					char cid[41];
 					const char *cid_str = imquic_connection_id_str(&conn->initial_cid, cid, sizeof(cid));
 					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ORIGINAL_DESTINATION_CONNECTION_ID), json_string(cid_str));
@@ -2810,7 +2810,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 					cid_str = imquic_connection_id_str(&conn->local_cid, cid, sizeof(cid));
 					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_SOURCE_CONNECTION_ID), json_string(cid_str));
 					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_DATAGRAM_FRAME_SIZE), json_integer(conn->local_params.max_datagram_frame_size));
-					imquic_qlog_transport_parameters_set(conn->qlog, data);
+					imquic_qlog_parameters_set(conn->qlog, data);
 				}
 #endif
 			}
@@ -2880,7 +2880,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 			imquic_get_connection_name(conn), alpn);
 #ifdef HAVE_QLOG
 		if(conn->qlog != NULL)
-			imquic_qlog_transport_alpn_information(conn->qlog, NULL, 0, NULL, 0, alpn);
+			imquic_qlog_alpn_information(conn->qlog, NULL, 0, NULL, 0, alpn);
 #endif
 		if(conn->socket->webtransport && !strcasecmp(alpn, "h3"))
 			conn->http3 = imquic_http3_connection_create(conn, conn->socket->subprotocol);
@@ -2982,9 +2982,9 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 #ifdef HAVE_QLOG
 	/* Trace events, if needed */
 	if(conn->qlog != NULL) {
-		imquic_qlog_transport_version_information(conn->qlog, 1, 1);
-		imquic_qlog_transport_alpn_information(conn->qlog, NULL, 0, conn->alpn.buffer, conn->alpn.length, 0);
-		json_t *data = imquic_qlog_transport_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
+		imquic_qlog_version_information(conn->qlog, 1, 1);
+		imquic_qlog_alpn_information(conn->qlog, NULL, 0, conn->alpn.buffer, conn->alpn.length, 0);
+		json_t *data = imquic_qlog_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
 		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_IDLE_TIMEOUT), json_integer(conn->local_params.max_idle_timeout));
 		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_UDP_PAYLOAD_SIZE), json_integer(conn->local_params.max_udp_payload_size));
 		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_DATA), json_integer(conn->local_params.initial_max_data));
@@ -3000,10 +3000,10 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 		const char *cid_str = imquic_connection_id_str(&conn->local_cid, cid, sizeof(cid));
 		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_SOURCE_CONNECTION_ID), json_string(cid_str));
 		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_DATAGRAM_FRAME_SIZE), json_integer(conn->local_params.max_datagram_frame_size));
-		imquic_qlog_transport_parameters_set(conn->qlog, data);
-		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+		imquic_qlog_parameters_set(conn->qlog, data);
+		imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
 			conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
-		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+		imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
 			conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
 	}
 #endif

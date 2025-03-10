@@ -180,7 +180,7 @@ static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char
 	}
 #ifdef HAVE_QLOG
 	if(conn->qlog != NULL) {
-		imquic_qlog_transport_alpn_information(conn->qlog,
+		imquic_qlog_alpn_information(conn->qlog,
 			conn->alpn.buffer, conn->alpn.length, (uint8_t *)in, inlen, alpn);
 	}
 #endif
@@ -856,7 +856,7 @@ static int imquic_tls_set_read_secret(SSL *ssl, enum ssl_encryption_level_t leve
 #ifdef HAVE_QLOG
 	if(conn->qlog != NULL) {
 		/* TODO The key phase should be the full thing, not the bit */
-		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(level, !conn->is_server),
+		imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(level, !conn->is_server),
 			conn->keys[level].remote.key[0], conn->keys[level].remote.key_len, 0);
 	}
 #endif
@@ -879,7 +879,7 @@ static int imquic_tls_set_write_secret(SSL *ssl, enum ssl_encryption_level_t lev
 #ifdef HAVE_QLOG
 	if(conn->qlog != NULL) {
 		/* TODO The key phase should be the full thing, not the bit */
-		imquic_qlog_security_key_updated(conn->qlog, imquic_encryption_key_type_str(level, conn->is_server),
+		imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(level, conn->is_server),
 			conn->keys[level].local.key[0], conn->keys[level].local.key_len, 0);
 	}
 #endif

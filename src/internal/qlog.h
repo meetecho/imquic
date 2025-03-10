@@ -99,7 +99,7 @@ void imquic_qlog_destroy(imquic_qlog *qlog);
  * @param qlog The imquic_qlog instance to add the event to
  * @param version The version we support (just one, right now)
  * @param chosen The chosen version */
-void imquic_qlog_transport_version_information(imquic_qlog *qlog, uint32_t version, uint32_t chosen);
+void imquic_qlog_version_information(imquic_qlog *qlog, uint32_t version, uint32_t chosen);
 /*! \brief Add a \c alpn_information event
  * @param qlog The imquic_qlog instance to add the event to
  * @param server_alpn The buffer containing the list of server ALPNs, if any
@@ -107,36 +107,36 @@ void imquic_qlog_transport_version_information(imquic_qlog *qlog, uint32_t versi
  * @param client_alpn The buffer containing the list of client ALPNs, if any
  * @param client_alpn_len The size of the client ALPN buffer
  * @param chosen The chosen ALPN */
-void imquic_qlog_transport_alpn_information(imquic_qlog *qlog, uint8_t *server_alpn, size_t server_alpn_len,
+void imquic_qlog_alpn_information(imquic_qlog *qlog, uint8_t *server_alpn, size_t server_alpn_len,
 	uint8_t *client_alpn, size_t client_alpn_len, char *chosen);
 /*! \brief Prepare a \c parameters_set object, but don't add it yet
  * @note This is needed to prepare an object that calls that can be
- * filled in externally, and then be passed to imquic_qlog_transport_parameters_set
+ * filled in externally, and then be passed to imquic_qlog_parameters_set
  * @param qlog The imquic_qlog instance to prepare the data for
  * @param local Whether this is a local or remote parameters set
  * @param resumption Whether the \c resumption_allowed property should be set to TRUE
  * @param early_data Whether the \c early_data_enabled property should be set to TRUE
  * @returns A pointer to the parameters set object, if successful, or NULL otherwise */
-json_t *imquic_qlog_transport_prepare_parameters_set(imquic_qlog *qlog, gboolean local, gboolean resumption, gboolean early_data);
+json_t *imquic_qlog_prepare_parameters_set(imquic_qlog *qlog, gboolean local, gboolean resumption, gboolean early_data);
 /*! \brief Add a \c parameters_set event
  * @param qlog The imquic_qlog instance to add the event to
  * @param params Pointer to a previously filled parameters set data object */
-void imquic_qlog_transport_parameters_set(imquic_qlog *qlog, json_t *params);
+void imquic_qlog_parameters_set(imquic_qlog *qlog, json_t *params);
 /*! \brief Add a \c udp_datagrams_sent event
  * @param qlog The imquic_qlog instance to add the event to
  * @param length The size of the datagram that was sent */
-void imquic_qlog_transport_udp_datagrams_sent(imquic_qlog *qlog, size_t length);
+void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, size_t length);
 /*! \brief Add a \c udp_datagrams_received event
  * @param qlog The imquic_qlog instance to add the event to
  * @param length The size of the datagram that was sent */
-void imquic_qlog_transport_udp_datagrams_received(imquic_qlog *qlog, size_t length);
+void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, size_t length);
 /*! \brief Add a \c key_updated event
  * @param qlog The imquic_qlog instance to add the event to
  * @param type The key type
  * @param key Pointer to the key value
  * @param key_len Size of the key value
  * @param key_phase The key phase */
-void imquic_qlog_security_key_updated(imquic_qlog *qlog, const char *type, uint8_t *key, size_t key_len, uint64_t key_phase);
+void imquic_qlog_key_updated(imquic_qlog *qlog, const char *type, uint8_t *key, size_t key_len, uint64_t key_phase);
 
 ///@}
 

@@ -193,10 +193,10 @@ static void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event) {
 }
 
 /* Events tracing */
-void imquic_qlog_transport_version_information(imquic_qlog *qlog, uint32_t version, uint32_t chosen) {
+void imquic_qlog_version_information(imquic_qlog *qlog, uint32_t version, uint32_t chosen) {
 	if(qlog == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("transport:version_information");
+	json_t *event = imquic_qlog_event_prepare("quic:version_information");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_t *vs = json_array();
 	json_array_append_new(vs, json_integer(GPOINTER_TO_UINT(version)));
@@ -206,11 +206,11 @@ void imquic_qlog_transport_version_information(imquic_qlog *qlog, uint32_t versi
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_qlog_transport_alpn_information(imquic_qlog *qlog, uint8_t *server_alpn, size_t server_alpn_len,
+void imquic_qlog_alpn_information(imquic_qlog *qlog, uint8_t *server_alpn, size_t server_alpn_len,
 		uint8_t *client_alpn, size_t client_alpn_len, char *chosen) {
 	if(qlog == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("transport:alpn_information");
+	json_t *event = imquic_qlog_event_prepare("quic:alpn_information");
 	json_t *data = imquic_qlog_event_add_data(event);
 	if(server_alpn != NULL && server_alpn_len > 0) {
 		json_t *list = json_array();
@@ -251,7 +251,7 @@ void imquic_qlog_transport_alpn_information(imquic_qlog *qlog, uint8_t *server_a
 	imquic_qlog_append_event(qlog, event);
 }
 
-json_t *imquic_qlog_transport_prepare_parameters_set(imquic_qlog *qlog, gboolean local, gboolean resumption, gboolean early_data) {
+json_t *imquic_qlog_prepare_parameters_set(imquic_qlog *qlog, gboolean local, gboolean resumption, gboolean early_data) {
 	json_t *params = json_object();
 	json_object_set_new(params, "owner", json_string(local ? "local" : "remote"));
 	if(resumption)
@@ -261,41 +261,41 @@ json_t *imquic_qlog_transport_prepare_parameters_set(imquic_qlog *qlog, gboolean
 	return params;
 }
 
-void imquic_qlog_transport_parameters_set(imquic_qlog *qlog, json_t *params) {
+void imquic_qlog_parameters_set(imquic_qlog *qlog, json_t *params) {
 	if(qlog == NULL || params == NULL) {
 		if(params != NULL)
 			json_decref(params);
 		return;
 	}
-	json_t *event = imquic_qlog_event_prepare("transport:parameters_set");
+	json_t *event = imquic_qlog_event_prepare("quic:parameters_set");
 	json_object_set_new(event, "data", params);
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_qlog_transport_udp_datagrams_sent(imquic_qlog *qlog, size_t length) {
+void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, size_t length) {
 	if(qlog == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("transport:udp_datagrams_sent");
+	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_sent");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
 	imquic_qlog_event_add_raw(data, length);
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_qlog_transport_udp_datagrams_received(imquic_qlog *qlog, size_t length) {
+void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, size_t length) {
 	if(qlog == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("transport:udp_datagrams_received");
+	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_received");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
 	imquic_qlog_event_add_raw(data, length);
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_qlog_security_key_updated(imquic_qlog *qlog, const char *type, uint8_t *key, size_t key_len, uint64_t key_phase) {
+void imquic_qlog_key_updated(imquic_qlog *qlog, const char *type, uint8_t *key, size_t key_len, uint64_t key_phase) {
 	if(qlog == NULL || type == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("security:key_updated");
+	json_t *event = imquic_qlog_event_prepare("quic:key_updated");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "key_type", json_string(type));
 	if(key != NULL && key_len > 0) {
