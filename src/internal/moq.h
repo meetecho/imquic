@@ -26,6 +26,7 @@
 #include "../imquic/imquic.h"
 #include "../imquic/moq.h"
 #include "utils.h"
+#include "qlog.h"
 #include "refcount.h"
 
 #define IMQUIC_MOQ		7171953
@@ -1340,7 +1341,81 @@ void imquic_moq_connection_gone(imquic_connection *conn);
 /** @name QLOG events tracing for MoQT
  */
 ///@{
-
+/*! \brief Helper to create a new QLOG MoQT message
+ * @note This automatically fills in the \c type property
+ * @param type The name of the message
+ * @returns A message instance to fill in before using it it, if successful, or NULL otherwise */
+json_t *imquic_qlog_moq_message_prepare(const char *type);
+/*! \brief Add a \c control_message_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this message
+ * @param length The length of the message
+ * @param message The message content */
+void imquic_moq_qlog_control_message_created(imquic_qlog *qlog, uint64_t stream_id, size_t length, json_t *message);
+/*! \brief Add a \c control_message_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this message
+ * @param length The length of the message
+ * @param message The message content */
+void imquic_moq_qlog_control_message_parsed(imquic_qlog *qlog, uint64_t stream_id, size_t length, json_t *message);
+/*! \brief Add a \c stream_type_set event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param local Whether this is a local or remote stream
+ * @param stream_id The Stream ID used for this message
+ * @param type The stream type */
+void imquic_moq_qlog_stream_type_set(imquic_qlog *qlog, gboolean local, uint64_t stream_id, const char *type);
+/*! \brief Add a \c object_datagram_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_created(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c object_datagram_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_parsed(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c object_datagram_status_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_status_created(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c object_datagram_status_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_status_parsed(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c subgroup_header_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The stream used for this header */
+void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c subgroup_header_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The stream used for this header */
+void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c subgroup_header_object_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_subgroup_header_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+/*! \brief Add a \c subgroup_header_object_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_subgroup_header_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+/*! \brief Add a \c fetch_header_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The stream used for this header */
+void imquic_moq_qlog_fetch_header_created(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c fetch_header_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The stream used for this header */
+void imquic_moq_qlog_fetch_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c fetch_header_object_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_fetch_header_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+/*! \brief Add a \c fetch_header_object_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_fetch_header_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
 ///@}
 #endif
 
