@@ -206,14 +206,19 @@ json_t *imquic_qlog_event_add_data(json_t *event) {
 	return data;
 }
 
-static json_t *imquic_qlog_event_add_raw(json_t *data, size_t length) {
-	if(data == NULL)
-		return NULL;
+void imquic_qlog_event_add_raw(json_t *data, const char *name, uint8_t *bytes, size_t length) {
+	if(data == NULL || name == NULL)
+		return;
 	json_t *raw = json_object();
 	/* FIXME We should add the payload_length property too */
 	json_object_set_new(raw, "length", json_integer(length));
-	json_object_set_new(data, "raw", raw);
-	return data;
+	if(bytes != NULL && length > 0) {
+		char b_str[81];
+		if(length > 40)
+			length = 40;	/* Truncate */
+		json_object_set_new(raw, "data", json_string(imquic_hex_str(bytes, length, b_str, sizeof(b_str))));
+	}
+	json_object_set_new(data, name, raw);
 }
 
 static json_t *imquic_qlog_event_add_datagram_ids(json_t *data, uint32_t id) {
@@ -417,7 +422,7 @@ void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, uint32_t id, siz
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "header", header);
 	if(length > 0)
-		imquic_qlog_event_add_raw(data, length);
+		imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)
 		json_object_set_new(data, "datagram_id", json_integer(id));
 	imquic_qlog_append_event(qlog, event);
@@ -433,7 +438,7 @@ void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, uint32_t id,
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "header", header);
 	if(length > 0)
-		imquic_qlog_event_add_raw(data, length);
+		imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)
 		json_object_set_new(data, "datagram_id", json_integer(id));
 	imquic_qlog_append_event(qlog, event);
@@ -450,7 +455,7 @@ void imquic_qlog_packet_dropped(imquic_qlog *qlog, json_t *header, uint32_t id, 
 	if(header != NULL)
 		json_object_set_new(data, "header", header);
 	if(length > 0)
-		imquic_qlog_event_add_raw(data, length);
+		imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)
 		json_object_set_new(data, "datagram_id", json_integer(id));
 	if(trigger != NULL)
@@ -464,7 +469,7 @@ void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, uint32_t id, size_t lengt
 	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_sent");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
-	imquic_qlog_event_add_raw(data, length);
+	imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)
 		imquic_qlog_event_add_datagram_ids(data, id);
 	imquic_qlog_append_event(qlog, event);
@@ -476,7 +481,7 @@ void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, uint32_t id, size_t l
 	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_received");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
-	imquic_qlog_event_add_raw(data, length);
+	imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)
 		imquic_qlog_event_add_datagram_ids(data, id);
 	imquic_qlog_append_event(qlog, event);
@@ -487,7 +492,7 @@ void imquic_qlog_udp_datagrams_dropped(imquic_qlog *qlog, uint32_t id, size_t le
 		return;
 	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_dropped");
 	json_t *data = imquic_qlog_event_add_data(event);
-	imquic_qlog_event_add_raw(data, length);
+	imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)
 		imquic_qlog_event_add_datagram_ids(data, id);
 	imquic_qlog_append_event(qlog, event);

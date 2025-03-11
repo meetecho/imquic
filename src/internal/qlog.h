@@ -116,6 +116,12 @@ json_t *imquic_qlog_event_prepare(const char *name);
  * @param event The event to add the data object to
  * @returns A pointer to the data object, if successful, or NULL otherwise */
 json_t *imquic_qlog_event_add_data(json_t *event);
+/*! \brief Helper to add a \c raw object to the event data
+ * @param data The data object to add the raw info to
+ * @param name Name to give to the raw object
+ * @param bytes The content of the raw data, if needed
+ * @param length The size of the raw data */
+void imquic_qlog_event_add_raw(json_t *data, const char *name, uint8_t *bytes, size_t length);
 /*! \brief Helper to add a complete event object to an existing QLOG instance
  * @param qlog The imquic_qlog instance to add the event to
  * @param event The event to add to the QLOG instance */

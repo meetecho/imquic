@@ -1346,6 +1346,11 @@ void imquic_moq_connection_gone(imquic_connection *conn);
  * @param type The name of the message
  * @returns A message instance to fill in before using it it, if successful, or NULL otherwise */
 json_t *imquic_qlog_moq_message_prepare(const char *type);
+/*! \brief Helper to create a namespace tuple array to a message
+ * @note This automatically fills in the \c track_namespace property
+ * @param message The message object to update
+ * @param track_namespace The namespace to serialize to an array */
+void imquic_qlog_moq_message_add_namespace(json_t *message, imquic_moq_namespace *track_namespace);
 /*! \brief Add a \c control_message_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message
