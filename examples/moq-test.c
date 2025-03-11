@@ -749,6 +749,23 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	/* Check if we need to create a QLOG file, and which we should save */
+	gboolean qlog_quic = FALSE, qlog_moq = FALSE;
+	if(options.qlog_path != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG files in %s\n", options.qlog_path);
+		int i = 0;
+		while(options.qlog_logging != NULL && options.qlog_logging[i] != NULL) {
+			if(!strcasecmp(options.qlog_logging[i], "quic")) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
+				qlog_quic = TRUE;
+			} else if(!strcasecmp(options.qlog_logging[i], "moq")) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging MoQT events\n");
+				qlog_moq = TRUE;
+			}
+			i++;
+		}
+	}
+
 	/* Initialize the library and create a server */
 	if(imquic_init(options.secrets_log) < 0) {
 		ret = 1;
@@ -764,6 +781,8 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
 		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
+		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
+		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(server == NULL) {

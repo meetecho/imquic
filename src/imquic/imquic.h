@@ -267,6 +267,12 @@ typedef enum imquic_config {
 	 * filename, as servers will handle multiple connections. This property
 	 * is ignored (apart from a warning) if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_PATH,
+	/*! \brief Whether to save QUIC events to QLOG (true by default)
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_QUIC,
+	/*! \brief Whether to save MoQ events to QLOG
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_MOQ,
 	/*! \brief Generic user data, if any (void pointer) */
 	IMQUIC_CONFIG_USER_DATA,
 	/*! \brief Must be the last property, followed by NULL */

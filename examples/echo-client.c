@@ -158,6 +158,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_TICKET_FILE, options.ticket_file,
 		IMQUIC_CONFIG_HTTP3_PATH, options.path,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
+		IMQUIC_CONFIG_QLOG_QUIC, (options.qlog_path != NULL),
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {
 		ret = 1;

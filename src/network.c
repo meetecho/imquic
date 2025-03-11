@@ -449,6 +449,8 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 				ne->qlog_path = g_strdup(config->qlog_path);
 			}
 		}
+		ne->qlog_quic = config->qlog_quic;
+		ne->qlog_moq = config->qlog_moq;
 #endif
 	}
 	ne->connections = g_hash_table_new_full(NULL, NULL,

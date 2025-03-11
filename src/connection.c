@@ -197,9 +197,11 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 			char filename[1024];
 			g_snprintf(filename, sizeof(filename), "%s/imquic-%"SCNi64"-%"SCNu64".qlog",
 				conn->socket->qlog_path, g_get_real_time(), id);
-			conn->qlog = imquic_qlog_create(conn->name, TRUE, filename);
+			conn->qlog = imquic_qlog_create(conn->name, TRUE, filename,
+				conn->socket->qlog_quic, conn->socket->qlog_moq);
 		} else {
-			conn->qlog = imquic_qlog_create(conn->name, FALSE, (char *)conn->socket->qlog_path);
+			conn->qlog = imquic_qlog_create(conn->name, FALSE, (char *)conn->socket->qlog_path,
+				conn->socket->qlog_quic, conn->socket->qlog_moq);
 		}
 	}
 #endif
@@ -505,7 +507,7 @@ int imquic_connection_new_stream_id(imquic_connection *conn, gboolean bidirectio
 	if(stream_id)
 		*stream_id = new_stream_id;
 #ifdef HAVE_QLOG
-	if(conn->qlog != NULL) {
+	if(conn->qlog != NULL && conn->qlog->quic) {
 		imquic_qlog_stream_state_updated(conn->qlog, new_stream_id,
 			(bidirectional ? "bidirectional" : "unidirectional"),
 			(!bidirectional ? "sending" : NULL), "open");
@@ -635,7 +637,7 @@ void imquic_connection_close(imquic_connection *conn, uint64_t error_code, uint6
 		return;
 	imquic_send_close_connection(conn, error_code, frame_type, reason);
 #if HAVE_QLOG
-	if(conn->qlog != NULL) {
+	if(conn->qlog != NULL && conn->qlog->quic) {
 		imquic_qlog_connection_closed(conn->qlog, TRUE,
 			(frame_type == IMQUIC_CONNECTION_CLOSE ? error_code : 0),
 			(frame_type == IMQUIC_CONNECTION_CLOSE_APP ? error_code : 0),

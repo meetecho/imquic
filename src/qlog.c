@@ -48,9 +48,13 @@ static void imquic_qlog_free(const imquic_refcount *qlog_ref) {
 	g_free(qlog);
 }
 
-imquic_qlog *imquic_qlog_create(char *id, gboolean is_server, char *filename) {
+imquic_qlog *imquic_qlog_create(char *id, gboolean is_server, char *filename, gboolean quic, gboolean moq) {
 	if(id == NULL || filename == NULL)
 		return NULL;
+	if(!quic && !moq) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't create QLOG instance, at least one of QUIC and MoQ should be enabled\n", id);
+		return NULL;
+	}
 	imquic_qlog *qlog = g_malloc0(sizeof(imquic_qlog));
 	qlog->file = fopen(filename, "wt");
 	if(qlog->file == NULL) {
@@ -62,6 +66,8 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean is_server, char *filename) {
 	qlog->id = g_strdup(id);
 	qlog->is_server = is_server;
 	qlog->filename = g_strdup(filename);
+	qlog->quic = quic;
+	qlog->moq = moq;
 	/* Initialize the QLOG structure */
 	qlog->root = json_object();
 	json_object_set_new(qlog->root, "qlog_format", json_string("JSON"));
@@ -72,8 +78,17 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean is_server, char *filename) {
 	json_t *trace = json_object();
 	json_t *common = json_object();
 	json_t *protocols = json_array();
-	json_array_append_new(protocols, json_string("QUIC"));
+	json_t *schemas = json_array();
+	if(quic) {
+		json_array_append_new(protocols, json_string("QUIC"));
+		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:quic-09"));
+	}
+	if(moq) {
+		json_array_append_new(protocols, json_string("MOQT"));
+		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:moqt-00"));
+	}
 	json_object_set_new(common, "protocol_types", protocols);
+	json_object_set_new(common, "event_schemas", schemas);
 	json_object_set_new(common, "ODCID", json_string("xxx"));	/* Needs to be the Original Connection ID */
 	json_object_set_new(common, "time_format", json_string("relative_to_epoch"));
 	json_t *reference = json_object();

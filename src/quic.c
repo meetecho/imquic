@@ -346,7 +346,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			/* We got a Retry */
 			conn = g_hash_table_lookup(connections, &pkt->destination);
 #ifdef HAVE_QLOG
-			if(conn != NULL && conn->qlog != NULL && bytes == tot) {
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
 				conn->dgram_id_in++;
 				imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
 			}
@@ -354,7 +354,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			if(conn == NULL || conn->is_server || conn->level > ssl_encryption_initial) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring invalid Retry packet\n");
 #ifdef HAVE_QLOG
-				if(conn != NULL && conn->qlog != NULL) {
+				if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
 					json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "retry",
 						&pkt->source, &pkt->destination);
 					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
@@ -366,7 +366,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			if((bytes - offset) < 16) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Invalid Retry packet, not enough room for integrity tag\n");
 #ifdef HAVE_QLOG
-				if(conn->qlog != NULL) {
+				if(conn->qlog != NULL && conn->qlog->quic) {
 					json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "retry",
 						&pkt->source, &pkt->destination);
 					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
@@ -379,7 +379,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			if(token_len > sizeof(conn->retry_token.buffer)) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring Retry packet, token too large\n");
 #ifdef HAVE_QLOG
-				if(conn->qlog != NULL) {
+				if(conn->qlog != NULL && conn->qlog->quic) {
 					json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "retry",
 						&pkt->source, &pkt->destination);
 					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
@@ -398,7 +398,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			if(imquic_verify_retry(quic, bytes, conn->remote_cid.id, conn->remote_cid.len) < 0) {
 				/* The verification of the integrity tag failed */
 #ifdef HAVE_QLOG
-				if(conn->qlog != NULL) {
+				if(conn->qlog != NULL && conn->qlog->quic) {
 					json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "retry",
 						&pkt->source, &pkt->destination);
 					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
@@ -414,7 +414,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 					conn->remote_cid.id, conn->remote_cid.len, FALSE) < 0) {
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error deriving initial secret\n", imquic_get_connection_name(conn));
 #ifdef HAVE_QLOG
-				if(conn->qlog != NULL) {
+				if(conn->qlog != NULL && conn->qlog->quic) {
 					json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "retry",
 						&pkt->source, &pkt->destination);
 					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
@@ -423,7 +423,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 				return bytes;
 			}
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
 					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
 				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
@@ -458,7 +458,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		} else if(type == IMQUIC_0RTT) {
 			conn = g_hash_table_lookup(connections, &pkt->destination);
 #ifdef HAVE_QLOG
-			if(conn != NULL && conn->qlog != NULL && bytes == tot) {
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
 				conn->dgram_id_in++;
 				imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
 			}
@@ -466,7 +466,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			if(conn == NULL || !conn->is_server || conn->keys[ssl_encryption_early_data].remote.md == NULL) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring 0-RTT\n");
 #ifdef HAVE_QLOG
-				if(conn != NULL && conn->qlog != NULL) {
+				if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
 					json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "0RTT",
 						&pkt->source, &pkt->destination);
 					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_GENERAL);
@@ -524,7 +524,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 				memcpy(conn->initial_cid.id, pkt->destination.id, pkt->destination.len);
 				imquic_quic_connection_add(conn, &conn->initial_cid);
 #ifdef HAVE_QLOG
-				if(conn->qlog != NULL)
+				if(conn->qlog != NULL && conn->qlog->quic)
 					imquic_qlog_set_odcid(conn->qlog, &conn->initial_cid);
 #endif
 			}
@@ -536,7 +536,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			memcpy(&conn->local_cid.token[sizeof(st1)], &st2, sizeof(st2));
 			imquic_quic_connection_add(conn, &conn->local_cid);
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				char src_ip[NI_MAXHOST] = { 0 }, dst_ip[NI_MAXHOST] = { 0 };
 				imquic_qlog_connection_started(conn->qlog,
 					imquic_network_address_str(sender, src_ip, sizeof(src_ip), FALSE), imquic_network_address_port(sender),
@@ -546,7 +546,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 #endif
 		}
 #ifdef HAVE_QLOG
-		if(conn->qlog != NULL && bytes == tot) {
+		if(conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
 			conn->dgram_id_in++;
 			imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
 		}
@@ -565,7 +565,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "Error deriving initial secret\n");
 				pkt->is_valid = FALSE;
 #ifdef HAVE_QLOG
-				if(conn->qlog != NULL) {
+				if(conn->qlog != NULL && conn->qlog->quic) {
 					json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, imquic_encryption_level_str(pkt->level),
 						&pkt->source, &pkt->destination);
 					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
@@ -574,7 +574,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 				return -1;
 			}
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
 					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
 				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
@@ -590,7 +590,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Error unprotecting packet\n");
 			pkt->is_valid = FALSE;
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, imquic_encryption_level_str(pkt->level),
 					&pkt->source, &pkt->destination);
 				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
@@ -607,7 +607,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Invalid packet: reserved is not 0\n");
 			pkt->is_valid = FALSE;
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, imquic_encryption_level_str(pkt->level),
 					&pkt->source, &pkt->destination);
 				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
@@ -679,7 +679,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			return -1;
 		}
 #ifdef HAVE_QLOG
-		if(conn->qlog != NULL && bytes == tot) {
+		if(conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
 			conn->dgram_id_in++;
 			imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
 		}
@@ -694,7 +694,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error unprotecting packet\n");
 			pkt->is_valid = FALSE;
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "1RTT",
 					NULL, &pkt->destination);
 				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
@@ -710,7 +710,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Invalid packet: reserved is not 0\n");
 			pkt->is_valid = FALSE;
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, "1RTT",
 					NULL, &pkt->destination);
 				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
@@ -739,7 +739,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			imquic_update_keys(&conn->keys[ssl_encryption_application], pkt->key_phase);
 			conn->current_phase = pkt->key_phase;
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, conn->is_server),
 					conn->keys[ssl_encryption_application].local.key[conn->current_phase],
 					conn->keys[ssl_encryption_application].local.key_len, conn->current_phase);
@@ -770,7 +770,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decrypting packet\n");
 			pkt->is_valid = FALSE;
 #ifdef HAVE_QLOG
-			if(conn->qlog != NULL) {
+			if(conn->qlog != NULL && conn->qlog->quic) {
 				json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, imquic_encryption_level_str(pkt->level),
 					(lh ? &pkt->source : NULL), &pkt->destination);
 				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
@@ -818,7 +818,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		conn->last_activity = g_get_monotonic_time();
 #ifdef HAVE_QLOG
 		/* TODO Add proper header and parsed payload */
-		if(conn->qlog != NULL) {
+		if(conn->qlog != NULL && conn->qlog->quic) {
 			json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog,
 				imquic_encryption_level_str(pkt->level),
 				(lh ? &pkt->source : NULL),
@@ -1253,7 +1253,7 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, uint8_t *bytes, size
 					stream->client_initiated ? "client" : "server", stream->bidirectional ? "bidirectional" : "unidirectional", stream_id);
 				g_hash_table_insert(conn->streams, imquic_dup_uint64(stream_id), stream);
 #ifdef HAVE_QLOG
-				if(conn->qlog != NULL) {
+				if(conn->qlog != NULL && conn->qlog->quic) {
 					imquic_qlog_stream_state_updated(conn->qlog, stream_id,
 						(bidirectional ? "bidirectional" : "unidirectional"),
 						(!bidirectional ? "receiving" : NULL), "open");
@@ -1328,7 +1328,7 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, uint8_t *bytes, size
 		g_hash_table_insert(conn->streams_done, imquic_dup_uint64(stream_id), GINT_TO_POINTER(1));
 		imquic_mutex_unlock(&conn->mutex);
 #ifdef HAVE_QLOG
-		if(conn->qlog != NULL)
+		if(conn->qlog != NULL && conn->qlog->quic)
 			imquic_qlog_stream_state_updated(conn->qlog, stream_id, NULL, NULL, "closed");
 #endif
 	} else {
@@ -1516,7 +1516,7 @@ size_t imquic_payload_parse_connection_close(imquic_connection *conn, uint8_t *b
 		offset += rlen;
 	}
 #if HAVE_QLOG
-	if(conn->qlog != NULL) {
+	if(conn->qlog != NULL && conn->qlog->quic) {
 		char reason[256];
 		reason[0] = '\0';
 		if(rlen > 0)
@@ -1886,7 +1886,7 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 #ifdef HAVE_QLOG
 	/* Trace events, if needed */
 	json_t *data = NULL;
-	if(conn != NULL && conn->qlog != NULL) {
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
 		/* TODO Set resumption properly */
 		data = imquic_qlog_prepare_parameters_set(conn->qlog, FALSE, FALSE, conn->socket->tls->early_data);
 	}
@@ -2166,7 +2166,7 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 	}
 done:
 #ifdef HAVE_QLOG
-	if(conn != NULL && conn->qlog != NULL) {
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
 		if(res < 0 && data != NULL)
 			json_decref(data);
 		else
@@ -2445,7 +2445,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 			g_hash_table_remove(conn->streams, &stream->stream_id);
 			g_hash_table_insert(conn->streams_done, imquic_dup_uint64(stream->stream_id), GINT_TO_POINTER(1));
 #ifdef QLOG
-			if(conn->qlog != NULL)
+			if(conn->qlog != NULL && conn->qlog->quic)
 				imquic_qlog_stream_state_updated(conn->qlog, stream_id, NULL, NULL, "closed");
 #endif
 		}
@@ -2767,7 +2767,7 @@ int imquic_send_packet(imquic_connection *conn, imquic_packet *pkt) {
 		//~ res = imquic_network_send(conn, pkt->data.buffer, pkt->data.length);
 	int res = imquic_network_send(conn, pkt->data.buffer, pkt->data.length);
 #ifdef HAVE_QLOG
-	if(res > 0 && conn->qlog != NULL) {
+	if(res > 0 && conn->qlog != NULL && conn->qlog->quic) {
 		conn->dgram_id_out++;
 		/* TODO Add proper header and parsed payload */
 		json_t *ph = imquic_qlog_prepare_packet_header(conn->qlog, imquic_encryption_level_str(pkt->level),
@@ -2932,7 +2932,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 				}
 #ifdef HAVE_QLOG
 				/* Trace events, if needed */
-				if(conn->qlog != NULL) {
+				if(conn->qlog != NULL && conn->qlog->quic) {
 					/* TODO Set resumption properly */
 					json_t *data = imquic_qlog_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
 					char cid[41];
@@ -3023,7 +3023,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
 			imquic_get_connection_name(conn), alpn);
 #ifdef HAVE_QLOG
-		if(conn->qlog != NULL)
+		if(conn->qlog != NULL && conn->qlog->quic)
 			imquic_qlog_alpn_information(conn->qlog, NULL, 0, NULL, 0, alpn);
 #endif
 		if(conn->socket->webtransport && !strcasecmp(alpn, "h3"))
@@ -3070,7 +3070,7 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 	conn->remote_cid.len = sizeof(dest_id);
 	memcpy(conn->remote_cid.id, &dest_id, conn->remote_cid.len);
 #ifdef HAVE_QLOG
-	if(conn->qlog != NULL)
+	if(conn->qlog != NULL && conn->qlog->quic)
 		imquic_qlog_set_odcid(conn->qlog, &conn->remote_cid);
 #endif
 	uint64_t local_cid = imquic_random_uint64();
@@ -3125,7 +3125,7 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 	}
 #ifdef HAVE_QLOG
 	/* Trace events, if needed */
-	if(conn->qlog != NULL) {
+	if(conn->qlog != NULL && conn->qlog->quic) {
 		char src_ip[NI_MAXHOST] = { 0 }, dst_ip[NI_MAXHOST] = { 0 };
 		imquic_qlog_connection_started(conn->qlog,
 			imquic_network_address_str(&conn->socket->local_address, src_ip, sizeof(src_ip), FALSE), conn->socket->port,
