@@ -107,6 +107,8 @@ typedef struct imquic_network_endpoint {
 	} callbacks;
 	/*! \brief Path to save QLOG files to, if needed/supported: a filename for clients, a folder for servers */
 	char *qlog_path;
+	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */
+	gboolean qlog_sequential;
 	/*! \brief Whether QUIC and/or MoQT events should be saved to QLOG, if supported */
 	gboolean qlog_quic, qlog_moq;
 	/*! \brief Mutex */

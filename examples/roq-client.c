@@ -216,6 +216,14 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	/* Check if we need to create a QLOG file */
+	if(options.qlog_path != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG file '%s'\n", options.qlog_path);
+		if(options.qlog_sequential)
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using sequential JSON\n");
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
+	}
+
 	/* Initialize the library and create a server */
 	if(imquic_init(options.secrets_log) < 0) {
 		ret = 1;
@@ -238,6 +246,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_HTTP3_PATH, options.path,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, (options.qlog_path != NULL),
+		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {
 		ret = 1;

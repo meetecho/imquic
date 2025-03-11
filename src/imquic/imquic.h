@@ -273,6 +273,9 @@ typedef enum imquic_config {
 	/*! \brief Whether to save MoQ events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_MOQ,
+	/*! \brief Whether sequential JSON should be used, instead of regular JSON
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_SEQUENTIAL,
 	/*! \brief Generic user data, if any (void pointer) */
 	IMQUIC_CONFIG_USER_DATA,
 	/*! \brief Must be the last property, followed by NULL */

@@ -397,7 +397,9 @@ int main(int argc, char *argv[]) {
 	/* Check if we need to create a QLOG file, and which we should save */
 	gboolean qlog_quic = FALSE, qlog_moq = FALSE;
 	if(options.qlog_path != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG files in %s\n", options.qlog_path);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG file '%s'\n", options.qlog_path);
+		if(options.qlog_sequential)
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using sequential JSON\n");
 		int i = 0;
 		while(options.qlog_logging != NULL && options.qlog_logging[i] != NULL) {
 			if(!strcasecmp(options.qlog_logging[i], "quic")) {
@@ -434,6 +436,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
+		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {
 		ret = 1;

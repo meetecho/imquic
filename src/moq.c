@@ -19,6 +19,7 @@
 
 #include "internal/moq.h"
 #include "internal/connection.h"
+#include "internal/qlog.h"
 #include "imquic/debug.h"
 
 /* Logging */

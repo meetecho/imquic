@@ -451,6 +451,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		}
 		ne->qlog_quic = config->qlog_quic;
 		ne->qlog_moq = config->qlog_moq;
+		ne->qlog_sequential = config->qlog_sequential;
 #endif
 	}
 	ne->connections = g_hash_table_new_full(NULL, NULL,

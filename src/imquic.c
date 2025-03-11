@@ -241,6 +241,8 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			config.qlog_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
 			config.qlog_moq = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
+			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {
@@ -313,6 +315,8 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.qlog_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
 			config.qlog_moq = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
+			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {

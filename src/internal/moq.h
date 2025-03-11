@@ -1336,4 +1336,12 @@ void imquic_moq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
 void imquic_moq_connection_gone(imquic_connection *conn);
 ///@}
 
+#ifdef HAVE_QLOG
+/** @name QLOG events tracing for MoQT
+ */
+///@{
+
+///@}
+#endif
+
 #endif
