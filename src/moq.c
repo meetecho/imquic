@@ -1939,6 +1939,11 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subscribe ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), subscribe_id);
+	uint64_t status_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken SUBSCRIBE_DONE");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Status Code: %s (%"SCNu64")\n",
+		imquic_get_connection_name(moq->conn), imquic_moq_sub_done_code_str(status_code), status_code);
 	uint64_t streams_count = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
 		uint64_t streams_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1947,13 +1952,9 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Streams Count: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), streams_count);
 	}
-	uint64_t status_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken SUBSCRIBE_DONE");
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Status Code: %s (%"SCNu64")\n",
-		imquic_get_connection_name(moq->conn), imquic_moq_sub_done_code_str(status_code), status_code);
 	uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken SUBSCRIBE_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || (moq->version < IMQUIC_MOQ_VERSION_08 && length >= blen-offset) ||
+		(moq->version >= IMQUIC_MOQ_VERSION_08 && length > blen-offset), 0, "Broken SUBSCRIBE_DONE");
 	offset += length;
 	char reason[200], *reason_str = NULL;
 	if(rs_len > 0) {
@@ -2511,7 +2512,7 @@ size_t imquic_moq_parse_fetch_error(imquic_moq_context *moq, uint8_t *bytes, siz
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_sub_error_code_str(error_code), error_code);
 	uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken FETCH_ERROR");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken FETCH_ERROR");
 	offset += length;
 	char reason[200], *reason_str = NULL;
 	if(rs_len > 0) {
@@ -2849,7 +2850,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		}
 	}
 	uint64_t object_status = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_04) {
+	if(moq->version >= IMQUIC_MOQ_VERSION_04 && moq->version < IMQUIC_MOQ_VERSION_08) {
 		object_status = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length > blen-offset) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "%s\n", "Broken OBJECT_DATAGRAM");
@@ -4686,7 +4687,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 	}
 	if(moq->version >= IMQUIC_MOQ_VERSION_08)
 		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions_count, extensions, elen);
-	if(moq->version >= IMQUIC_MOQ_VERSION_04)
+	if(moq->version >= IMQUIC_MOQ_VERSION_04 && moq->version < IMQUIC_MOQ_VERSION_08)
 		offset += imquic_write_varint(object_status, &bytes[offset], blen-offset);
 	if(payload != NULL && plen > 0) {
 		memcpy(&bytes[offset], payload, plen);
