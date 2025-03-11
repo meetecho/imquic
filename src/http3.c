@@ -383,7 +383,7 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 	headers = g_list_append(headers, imquic_qpack_entry_create(":scheme", "https"));
 	char address[256];
 	headers = g_list_append(headers, imquic_qpack_entry_create(":authority",
-		imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address))));	/* FIXME */
+		imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address), TRUE)));	/* FIXME */
 	const char *path = "/";
 	if(h3c->conn && h3c->conn->socket && h3c->conn->socket->h3_path)
 		path = (const char *)h3c->conn->socket->h3_path;

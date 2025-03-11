@@ -32,10 +32,15 @@ gboolean imquic_qlog_is_supported(void);
  */
 ///@{
 /*! \brief Trigger definitions */
+#define IMQUIC_QLOG_TRIGGER_INTERNAL_ERROR			"internal_error"
+#define IMQUIC_QLOG_TRIGGER_REJECTED				"rejected"
+#define IMQUIC_QLOG_TRIGGER_UNSUPPORTED				"unsupported"
+#define IMQUIC_QLOG_TRIGGER_INVALID					"invalid"
+#define IMQUIC_QLOG_TRIGGER_DUPLICATE				"duplicate"
+#define IMQUIC_QLOG_TRIGGER_CONNECTION_UNKNOWN		"connection_unknown"
+#define IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE		"decryption_failure"
 #define IMQUIC_QLOG_TRIGGER_KEY_UNAVAILABLE			"key_unavailable"
-#define IMQUIC_QLOG_TRIGGER_UNKNOWN_CONNECTION_ID	"unknown_connection_id"
-#define IMQUIC_QLOG_TRIGGER_DECRYPT_ERROR			"decrypt_error"
-#define IMQUIC_QLOG_TRIGGER_UNSUPPORTED_VERSION		"unsupported_version"
+#define IMQUIC_QLOG_TRIGGER_GENERAL					"general"
 ///@}
 
 /** @name QLOG management
@@ -95,6 +100,33 @@ void imquic_qlog_destroy(imquic_qlog *qlog);
 /** @name QLOG events tracing
  */
 ///@{
+/*! \brief Helper to create a new QLOG event by name
+ * @note This automatically fills in the \c time property
+ * @param name The name of the event
+ * @returns An event instance to fill in before appending it, if successful, or NULL otherwise */
+json_t *imquic_qlog_event_prepare(const char *name);
+/*! \brief Helper to add a \c data object to an event and return a pointer to it
+ * @param event The event to add the data object to
+ * @returns A pointer to the data object, if successful, or NULL otherwise */
+json_t *imquic_qlog_event_add_data(json_t *event);
+/*! \brief Helper to add a complete event object to an existing QLOG instance
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param event The event to add to the QLOG instance */
+void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event);
+/*! \brief Add a \c connection_started event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param src_ip The address the connection is coming from
+ * @param src_port The port the connection is coming from
+ * @param dst_ip The address the connection is going to
+ * @param dst_port The port the connection is going to */
+void imquic_qlog_connection_started(imquic_qlog *qlog, const char *src_ip, uint16_t src_port, const char *dst_ip, uint16_t dst_port);
+/*! \brief Add a \c connection_closed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param local Whether this is a local or remote event
+ * @param cc_code The connection code in the Connection Close message, if any
+ * @param app_code The application code in the Connection Close message, if any
+ * @param reason The reason text in the Connection Close message, if any */
+void imquic_qlog_connection_closed(imquic_qlog *qlog, gboolean local, uint32_t cc_code, uint32_t app_code, const char *reason);
 /*! \brief Add a \c version_information event
  * @param qlog The imquic_qlog instance to add the event to
  * @param version The version we support (just one, right now)
@@ -122,14 +154,59 @@ json_t *imquic_qlog_prepare_parameters_set(imquic_qlog *qlog, gboolean local, gb
  * @param qlog The imquic_qlog instance to add the event to
  * @param params Pointer to a previously filled parameters set data object */
 void imquic_qlog_parameters_set(imquic_qlog *qlog, json_t *params);
+/*! \brief Prepare a \c header object, but don't add it yet
+ * @note This is needed to prepare an object that calls that can be
+ * filled in externally, and then be passed to events that involve packets
+ * @param qlog The imquic_qlog instance to prepare the data for
+ * @param type The packet type
+ * @param scid Opaque pointer to the source imquic_connection_id, if any
+ * @param dcid Opaque pointer to the destination imquic_connection_id, if any
+ * @returns A pointer to the header object, if successful, or NULL otherwise */
+json_t *imquic_qlog_prepare_packet_header(imquic_qlog *qlog, const char *type, void *scid, void *dcid);
+/*! \brief Add a \c packet_sent event
+ * @note \TODO placeholder
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param header The QUIC packet header info, if any
+ * @param id The ID of the datagram, if any
+ * @param length The size of the datagram that was sent */
+void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length);
+/*! \brief Add a \c packet_received event
+ * @note \TODO placeholder
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param header The QUIC packet header info
+ * @param id The ID of the datagram, if any
+ * @param length The size of the datagram that was received */
+void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length);
+/*! \brief Add a \c packet_dropped event
+ * @note \TODO placeholder
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param header The QUIC packet header info, if any
+ * @param id The ID of the datagram, if any
+ * @param length The size of the datagram that was received
+ * @param trigger What caused the packet to be dropped */
+void imquic_qlog_packet_dropped(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length, const char *trigger);
 /*! \brief Add a \c udp_datagrams_sent event
  * @param qlog The imquic_qlog instance to add the event to
+ * @param id The ID of the datagram, if any
  * @param length The size of the datagram that was sent */
-void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, size_t length);
+void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, uint32_t id, size_t length);
 /*! \brief Add a \c udp_datagrams_received event
  * @param qlog The imquic_qlog instance to add the event to
+ * @param id The ID of the datagram, if any
  * @param length The size of the datagram that was sent */
-void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, size_t length);
+void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, uint32_t id, size_t length);
+/*! \brief Add a \c udp_datagrams_dropped event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param id The ID of the datagram, if any
+ * @param length The size of the datagram that was dropped */
+void imquic_qlog_udp_datagrams_dropped(imquic_qlog *qlog, uint32_t id, size_t length);
+/*! \brief Add a \c stream_state_updated event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param id The ID of the stream
+ * @param type The stream type (bidirectional/unidirectional), if any
+ * @param side The stream side (sending/receiving), if any
+ * @param side The new stream state, if any */
+void imquic_qlog_stream_state_updated(imquic_qlog *qlog, uint64_t id, const char *type, const char *side, const char *state);
 /*! \brief Add a \c key_updated event
  * @param qlog The imquic_qlog instance to add the event to
  * @param type The key type

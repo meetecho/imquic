@@ -205,7 +205,10 @@ struct imquic_connection {
 	uint8_t pto_count;
 	/*! \brief Loop source */
 	imquic_source *loop_source;
+	/*! \brief Incoming and outgoing datagram IDs */
+	uint32_t dgram_id_in, dgram_id_out;
 #ifdef HAVE_QLOG
+	/*! \brief QLOG instance, if any */
 	imquic_qlog *qlog;
 #endif
 	/*! \brief Mutex */

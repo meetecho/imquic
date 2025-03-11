@@ -155,7 +155,7 @@ int imquic_qlog_save_to_file(imquic_qlog *qlog) {
 }
 
 /* Events tracing helpers */
-static json_t *imquic_qlog_event_prepare(const char *name) {
+json_t *imquic_qlog_event_prepare(const char *name) {
 	json_t *event = json_object();
 	json_object_set_new(event, "name", json_string(name));
 	double timestamp = (double)g_get_real_time() / (double)1000;
@@ -163,7 +163,7 @@ static json_t *imquic_qlog_event_prepare(const char *name) {
 	return event;
 }
 
-static json_t *imquic_qlog_event_add_data(json_t *event) {
+json_t *imquic_qlog_event_add_data(json_t *event) {
 	if(event == NULL)
 		return NULL;
 	json_t *data = json_object();
@@ -181,7 +181,16 @@ static json_t *imquic_qlog_event_add_raw(json_t *data, size_t length) {
 	return data;
 }
 
-static void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event) {
+static json_t *imquic_qlog_event_add_datagram_ids(json_t *data, uint32_t id) {
+	if(data == NULL)
+		return NULL;
+	json_t *d_ids = json_array();
+	json_array_append_new(d_ids, json_integer(id));
+	json_object_set_new(data, "datagram_ids", d_ids);
+	return data;
+}
+
+void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event) {
 	if(qlog == NULL || event == NULL) {
 		if(event != NULL)
 			json_decref(event);
@@ -193,6 +202,34 @@ static void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event) {
 }
 
 /* Events tracing */
+void imquic_qlog_connection_started(imquic_qlog *qlog, const char *src_ip, uint16_t src_port, const char *dst_ip, uint16_t dst_port) {
+	if(qlog == NULL)
+		return;
+	json_t *event = imquic_qlog_event_prepare("quic:connection_started");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "src_ip", json_string(src_ip));
+	json_object_set_new(data, "src_port", json_integer(src_port));
+	json_object_set_new(data, "dst_ip", json_string(dst_ip));
+	json_object_set_new(data, "dst_port", json_integer(dst_port));
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_qlog_connection_closed(imquic_qlog *qlog, gboolean local, uint32_t cc_code, uint32_t app_code, const char *reason) {
+	if(qlog == NULL)
+		return;
+	/* TODO Just a placeholder for now */
+	json_t *event = imquic_qlog_event_prepare("quic:connection_closed");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "owner", json_string(local ? "local" : "remote"));
+	if(cc_code > 0)
+		json_object_set_new(data, "connection_code", json_integer(cc_code));
+	if(app_code > 0)
+		json_object_set_new(data, "application_code", json_integer(app_code));
+	if(reason != NULL)
+		json_object_set_new(data, "reason", json_string(reason));
+	imquic_qlog_append_event(qlog, event);
+}
+
 void imquic_qlog_version_information(imquic_qlog *qlog, uint32_t version, uint32_t chosen) {
 	if(qlog == NULL)
 		return;
@@ -252,6 +289,8 @@ void imquic_qlog_alpn_information(imquic_qlog *qlog, uint8_t *server_alpn, size_
 }
 
 json_t *imquic_qlog_prepare_parameters_set(imquic_qlog *qlog, gboolean local, gboolean resumption, gboolean early_data) {
+	if(qlog == NULL)
+		return NULL;
 	json_t *params = json_object();
 	json_object_set_new(params, "owner", json_string(local ? "local" : "remote"));
 	if(resumption)
@@ -272,23 +311,131 @@ void imquic_qlog_parameters_set(imquic_qlog *qlog, json_t *params) {
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, size_t length) {
+json_t *imquic_qlog_prepare_packet_header(imquic_qlog *qlog, const char *type, void *scid, void *dcid) {
+	if(qlog == NULL || type == NULL)
+		return NULL;
+	json_t *header = json_object();
+	json_object_set_new(header, "packet_type", json_string(type));
+	char cid[41];
+	imquic_connection_id *source = (imquic_connection_id *)scid;
+	if(source != NULL) {
+		json_object_set_new(header, "scil", json_integer(source->len));
+		if(source->len > 0) {
+			const char *cid_str = imquic_connection_id_str(source, cid, sizeof(cid));
+			if(cid_str != NULL)
+				json_object_set_new(header, "scid", json_string(cid_str));
+		}
+	}
+	imquic_connection_id *dest = (imquic_connection_id *)dcid;
+	if(dest != NULL) {
+		json_object_set_new(header, "dcil", json_integer(dest->len));
+		if(dest->len > 0) {
+			const char *cid_str = imquic_connection_id_str(dest, cid, sizeof(cid));
+			if(cid_str != NULL)
+				json_object_set_new(header, "dcid", json_string(cid_str));
+		}
+	}
+	return header;
+}
+
+void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length) {
+	if(qlog == NULL || header == NULL) {
+		if(header != NULL)
+			json_decref(header);
+		return;
+	}
+	json_t *event = imquic_qlog_event_prepare("quic:packet_sent");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "header", header);
+	if(length > 0)
+		imquic_qlog_event_add_raw(data, length);
+	if(id > 0)
+		json_object_set_new(data, "datagram_id", json_integer(id));
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length) {
+	if(qlog == NULL || header == NULL) {
+		if(header != NULL)
+			json_decref(header);
+		return;
+	}
+	json_t *event = imquic_qlog_event_prepare("quic:packet_received");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "header", header);
+	if(length > 0)
+		imquic_qlog_event_add_raw(data, length);
+	if(id > 0)
+		json_object_set_new(data, "datagram_id", json_integer(id));
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_qlog_packet_dropped(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length, const char *trigger) {
+	if(qlog == NULL) {
+		if(header != NULL)
+			json_decref(header);
+		return;
+	}
+	json_t *event = imquic_qlog_event_prepare("quic:packet_dropped");
+	json_t *data = imquic_qlog_event_add_data(event);
+	if(header != NULL)
+		json_object_set_new(data, "header", header);
+	if(length > 0)
+		imquic_qlog_event_add_raw(data, length);
+	if(id > 0)
+		json_object_set_new(data, "datagram_id", json_integer(id));
+	if(trigger != NULL)
+		json_object_set_new(data, "trigger", json_string(trigger));
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, uint32_t id, size_t length) {
 	if(qlog == NULL)
 		return;
 	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_sent");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
 	imquic_qlog_event_add_raw(data, length);
+	if(id > 0)
+		imquic_qlog_event_add_datagram_ids(data, id);
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, size_t length) {
+void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, uint32_t id, size_t length) {
 	if(qlog == NULL)
 		return;
 	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_received");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
 	imquic_qlog_event_add_raw(data, length);
+	if(id > 0)
+		imquic_qlog_event_add_datagram_ids(data, id);
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_qlog_udp_datagrams_dropped(imquic_qlog *qlog, uint32_t id, size_t length) {
+	if(qlog == NULL)
+		return;
+	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_dropped");
+	json_t *data = imquic_qlog_event_add_data(event);
+	imquic_qlog_event_add_raw(data, length);
+	if(id > 0)
+		imquic_qlog_event_add_datagram_ids(data, id);
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_qlog_stream_state_updated(imquic_qlog *qlog, uint64_t id, const char *type, const char *side, const char *state) {
+	if(qlog == NULL)
+		return;
+	json_t *event = imquic_qlog_event_prepare("quic:stream_state_updated");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "stream_id", json_integer(id));
+	if(type != NULL)
+		json_object_set_new(data, "stream_type", json_string(type));
+	if(side != NULL)
+		json_object_set_new(data, "stream_side", json_string(side));
+	if(state != NULL)
+		json_object_set_new(data, "new", json_string(state));
 	imquic_qlog_append_event(qlog, event);
 }
 

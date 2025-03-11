@@ -55,7 +55,7 @@ void imquic_network_deinit(void) {
 
 
 /* Network address stringification */
-char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen) {
+char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen, gboolean add_port) {
 	if(address == NULL || output == NULL || outlen == 0)
 		return NULL;
 	/* Get host */
@@ -79,14 +79,31 @@ char *imquic_network_address_str(imquic_network_address *address, char *output, 
 		return NULL;
 	}
 	/* Serialize */
-	if(address->addr.ss_family == AF_INET) {
-		g_snprintf(output, outlen, "%s:%"SCNu16, host, port);
+	if(add_port) {
+		if(address->addr.ss_family == AF_INET)
+			g_snprintf(output, outlen, "%s:%"SCNu16, host, port);
+		else
+			g_snprintf(output, outlen, "[%s]:%"SCNu16, host, port);
 	} else {
-		g_snprintf(output, outlen, "[%s]:%"SCNu16, host, port);
+		g_snprintf(output, outlen, "%s", host);
 	}
 	return output;
 }
 
+uint16_t imquic_network_address_port(imquic_network_address *address) {
+	if(address == NULL)
+		return 0;
+	/* Get port */
+	if(address->addr.ss_family == AF_INET) {
+		struct sockaddr_in *addr = (struct sockaddr_in *)&address->addr;
+		return ntohs(addr->sin_port);
+	} else if(address->addr.ss_family == AF_INET6) {
+		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&address->addr;
+		return ntohs(addr->sin6_port);
+	}
+	IMQUIC_LOG(IMQUIC_LOG_WARN, "Unsupported family %d\n", address->addr.ss_family);
+	return 0;
+}
 
 /* Helper to return fd port */
 static int imquic_get_fd_port(int fd) {
@@ -370,13 +387,13 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 	if(!config->is_server) {
 		if(connect(quic_fd, (struct sockaddr *)&remote.addr, remote.addrlen) < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error connecting to %s... %d (%s)\n",
-				config->name, imquic_network_address_str(&remote, ip, sizeof(ip)), errno, g_strerror(errno));
+				config->name, imquic_network_address_str(&remote, ip, sizeof(ip), TRUE), errno, g_strerror(errno));
 			close(quic_fd);
 			imquic_tls_destroy(tls);
 			return NULL;
 		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connected socket to remote address %s\n",
-			config->name, imquic_network_address_str(&remote, ip, sizeof(ip)));
+			config->name, imquic_network_address_str(&remote, ip, sizeof(ip), TRUE));
 	}
 	/* Create a source to have this endpoint handled by the network loop */
 	imquic_network_endpoint *ne = g_malloc0(sizeof(imquic_network_endpoint));
@@ -384,8 +401,17 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 	ne->is_server = config->is_server;
 	ne->fd = quic_fd;
 	ne->port = port;
-	if(!config->is_server)
+	if(family == AF_INET) {
+		ne->local_address.addrlen = sizeof(address);
+		memcpy(&ne->local_address.addr, &address, ne->local_address.addrlen);
+	} else {
+		ne->local_address.addrlen = sizeof(address6);
+		memcpy(&ne->local_address.addr, &address6, ne->local_address.addrlen);
+	}
+	if(!config->is_server) {
 		memcpy(&ne->remote_address, &remote, sizeof(remote));
+		ne->remote_port = config->remote_port;
+	}
 	ne->tls = tls;
 	ne->sni = g_strdup(config->sni);
 	if(config->raw_quic) {

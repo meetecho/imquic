@@ -227,8 +227,10 @@ void imquic_connection_destroy(imquic_connection *conn) {
 			conn->connection_ids = NULL;
 		}
 #ifdef HAVE_QLOG
-		if(conn->qlog != NULL)
+		if(conn->qlog != NULL) {
 			imquic_qlog_destroy(conn->qlog);
+			conn->qlog = NULL;
+		}
 #endif
 		imquic_refcount_decrease(&conn->ref);
 	}
@@ -502,6 +504,13 @@ int imquic_connection_new_stream_id(imquic_connection *conn, gboolean bidirectio
 	imquic_mutex_unlock(&conn->mutex);
 	if(stream_id)
 		*stream_id = new_stream_id;
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL) {
+		imquic_qlog_stream_state_updated(conn->qlog, new_stream_id,
+			(bidirectional ? "bidirectional" : "unidirectional"),
+			(!bidirectional ? "sending" : NULL), "open");
+	}
+#endif
 	if(conn->http3 != NULL && conn->http3->webtransport) {
 		/* We need to write the info on the new WebTransport stream */
 		uint8_t prefix[10];
@@ -625,4 +634,12 @@ void imquic_connection_close(imquic_connection *conn, uint64_t error_code, uint6
 	if(conn == NULL || conn->socket == NULL)
 		return;
 	imquic_send_close_connection(conn, error_code, frame_type, reason);
+#if HAVE_QLOG
+	if(conn->qlog != NULL) {
+		imquic_qlog_connection_closed(conn->qlog, TRUE,
+			(frame_type == IMQUIC_CONNECTION_CLOSE ? error_code : 0),
+			(frame_type == IMQUIC_CONNECTION_CLOSE_APP ? error_code : 0),
+			reason);
+	}
+#endif
 }
