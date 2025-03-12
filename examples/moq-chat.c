@@ -307,6 +307,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	}
 }
 
+static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri) {
+	/* Connection was closed */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s\n", imquic_get_connection_name(conn), uri);
+	/* Stop here */
+	g_atomic_int_inc(&stop);
+}
+
 static void imquic_demo_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
@@ -459,6 +466,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
 	imquic_set_fetch_error_cb(client, imquic_demo_fetch_error);
 	imquic_set_incoming_object_cb(client, imquic_demo_incoming_object);
+	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
 
 	/* Initialize the resources we'll need */
