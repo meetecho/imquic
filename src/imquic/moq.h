@@ -589,7 +589,7 @@ void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_announce_cancel Pointer to the function that will handle the incoming \c ANNOUNCE_CANCEL */
 void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns));
+	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when an
  * \c ANNOUNCE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure

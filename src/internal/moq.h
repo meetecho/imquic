@@ -804,8 +804,11 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param track_namespace Namespace for which to cancel the announcement
+ * @param error Error code associated to the message
+ * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace);
+size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
+	imquic_moq_announce_error_code error, const char *reason);
 /*! \brief Helper to add a \c SUBSCRIBE message (version -03 of the draft) to a buffer
  * @note This sends the \c -03 variant of the message
  * @param moq The imquic_moq_context generating the message
@@ -1264,7 +1267,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE messages */
 	void (* incoming_announce)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_CANCEL messages */
-	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns);
+	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ACCEPTED messages */
 	void (* announce_accepted)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ERROR messages */

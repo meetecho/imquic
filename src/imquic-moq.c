@@ -234,7 +234,7 @@ void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
-		void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns)) {
+		void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

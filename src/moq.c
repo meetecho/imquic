@@ -1490,6 +1490,8 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 	uint8_t length = 0;
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
+	uint64_t error_code = 0;
+	char reason[200], *reason_str = NULL;
 	if(moq->version < IMQUIC_MOQ_VERSION_06) {
 		/* Single namespace, no tuple */
 		uint64_t tns_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1516,11 +1518,7 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 			uint64_t tns_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken ANNOUNCE_CANCEL");
 			offset += length;
-			if(i == tns_num - 1) {
-				IMQUIC_MOQ_CHECK_ERR(tns_len > blen-offset, 0, "Broken ANNOUNCE_CANCEL");
-			} else {
-				IMQUIC_MOQ_CHECK_ERR(tns_len >= blen-offset, 0, "Broken ANNOUNCE_CANCEL");
-			}
+			IMQUIC_MOQ_CHECK_ERR(tns_len >= blen-offset, 0, "Broken ANNOUNCE_CANCEL");
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Namespace (%"SCNu64" bytes)\n",
 				imquic_get_connection_name(moq->conn), tns_len);
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %.*s\n",
@@ -1530,17 +1528,39 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 			tns[i].next = (i == tns_num - 1) ? NULL : (i < 31 ? &tns[i+1] : NULL);
 			offset += tns_len;
 		}
+		error_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken ANNOUNCE_CANCEL");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_error_code_str(error_code), error_code);
+		uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken ANNOUNCE_CANCEL");
+		offset += length;
+		if(rs_len > 0) {
+			IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, 0, "Broken ANNOUNCE_CANCEL");
+			int reason_len = (int)rs_len;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
+				imquic_get_connection_name(moq->conn), reason_len, &bytes[offset]);
+			if(reason_len > 0) {
+				g_snprintf(reason, sizeof(reason), "%.*s", reason_len, &bytes[offset]);
+				reason_str = reason;
+			}
+			offset += reason_len;
+		}
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_cancel");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
+		json_object_set_new(message, "error_code", json_integer(error_code));
+		if(reason_str != NULL)
+			json_object_set_new(message, "reason", json_string(reason_str));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_announce_cancel)
-		moq->conn->socket->callbacks.moq.incoming_announce_cancel(moq->conn, &tns[0]);
+		moq->conn->socket->callbacks.moq.incoming_announce_cancel(moq->conn, &tns[0], error_code, reason);
 	if(error)
 		*error = 0;
 	return offset;
@@ -4202,7 +4222,8 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
 	return offset;
 }
 
-size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace) {
+size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		imquic_moq_namespace *track_namespace, imquic_moq_announce_error_code error, const char *reason) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_CANCEL));
@@ -4249,11 +4270,21 @@ size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, s
 			}
 			temp = temp->next;
 		}
+		offset += imquic_write_varint(error, &bytes[offset], blen-offset);
+		size_t reason_len = reason ? strlen(reason) : 0;
+		offset += imquic_write_varint(reason_len, &bytes[offset], blen-offset);
+		if(reason_len > 0) {
+			memcpy(&bytes[offset], reason, reason_len);
+			offset += reason_len;
+		}
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_cancel");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
+		json_object_set_new(message, "error_code", json_integer(error));
+		if(reason != NULL)
+			json_object_set_new(message, "reason", json_string(reason));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif

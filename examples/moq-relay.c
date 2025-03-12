@@ -416,12 +416,12 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_na
 	imquic_moq_accept_announce(conn, tns);
 }
 
-static void imquic_demo_incoming_announce_cancel(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_incoming_announce_cancel(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason) {
 	/* We received an announce cancel */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Cancelled announce of namespace: '%s'\n",
-		imquic_get_connection_name(conn), ns);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Cancelled announce of namespace: '%s' (%d, %s)\n",
+		imquic_get_connection_name(conn), ns, error_code, reason);
 	/* Find the namespace */
 	g_mutex_lock(&mutex);
 	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
