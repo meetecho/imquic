@@ -170,26 +170,33 @@ void imquic_qlog_parameters_set(imquic_qlog *qlog, json_t *params);
 /*! \brief Prepare a \c header object, but don't add it yet
  * @note This is needed to prepare an object that calls that can be
  * filled in externally, and then be passed to events that involve packets
- * @param qlog The imquic_qlog instance to prepare the data for
  * @param type The packet type
  * @param scid Opaque pointer to the source imquic_connection_id, if any
  * @param dcid Opaque pointer to the destination imquic_connection_id, if any
  * @returns A pointer to the header object, if successful, or NULL otherwise */
-json_t *imquic_qlog_prepare_packet_header(imquic_qlog *qlog, const char *type, void *scid, void *dcid);
+json_t *imquic_qlog_prepare_packet_header(const char *type, void *scid, void *dcid);
+/*! \brief Prepare a \c frames object, but don't add it yet
+ * @note This is needed to prepare an object that calls that can be
+ * filled in externally, and then be passed to events that involve packets
+ * @param type The frame type
+ * @returns A pointer to the header object, if successful, or NULL otherwise */
+json_t *imquic_qlog_prepare_packet_frame(const char *type);
 /*! \brief Add a \c packet_sent event
  * @note \TODO placeholder
  * @param qlog The imquic_qlog instance to add the event to
  * @param header The QUIC packet header info, if any
+ * @param frames The QUIC packet frames, if any
  * @param id The ID of the datagram, if any
  * @param length The size of the datagram that was sent */
-void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length);
+void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, json_t *frames, uint32_t id, size_t length);
 /*! \brief Add a \c packet_received event
  * @note \TODO placeholder
  * @param qlog The imquic_qlog instance to add the event to
  * @param header The QUIC packet header info
+ * @param frames The QUIC packet frames, if any
  * @param id The ID of the datagram, if any
  * @param length The size of the datagram that was received */
-void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length);
+void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, json_t *frames, uint32_t id, size_t length);
 /*! \brief Add a \c packet_dropped event
  * @note \TODO placeholder
  * @param qlog The imquic_qlog instance to add the event to

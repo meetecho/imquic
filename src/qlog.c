@@ -385,8 +385,8 @@ void imquic_qlog_parameters_set(imquic_qlog *qlog, json_t *params) {
 	imquic_qlog_append_event(qlog, event);
 }
 
-json_t *imquic_qlog_prepare_packet_header(imquic_qlog *qlog, const char *type, void *scid, void *dcid) {
-	if(qlog == NULL || type == NULL)
+json_t *imquic_qlog_prepare_packet_header(const char *type, void *scid, void *dcid) {
+	if(type == NULL)
 		return NULL;
 	json_t *header = json_object();
 	json_object_set_new(header, "packet_type", json_string(type));
@@ -412,15 +412,27 @@ json_t *imquic_qlog_prepare_packet_header(imquic_qlog *qlog, const char *type, v
 	return header;
 }
 
-void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length) {
+json_t *imquic_qlog_prepare_packet_frame(const char *type) {
+	if(type == NULL)
+		return NULL;
+	json_t *frame = json_object();
+	json_object_set_new(frame, "type", json_string(type));
+	return frame;
+}
+
+void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, json_t *frames, uint32_t id, size_t length) {
 	if(qlog == NULL || header == NULL) {
 		if(header != NULL)
 			json_decref(header);
+		if(frames != NULL)
+			json_decref(frames);
 		return;
 	}
 	json_t *event = imquic_qlog_event_prepare("quic:packet_sent");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "header", header);
+	if(frames != NULL)
+		json_object_set_new(data, "frames", frames);
 	if(length > 0)
 		imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)
@@ -428,15 +440,19 @@ void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, uint32_t id, siz
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, uint32_t id, size_t length) {
+void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, json_t *frames, uint32_t id, size_t length) {
 	if(qlog == NULL || header == NULL) {
 		if(header != NULL)
 			json_decref(header);
+		if(frames != NULL)
+			json_decref(frames);
 		return;
 	}
 	json_t *event = imquic_qlog_event_prepare("quic:packet_received");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "header", header);
+	if(frames != NULL)
+		json_object_set_new(data, "frames", frames);
 	if(length > 0)
 		imquic_qlog_event_add_raw(data, "raw", NULL, length);
 	if(id > 0)

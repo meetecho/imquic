@@ -164,6 +164,10 @@ typedef struct imquic_packet {
 	GList *frames;
 	/*! \brief Cumulative size of all the frames */
 	size_t frames_size;
+#ifdef HAVE_QLOG
+	/*! \brief Frames serialized for QLOG purposes, if needed */
+	json_t *qlog_frames;
+#endif
 	/*! \brief Whether this packet contains ACK-eliciting frames */
 	gboolean ack_eliciting;
 	/*! \brief Whether this packet should be retransmitted if lost */
@@ -265,121 +269,139 @@ void imquic_check_incoming_stream(imquic_connection *conn);
 int imquic_parse_frames(imquic_connection *conn, imquic_packet *pkt);
 /*! \brief Helper method to process an \c ACK frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @param level Encryption level of the packet containing this frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_ack(imquic_connection *conn, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level);
+size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level);
 /*! \brief Helper method to process a \c RESET_STREAM frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_reset_stream(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_reset_stream(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c STOP_SENDING frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_stop_sending(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_stop_sending(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c CRYPTO frame, and in case add
  * all chunks to the buffer associated with the related encryption level,
  * so that it can be processed later.
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @param level Encryption level of the packet containing this frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_crypto(imquic_connection *conn, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level);
+size_t imquic_payload_parse_crypto(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level);
 /*! \brief Helper method to process a \c NEW_TOKEN frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_new_token(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_new_token(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c STREAM frame, and handle it
  * accordingly, e.g., by creating the stream locally (if previously unknown),
  * update the associated buffer with the new data, update the state of
  * the stream, and notify the stack using internal callbacks
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_stream(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c MAX_DATA frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_max_data(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_max_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c MAX_STREAM_DATA frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_max_stream_data(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_max_stream_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c MAX_STREAMS frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_max_streams(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_max_streams(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c DATA_BLOCKED frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_data_blocked(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c STREAM_DATA_BLOCKED frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c STREAMS_BLOCKED frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_streams_blocked(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_streams_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c NEW_CONNECTION_ID frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_new_connection_id(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_new_connection_id(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c RETIRE_CONNECTION_ID frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_retire_connection_id(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_retire_connection_id(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c PATH_CHALLENGE frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_path_challenge(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_path_challenge(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c PATH_RESPONSE frame
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_path_response(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_path_response(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c CONNECTION_CLOSE frame, and
  * handle it accordingly by closing the connection locally too
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_connection_close(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_connection_close(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 /*! \brief Helper method to process a \c DATAGRAM frame, and notify the
  * stack about it via internal callbacks
  * @param conn The imquic_connection that received the message
+ * @param pkt The imquic_packet containing the payload to process
  * @param bytes Buffer containing the frame
  * @param blen Size of the buffer containing the frame
  * @returns The size of the frame, if successful, or 0 otherwise */
-size_t imquic_payload_parse_datagram(imquic_connection *conn, uint8_t *bytes, size_t blen);
+size_t imquic_payload_parse_datagram(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen);
 ///@}
 
 /** @name Adding QUIC frames to a packet
