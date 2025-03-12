@@ -6769,7 +6769,20 @@ void imquic_qlog_moq_message_add_namespace(json_t *message, imquic_moq_namespace
 	if(message == NULL)
 		return;
 	json_t *tns = json_array();
-	/* TODO */
+	char tns_str[81];
+	size_t length = 0;
+	imquic_moq_namespace *temp = track_namespace;
+	while(temp) {
+		json_t *ns = json_object();
+		json_object_set_new(ns, "length", json_integer(temp->length));
+		length = temp->length;
+		if(length > 40)
+			length = 40;	/* Truncate */
+		if(length > 0)
+			json_object_set_new(ns, "data", json_string(imquic_hex_str(temp->buffer, length, tns_str, sizeof(tns_str))));
+		json_array_append_new(tns, ns);
+		temp = temp->next;
+	}
 	json_object_set_new(message, "track_namespace", tns);
 }
 
