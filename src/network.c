@@ -449,9 +449,16 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 				ne->qlog_path = g_strdup(config->qlog_path);
 			}
 		}
-		ne->qlog_quic = config->qlog_quic;
-		ne->qlog_moq = config->qlog_moq;
-		ne->qlog_sequential = config->qlog_sequential;
+		if(ne->qlog_path != NULL) {
+			ne->qlog_quic = config->qlog_quic;
+			ne->qlog_moq = config->qlog_moq;
+			ne->qlog_sequential = config->qlog_sequential;
+			if(!ne->qlog_quic && !ne->qlog_moq) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Tracing of at least one of QUIC and MoQ should be enabled, disabling QLOG\n", config->name);
+				g_free(ne->qlog_path);
+				ne->qlog_path = NULL;
+			}
+		}
 #endif
 	}
 	ne->connections = g_hash_table_new_full(NULL, NULL,

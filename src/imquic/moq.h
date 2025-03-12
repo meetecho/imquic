@@ -351,6 +351,16 @@ typedef struct imquic_moq_namespace {
 	/*! \brief Next namespace in this list, if this is a tuple */
 	struct imquic_moq_namespace *next;
 } imquic_moq_namespace;
+/*! \brief Helper to stringify a namespace (optionally the whole tuple)
+ * \note If \c tuple is FALSE, the \c next property of the namespace is ignored,
+ * otherwise a single string is built for the whole tuple, using a slash
+ * character as a separator.
+ * @param[in] tns The namespace (or the start of a namespace tuple) to stringify
+ * @param[out] buffer The buffer to write the string to
+ * @param[in] blen The size of the output buffer
+ * @param#in] tuple Whether the whole tuple should be stringified, or only the specific namespace
+ * @returns A pointer to the output buffer, if successful, or NULL otherwise */
+const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple);
 
 /*! \brief MoQ Track Name */
 typedef struct imquic_moq_name {
@@ -359,6 +369,12 @@ typedef struct imquic_moq_name {
 	/*! \brief Size of the name data */
 	size_t length;
 } imquic_moq_name;
+/* Helper to stringify a track name
+ * @param[in] tn The track name to stringify
+ * @param[out] buffer The buffer to write the string to
+ * @param[in] blen The size of the output buffer
+ * @returns A pointer to the output buffer, if successful, or NULL otherwise */
+const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen);
 
 /*! \brief MoQ Auth Info */
 typedef struct imquic_moq_auth_info {

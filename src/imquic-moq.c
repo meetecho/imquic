@@ -199,6 +199,55 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	return client;
 }
 
+/* Helpers */
+const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple) {
+	if(tns == NULL || tns->buffer == 0 || tns->length == 0)
+		return NULL;
+	*buffer = '\0';
+	char temp[256];
+	size_t offset = 0;
+	while(tns != NULL && tns->buffer != NULL) {
+		if(blen - offset == 0)
+			goto trunc;
+		if(offset > 0) {
+			buffer[offset] = '/';
+			offset++;
+			buffer[offset] = '\0';
+		}
+		g_snprintf(temp, sizeof(temp), "%.*s", (int)tns->length, tns->buffer);
+		if(blen - offset < strlen(temp))
+			goto trunc;
+		offset = g_strlcat(buffer, temp, blen);
+		if(offset >= blen)
+			goto trunc;
+		if(!tuple)
+			break;
+		tns = tns->next;
+	}
+	return buffer;
+trunc:
+	IMQUIC_LOG(IMQUIC_LOG_ERR, "Insufficient buffer to render namespace(s) as a string (truncation would occur)\n");
+	return NULL;
+}
+
+const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen) {
+	if(tn == NULL || tn->buffer == 0 || tn->length == 0)
+		return NULL;
+	*buffer = '\0';
+	char temp[256];
+	size_t offset = 0;
+	g_snprintf(temp, sizeof(temp), "%.*s", (int)tn->length, tn->buffer);
+	if(blen - offset < strlen(temp))
+		goto trunc;
+	offset = g_strlcat(buffer, temp, blen);
+	if(offset >= blen)
+		goto trunc;
+	return buffer;
+trunc:
+	IMQUIC_LOG(IMQUIC_LOG_ERR, "Insufficient buffer to render track name as a string (truncation would occur)\n");
+	return NULL;
+}
+
 /* Setting callbacks */
 void imquic_set_new_moq_connection_cb(imquic_endpoint *endpoint,
 		void (* new_moq_connection)(imquic_connection *conn, void *user_data)) {

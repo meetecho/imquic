@@ -303,6 +303,8 @@ const char *imquic_moq_fetch_type_str(imquic_moq_fetch_type type);
 typedef struct imquic_moq_context {
 	/*! \brief Associated QUIC connection */
 	imquic_connection *conn;
+	/*! \brief Peer versions */
+	GList *supported_versions;
 	/*! \brief Negotiated version */
 	imquic_moq_version version;
 	/*! \brief Whether a version has been set */
@@ -1349,11 +1351,16 @@ void imquic_moq_connection_gone(imquic_connection *conn);
  * @param type The name of the message
  * @returns A message instance to fill in before using it it, if successful, or NULL otherwise */
 json_t *imquic_qlog_moq_message_prepare(const char *type);
-/*! \brief Helper to create a namespace tuple array to a message
+/*! \brief Helper to add a stringified namespace tuple array to a message
  * @note This automatically fills in the \c track_namespace property
  * @param message The message object to update
  * @param track_namespace The namespace to serialize to an array */
 void imquic_qlog_moq_message_add_namespace(json_t *message, imquic_moq_namespace *track_namespace);
+/*! \brief Helper to create a stringifled track name to a message
+ * @note This automatically fills in the \c track_name property
+ * @param message The message object to update
+ * @param track_name The track name to add */
+void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_name *track_name);
 /*! \brief Add a \c control_message_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message
