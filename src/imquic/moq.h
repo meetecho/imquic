@@ -769,7 +769,7 @@ typedef enum imquic_moq_version {
 	/* Draft version -09 */
 	IMQUIC_MOQ_VERSION_09 = 0xff000009,
 	/* Draft version -10 */
-	IMQUIC_MOQ_VERSION_10 = 0xff000010,
+	IMQUIC_MOQ_VERSION_10 = 0xff00000A,
 	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_10,
 	/* Any post-v06 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
