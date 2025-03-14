@@ -358,7 +358,7 @@ typedef struct imquic_moq_namespace {
  * @param[in] tns The namespace (or the start of a namespace tuple) to stringify
  * @param[out] buffer The buffer to write the string to
  * @param[in] blen The size of the output buffer
- * @param#in] tuple Whether the whole tuple should be stringified, or only the specific namespace
+ * @param[in] tuple Whether the whole tuple should be stringified, or only the specific namespace
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple);
 

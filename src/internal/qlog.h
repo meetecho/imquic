@@ -182,7 +182,6 @@ json_t *imquic_qlog_prepare_packet_header(const char *type, void *scid, void *dc
  * @returns A pointer to the header object, if successful, or NULL otherwise */
 json_t *imquic_qlog_prepare_packet_frame(const char *type);
 /*! \brief Add a \c packet_sent event
- * @note \TODO placeholder
  * @param qlog The imquic_qlog instance to add the event to
  * @param header The QUIC packet header info, if any
  * @param frames The QUIC packet frames, if any
@@ -190,7 +189,6 @@ json_t *imquic_qlog_prepare_packet_frame(const char *type);
  * @param length The size of the datagram that was sent */
 void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, json_t *frames, uint32_t id, size_t length);
 /*! \brief Add a \c packet_received event
- * @note \TODO placeholder
  * @param qlog The imquic_qlog instance to add the event to
  * @param header The QUIC packet header info
  * @param frames The QUIC packet frames, if any
@@ -198,7 +196,6 @@ void imquic_qlog_packet_sent(imquic_qlog *qlog, json_t *header, json_t *frames, 
  * @param length The size of the datagram that was received */
 void imquic_qlog_packet_received(imquic_qlog *qlog, json_t *header, json_t *frames, uint32_t id, size_t length);
 /*! \brief Add a \c packet_dropped event
- * @note \TODO placeholder
  * @param qlog The imquic_qlog instance to add the event to
  * @param header The QUIC packet header info, if any
  * @param id The ID of the datagram, if any
@@ -225,7 +222,7 @@ void imquic_qlog_udp_datagrams_dropped(imquic_qlog *qlog, uint32_t id, size_t le
  * @param id The ID of the stream
  * @param type The stream type (bidirectional/unidirectional), if any
  * @param side The stream side (sending/receiving), if any
- * @param side The new stream state, if any */
+ * @param state The new stream state, if any */
 void imquic_qlog_stream_state_updated(imquic_qlog *qlog, uint64_t id, const char *type, const char *side, const char *state);
 /*! \brief Add a \c key_updated event
  * @param qlog The imquic_qlog instance to add the event to
