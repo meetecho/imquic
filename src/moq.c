@@ -72,6 +72,10 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		imquic_connection_new_stream_id(conn, TRUE, &stream_id);
 		moq->control_stream_id = stream_id;
 		moq->has_control_stream = TRUE;
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && conn->qlog->moq)
+			imquic_moq_qlog_stream_type_set(moq->conn->qlog, TRUE, moq->control_stream_id, "control");
+#endif
 	}
 	/* Notify the application: for clients, we'll need it to set role and version */
 	if(conn->socket && conn->socket->callbacks.moq.new_connection)
@@ -154,6 +158,10 @@ void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
 		}
 		moq->has_control_stream = TRUE;
 		moq->control_stream_id = stream_id;
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && conn->qlog->moq)
+			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq->control_stream_id, "control");
+#endif
 	}
 	imquic_moq_parse_message(moq, stream_id, bytes, length, complete, FALSE);
 }
