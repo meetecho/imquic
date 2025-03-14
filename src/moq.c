@@ -1283,7 +1283,7 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		json_object_set_new(message, "number_of_parameters", json_integer(params));
 		json_t *parameters = json_array();
 		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		json_object_set_new(message, "parameters", parameters);
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4089,7 +4089,7 @@ size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t b
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		json_t *parameters = json_array();
 		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		json_object_set_new(message, "parameters", parameters);
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
