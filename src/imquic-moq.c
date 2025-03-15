@@ -28,6 +28,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = TRUE;
+	config.qlog_quic = TRUE;
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
@@ -67,6 +68,14 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
+			config.qlog_path = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
+			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
+			config.qlog_moq = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
+			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {
@@ -111,6 +120,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = FALSE;
+	config.qlog_quic = TRUE;
 	config.alpn = "moq-10";
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
@@ -149,6 +159,14 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
+			config.qlog_path = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
+			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
+			config.qlog_moq = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
+			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {
@@ -179,6 +197,55 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	client->datagram_incoming = imquic_moq_datagram_incoming;
 	client->connection_gone = imquic_moq_connection_gone;
 	return client;
+}
+
+/* Helpers */
+const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple) {
+	if(tns == NULL || tns->buffer == 0 || tns->length == 0)
+		return NULL;
+	*buffer = '\0';
+	char temp[256];
+	size_t offset = 0;
+	while(tns != NULL && tns->buffer != NULL) {
+		if(blen - offset == 0)
+			goto trunc;
+		if(offset > 0) {
+			buffer[offset] = '/';
+			offset++;
+			buffer[offset] = '\0';
+		}
+		g_snprintf(temp, sizeof(temp), "%.*s", (int)tns->length, tns->buffer);
+		if(blen - offset < strlen(temp))
+			goto trunc;
+		offset = g_strlcat(buffer, temp, blen);
+		if(offset >= blen)
+			goto trunc;
+		if(!tuple)
+			break;
+		tns = tns->next;
+	}
+	return buffer;
+trunc:
+	IMQUIC_LOG(IMQUIC_LOG_ERR, "Insufficient buffer to render namespace(s) as a string (truncation would occur)\n");
+	return NULL;
+}
+
+const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen) {
+	if(tn == NULL || tn->buffer == 0 || tn->length == 0)
+		return NULL;
+	*buffer = '\0';
+	char temp[256];
+	size_t offset = 0;
+	g_snprintf(temp, sizeof(temp), "%.*s", (int)tn->length, tn->buffer);
+	if(blen - offset < strlen(temp))
+		goto trunc;
+	offset = g_strlcat(buffer, temp, blen);
+	if(offset >= blen)
+		goto trunc;
+	return buffer;
+trunc:
+	IMQUIC_LOG(IMQUIC_LOG_ERR, "Insufficient buffer to render track name as a string (truncation would occur)\n");
+	return NULL;
 }
 
 /* Setting callbacks */
@@ -216,7 +283,7 @@ void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
-		void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns)) {
+		void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

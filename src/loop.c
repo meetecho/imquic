@@ -159,7 +159,7 @@ imquic_source *imquic_loop_poll_endpoint(void *e) {
 imquic_source *imquic_loop_poll_connection(void *c) {
 	imquic_connection_source *cs = (imquic_connection_source *)g_source_new(&imquic_connection_source_funcs, sizeof(imquic_connection_source));
 	imquic_connection *conn = (imquic_connection *)c;
-	char name[255], temp[21];
+	char name[255], temp[41];
 	const char *alpn = conn->socket ? conn->socket->alpn : "??";
 	g_snprintf(name, sizeof(name), "%s-%s", alpn, imquic_connection_id_str(&conn->local_cid, temp, sizeof(temp)));
 	g_source_set_name((GSource *)cs, name);

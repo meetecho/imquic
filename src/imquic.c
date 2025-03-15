@@ -14,6 +14,7 @@
 #include "internal/loop.h"
 #include "internal/crypto.h"
 #include "internal/buffer.h"
+#include "internal/qlog.h"
 #include "internal/utils.h"
 #include "internal/listmap.h"
 #include "internal/version.h"
@@ -127,6 +128,11 @@ void imquic_set_log_level(int level) {
 	imquic_log_level = level;
 }
 
+/* QLOG */
+gboolean imquic_is_qlog_supported(void) {
+	return imquic_qlog_is_supported();
+}
+
 /* Debugging */
 void imquic_set_lock_debugging(gboolean enabled) {
 	imquic_lock_debug = enabled;
@@ -186,6 +192,7 @@ imquic_server *imquic_create_server(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = TRUE;
+	config.qlog_quic = TRUE;
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
@@ -228,6 +235,15 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
 			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
+			config.qlog_path = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
+			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
+			va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
+			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {
@@ -256,6 +272,7 @@ imquic_client *imquic_create_client(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = FALSE;
+	config.qlog_quic = TRUE;
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
@@ -293,6 +310,15 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.h3_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
 			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
+			config.qlog_path = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
+			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
+			va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
+			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else if(property == IMQUIC_CONFIG_DONE) {

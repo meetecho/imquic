@@ -34,7 +34,7 @@
  * perspective of the imquic endpoint that received or originated it
  * (\ref connection.c and \ref connection.h);
  * - the QUIC stack itself, that can parse incoming messages, keeps state,
- * triggers transitions and can originate messafes of its own (\ref quic.c
+ * triggers transitions and can originate messages of its own (\ref quic.c
  * and \ref quic.h);
  * - cryptographic utilities, for the sole purpose of dealing with
  * header protection and payload encryption/decryption
@@ -51,6 +51,7 @@
  * - gap-aware buffers, mainly for \c CRYPTO and \c STREAM
  * (\ref buffer.c and \ref buffer.h);
  * - logging (\ref debug.h);
+ * - optional QLOG support (\ref qlog.h);
  * - locking (\ref mutex.h);
  * - reference counting (\ref refcount.h);
  * - generic utilities (\ref utils.c and \ref utils.h).
@@ -505,6 +506,60 @@
  * \subsection moqinternal Media Over QUIC (MoQ)
  *
  * TBD.
+ *
+ * <hr>
+ *
+ * \section qlog QLOG support (optional)
+ *
+ * The library can optionally be built with <a target="_blank" href="https://quicwg.org/qlog/">QLOG</a>
+ * support. In order to do that, the <a target="_blank" href="https://github.com/akheron/jansson">Jansson</a>
+ * library must be found and linked, which can be done by passing the
+ * <code>--enable-qlog</code> flag to the configure script. The code
+ * for such integration is available in the core (see \ref qlog.c and
+ * \ref qlog.h for QUIC events, and \ref moq.c and \ref internal/moq.h
+ * for MoQ events).
+ *
+ * If compiled, QLOG support can be enabled programmatically and
+ * separately per each created endpoint. When creating servers, the
+ * configuration will need a folder to save QLOG files to, while for
+ * clients it will expect a path to a filename. The library will not
+ * create folders if they're missing. Once QLOG support is requested for
+ * an endpoint, the library can save events related to QUIC and/or MoQ
+ * (at the time of writing, there's no support for RoQ events yet). The
+ * output can be written to either contained JSON files, or sequential JSON.
+ *
+ * Enabling QUIC specifies what should be stored as part of the
+ * \ref imquic_network_endpoint structure: as soon as an \ref imquic_connection
+ * is created out of such a network instance, an \ref imquic_qlog instance
+ * is created contextually via \ref imquic_qlog_create, inheriting the
+ * configured properties.
+ *
+ * The library then uses different methods made available in qlog.h
+ * add events to the QLOG trace. An event to add to the trace can be
+ * prepared with \ref imquic_qlog_event_prepare, which creates an empty
+ * event of the provided name, and automatically sets a timestamp as part
+ * of the process. An empty \c data object can be added via a call to
+ * \ref imquic_qlog_event_add_data, which returns a reference to the data
+ * object to allow the caller to fill it in. Once an event has been filled
+ * in with all the relevant details, it can be added to the trace with a
+ * call to the \ref imquic_qlog_append_event method: for contained JSON files,
+ * this simply adds the object to the array of events; for serialized JSON,
+ * this serializes the new event to JSON text, and appends it to the
+ * QLOG file prefixed by the \c RS record separator.
+ *
+ * When a connection is closed, the associated QLOG instance is destroyed
+ * too, via \ref imquic_qlog_destroy : for QLOG instances saving to contained
+ * JSON files, this performs an automatic call to \ref imquic_qlog_save_to_file
+ * to regenerate the JSON serialization, which doesn't happen for sequential
+ * JSON instead (as, in that case, events have been written to file already
+ * by means of \ref imquic_qlog_append_event).
+ *
+ * The library comes with many helpers to generate events specific to
+ * QUIC itself, and to MoQ. At the time of writing, not all events defined
+ * in the spec have been implemented, and a few of those that have are
+ * not complete. Integrating the missing events and information is left
+ * to future revisions of the code.
+ *
  */
 
 /** \defgroup Core imquic core

@@ -10,6 +10,7 @@
  */
 
 #include <arpa/inet.h>
+#include <netdb.h>
 
 #include "internal/quic.h"
 #include "internal/error.h"
@@ -172,12 +173,19 @@ imquic_frame *imquic_frame_create(imquic_frame_type type, uint8_t *buffer, size_
 	else
 		memset(frame->buffer, 0, size);
 	frame->size = size;
+#ifdef HAVE_QLOG
+	frame->qlog_frame = NULL;
+#endif
 	return frame;
 }
 
 void imquic_frame_destroy(imquic_frame *frame) {
 	if(frame) {
 		g_free(frame->buffer);
+#ifdef HAVE_QLOG
+		if(frame->qlog_frame != NULL)
+			json_decref(frame->qlog_frame);
+#endif
 		g_free(frame);
 	}
 }
@@ -240,6 +248,12 @@ int imquic_packet_short_init(imquic_packet *pkt, imquic_connection_id *dest) {
 void imquic_packet_destroy(imquic_packet *pkt) {
 	if(pkt) {
 		g_list_free_full(pkt->frames, (GDestroyNotify)imquic_frame_destroy);
+#ifdef HAVE_QLOG
+		if(pkt->qlog_frames != NULL)
+			json_decref(pkt->qlog_frames);
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+#endif
 		g_free(pkt);
 	}
 }
@@ -252,7 +266,8 @@ void imquic_sent_packet_destroy(imquic_sent_packet *sent_pkt) {
 }
 
 /* Helper to parse an incoming packet */
-int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address *sender, imquic_connection **pconn, imquic_packet *pkt, uint8_t *quic, size_t bytes) {
+int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address *sender,
+		imquic_connection **pconn, imquic_packet *pkt, uint8_t *quic, size_t bytes, size_t tot) {
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "Parsing packet (exploring %zu bytes)\n", bytes);
 	*pconn = NULL;
 	imquic_connection *conn = NULL;
@@ -286,7 +301,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		uint8_t type = (byte & 0x30) >> 4;
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- Packet Type: %02x (%s)\n", type, imquic_long_packet_type_str(type));
 		pkt->type = type;
-		/* FIXME Set the encryption level */
+		/* Set the encryption level */
 		if(type == IMQUIC_INITIAL)
 			pkt->level = ssl_encryption_initial;
 		else if(type == IMQUIC_0RTT)
@@ -343,19 +358,45 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		if(type == IMQUIC_RETRY) {
 			/* We got a Retry */
 			conn = g_hash_table_lookup(connections, &pkt->destination);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
+				conn->dgram_id_in++;
+				imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
+			}
+#endif
 			if(conn == NULL || conn->is_server || conn->level > ssl_encryption_initial) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring invalid Retry packet\n");
+#ifdef HAVE_QLOG
+				if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+					json_t *ph = imquic_qlog_prepare_packet_header("retry",
+						&pkt->source, &pkt->destination);
+					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
+				}
+#endif
 				return bytes;
 			}
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Received a Retry\n");
 			if((bytes - offset) < 16) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Invalid Retry packet, not enough room for integrity tag\n");
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL && conn->qlog->quic) {
+					json_t *ph = imquic_qlog_prepare_packet_header("retry",
+						&pkt->source, &pkt->destination);
+					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
+				}
+#endif
 				return bytes;
 			}
-			/* FIXME */
 			size_t token_len = bytes - offset - 16;
 			if(token_len > sizeof(conn->retry_token.buffer)) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring Retry packet, token too large\n");
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL && conn->qlog->quic) {
+					json_t *ph = imquic_qlog_prepare_packet_header("retry",
+						&pkt->source, &pkt->destination);
+					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
+				}
+#endif
 				return bytes;
 			}
 			conn->retry_token.length = token_len;
@@ -363,11 +404,18 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Retry token (%zu bytes)\n", token_len);
 			imquic_print_hex(IMQUIC_LOG_HUGE, conn->retry_token.buffer, conn->retry_token.length);
 			offset += token_len;
-			/* TODO Validate Retry integrity tag */
+			/* Validate Retry integrity tag */
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Retry integrity tag (%zu bytes)\n", bytes-offset);
 			imquic_print_hex(IMQUIC_LOG_HUGE, &quic[offset], 16);
 			if(imquic_verify_retry(quic, bytes, conn->remote_cid.id, conn->remote_cid.len) < 0) {
 				/* The verification of the integrity tag failed */
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL && conn->qlog->quic) {
+					json_t *ph = imquic_qlog_prepare_packet_header("retry",
+						&pkt->source, &pkt->destination);
+					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
+				}
+#endif
 				return bytes;
 			}
 			/* Update destination ID and secrets */
@@ -377,8 +425,23 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			if(imquic_derive_initial_secret(&conn->keys[ssl_encryption_initial],
 					conn->remote_cid.id, conn->remote_cid.len, FALSE) < 0) {
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error deriving initial secret\n", imquic_get_connection_name(conn));
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL && conn->qlog->quic) {
+					json_t *ph = imquic_qlog_prepare_packet_header("retry",
+						&pkt->source, &pkt->destination);
+					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
+				}
+#endif
 				return bytes;
 			}
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+					conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
+			}
+#endif
 			/* Updated the Initial packet and resend it */
 			uint64_t last_pkn = conn->pkn[ssl_encryption_initial] - 1;
 			imquic_sent_packet *sent_pkt = imquic_listmap_find(conn->sent_pkts[ssl_encryption_initial], &last_pkn);
@@ -406,8 +469,21 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			return bytes;
 		} else if(type == IMQUIC_0RTT) {
 			conn = g_hash_table_lookup(connections, &pkt->destination);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
+				conn->dgram_id_in++;
+				imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
+			}
+#endif
 			if(conn == NULL || !conn->is_server || conn->keys[ssl_encryption_early_data].remote.md == NULL) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring 0-RTT\n");
+#ifdef HAVE_QLOG
+				if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+					json_t *ph = imquic_qlog_prepare_packet_header("0RTT",
+						&pkt->source, &pkt->destination);
+					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_GENERAL);
+				}
+#endif
 				return bytes;
 			}
 		}
@@ -417,7 +493,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			uint64_t token_len = imquic_read_varint(&quic[offset], bytes-offset, &length);
 			IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- Token (len): %"SCNu64"\n", token_len);
 			if(length > 0) {
-				/* FIXME Skip token*/
+				/* FIXME Skip token */
 				imquic_print_hex(IMQUIC_LOG_HUGE, &quic[offset], length);
 				offset += length;
 			}
@@ -426,7 +502,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- Length:      %"SCNu64"\n", p_len);
 		pkt->length_offset = offset;
 		offset += length;
-		/* FIXME Now we are where the packet number is, which we need for the sample */
+		/* Now we are where the packet number is, which we need for the sample */
 		size_t pn_offset = offset;
 		if(bytes-offset-4 < 16) {
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Invalid packet: not enough bytes for header protection sample\n");
@@ -452,13 +528,17 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			}
 			char address[60];
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Creating new connection (%s)\n",
-				imquic_network_address_str(sender, address, sizeof(address)));
+				imquic_network_address_str(sender, address, sizeof(address), TRUE));
 			conn = imquic_connection_create(socket);
 			memcpy(&conn->peer, sender, sizeof(conn->peer));
 			if(pkt->destination.len > 0) {
 				conn->initial_cid.len = pkt->destination.len;
 				memcpy(conn->initial_cid.id, pkt->destination.id, pkt->destination.len);
 				imquic_quic_connection_add(conn, &conn->initial_cid);
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL && conn->qlog->quic)
+					imquic_qlog_set_odcid(conn->qlog, &conn->initial_cid);
+#endif
 			}
 			uint64_t local_cid = imquic_random_uint64();
 			conn->local_cid.len = sizeof(local_cid);
@@ -467,7 +547,22 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			memcpy(conn->local_cid.token, &st1, sizeof(st1));
 			memcpy(&conn->local_cid.token[sizeof(st1)], &st2, sizeof(st2));
 			imquic_quic_connection_add(conn, &conn->local_cid);
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				char src_ip[NI_MAXHOST] = { 0 }, dst_ip[NI_MAXHOST] = { 0 };
+				imquic_qlog_connection_started(conn->qlog,
+					imquic_network_address_str(sender, src_ip, sizeof(src_ip), FALSE), imquic_network_address_port(sender),
+					imquic_network_address_str(&conn->socket->local_address, dst_ip, sizeof(dst_ip), FALSE), conn->socket->port);
+				imquic_qlog_version_information(conn->qlog, 1, 1);
+			}
+#endif
 		}
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
+			conn->dgram_id_in++;
+			imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
+		}
+#endif
 		*pconn = conn;
 		imquic_refcount_increase(&conn->ref);
 		if(pkt->source.len > 0 && conn->remote_cid.len == 0) {
@@ -476,11 +571,28 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		}
 
 		/* Unprotect the header */
-		if(conn->just_started && pkt->is_protected && imquic_derive_initial_secret(&conn->keys[ssl_encryption_initial],
-				pkt->destination.id, pkt->destination.len, conn->is_server) < 0) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error deriving initial secret\n");
-			pkt->is_valid = FALSE;
-			return -1;
+		if(conn->just_started) {
+			if(pkt->is_protected && imquic_derive_initial_secret(&conn->keys[ssl_encryption_initial],
+					pkt->destination.id, pkt->destination.len, conn->is_server) < 0) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Error deriving initial secret\n");
+				pkt->is_valid = FALSE;
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL && conn->qlog->quic) {
+					json_t *ph = imquic_qlog_prepare_packet_header(imquic_encryption_level_str(pkt->level),
+						&pkt->source, &pkt->destination);
+					imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
+				}
+#endif
+				return -1;
+			}
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+					conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+					conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
+			}
+#endif
 		}
 		conn->just_started = FALSE;
 		/* Check which key we should use */
@@ -489,6 +601,13 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		if(pkt->is_protected && imquic_unprotect_header(quic, bytes, pn_offset, hp, hp_len) < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Error unprotecting packet\n");
 			pkt->is_valid = FALSE;
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				json_t *ph = imquic_qlog_prepare_packet_header(imquic_encryption_level_str(pkt->level),
+					&pkt->source, &pkt->destination);
+				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
+			}
+#endif
 			return -1;
 		}
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "Header unprotected\n");
@@ -499,6 +618,13 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		if(reserved != 0) {
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Invalid packet: reserved is not 0\n");
 			pkt->is_valid = FALSE;
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				json_t *ph = imquic_qlog_prepare_packet_header(imquic_encryption_level_str(pkt->level),
+					&pkt->source, &pkt->destination);
+				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
+			}
+#endif
 			return -1;
 		}
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- PKN (len):   %"SCNu8"\n", pn_length);
@@ -559,11 +685,17 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		}
 		conn = g_hash_table_lookup(connections, &pkt->destination);
 		if(conn == NULL) {
-			/* FIXME Connection not found: is this a new one? */
+			/* Connection not found: is this a new one? */
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Dropping packet for unknown connection\n");
 			pkt->is_valid = FALSE;
 			return -1;
 		}
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && conn->qlog->quic && bytes == tot) {
+			conn->dgram_id_in++;
+			imquic_qlog_udp_datagrams_received(conn->qlog, conn->dgram_id_in, bytes);
+		}
+#endif
 		*pconn = conn;
 		imquic_refcount_increase(&conn->ref);
 
@@ -573,6 +705,13 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		if(pkt->is_protected && imquic_unprotect_header(quic, bytes, pn_offset, hp, hp_len) < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error unprotecting packet\n");
 			pkt->is_valid = FALSE;
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				json_t *ph = imquic_qlog_prepare_packet_header("1RTT",
+					NULL, &pkt->destination);
+				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
+			}
+#endif
 			return -1;
 		}
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "Header unprotected\n");
@@ -582,6 +721,13 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		if(reserved != 0) {
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Invalid packet: reserved is not 0\n");
 			pkt->is_valid = FALSE;
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				json_t *ph = imquic_qlog_prepare_packet_header("1RTT",
+					NULL, &pkt->destination);
+				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_INVALID);
+			}
+#endif
 			return -1;
 		}
 		pkt->key_phase = (quic[0] & 0x04) >> 2;
@@ -600,10 +746,20 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			imquic_encryption_level_str(pkt->level), pkt->packet_number, conn->largest[pkt->level], pn, pn_length);
 		/* Check if there's a phase change */
 		if(pkt->key_phase != conn->current_phase) {
-			/* TODO Key phase change, update the keys */
+			/* Key phase change, update the keys */
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Detected key update to phase %d\n", pkt->key_phase);
 			imquic_update_keys(&conn->keys[ssl_encryption_application], pkt->key_phase);
 			conn->current_phase = pkt->key_phase;
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, conn->is_server),
+					conn->keys[ssl_encryption_application].local.key[conn->current_phase],
+					conn->keys[ssl_encryption_application].local.key_len, conn->current_phase);
+				imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_application, !conn->is_server),
+					conn->keys[ssl_encryption_application].remote.key[conn->current_phase],
+					conn->keys[ssl_encryption_application].remote.key_len, conn->current_phase);
+			}
+#endif
 		}
 		/* There's no payload length in Short headers, so the rest of the data is payload */
 		p_len = blen - pn_offset;
@@ -614,7 +770,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		imquic_print_hex(IMQUIC_LOG_HUGE, &quic[offset+pn_length], p_len - pn_length);
 		/* Decrypt the payload */
 		pkt->payload_offset = offset+pn_length;
-		/* FIXME Check which keys we should use */
+		/* Check which keys we should use */
 		uint8_t *key = conn->keys[pkt->level].remote.key[conn->current_phase];
 		size_t key_len = conn->keys[pkt->level].remote.key_len;
 		uint8_t *iv = conn->keys[pkt->level].remote.iv[conn->current_phase];
@@ -625,6 +781,13 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		if(dlen < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decrypting packet\n");
 			pkt->is_valid = FALSE;
+#ifdef HAVE_QLOG
+			if(conn->qlog != NULL && conn->qlog->quic) {
+				json_t *ph = imquic_qlog_prepare_packet_header(imquic_encryption_level_str(pkt->level),
+					(lh ? &pkt->source : NULL), &pkt->destination);
+				imquic_qlog_packet_dropped(conn->qlog, ph, conn->dgram_id_in, bytes, IMQUIC_QLOG_TRIGGER_DECRYPTION_FAILURE);
+			}
+#endif
 			return -1;
 		}
 		pkt->payload.length = dlen;
@@ -643,7 +806,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		/* Now parse the frames in the payload */
 		imquic_parse_frames(conn, pkt);
 
-		/* Done: the rest is padding (FIXME or another packet?) */
+		/* Done: the rest is padding (or another packet?) */
 		pkt->data.length = pkt->payload_offset + pkt->payload.length;
 		memcpy(pkt->data.buffer, quic, pkt->data.length);
 		offset += p_len;
@@ -665,6 +828,20 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 	/* Return the size of this packet */
 	if(conn != NULL)
 		conn->last_activity = g_get_monotonic_time();
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+		json_t *ph = imquic_qlog_prepare_packet_header(
+			imquic_encryption_level_str(pkt->level),
+			(lh ? &pkt->source : NULL),
+			&pkt->destination);
+		json_object_set_new(ph, "packet_number", json_integer(pkt->packet_number));
+		imquic_qlog_packet_received(conn->qlog, ph, pkt->qlog_frames, conn->dgram_id_in, offset);
+		pkt->qlog_frames = NULL;
+	}
+	if(pkt->qlog_frames != NULL)
+		json_decref(pkt->qlog_frames);
+	pkt->qlog_frames = NULL;
+#endif
 	return offset;
 }
 
@@ -675,6 +852,14 @@ int imquic_parse_frames(imquic_connection *conn, imquic_packet *pkt) {
 	size_t blen = pkt->payload.length;
 	imquic_print_hex(IMQUIC_LOG_HUGE, bytes, blen);
 	size_t offset = 0, padding = 0, parsed = 0;
+#ifdef HAVE_QLOG
+	/* If QLOG is enabled, create an array to add parsed frames to */
+	if(conn->qlog != NULL && conn->qlog->quic) {
+		if(pkt->qlog_frames != NULL)
+			json_decref(pkt->qlog_frames);
+		pkt->qlog_frames = json_array();
+	}
+#endif
 	/* Iterate on all frames */
 	pkt->ack_eliciting = FALSE;
 	while(blen > 0) {
@@ -697,104 +882,110 @@ int imquic_parse_frames(imquic_connection *conn, imquic_packet *pkt) {
 			pkt->ack_eliciting = TRUE;
 			offset++;
 			blen--;
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				json_t *frame = imquic_qlog_prepare_packet_frame("ping");
+				json_array_append_new(pkt->qlog_frames, frame);
+			}
+#endif
 		} else if(type == IMQUIC_ACK || type == IMQUIC_ACK_WITH_ECN) {
 			/* Parse this ACK frame */
-			parsed = imquic_payload_parse_ack(conn, &bytes[offset], blen, pkt->level);
+			parsed = imquic_payload_parse_ack(conn, pkt, &bytes[offset], blen, pkt->level);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_RESET_STREAM) {
 			/* Parse this RESET_STREAM frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_reset_stream(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_reset_stream(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_STOP_SENDING) {
 			/* Parse this STOP_SENDING frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_stop_sending(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_stop_sending(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_CRYPTO) {
 			/* Parse this CRYPTO frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_crypto(conn, &bytes[offset], blen, pkt->level);
+			parsed = imquic_payload_parse_crypto(conn, pkt, &bytes[offset], blen, pkt->level);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_NEW_TOKEN) {
 			/* Parse this NEW_TOKEN frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_new_token(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_new_token(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type >= IMQUIC_STREAM && type <= IMQUIC_STREAM_OLF) {
 			/* Parse this STREAM frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_stream(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_stream(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_MAX_DATA) {
 			/* Parse this MAX_DATA frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_max_data(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_max_data(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_MAX_STREAM_DATA) {
 			/* Parse this MAX_STREAM_DATA frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_max_stream_data(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_max_stream_data(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_MAX_STREAMS || type == IMQUIC_MAX_STREAMS_UNI) {
 			/* Parse this MAX_STREAMS frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_max_streams(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_max_streams(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_DATA_BLOCKED) {
 			/* Parse this DATA_BLOCKED frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_data_blocked(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_data_blocked(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_STREAM_DATA_BLOCKED) {
 			/* Parse this STREAM_DATA_BLOCKED frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_stream_data_blocked(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_stream_data_blocked(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_STREAMS_BLOCKED || type == IMQUIC_STREAMS_BLOCKED_UNI) {
 			/* Parse this STREAMS_BLOCKED frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_streams_blocked(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_streams_blocked(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_NEW_CONNECTION_ID) {
 			/* Parse this NEW_CONNECTION_ID frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_new_connection_id(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_new_connection_id(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_RETIRE_CONNECTION_ID) {
 			/* Parse this RETIRE_CONNECTION_ID frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_retire_connection_id(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_retire_connection_id(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_PATH_CHALLENGE) {
 			/* Parse this PATH_CHALLENGE frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_path_challenge(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_path_challenge(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_PATH_RESPONSE) {
 			/* Parse this PATH_RESPONSE frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_path_response(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_path_response(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_CONNECTION_CLOSE || type == IMQUIC_CONNECTION_CLOSE_APP) {
 			/* Parse this CONNECTION_CLOSE frame */
-			parsed = imquic_payload_parse_connection_close(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_connection_close(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else if(type == IMQUIC_HANDSHAKE_DONE) {
@@ -802,25 +993,45 @@ int imquic_parse_frames(imquic_connection *conn, imquic_packet *pkt) {
 			pkt->ack_eliciting = TRUE;
 			offset++;
 			blen--;
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				json_t *frame = imquic_qlog_prepare_packet_frame("handshake_done");
+				json_array_append_new(pkt->qlog_frames, frame);
+			}
+#endif
 		} else if(type >= IMQUIC_DATAGRAM && type <= IMQUIC_DATAGRAM_L) {
 			/* Parse this DATAGRAM frame */
 			pkt->ack_eliciting = TRUE;
-			parsed = imquic_payload_parse_datagram(conn, &bytes[offset], blen);
+			parsed = imquic_payload_parse_datagram(conn, pkt, &bytes[offset], blen);
 			offset += parsed;
 			blen -= parsed;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Unsupported frame '%02x' (%d)\n", type, type);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				json_t *frame = imquic_qlog_prepare_packet_frame("unknown");
+				/* TODO Add frame_type_bytes */
+				json_array_append_new(pkt->qlog_frames, frame);
+			}
+#endif
 			return -1;
 		}
 	}
 	if(padding > 0) {
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- %s (%02x), %zu items\n", imquic_frame_type_str(IMQUIC_PADDING), IMQUIC_PADDING, padding);
+#ifdef HAVE_QLOG
+		if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+			json_t *frame = imquic_qlog_prepare_packet_frame("padding");
+			json_object_set_new(frame, "payload_length", json_integer(padding));
+			json_array_append_new(pkt->qlog_frames, frame);
+		}
+#endif
 		padding = 0;
 	}
 	return 0;
 }
 
-size_t imquic_payload_parse_ack(imquic_connection *conn, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level) {
+size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level) {
 	if(bytes == NULL || blen < 5 || (bytes[0] != IMQUIC_ACK && bytes[0] != IMQUIC_ACK_WITH_ECN))
 		return 0;
 	size_t offset = 1;
@@ -840,6 +1051,17 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, uint8_t *bytes, size_t 
 	uint64_t far = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- First ACK Range: %"SCNu64" (length %"SCNu8")\n", far, length);
+#ifdef HAVE_QLOG
+	json_t *array = NULL;
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("ack");
+		json_object_set_new(frame, "ack_delay", json_integer(delay << conn->remote_params.ack_delay_exponent));
+		array = json_array();
+		/* TODO Add ACK ranges */
+		json_object_set_new(frame, "acked_ranges", array);
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	/* Let's figure out which packets were explicitly ACKed */
 	GList *acked = NULL;
 	imquic_sent_packet *sent_pkt = NULL, *new_largest = NULL;
@@ -922,7 +1144,7 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, uint8_t *bytes, size_t 
 	while(temp != NULL) {
 		imquic_sent_packet *sent_pkt = (imquic_sent_packet *)temp->data;
 		if(sent_pkt != NULL) {
-			/* FIXME Retransmit this packet if needed, or get rid of it */
+			/* Retransmit this packet if needed, or get rid of it */
 			IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- -- %"SCNu64" (%s)\n",
 				sent_pkt->packet_number, imquic_encryption_level_str(sent_pkt->level));
 			imquic_retransmit_packet(conn, sent_pkt);
@@ -939,7 +1161,7 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, uint8_t *bytes, size_t 
 	return offset;
 }
 
-size_t imquic_payload_parse_reset_stream(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_reset_stream(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 4 || bytes[0] != IMQUIC_RESET_STREAM)
 		return 0;
 	/* Stream has been reset */
@@ -963,10 +1185,19 @@ size_t imquic_payload_parse_reset_stream(imquic_connection *conn, uint8_t *bytes
 			stream->in_state = IMQUIC_STREAM_RESET;
 	}
 	imquic_mutex_unlock(&conn->mutex);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("reset_stream");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "error_code", json_integer(error));
+		json_object_set_new(frame, "final_size", json_integer(final));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_stop_sending(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_stop_sending(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 3 || bytes[0] != IMQUIC_STOP_SENDING)
 		return 0;
 	/* We've been asked to stop sending on this stream */
@@ -982,15 +1213,23 @@ size_t imquic_payload_parse_stop_sending(imquic_connection *conn, uint8_t *bytes
 	imquic_mutex_lock(&conn->mutex);
 	imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
 	if(stream != NULL) {
-		/* TODO Check f we should send a CC with STREAM_STATE_ERROR */
+		/* TODO Check if we should send a CC with STREAM_STATE_ERROR */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "We've been asked to stop sending on stream %"SCNu64"\n", stream_id);
 		stream->can_send = FALSE;
 	}
 	imquic_mutex_unlock(&conn->mutex);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("stop_sending");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "error_code", json_integer(error));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_crypto(imquic_connection *conn, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level) {
+size_t imquic_payload_parse_crypto(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, enum ssl_encryption_level_t level) {
 	if(bytes == NULL || blen < 3 || bytes[0] != IMQUIC_CRYPTO)
 		return 0;
 	size_t offset = 1;
@@ -1011,12 +1250,20 @@ size_t imquic_payload_parse_crypto(imquic_connection *conn, uint8_t *bytes, size
 		/* Move on */
 		offset += crypto_length;
 	}
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("crypto");
+		json_object_set_new(frame, "offset", json_integer(crypto_offset));
+		json_object_set_new(frame, "length", json_integer(crypto_length));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	/* Check if there's anything we can pass to the stack now */
 	imquic_check_incoming_crypto(conn);
 	return offset;
 }
 
-size_t imquic_payload_parse_new_token(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_new_token(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || bytes[0] != IMQUIC_NEW_TOKEN)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1030,10 +1277,17 @@ size_t imquic_payload_parse_new_token(imquic_connection *conn, uint8_t *bytes, s
 		imquic_print_hex(IMQUIC_LOG_HUGE, &bytes[offset], token_length);
 		offset += token_length;
 	}
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("new_token");
+		/* TODO Add token type and details */
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_stream(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || (bytes[0] < IMQUIC_STREAM && bytes[0] > IMQUIC_STREAM_OLF))
 		return 0;
 	uint8_t obit = (bytes[0] & 0x04) >> 2;
@@ -1089,6 +1343,13 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, uint8_t *bytes, size
 				IMQUIC_LOG(IMQUIC_LOG_VERB, "Got new %s initiated %s stream '%"SCNu64"'\n",
 					stream->client_initiated ? "client" : "server", stream->bidirectional ? "bidirectional" : "unidirectional", stream_id);
 				g_hash_table_insert(conn->streams, imquic_dup_uint64(stream_id), stream);
+#ifdef HAVE_QLOG
+				if(conn->qlog != NULL && conn->qlog->quic) {
+					imquic_qlog_stream_state_updated(conn->qlog, stream_id,
+						(bidirectional ? "bidirectional" : "unidirectional"),
+						(!bidirectional ? "receiving" : NULL), "open");
+				}
+#endif
 			}
 		}
 	} else if(!stream->can_receive || stream->in_state == IMQUIC_STREAM_INACTIVE) {
@@ -1121,6 +1382,15 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, uint8_t *bytes, size
 		stream_length = blen-offset;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Payload: (%"SCNu64")\n", stream_length);
 	imquic_print_hex(IMQUIC_LOG_HUGE, &bytes[offset], stream_length);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("stream");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "offset", json_integer(stream_offset));
+		json_object_set_new(frame, "length", json_integer(stream_length));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	/* If we have a stream instance, pass the data to the buffer */
 	if(stream == NULL)
 		goto done;
@@ -1157,6 +1427,10 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, uint8_t *bytes, size
 		g_hash_table_remove(conn->streams, &stream_id);
 		g_hash_table_insert(conn->streams_done, imquic_dup_uint64(stream_id), GINT_TO_POINTER(1));
 		imquic_mutex_unlock(&conn->mutex);
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && conn->qlog->quic)
+			imquic_qlog_stream_state_updated(conn->qlog, stream_id, NULL, NULL, "closed");
+#endif
 	} else {
 		imquic_mutex_unlock(&stream->mutex);
 	}
@@ -1168,7 +1442,7 @@ done:
 	return offset;
 }
 
-size_t imquic_payload_parse_max_data(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_max_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || bytes[0] != IMQUIC_MAX_DATA)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1177,10 +1451,17 @@ size_t imquic_payload_parse_max_data(imquic_connection *conn, uint8_t *bytes, si
 	uint64_t maximum = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Maximum Data: %"SCNu64" (length %"SCNu8")\n", maximum, length);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("max_data");
+		json_object_set_new(frame, "maximum", json_integer(maximum));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_max_stream_data(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_max_stream_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 3 || bytes[0] != IMQUIC_MAX_STREAM_DATA)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1192,10 +1473,18 @@ size_t imquic_payload_parse_max_stream_data(imquic_connection *conn, uint8_t *by
 	uint64_t maximum = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Maximum Data: %"SCNu64" (length %"SCNu8")\n", maximum, length);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("max_stream_data");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "maximum", json_integer(maximum));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_max_streams(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_max_streams(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || (bytes[0] != IMQUIC_MAX_STREAMS && bytes[0] != IMQUIC_MAX_STREAMS_UNI))
 		return 0;
 	/* TODO Actually do something with this */
@@ -1205,22 +1494,37 @@ size_t imquic_payload_parse_max_streams(imquic_connection *conn, uint8_t *bytes,
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Maximum Streams: %"SCNu64" (length %"SCNu8")\n", maximum, length);
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Applied to:      %s\n", (bytes[0] == IMQUIC_MAX_STREAMS ? "bidirectional" : "unidirectional"));
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("max_streams");
+		json_object_set_new(frame, "stream_type", json_string(bytes[0] == IMQUIC_MAX_STREAMS ? "bidirectional" : "unidirectional"));
+		json_object_set_new(frame, "maximum", json_integer(maximum));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_data_blocked(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || bytes[0] != IMQUIC_DATA_BLOCKED)
 		return 0;
 	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
-	uint64_t maximum = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t limit = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Maximum Data: %"SCNu64" (length %"SCNu8")\n", maximum, length);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Limited Data: %"SCNu64" (length %"SCNu8")\n", limit, length);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("data_blocked");
+		json_object_set_new(frame, "limit", json_integer(limit));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 3 || bytes[0] != IMQUIC_STREAM_DATA_BLOCKED)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1229,26 +1533,42 @@ size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, uint8_t
 	uint64_t stream_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Stream ID:    %"SCNu64" (length %"SCNu8")\n", stream_id, length);
-	uint64_t maximum = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t limit = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Maximum Data: %"SCNu64" (length %"SCNu8")\n", maximum, length);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Limited Data: %"SCNu64" (length %"SCNu8")\n", limit, length);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("stream_data_blocked");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "limit", json_integer(limit));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_streams_blocked(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_streams_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || (bytes[0] != IMQUIC_STREAMS_BLOCKED && bytes[0] != IMQUIC_STREAMS_BLOCKED_UNI))
 		return 0;
 	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
-	uint64_t maximum = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t limit = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Maximum Streams: %"SCNu64" (length %"SCNu8")\n", maximum, length);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Limited Streams: %"SCNu64" (length %"SCNu8")\n", limit, length);
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Applied to:      %s\n", (bytes[0] == IMQUIC_MAX_STREAMS ? "bidirectional" : "unidirectional"));
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("streams_blocked");
+		json_object_set_new(frame, "stream_type", json_string(bytes[0] == IMQUIC_MAX_STREAMS ? "bidirectional" : "unidirectional"));
+		json_object_set_new(frame, "limit", json_integer(limit));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_new_connection_id(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_new_connection_id(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 20 || bytes[0] != IMQUIC_NEW_CONNECTION_ID)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1267,8 +1587,9 @@ size_t imquic_payload_parse_new_connection_id(imquic_connection *conn, uint8_t *
 	}
 	offset++;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Length:          %"SCNu8"\n", cid_len);
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Connection ID\n");
-	imquic_print_hex(IMQUIC_LOG_HUGE, &bytes[offset], cid_len);
+	char cid[41];
+	const char *cid_str = imquic_hex_str(&bytes[offset], cid_len, cid, sizeof(cid));
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Connection ID:   %s\n", cid_str);
 	/* TODO Keep track of it */
 	//~ imquic_connection_id new_remote_cid = { 0 };
 	//~ new_remote_cid.seq = seq;
@@ -1283,10 +1604,19 @@ size_t imquic_payload_parse_new_connection_id(imquic_connection *conn, uint8_t *
 	imquic_print_hex(IMQUIC_LOG_HUGE, &bytes[offset], 16);
 	//~ memcpy(new_remote_cid.token, &bytes[offset], 16);
 	offset += 16;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("new_connection_id");
+		json_object_set_new(frame, "sequence_number", json_integer(seq));
+		json_object_set_new(frame, "retire_prior_to", json_integer(retire));
+		json_object_set_new(frame, "connection_id", json_string(cid_str));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_retire_connection_id(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_retire_connection_id(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || bytes[0] != IMQUIC_RETIRE_CONNECTION_ID)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1295,10 +1625,17 @@ size_t imquic_payload_parse_retire_connection_id(imquic_connection *conn, uint8_
 	uint64_t seq = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Sequence Number: %"SCNu64" (length %"SCNu8")\n", seq, length);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("retire_connection_id");
+		json_object_set_new(frame, "sequence_number", json_integer(seq));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_path_challenge(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_path_challenge(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 9 || bytes[0] != IMQUIC_PATH_CHALLENGE)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1306,10 +1643,16 @@ size_t imquic_payload_parse_path_challenge(imquic_connection *conn, uint8_t *byt
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Data\n");
 	imquic_print_hex(IMQUIC_LOG_HUGE, &bytes[offset], 8);
 	offset += 8;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("path_challenge");
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_path_response(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_path_response(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 9 || bytes[0] != IMQUIC_PATH_CHALLENGE)
 		return 0;
 	/* TODO Actually do something with this */
@@ -1317,22 +1660,28 @@ size_t imquic_payload_parse_path_response(imquic_connection *conn, uint8_t *byte
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Data\n");
 	imquic_print_hex(IMQUIC_LOG_HUGE, &bytes[offset], 8);
 	offset += 8;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("path_response");
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_parse_connection_close(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_connection_close(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 3 || (bytes[0] != IMQUIC_CONNECTION_CLOSE && bytes[0] != IMQUIC_CONNECTION_CLOSE_APP))
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t error = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Error Code: %"SCNu64" (%s) (length %"SCNu8")\n", error, imquic_error_code_str(error), length);
+	uint64_t trigger = 0;
 	if(bytes[0] == IMQUIC_CONNECTION_CLOSE) {
-		uint64_t frame = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		trigger = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		offset += length;
-		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Frame Type: %"SCNu64" (length %"SCNu8")\n", frame, length);
+		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Frame Type: %"SCNu64" (length %"SCNu8")\n", trigger, length);
 	}
 	uint64_t rlen = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
@@ -1341,13 +1690,35 @@ size_t imquic_payload_parse_connection_close(imquic_connection *conn, uint8_t *b
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Reason Phrase: %.*s\n", (int)rlen, &bytes[offset]);
 		offset += rlen;
 	}
-	/* FIXME Notify the application that the connection is gone */
+#if HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+		char reason[256];
+		reason[0] = '\0';
+		if(rlen > 0)
+			g_snprintf(reason, sizeof(reason), "%.*s", (int)rlen, &bytes[offset]);
+		imquic_qlog_connection_closed(conn->qlog, FALSE,
+			(bytes[0] == IMQUIC_CONNECTION_CLOSE ? error : 0),
+			(bytes[0] == IMQUIC_CONNECTION_CLOSE_APP ? error : 0),
+			(rlen > 0 ? reason : NULL));
+		if(pkt != NULL && pkt->qlog_frames != NULL) {
+			json_t *frame = imquic_qlog_prepare_packet_frame("connection_close");
+			json_object_set_new(frame, "error_space", json_string(bytes[0] == IMQUIC_CONNECTION_CLOSE_APP ? "application" : "transport"));
+			json_object_set_new(frame, "error_code", json_integer(error));
+			if(rlen > 0)
+				json_object_set_new(frame, "reason", json_string(reason));
+			if(bytes[0] == IMQUIC_CONNECTION_CLOSE)
+				json_object_set_new(frame, "trigger_frame_type", json_integer(trigger));
+			json_array_append_new(pkt->qlog_frames, frame);
+		}
+	}
+#endif
+	/* Notify the application that the connection is gone */
 	imquic_network_endpoint_remove_connection(conn->socket, conn, TRUE);
-
+	/* Done */
 	return offset;
 }
 
-size_t imquic_payload_parse_datagram(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+size_t imquic_payload_parse_datagram(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || (bytes[0] != IMQUIC_DATAGRAM && bytes[0] != IMQUIC_DATAGRAM_L))
 		return 0;
 	uint8_t lbit = (bytes[0] & 0x01);
@@ -1364,6 +1735,13 @@ size_t imquic_payload_parse_datagram(imquic_connection *conn, uint8_t *bytes, si
 		datagram_length = blen-offset;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Payload: (%"SCNu64")\n", datagram_length);
 	imquic_print_hex(IMQUIC_LOG_HUGE, &bytes[offset], datagram_length);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("datagram");
+		json_object_set_new(pkt->qlog_frames, "length", json_integer(datagram_length));
+		json_array_append_new(pkt->qlog_frames, frame);
+	}
+#endif
 	/* Pass the data to the application callback */
 	imquic_connection_notify_datagram_incoming(conn, &bytes[offset], datagram_length);
 	/* Move on */
@@ -1372,22 +1750,39 @@ size_t imquic_payload_parse_datagram(imquic_connection *conn, uint8_t *bytes, si
 }
 
 /* Helpers to add frames to a payload */
-size_t imquic_payload_add_padding(uint8_t *bytes, size_t blen, size_t padding) {
+size_t imquic_payload_add_padding(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, size_t padding) {
 	if(padding > blen) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Requested padding is larger than the available buffer, truncating\n");
 		padding = blen;
 	}
 	if(padding > 0)
 		memset(bytes, 0, padding);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("padding");
+		json_object_set_new(frame, "payload_length", json_integer(padding));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return padding;
 }
 
-size_t imquic_payload_add_ping(uint8_t *bytes, size_t blen) {
+size_t imquic_payload_add_ping(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	bytes[0] = IMQUIC_PING;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("ping");
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return 1;
 }
 
-size_t imquic_payload_add_ack(uint8_t *bytes, size_t blen, GList *received, uint64_t delay, uint64_t *ecn_counts) {
+size_t imquic_payload_add_ack(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, GList *received, uint64_t delay, uint64_t *ecn_counts) {
 	if(received == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Empty list, not adding any ACK frame\n");
 		return 0;
@@ -1449,29 +1844,62 @@ size_t imquic_payload_add_ack(uint8_t *bytes, size_t blen, GList *received, uint
 		offset += imquic_write_varint(ecn_counts[1], &bytes[offset], blen-offset);
 		offset += imquic_write_varint(ecn_counts[2], &bytes[offset], blen-offset);
 	}
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("ack");
+		json_object_set_new(frame, "ack_delay", json_integer(delay << conn->local_params.ack_delay_exponent));
+		json_t *array = json_array();
+		/* TODO Add ACK ranges */
+		json_object_set_new(frame, "acked_ranges", array);
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_reset_stream(uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t error_code, uint64_t final_size) {
+size_t imquic_payload_add_reset_stream(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t error_code, uint64_t final_size) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_RESET_STREAM;
 	offset++;
 	offset += imquic_write_varint(stream_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(error_code, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(final_size, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("reset_stream");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "error_code", json_integer(error_code));
+		json_object_set_new(frame, "final_size", json_integer(final_size));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_stop_sending(uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t error_code) {
+size_t imquic_payload_add_stop_sending(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t error_code) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_STOP_SENDING;
 	offset++;
 	offset += imquic_write_varint(stream_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(error_code, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("stop_sending");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "error_code", json_integer(error_code));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_crypto(uint8_t *bytes, size_t blen, uint8_t *crypto, size_t crypto_offset, size_t crypto_length) {
+size_t imquic_payload_add_crypto(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint8_t *crypto, size_t crypto_offset, size_t crypto_length) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_CRYPTO;
 	offset++;
@@ -1479,20 +1907,39 @@ size_t imquic_payload_add_crypto(uint8_t *bytes, size_t blen, uint8_t *crypto, s
 	offset += imquic_write_varint(crypto_length, &bytes[offset], blen-offset);
 	memcpy(&bytes[offset], crypto, crypto_length);
 	offset += crypto_length;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("crypto");
+		json_object_set_new(frame, "offset", json_integer(crypto_offset));
+		json_object_set_new(frame, "length", json_integer(crypto_length));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_new_token(uint8_t *bytes, size_t blen, uint8_t *token, size_t token_length) {
+size_t imquic_payload_add_new_token(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint8_t *token, size_t token_length) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_NEW_TOKEN;
 	offset++;
 	offset += imquic_write_varint(token_length, &bytes[offset], blen-offset);
 	memcpy(&bytes[offset], token, token_length);
 	offset += token_length;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("new_token");
+		/* TODO Add token type and details */
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_stream(uint8_t *bytes, size_t blen, uint64_t stream_id, uint8_t *stream, size_t stream_offset, size_t stream_length, gboolean complete, gboolean last) {
+size_t imquic_payload_add_stream(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t stream_id, uint8_t *stream, size_t stream_offset, size_t stream_length, gboolean complete, gboolean last) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_STREAM |
 		(stream_offset > 0 ? 0x04 : 0x00) |
@@ -1506,60 +1953,129 @@ size_t imquic_payload_add_stream(uint8_t *bytes, size_t blen, uint64_t stream_id
 		offset += imquic_write_varint(stream_length, &bytes[offset], blen-offset);
 	memcpy(&bytes[offset], stream, stream_length);
 	offset += stream_length;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("stream");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "offset", json_integer(stream_offset));
+		json_object_set_new(frame, "length", json_integer(stream_length));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_max_data(uint8_t *bytes, size_t blen, uint64_t max_data) {
+size_t imquic_payload_add_max_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t max_data) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_MAX_DATA;
 	offset++;
 	offset += imquic_write_varint(max_data, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("max_data");
+		json_object_set_new(frame, "maximum", json_integer(max_data));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_max_stream_data(uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t max_data) {
+size_t imquic_payload_add_max_stream_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t max_data) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_MAX_STREAM_DATA;
 	offset++;
 	offset += imquic_write_varint(stream_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(max_data, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("max_stream_data");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "maximum", json_integer(max_data));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_max_streams(uint8_t *bytes, size_t blen, gboolean bidirectional, uint64_t max_streams) {
+size_t imquic_payload_add_max_streams(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, gboolean bidirectional, uint64_t max_streams) {
 	size_t offset = 0;
 	bytes[offset] = bidirectional ? IMQUIC_MAX_STREAMS : IMQUIC_MAX_STREAMS_UNI;
 	offset++;
 	offset += imquic_write_varint(max_streams, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("max_streams");
+		json_object_set_new(frame, "stream_type", json_string(bidirectional ? "bidirectional" : "unidirectional"));
+		json_object_set_new(frame, "maximum", json_integer(max_streams));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_data_blocked(uint8_t *bytes, size_t blen, uint64_t max_data) {
+size_t imquic_payload_add_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t max_data) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_DATA_BLOCKED;
 	offset++;
 	offset += imquic_write_varint(max_data, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("data_blocked");
+		json_object_set_new(frame, "limit", json_integer(max_data));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_stream_data_blocked(uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t max_data) {
+size_t imquic_payload_add_stream_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t stream_id, uint64_t max_data) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_STREAM_DATA_BLOCKED;
 	offset++;
 	offset += imquic_write_varint(stream_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(max_data, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("stream_data_blocked");
+		json_object_set_new(frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame, "limit", json_integer(max_data));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_streams_blocked(uint8_t *bytes, size_t blen, uint64_t max_streams) {
+size_t imquic_payload_add_streams_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, gboolean bidirectional, uint64_t max_streams) {
 	size_t offset = 0;
-	bytes[offset] = IMQUIC_STREAMS_BLOCKED;
+	bytes[offset] = bidirectional ? IMQUIC_STREAMS_BLOCKED : IMQUIC_STREAMS_BLOCKED_UNI;
 	offset++;
 	offset += imquic_write_varint(max_streams, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("streams_blocked");
+		json_object_set_new(frame, "stream_type", json_string(bidirectional ? "bidirectional" : "unidirectional"));
+		json_object_set_new(frame, "limit", json_integer(max_streams));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_new_connection_id(uint8_t *bytes, size_t blen, uint64_t seqnum, uint64_t retire_prior_to, imquic_connection_id *cid, uint8_t *reset_token) {
+size_t imquic_payload_add_new_connection_id(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t seqnum, uint64_t retire_prior_to, imquic_connection_id *cid, uint8_t *reset_token) {
 	if(cid == NULL || cid->len < 1 || cid->len > 20) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid connection ID, can't add frame\n");
 		return 0;
@@ -1575,34 +2091,71 @@ size_t imquic_payload_add_new_connection_id(uint8_t *bytes, size_t blen, uint64_
 	offset += cid->len;
 	memcpy(&bytes[offset], reset_token, 16);
 	offset += 16;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("new_connection_id");
+		json_object_set_new(frame, "sequence_number", json_integer(seqnum));
+		json_object_set_new(frame, "retire_prior_to", json_integer(retire_prior_to));
+		char cid_str[41];
+		json_object_set_new(frame, "connection_id", json_string(imquic_connection_id_str(cid, cid_str, sizeof(cid_str))));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_retire_connection_id(uint8_t *bytes, size_t blen, uint64_t seqnum) {
+size_t imquic_payload_add_retire_connection_id(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint64_t seqnum) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_RETIRE_CONNECTION_ID;
 	offset++;
 	offset += imquic_write_varint(seqnum, &bytes[offset], blen-offset);
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("retire_connection_id");
+		json_object_set_new(frame, "sequence_number", json_integer(seqnum));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_path_challenge(uint8_t *bytes, size_t blen, uint8_t *data) {
+size_t imquic_payload_add_path_challenge(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint8_t *data) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_PATH_CHALLENGE;
 	memcpy(&bytes[offset], data, 8);
 	offset += 8;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("path_challenge");
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_path_response(uint8_t *bytes, size_t blen, uint8_t *data) {
+size_t imquic_payload_add_path_response(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint8_t *data) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_PATH_RESPONSE;
 	memcpy(&bytes[offset], data, 8);
 	offset += 8;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("path_response");
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_connection_close(uint8_t *bytes, size_t blen, imquic_error_code error_code, imquic_frame_type frame_type, const char *reason) {
+size_t imquic_payload_add_connection_close(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, imquic_error_code error_code, imquic_frame_type frame_type, const char *reason) {
 	size_t offset = 0;
 	bytes[offset] = frame_type ? IMQUIC_CONNECTION_CLOSE : IMQUIC_CONNECTION_CLOSE_APP;
 	offset++;
@@ -1621,15 +2174,37 @@ size_t imquic_payload_add_connection_close(uint8_t *bytes, size_t blen, imquic_e
 		memcpy(&bytes[offset], reason, reason_len);
 		offset += reason_len;
 	}
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("connection_close");
+		json_object_set_new(frame, "error_space", json_string(bytes[0] == IMQUIC_CONNECTION_CLOSE_APP ? "application" : "transport"));
+		json_object_set_new(frame, "error_code", json_integer(error_code));
+		if(reason != NULL)
+			json_object_set_new(frame, "reason", json_string(reason));
+		if(bytes[0] == IMQUIC_CONNECTION_CLOSE)
+			json_object_set_new(frame, "trigger_frame_type", json_integer(frame_type));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
-size_t imquic_payload_add_handshake_done(uint8_t *bytes, size_t blen) {
+size_t imquic_payload_add_handshake_done(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	bytes[0] = IMQUIC_HANDSHAKE_DONE;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("handshake_done");
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return 1;
 }
 
-size_t imquic_payload_add_datagram(uint8_t *bytes, size_t blen, uint8_t *datagram, size_t datagram_length, gboolean last) {
+size_t imquic_payload_add_datagram(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, uint8_t *datagram, size_t datagram_length, gboolean last) {
 	size_t offset = 0;
 	bytes[offset] = IMQUIC_DATAGRAM |
 		(!last ? 0x01 : 0x00);
@@ -1638,6 +2213,15 @@ size_t imquic_payload_add_datagram(uint8_t *bytes, size_t blen, uint8_t *datagra
 		offset += imquic_write_varint(datagram_length, &bytes[offset], blen-offset);
 	memcpy(&bytes[offset], datagram, datagram_length);
 	offset += datagram_length;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
+		json_t *frame = imquic_qlog_prepare_packet_frame("datagram");
+		json_object_set_new(pkt->qlog_frames, "length", json_integer(datagram_length));
+		if(pkt->qlog_frame != NULL)
+			json_decref(pkt->qlog_frame);
+		pkt->qlog_frame = frame;
+	}
+#endif
 	return offset;
 }
 
@@ -1693,10 +2277,19 @@ size_t imquic_transport_parameter_add_connection_id(uint8_t *bytes, size_t blen,
 
 /* Parsers */
 int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, size_t blen) {
-	/* TODO Store those transport parameters in the connection state */
+	/* Store those transport parameters in the connection state */
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Parsing transport parameters (%zu bytes)\n",
 		imquic_get_connection_name(conn), blen);
 	imquic_print_hex(IMQUIC_LOG_HUGE, bytes, blen);
+#ifdef HAVE_QLOG
+	/* Trace events, if needed */
+	json_t *data = NULL;
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+		/* TODO Set resumption properly */
+		data = imquic_qlog_prepare_parameters_set(conn->qlog, FALSE, FALSE, conn->socket->tls->early_data);
+	}
+#endif
+	int res = 0;
 	size_t offset = 0, param_offset;
 	uint8_t length = 0;
 	uint64_t param = 0, p_len = 0;
@@ -1710,7 +2303,8 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Broken transport parameters at offset %zu (%"SCNu64" > %zu)\n",
 				imquic_get_connection_name(conn), offset, p_len, blen - offset);
 			imquic_print_hex(IMQUIC_LOG_HUGE, bytes + param_offset, blen - offset);
-			return -1;
+			res = -1;
+			goto done;
 		}
 		switch(param) {
 			case IMQUIC_ORIGINAL_DESTINATION_CONNECTION_ID:
@@ -1721,28 +2315,35 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid connection ID (len=%"SCNu64")\n",
 						imquic_get_connection_name(conn), p_len);
 					imquic_print_hex(IMQUIC_LOG_HUGE, bytes + param_offset, p_len);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL && conn->is_server && param == IMQUIC_ORIGINAL_DESTINATION_CONNECTION_ID) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] A client can't send 'original_destination_connection_id'\n",
 						imquic_get_connection_name(conn));
-					return -1;
+					res = -1;
+					goto done;
 				}
 				imquic_connection_id cid;
 				cid.len = p_len;
 				if(p_len > 0)
 					memcpy(cid.id, bytes + offset, p_len);
 				char cid_str[41];
+				const char *cid_str_ = imquic_connection_id_str(&cid, cid_str, sizeof(cid_str));
 				size_t cid_len = p_len * 2;
 				IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- [%"SCNu64"][%s][%"SCNu64"] %.*s\n",
 					param, imquic_transport_parameter_str(param),
-					p_len, (int)cid_len, imquic_connection_id_str(&cid, cid_str, sizeof(cid_str)));
+					p_len, (int)cid_len, cid_str_);
 				/* TODO We should check if things match */
 				if(conn != NULL && param == IMQUIC_INITIAL_SOURCE_CONNECTION_ID) {
 					/* FIXME Replace the remote ID */
 					memcpy(conn->remote_cid.id, cid.id, cid.len);
 					conn->remote_cid.len = cid.len;
 				}
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_string(cid_str_));
+#endif
 				break;
 			}
 			case IMQUIC_STATELESS_RESET_TOKEN: {
@@ -1750,6 +2351,13 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- [%"SCNu64"][%s][%"SCNu64"]\n",
 					param, imquic_transport_parameter_str(param), p_len);
 				imquic_print_hex(IMQUIC_LOG_HUGE, bytes + offset, p_len);
+#ifdef HAVE_QLOG
+				if(data != NULL) {
+					char st[33];
+					const char *st_str = imquic_hex_str(bytes + offset, p_len, st, sizeof(st));
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_string(st_str));
+				}
+#endif
 				break;
 			}
 			case IMQUIC_MAX_IDLE_TIMEOUT: {
@@ -1759,6 +2367,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.max_idle_timeout = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_MAX_UDP_PAYLOAD_SIZE: {
@@ -1769,10 +2381,15 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value < 1200 || value > 65527) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'max_udp_payload_size' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL)
 					conn->remote_params.max_udp_payload_size = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_DATA: {
@@ -1782,6 +2399,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_data = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_LOCAL: {
@@ -1791,6 +2412,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_stream_data_bidi_local = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_REMOTE: {
@@ -1800,6 +2425,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_stream_data_bidi_remote = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAM_DATA_UNI: {
@@ -1809,6 +2438,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_stream_data_uni = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAMS_BIDI: {
@@ -1818,6 +2451,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_streams_bidi = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_INITIAL_MAX_STREAMS_UNI: {
@@ -1827,6 +2464,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.initial_max_streams_uni = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_ACK_DELAY_EXPONENT: {
@@ -1837,10 +2478,15 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value > 20) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'ack_delay_exponent' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL)
 					conn->remote_params.ack_delay_exponent = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_MAX_ACK_DELAY: {
@@ -1851,10 +2497,15 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value > 16384) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'max_ack_delay' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(conn != NULL)
 					conn->remote_params.max_ack_delay = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_DISABLE_ACTIVE_MIGRATION: {
@@ -1863,6 +2514,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len);
 				if(conn != NULL)
 					conn->remote_params.disable_active_migration = TRUE;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_true());
+#endif
 				break;
 			}
 			case IMQUIC_ACTIVE_CONNECTION_ID_LIMIT: {
@@ -1872,6 +2527,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 					param, imquic_transport_parameter_str(param), p_len, value);
 				if(conn != NULL)
 					conn->remote_params.active_connection_id_limit = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			case IMQUIC_MAX_DATAGRAM_FRAME_SIZE: {
@@ -1882,12 +2541,17 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				if(value > 65536) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid 'max_datagram_frame_size' %"SCNu64"\n",
 						imquic_get_connection_name(conn), value);
-					return -1;
+					res = -1;
+					goto done;
 				}
 				if(value == 65536)	/* Make browsers happy */
 					value = 65535;
 				if(conn != NULL)
 					conn->remote_params.max_datagram_frame_size = value;
+#ifdef HAVE_QLOG
+				if(data != NULL)
+					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
+#endif
 				break;
 			}
 			default:
@@ -1898,7 +2562,16 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 		}
 		offset += p_len;
 	}
-	return 0;
+done:
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+		if(res < 0 && data != NULL)
+			json_decref(data);
+		else
+			imquic_qlog_parameters_set(conn->qlog, data);
+	}
+#endif
+	return res;
 }
 
 /* Sending packets */
@@ -1949,21 +2622,29 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
 				pkt = imquic_packet_create();
 			if(chunk->length + pkt->frames_size < max_len) {
 				/* Add the whole CRYPTO chunk */
-				size = imquic_payload_add_crypto(buffer, max_len,
+				size = imquic_payload_add_crypto(conn, pkt, buffer, max_len,
 					chunk->data, chunk->offset, chunk->length);
 				imquic_buffer_get(conn->crypto_out[level]);
 				imquic_buffer_chunk_free(chunk);
 				/* Create a frame and append it to the packet */
 				frame = imquic_frame_create(IMQUIC_CRYPTO, buffer, size);
+#ifdef HAVE_QLOG
+				frame->qlog_frame = pkt->qlog_frame;
+				pkt->qlog_frame = NULL;
+#endif
 				pkt->frames = g_list_prepend(pkt->frames, frame);
 				pkt->frames_size += frame->size;
 			} else {
 				/* We can only add a portion of it */
 				size_t part_len = max_len - pkt->frames_size;
-				size = imquic_payload_add_crypto(buffer, max_len,
+				size = imquic_payload_add_crypto(conn, pkt, buffer, max_len,
 					chunk->data, chunk->offset, part_len);
 				/* Create a frame and append it to the packet */
 				frame = imquic_frame_create(IMQUIC_CRYPTO, buffer, size);
+#ifdef HAVE_QLOG
+				frame->qlog_frame = pkt->qlog_frame;
+				pkt->qlog_frame = NULL;
+#endif
 				pkt->frames = g_list_prepend(pkt->frames, frame);
 				pkt->frames_size += frame->size;
 				/* Shift the chunk, so that we can continue from there later */
@@ -1976,9 +2657,13 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
 				/* This packet is ready */
 				if(conn->is_server && level == ssl_encryption_application && imquic_buffer_peek(conn->crypto_out[level]) == NULL) {
 					/* Add a HANDSHAKE_DONE */
-					size = imquic_payload_add_handshake_done(buffer, max_len);
+					size = imquic_payload_add_handshake_done(conn, pkt, buffer, max_len);
 					/* Create a frame and append it to the packet */
 					frame = imquic_frame_create(IMQUIC_HANDSHAKE_DONE, buffer, size);
+#ifdef HAVE_QLOG
+					frame->qlog_frame = pkt->qlog_frame;
+					pkt->qlog_frame = NULL;
+#endif
 					pkt->frames = g_list_prepend(pkt->frames, frame);
 					pkt->frames_size += frame->size;
 				}
@@ -1989,6 +2674,10 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
 					if(level == ssl_encryption_initial && pkt->frames_size < max_len) {
 						/* Add padding to increase the size of this packet */
 						frame = imquic_frame_create(IMQUIC_PADDING, NULL, max_len - pkt->frames_size);
+#ifdef HAVE_QLOG
+						frame->qlog_frame = imquic_qlog_prepare_packet_frame("padding");
+						json_object_set_new(frame->qlog_frame, "payload_length", json_integer(max_len - pkt->frames_size));
+#endif
 						pkt->frames = g_list_prepend(pkt->frames, frame);
 						pkt->frames_size += frame->size;
 					}
@@ -1997,7 +2686,7 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
 					imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 				}
 				pkt->level = level;
-				/* FIXME Set packet number */
+				/* Set packet number */
 				pkt->packet_number = conn->pkn[pkt->level];
 				conn->pkn[pkt->level]++;
 				/* Reorder the list of frames and serialize them */
@@ -2048,7 +2737,10 @@ int imquic_send_keepalive(imquic_connection *conn, imquic_connection_id *dest) {
 	conn->pkn[pkt->level]++;
 	/* Add a PING frame */
 	imquic_frame *frame = imquic_frame_create(IMQUIC_PING, NULL, 1);
-	imquic_payload_add_ping(frame->buffer, frame->size);
+	imquic_payload_add_ping(conn, pkt, frame->buffer, frame->size);
+#ifdef HAVE_QLOG
+	frame->qlog_frame = imquic_qlog_prepare_packet_frame("ping");
+#endif
 	pkt->frames = g_list_append(pkt->frames, frame);
 	pkt->frames_size += frame->size;
 	if(imquic_serialize_packet(conn, pkt) < 0) {
@@ -2096,17 +2788,27 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 		/* Any MAX_STREAM to send too? */
 		if(conn->max_streams_bidi_updated) {
 			conn->max_streams_bidi_updated = FALSE;
-			size = imquic_payload_add_max_streams(buffer, max_len, TRUE, conn->current_max_streams_bidi);
+			size = imquic_payload_add_max_streams(conn, pkt, buffer, max_len,
+				TRUE, conn->current_max_streams_bidi);
 			/* Create a frame and append it to the packet */
 			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, buffer, size);
+#ifdef HAVE_QLOG
+			frame->qlog_frame = pkt->qlog_frame;
+			pkt->qlog_frame = NULL;
+#endif
 			pkt->frames = g_list_prepend(pkt->frames, frame);
 			pkt->frames_size += frame->size;
 		}
 		if(conn->max_streams_uni_updated) {
 			conn->max_streams_uni_updated = FALSE;
-			size = imquic_payload_add_max_streams(buffer, max_len, FALSE, conn->current_max_streams_uni);
+			size = imquic_payload_add_max_streams(conn, pkt, buffer, max_len,
+				FALSE, conn->current_max_streams_uni);
 			/* Create a frame and append it to the packet */
 			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, buffer, size);
+#ifdef HAVE_QLOG
+			frame->qlog_frame = pkt->qlog_frame;
+			pkt->qlog_frame = NULL;
+#endif
 			pkt->frames = g_list_prepend(pkt->frames, frame);
 			pkt->frames_size += frame->size;
 		}
@@ -2118,21 +2820,29 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				imquic_buffer_get(stream->out_data);
 				if(stream->out_finalsize > 0 && imquic_buffer_peek(stream->out_data) == NULL)
 					stream->out_state = IMQUIC_STREAM_COMPLETE;
-				size = imquic_payload_add_stream(buffer, max_len,
+				size = imquic_payload_add_stream(conn, pkt, buffer, max_len,
 					stream->stream_id, chunk->data, chunk->offset, chunk->length,
 					(stream->out_state == IMQUIC_STREAM_COMPLETE), FALSE);
 				imquic_buffer_chunk_free(chunk);
 				/* Create a frame and append it to the packet */
 				frame = imquic_frame_create(IMQUIC_STREAM, buffer, size);
+#ifdef HAVE_QLOG
+				frame->qlog_frame = pkt->qlog_frame;
+				pkt->qlog_frame = NULL;
+#endif
 				pkt->frames = g_list_prepend(pkt->frames, frame);
 				pkt->frames_size += frame->size;
 			} else {
 				/* We can only add a portion of it */
 				size_t part_len = max_len - pkt->frames_size;
-				size = imquic_payload_add_stream(buffer, max_len,
+				size = imquic_payload_add_stream(conn, pkt, buffer, max_len,
 					stream->stream_id, chunk->data, chunk->offset, part_len, FALSE, FALSE);
 				/* Create a frame and append it to the packet */
 				frame = imquic_frame_create(IMQUIC_STREAM, buffer, size);
+#ifdef HAVE_QLOG
+				frame->qlog_frame = pkt->qlog_frame;
+				pkt->qlog_frame = NULL;
+#endif
 				pkt->frames = g_list_prepend(pkt->frames, frame);
 				pkt->frames_size += frame->size;
 				/* Shift the chunk, so that we can continue from there later */
@@ -2145,7 +2855,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				/* This packet is ready, craft a short header packet */
 				imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 				pkt->level = level;
-				/* FIXME Set packet number */
+				/* Set packet number */
 				pkt->packet_number = conn->pkn[pkt->level];
 				conn->pkn[pkt->level]++;
 				/* Reorder the list of frames and serialize them */
@@ -2169,6 +2879,10 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 			/* FIXME */
 			g_hash_table_remove(conn->streams, &stream->stream_id);
 			g_hash_table_insert(conn->streams_done, imquic_dup_uint64(stream->stream_id), GINT_TO_POINTER(1));
+#ifdef QLOG
+			if(conn->qlog != NULL && conn->qlog->quic)
+				imquic_qlog_stream_state_updated(conn->qlog, stream_id, NULL, NULL, "closed");
+#endif
 		}
 		imquic_mutex_unlock(&stream->mutex);
 		imquic_refcount_decrease(&stream->ref);
@@ -2202,12 +2916,16 @@ int imquic_send_pending_datagram(imquic_connection *conn, imquic_connection_id *
 			}
 			if(data->length + pkt->frames_size < max_len) {
 				/* Add the DATAGRAM */
-				size = imquic_payload_add_datagram(buffer, max_len,
+				size = imquic_payload_add_datagram(conn, pkt, buffer, max_len,
 					data->buffer, data->length, FALSE);
 				g_queue_pop_head(conn->outgoing_datagram);
 				imquic_data_destroy(data);
 				/* Create a frame and append it to the packet */
 				frame = imquic_frame_create(IMQUIC_DATAGRAM, buffer, size);
+#ifdef HAVE_QLOG
+				frame->qlog_frame = pkt->qlog_frame;
+				pkt->qlog_frame = NULL;
+#endif
 				pkt->frames = g_list_prepend(pkt->frames, frame);
 				pkt->frames_size += frame->size;
 			} else {
@@ -2225,7 +2943,7 @@ int imquic_send_pending_datagram(imquic_connection *conn, imquic_connection_id *
 				/* This packet is ready, craft a short header packet */
 				imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 				pkt->level = level;
-				/* FIXME Set packet number */
+				/* Set packet number */
 				pkt->packet_number = conn->pkn[pkt->level];
 				conn->pkn[pkt->level]++;
 				/* Reorder the list of frames and serialize them */
@@ -2263,15 +2981,19 @@ int imquic_send_close_connection(imquic_connection *conn, imquic_error_code erro
 		imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 	}
 	pkt->level = conn->level;
-	/* FIXME Set packet number */
+	/* Set packet number */
 	pkt->packet_number = conn->pkn[pkt->level];
 	/* Payload */
 	uint8_t buffer[1200];
 	size_t max_len = sizeof(buffer);
-	size_t size = imquic_payload_add_connection_close(buffer, max_len,
+	size_t size = imquic_payload_add_connection_close(conn, pkt, buffer, max_len,
 		error_code, frame_type, reason);	/* FIXME */
 	/* Create a frame and append it to the packet */
 	imquic_frame *frame = imquic_frame_create(IMQUIC_CONNECTION_CLOSE, buffer, size);
+#ifdef HAVE_QLOG
+	frame->qlog_frame = pkt->qlog_frame;
+	pkt->qlog_frame = NULL;
+#endif
 	pkt->frames = g_list_append(pkt->frames, frame);
 	pkt->frames_size += frame->size;
 	if(imquic_serialize_packet(conn, pkt) < 0) {
@@ -2320,6 +3042,13 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 	size_t offset = 0, max_len = 1200, size = 0;
 	size_t p_len = sizeof(pkt->payload.buffer);
 	GList *temp = pkt->frames;
+#ifdef HAVE_QLOG
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+		if(pkt->qlog_frames != NULL)
+			json_decref(pkt->qlog_frames);
+		pkt->qlog_frames = json_array();
+	}
+#endif
 	while(temp) {
 		frame = (imquic_frame *)temp->data;
 		if(frame->size > 0) {
@@ -2331,13 +3060,23 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 					frame->type != IMQUIC_CONNECTION_CLOSE)
 				pkt->ack_eliciting = TRUE;
 		}
+#ifdef HAVE_QLOG
+		if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && frame->qlog_frame != NULL)
+			json_array_append(pkt->qlog_frames, frame->qlog_frame);
+#endif
 		temp = temp->next;
 	}
 	/* Check if we need to (and can) add an ACK too */
 	if(conn->send_ack[pkt->level]) {
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Added %s\n", imquic_frame_type_str(IMQUIC_ACK));
 		uint64_t delay = (g_get_monotonic_time() - conn->largest_time[pkt->level]) >> conn->local_params.ack_delay_exponent;
-		size = imquic_payload_add_ack(&pkt->payload.buffer[offset], p_len - offset, conn->recvd[pkt->level], delay, NULL);
+		size = imquic_payload_add_ack(conn, pkt, &pkt->payload.buffer[offset], p_len - offset, conn->recvd[pkt->level], delay, NULL);
+#ifdef HAVE_QLOG
+		if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && pkt->qlog_frame != NULL) {
+			json_array_append_new(pkt->qlog_frames, pkt->qlog_frame);
+			pkt->qlog_frame = NULL;
+		}
+#endif
 		if(pkt->level == ssl_encryption_initial || offset + size <= max_len) {
 			conn->send_ack[pkt->level] = FALSE;
 			offset += size;
@@ -2346,10 +3085,16 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 	/* Check if we need to (and can) add some MAX_STREAMS too */
 	if(conn->max_streams_bidi_updated) {
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Added %s\n", imquic_frame_type_str(IMQUIC_MAX_STREAMS));
-		size = imquic_payload_add_max_streams(&pkt->payload.buffer[offset], p_len - offset, TRUE, conn->current_max_streams_bidi);
+		size = imquic_payload_add_max_streams(conn, pkt, &pkt->payload.buffer[offset], p_len - offset, TRUE, conn->current_max_streams_bidi);
 		if(offset + size <= max_len) {
 			/* Create a frame and append it to the packet, as we'll need it for retransmissions */
 			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, &pkt->payload.buffer[offset], size);
+#ifdef HAVE_QLOG
+			frame->qlog_frame = pkt->qlog_frame;
+			pkt->qlog_frame = NULL;
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && frame->qlog_frame != NULL)
+				json_array_append(pkt->qlog_frames, frame->qlog_frame);
+#endif
 			pkt->frames = g_list_append(pkt->frames, frame);
 			pkt->frames_size += frame->size;
 			if(!pkt->ack_eliciting)
@@ -2359,14 +3104,27 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 			/* Move on */
 			conn->max_streams_bidi_updated = FALSE;
 			offset += size;
+		} else {
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && pkt->qlog_frame != NULL) {
+				json_array_append_new(pkt->qlog_frames, pkt->qlog_frame);
+				pkt->qlog_frame = NULL;
+			}
+#endif
 		}
 	}
 	if(conn->max_streams_uni_updated) {
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Added %s\n", imquic_frame_type_str(IMQUIC_MAX_STREAMS));
-		size = imquic_payload_add_max_streams(&pkt->payload.buffer[offset], p_len - offset, FALSE, conn->current_max_streams_uni);
+		size = imquic_payload_add_max_streams(conn, pkt, &pkt->payload.buffer[offset], p_len - offset, FALSE, conn->current_max_streams_uni);
 		if(offset + size <= max_len) {
 			/* Create a frame and append it to the packet, as we'll need it for retransmissions */
 			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, &pkt->payload.buffer[offset], size);
+#ifdef HAVE_QLOG
+			frame->qlog_frame = pkt->qlog_frame;
+			pkt->qlog_frame = NULL;
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && frame->qlog_frame != NULL)
+				json_array_append(pkt->qlog_frames, frame->qlog_frame);
+#endif
 			pkt->frames = g_list_append(pkt->frames, frame);
 			pkt->frames_size += frame->size;
 			if(!pkt->retransmit_if_lost)
@@ -2374,12 +3132,19 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 			/* Move on */
 			conn->max_streams_uni_updated = FALSE;
 			offset += size;
+		} else {
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && pkt->qlog_frame != NULL) {
+				json_array_append_new(pkt->qlog_frames, pkt->qlog_frame);
+				pkt->qlog_frame = NULL;
+			}
+#endif
 		}
 	}
 	/* To conclude, let's see if we need some padding */
 	if(offset > 0) {
 		if(offset < 12)
-			offset += imquic_payload_add_padding(&pkt->payload.buffer[offset], p_len - offset, 12 - offset);
+			offset += imquic_payload_add_padding(conn, pkt, &pkt->payload.buffer[offset], p_len - offset, 12 - offset);
 	}
 	pkt->payload.length = offset;
 
@@ -2420,7 +3185,7 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 		pkt->length_offset = offset;
 		uint64_t p_len = pkn_len + pkt->payload.length + 16;
 		offset += imquic_write_varint(p_len, &pkt->data.buffer[pkt->length_offset], 4);
-		/* FIXME Packet number */
+		/* Packet number */
 		pkt->pkn_offset = offset;
 		memcpy(&pkt->data.buffer[offset], pkn_bytes + (4-pkn_len), pkn_len);
 		offset += pkn_len;
@@ -2437,7 +3202,7 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 			memcpy(&pkt->data.buffer[offset], pkt->destination.id, pkt->destination.len);
 			offset += pkt->destination.len;
 		}
-		/* FIXME Packet number */
+		/* Packet number */
 		pkt->pkn_offset = offset;
 		memcpy(&pkt->data.buffer[offset], pkn_bytes + (4-pkn_len), pkn_len);
 		offset += pkn_len;
@@ -2487,6 +3252,17 @@ int imquic_send_packet(imquic_connection *conn, imquic_packet *pkt) {
 	//~ if(pkt->packet_number != 6 && pkt->packet_number != 7 && pkt->packet_number != 9)
 		//~ res = imquic_network_send(conn, pkt->data.buffer, pkt->data.length);
 	int res = imquic_network_send(conn, pkt->data.buffer, pkt->data.length);
+#ifdef HAVE_QLOG
+	if(res > 0 && conn->qlog != NULL && conn->qlog->quic) {
+		conn->dgram_id_out++;
+		json_t *ph = imquic_qlog_prepare_packet_header(imquic_encryption_level_str(pkt->level),
+			(pkt->longheader ? &pkt->source : NULL), &pkt->destination);
+		json_object_set_new(ph, "packet_number", json_integer(pkt->packet_number));
+		imquic_qlog_packet_sent(conn->qlog, ph, pkt->qlog_frames, conn->dgram_id_out, pkt->data.length);
+		pkt->qlog_frames = NULL;
+		imquic_qlog_udp_datagrams_sent(conn->qlog, conn->dgram_id_out, pkt->data.length);
+	}
+#endif
 	/* Track when we sent this packet */
 	if(pkt->retransmit_if_lost && !pkt->ack_eliciting)
 		pkt->retransmit_if_lost = FALSE;
@@ -2545,14 +3321,14 @@ int imquic_retransmit_packet(imquic_connection *conn, imquic_sent_packet *sent_p
 /* Processing messages */
 void imquic_process_message(imquic_network_endpoint *socket, imquic_network_address *sender, uint8_t *bytes, size_t blen) {
 	/* Parse the packet(s) */
-	size_t offset = 0;
+	size_t offset = 0, tot = blen;
 	int ret = 0;
 	imquic_packet pkt;
 	imquic_connection *conn = NULL;
 	while(blen > 0) {
 		/* Parse the buffer as a QUIC packet */
 		memset(&pkt, 0, sizeof(pkt));
-		ret = imquic_parse_packet(socket, sender, &conn, &pkt, &bytes[offset], blen);
+		ret = imquic_parse_packet(socket, sender, &conn, &pkt, &bytes[offset], blen, tot);
 		if(ret < 0 || !pkt.is_valid) {
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Couldn't parse packet of size %zu, ignoring\n", blen);
 			if(conn != NULL)
@@ -2612,7 +3388,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 			}
 			imquic_buffer_chunk_free(chunk);
 			if(level == ssl_encryption_initial && new_stack) {
-				/* FIXME Set our transport parameters (these params should be configurable) */
+				/* Set our transport parameters (FIXME these params should be configurable) */
 				uint8_t local_params[200];
 				size_t p_len = sizeof(local_params);
 				memset(local_params, 0, p_len);
@@ -2640,6 +3416,33 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 						imquic_get_connection_name(conn), ERR_reason_error_string(ERR_get_error()));
 					continue;
 				}
+#ifdef HAVE_QLOG
+				/* Trace events, if needed */
+				if(conn->qlog != NULL && conn->qlog->quic) {
+					/* TODO Set resumption properly */
+					json_t *data = imquic_qlog_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
+					char cid[41];
+					const char *cid_str = imquic_connection_id_str(&conn->initial_cid, cid, sizeof(cid));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ORIGINAL_DESTINATION_CONNECTION_ID), json_string(cid_str));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_IDLE_TIMEOUT), json_integer(conn->local_params.max_idle_timeout));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_UDP_PAYLOAD_SIZE), json_integer(conn->local_params.max_udp_payload_size));
+					cid_str = imquic_hex_str(conn->local_cid.token, sizeof(conn->local_cid.token), cid, sizeof(cid));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_STATELESS_RESET_TOKEN), json_string(cid_str));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_DATA), json_integer(conn->local_params.initial_max_data));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_REMOTE), json_integer(conn->local_params.initial_max_stream_data_bidi_remote));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_LOCAL), json_integer(conn->local_params.initial_max_stream_data_bidi_local));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_UNI), json_integer(conn->local_params.initial_max_stream_data_uni));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_BIDI), json_integer(conn->local_params.initial_max_streams_bidi));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_UNI), json_integer(conn->local_params.initial_max_streams_uni));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACK_DELAY_EXPONENT), json_integer(conn->local_params.ack_delay_exponent));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_ACK_DELAY), json_integer(conn->local_params.max_ack_delay));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACTIVE_CONNECTION_ID_LIMIT), json_integer(conn->local_params.active_connection_id_limit));
+					cid_str = imquic_connection_id_str(&conn->local_cid, cid, sizeof(cid));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_SOURCE_CONNECTION_ID), json_string(cid_str));
+					json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_DATAGRAM_FRAME_SIZE), json_integer(conn->local_params.max_datagram_frame_size));
+					imquic_qlog_parameters_set(conn->qlog, data);
+				}
+#endif
 			}
 			if(level == ssl_encryption_application && !conn->is_server && !conn->connected) {
 				imquic_connection_change_level(conn, level);
@@ -2679,7 +3482,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 				}
 			}
 			if(!conn->have_params) {
-				/* FIXME Parse the peer transport params (we should take note of these and enforce them) */
+				/* Parse the peer transport params (take note of these and enforce them) */
 				const uint8_t *params;
 				size_t params_len = 0;
 				SSL_get_peer_quic_transport_params(conn->ssl, &params, &params_len);
@@ -2705,6 +3508,10 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 		g_snprintf(alpn, alpn_len, "%.*s", data_len, (char *)data);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
 			imquic_get_connection_name(conn), alpn);
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL && conn->qlog->quic)
+			imquic_qlog_alpn_information(conn->qlog, NULL, 0, NULL, 0, alpn);
+#endif
 		if(conn->socket->webtransport && !strcasecmp(alpn, "h3"))
 			conn->http3 = imquic_http3_connection_create(conn, conn->socket->subprotocol);
 	}
@@ -2748,6 +3555,10 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 	memcpy(conn->initial_cid.id, &dest_id, conn->initial_cid.len);
 	conn->remote_cid.len = sizeof(dest_id);
 	memcpy(conn->remote_cid.id, &dest_id, conn->remote_cid.len);
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL && conn->qlog->quic)
+		imquic_qlog_set_odcid(conn->qlog, &conn->remote_cid);
+#endif
 	uint64_t local_cid = imquic_random_uint64();
 	conn->local_cid.len = sizeof(local_cid);
 	memcpy(conn->local_cid.id, &local_cid, conn->local_cid.len);
@@ -2798,6 +3609,38 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 			imquic_get_connection_name(conn), ERR_reason_error_string(ERR_get_error()));
 		return -1;
 	}
+#ifdef HAVE_QLOG
+	/* Trace events, if needed */
+	if(conn->qlog != NULL && conn->qlog->quic) {
+		char src_ip[NI_MAXHOST] = { 0 }, dst_ip[NI_MAXHOST] = { 0 };
+		imquic_qlog_connection_started(conn->qlog,
+			imquic_network_address_str(&conn->socket->local_address, src_ip, sizeof(src_ip), FALSE), conn->socket->port,
+			imquic_network_address_str(&conn->socket->remote_address, dst_ip, sizeof(dst_ip), FALSE), conn->socket->remote_port);
+		imquic_qlog_version_information(conn->qlog, 1, 1);
+		imquic_qlog_alpn_information(conn->qlog, NULL, 0, conn->alpn.buffer, conn->alpn.length, 0);
+		json_t *data = imquic_qlog_prepare_parameters_set(conn->qlog, TRUE, FALSE, conn->socket->tls->early_data);
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_IDLE_TIMEOUT), json_integer(conn->local_params.max_idle_timeout));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_UDP_PAYLOAD_SIZE), json_integer(conn->local_params.max_udp_payload_size));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_DATA), json_integer(conn->local_params.initial_max_data));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_REMOTE), json_integer(conn->local_params.initial_max_stream_data_bidi_remote));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_BIDI_LOCAL), json_integer(conn->local_params.initial_max_stream_data_bidi_local));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAM_DATA_UNI), json_integer(conn->local_params.initial_max_stream_data_uni));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_BIDI), json_integer(conn->local_params.initial_max_streams_bidi));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_MAX_STREAMS_UNI), json_integer(conn->local_params.initial_max_streams_uni));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACK_DELAY_EXPONENT), json_integer(conn->local_params.ack_delay_exponent));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_ACK_DELAY), json_integer(conn->local_params.max_ack_delay));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_ACTIVE_CONNECTION_ID_LIMIT), json_integer(conn->local_params.active_connection_id_limit));
+		char cid[41];
+		const char *cid_str = imquic_connection_id_str(&conn->local_cid, cid, sizeof(cid));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_INITIAL_SOURCE_CONNECTION_ID), json_string(cid_str));
+		json_object_set_new(data, imquic_transport_parameter_str(IMQUIC_MAX_DATAGRAM_FRAME_SIZE), json_integer(conn->local_params.max_datagram_frame_size));
+		imquic_qlog_parameters_set(conn->qlog, data);
+		imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, FALSE),
+			conn->keys[ssl_encryption_initial].local.key[0], conn->keys[ssl_encryption_initial].local.key_len, 0);
+		imquic_qlog_key_updated(conn->qlog, imquic_encryption_key_type_str(ssl_encryption_initial, TRUE),
+			conn->keys[ssl_encryption_initial].remote.key[0], conn->keys[ssl_encryption_initial].remote.key_len, 0);
+	}
+#endif
 	/* Perform the handshake */
 	int res = SSL_do_handshake(conn->ssl);
 	if(res != 1 && SSL_get_error(conn->ssl, res) != SSL_ERROR_WANT_READ) {

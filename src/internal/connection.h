@@ -23,6 +23,7 @@
 #include "network.h"
 #include "http3.h"
 #include "error.h"
+#include "qlog.h"
 #include "utils.h"
 #include "listmap.h"
 #include "refcount.h"
@@ -204,6 +205,12 @@ struct imquic_connection {
 	uint8_t pto_count;
 	/*! \brief Loop source */
 	imquic_source *loop_source;
+	/*! \brief Incoming and outgoing datagram IDs */
+	uint32_t dgram_id_in, dgram_id_out;
+#ifdef HAVE_QLOG
+	/*! \brief QLOG instance, if any */
+	imquic_qlog *qlog;
+#endif
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this instance has been destroyed (reference counting) */

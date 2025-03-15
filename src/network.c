@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -54,7 +55,7 @@ void imquic_network_deinit(void) {
 
 
 /* Network address stringification */
-char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen) {
+char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen, gboolean add_port) {
 	if(address == NULL || output == NULL || outlen == 0)
 		return NULL;
 	/* Get host */
@@ -78,14 +79,31 @@ char *imquic_network_address_str(imquic_network_address *address, char *output, 
 		return NULL;
 	}
 	/* Serialize */
-	if(address->addr.ss_family == AF_INET) {
-		g_snprintf(output, outlen, "%s:%"SCNu16, host, port);
+	if(add_port) {
+		if(address->addr.ss_family == AF_INET)
+			g_snprintf(output, outlen, "%s:%"SCNu16, host, port);
+		else
+			g_snprintf(output, outlen, "[%s]:%"SCNu16, host, port);
 	} else {
-		g_snprintf(output, outlen, "[%s]:%"SCNu16, host, port);
+		g_snprintf(output, outlen, "%s", host);
 	}
 	return output;
 }
 
+uint16_t imquic_network_address_port(imquic_network_address *address) {
+	if(address == NULL)
+		return 0;
+	/* Get port */
+	if(address->addr.ss_family == AF_INET) {
+		struct sockaddr_in *addr = (struct sockaddr_in *)&address->addr;
+		return ntohs(addr->sin_port);
+	} else if(address->addr.ss_family == AF_INET6) {
+		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&address->addr;
+		return ntohs(addr->sin6_port);
+	}
+	IMQUIC_LOG(IMQUIC_LOG_WARN, "Unsupported family %d\n", address->addr.ss_family);
+	return 0;
+}
 
 /* Helper to return fd port */
 static int imquic_get_fd_port(int fd) {
@@ -105,6 +123,7 @@ static void imquic_network_endpoint_free(const imquic_refcount *ne_ref) {
 	g_free(ne->alpn);
 	g_free(ne->h3_path);
 	g_free(ne->subprotocol);
+	g_free(ne->qlog_path);
 	g_hash_table_unref(ne->connections);
 	imquic_tls_destroy(ne->tls);
 	if(ne->fd > -1)
@@ -368,13 +387,13 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 	if(!config->is_server) {
 		if(connect(quic_fd, (struct sockaddr *)&remote.addr, remote.addrlen) < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error connecting to %s... %d (%s)\n",
-				config->name, imquic_network_address_str(&remote, ip, sizeof(ip)), errno, g_strerror(errno));
+				config->name, imquic_network_address_str(&remote, ip, sizeof(ip), TRUE), errno, g_strerror(errno));
 			close(quic_fd);
 			imquic_tls_destroy(tls);
 			return NULL;
 		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connected socket to remote address %s\n",
-			config->name, imquic_network_address_str(&remote, ip, sizeof(ip)));
+			config->name, imquic_network_address_str(&remote, ip, sizeof(ip), TRUE));
 	}
 	/* Create a source to have this endpoint handled by the network loop */
 	imquic_network_endpoint *ne = g_malloc0(sizeof(imquic_network_endpoint));
@@ -382,8 +401,17 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 	ne->is_server = config->is_server;
 	ne->fd = quic_fd;
 	ne->port = port;
-	if(!config->is_server)
+	if(family == AF_INET) {
+		ne->local_address.addrlen = sizeof(address);
+		memcpy(&ne->local_address.addr, &address, ne->local_address.addrlen);
+	} else {
+		ne->local_address.addrlen = sizeof(address6);
+		memcpy(&ne->local_address.addr, &address6, ne->local_address.addrlen);
+	}
+	if(!config->is_server) {
 		memcpy(&ne->remote_address, &remote, sizeof(remote));
+		ne->remote_port = config->remote_port;
+	}
 	ne->tls = tls;
 	ne->sni = g_strdup(config->sni);
 	if(config->raw_quic) {
@@ -395,6 +423,43 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		if(config->h3_path && strlen(config->h3_path) > 0)
 			ne->h3_path = g_strdup(config->h3_path);
 		ne->subprotocol = config->subprotocol ? g_strdup(config->subprotocol) : NULL;
+	}
+	if(config->qlog_path != NULL) {
+#ifndef HAVE_QLOG
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG support not compiled, ignoring\n", config->name);
+#else
+		/* Make sure that it's a folder, if this is a server, or a file if a client */
+		struct stat s;
+		int err = stat(config->qlog_path, &s);
+		if(config->is_server) {
+			if(err == -1) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder (%d: %s), ignoring\n",
+					config->name, config->qlog_path, errno, g_strerror(errno));
+			} else if(!S_ISDIR(s.st_mode)) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder, ignoring\n",
+					config->name, config->qlog_path);
+			} else {
+				ne->qlog_path = g_strdup(config->qlog_path);
+			}
+		} else {
+			if(err == 0 && S_ISDIR(s.st_mode)) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is a folder, ignoring\n",
+					config->name, config->qlog_path);
+			} else {
+				ne->qlog_path = g_strdup(config->qlog_path);
+			}
+		}
+		if(ne->qlog_path != NULL) {
+			ne->qlog_quic = config->qlog_quic;
+			ne->qlog_moq = config->qlog_moq;
+			ne->qlog_sequential = config->qlog_sequential;
+			if(!ne->qlog_quic && !ne->qlog_moq) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Tracing of at least one of QUIC and MoQ should be enabled, disabling QLOG\n", config->name);
+				g_free(ne->qlog_path);
+				ne->qlog_path = NULL;
+			}
+		}
+#endif
 	}
 	ne->connections = g_hash_table_new_full(NULL, NULL,
 		NULL, (GDestroyNotify)imquic_connection_destroy);

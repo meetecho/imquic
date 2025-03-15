@@ -168,30 +168,44 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	conn->incoming_data = g_queue_new();
 	conn->outgoing_data = g_queue_new();
 	conn->outgoing_datagram = g_queue_new();
-	if(!conn->is_server) {
-		/* We'll set the ALPN(s) manually: 1 byte prefix + the string itself for each of them */
-		size_t length = 0, offset = 0, alpn_len = 0;
-		if(conn->socket->raw_quic) {
-			alpn_len = strlen(conn->socket->alpn);
-			length = alpn_len + 1;
-		}
-		if(conn->socket->webtransport)
-			length += 3;	/* h3 */
-		conn->alpn.length = length;
-		conn->alpn.buffer = g_malloc(conn->alpn.length);
-		if(conn->socket->raw_quic) {
-			conn->alpn.buffer[0] = alpn_len;
-			memcpy(conn->alpn.buffer + 1, conn->socket->alpn, alpn_len);
-			offset = alpn_len + 1;
-		}
-		if(conn->socket->webtransport) {
-			conn->alpn.buffer[offset] = 2;
-			memcpy(conn->alpn.buffer + offset + 1, "h3", 2);
-		}
+	/* We'll set the ALPN(s) manually: 1 byte prefix + the string itself for each of them */
+	size_t length = 0, offset = 0, alpn_len = 0;
+	if(conn->socket->raw_quic) {
+		alpn_len = strlen(conn->socket->alpn);
+		length = alpn_len + 1;
+	}
+	if(conn->socket->webtransport)
+		length += 3;	/* h3 */
+	conn->alpn.length = length;
+	conn->alpn.buffer = g_malloc(conn->alpn.length);
+	if(conn->socket->raw_quic) {
+		conn->alpn.buffer[0] = alpn_len;
+		memcpy(conn->alpn.buffer + 1, conn->socket->alpn, alpn_len);
+		offset = alpn_len + 1;
+	}
+	if(conn->socket->webtransport) {
+		conn->alpn.buffer[offset] = 2;
+		memcpy(conn->alpn.buffer + offset + 1, "h3", 2);
 	}
 	imquic_refcount_init(&conn->ref, imquic_connection_free);
 	imquic_network_endpoint_add_connection(conn->socket, conn, TRUE);
 	conn->loop_source = imquic_loop_poll_connection(conn);
+#ifdef HAVE_QLOG
+	/* Check if we need to generate a QLOG file */
+	if(conn->socket->qlog_path != NULL) {
+		if(conn->is_server) {
+			char filename[1024];
+			g_snprintf(filename, sizeof(filename), "%s/imquic-%"SCNi64"-%"SCNu64".qlog",
+				conn->socket->qlog_path, g_get_real_time(), id);
+			conn->qlog = imquic_qlog_create(conn->name, conn->socket->qlog_sequential,
+				TRUE, filename, conn->socket->qlog_quic, conn->socket->qlog_moq);
+		} else {
+			conn->qlog = imquic_qlog_create(conn->name, conn->socket->qlog_sequential,
+				FALSE, (char *)conn->socket->qlog_path,
+				conn->socket->qlog_quic, conn->socket->qlog_moq);
+		}
+	}
+#endif
 	conn->last_activity = g_get_monotonic_time();
 	conn->idle_timer = imquic_loop_add_timer(1000, imquic_connection_idle_timeout, conn);
 	return conn;
@@ -215,6 +229,12 @@ void imquic_connection_destroy(imquic_connection *conn) {
 			g_list_free(conn->connection_ids);
 			conn->connection_ids = NULL;
 		}
+#ifdef HAVE_QLOG
+		if(conn->qlog != NULL) {
+			imquic_qlog_destroy(conn->qlog);
+			conn->qlog = NULL;
+		}
+#endif
 		imquic_refcount_decrease(&conn->ref);
 	}
 }
@@ -487,6 +507,13 @@ int imquic_connection_new_stream_id(imquic_connection *conn, gboolean bidirectio
 	imquic_mutex_unlock(&conn->mutex);
 	if(stream_id)
 		*stream_id = new_stream_id;
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL && conn->qlog->quic) {
+		imquic_qlog_stream_state_updated(conn->qlog, new_stream_id,
+			(bidirectional ? "bidirectional" : "unidirectional"),
+			(!bidirectional ? "sending" : NULL), "open");
+	}
+#endif
 	if(conn->http3 != NULL && conn->http3->webtransport) {
 		/* We need to write the info on the new WebTransport stream */
 		uint8_t prefix[10];
@@ -610,4 +637,12 @@ void imquic_connection_close(imquic_connection *conn, uint64_t error_code, uint6
 	if(conn == NULL || conn->socket == NULL)
 		return;
 	imquic_send_close_connection(conn, error_code, frame_type, reason);
+#if HAVE_QLOG
+	if(conn->qlog != NULL && conn->qlog->quic) {
+		imquic_qlog_connection_closed(conn->qlog, TRUE,
+			(frame_type == IMQUIC_CONNECTION_CLOSE ? error_code : 0),
+			(frame_type == IMQUIC_CONNECTION_CLOSE_APP ? error_code : 0),
+			reason);
+	}
+#endif
 }

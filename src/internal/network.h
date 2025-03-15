@@ -41,8 +41,13 @@ typedef struct imquic_network_address {
  * @param[in] address The imquic_network_address instance to serialize
  * @param[out] output The buffer to put the serialized string into
  * @param[in] outlen The size of the output buffer
+ * @param[in] add_port Whether the port should be added to the string
  * @returns A pointer to output, if successful, or NULL otherwise */
-char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen);
+char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen, gboolean add_port);
+/*! \brief Helper to return the port used by a network address
+ * @param[in] address The imquic_network_address instance to query
+ * @returns A port number, if successful, or -1 otherwise */
+uint16_t imquic_network_address_port(imquic_network_address *address);
 
 /*! \brief Abstraction of a network endpoint (client or server) */
 typedef struct imquic_network_endpoint {
@@ -54,8 +59,10 @@ typedef struct imquic_network_endpoint {
 	gboolean is_server;
 	/*! \brief Socket */
 	int fd;
-	/*! \brief Local port */
-	uint16_t port;
+	/*! \brief Local and remote ports */
+	uint16_t port, remote_port;
+	/*! \brief Local address */
+	imquic_network_address local_address;
 	/*! \brief Remote address of the peer (clients only) */
 	imquic_network_address remote_address;
 	/*! \brief TLS stack */
@@ -98,6 +105,12 @@ typedef struct imquic_network_endpoint {
 		imquic_moq_callbacks moq;
 		imquic_roq_callbacks roq;
 	} callbacks;
+	/*! \brief Path to save QLOG files to, if needed/supported: a filename for clients, a folder for servers */
+	char *qlog_path;
+	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */
+	gboolean qlog_sequential;
+	/*! \brief Whether QUIC and/or MoQT events should be saved to QLOG, if supported */
+	gboolean qlog_quic, qlog_moq;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection has been started */

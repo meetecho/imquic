@@ -25,6 +25,9 @@ typedef struct demo_options {
 	const char *cert_pwd;
 	gboolean early_data;
 	const char *secrets_log;
+	const char *qlog_path;
+	const char **qlog_logging;
+	gboolean qlog_sequential;
 	int debug_level;
 	gboolean debug_locks;
 	gboolean debug_refcounts;

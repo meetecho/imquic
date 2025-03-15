@@ -14,6 +14,8 @@ To compile imquic, you'll need to satisfy the following dependencies:
 * [GLib](https://docs.gtk.org/glib/)
 * [pkg-config](http://www.freedesktop.org/wiki/Software/pkg-config/)
 * [quictls](https://quictls.github.io/) (QUIC TLS)
+* [Jansson](https://github.com/akheron/jansson) (optional; QLOG support)
+
 
 Should you be interested in building the imquic documentation as well (public and internal), you'll need some additional tools too:
 
@@ -39,6 +41,8 @@ Note that the configure script uses `pkg-config` to look for quictls by using th
 	QUICTLS_CFLAGS="-I/opt/quictls/include/" \
 	QUICTLS_LIBS="-L/opt/quictls/lib64/ -lssl -lcrypto" \
 	./configure [..]
+
+If you're interested in QLOG support, add `--enable-qlog` when launching the `configure` script. Notice that this will require [Jansson](https://github.com/akheron/jansson).
 
 You can build some demo applications by adding `--enable-echo-examples` (basic QUIC/WebTransport client/server demos), `--enable-roq-examples` (RoQ demos) and `--enable-moq-examples` (MoQ demos).
 

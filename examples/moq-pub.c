@@ -133,6 +133,13 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t s
 	g_atomic_int_set(&send_objects, 0);
 }
 
+static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri) {
+	/* Connection was closed */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s\n", imquic_get_connection_name(conn), uri);
+	/* Stop here */
+	g_atomic_int_inc(&stop);
+}
+
 static void imquic_demo_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
@@ -287,6 +294,25 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	/* Check if we need to create a QLOG file, and which we should save */
+	gboolean qlog_quic = FALSE, qlog_moq = FALSE;
+	if(options.qlog_path != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG file '%s'\n", options.qlog_path);
+		if(options.qlog_sequential)
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using sequential JSON\n");
+		int i = 0;
+		while(options.qlog_logging != NULL && options.qlog_logging[i] != NULL) {
+			if(!strcasecmp(options.qlog_logging[i], "quic")) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
+				qlog_quic = TRUE;
+			} else if(!strcasecmp(options.qlog_logging[i], "moq")) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging MoQT events\n");
+				qlog_moq = TRUE;
+			}
+			i++;
+		}
+	}
+
 	/* Initialize the library and create a client */
 	if(imquic_init(options.secrets_log) < 0) {
 		ret = 1;
@@ -307,6 +333,9 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_EARLY_DATA, (options.ticket_file != NULL),
 		IMQUIC_CONFIG_TICKET_FILE, options.ticket_file,
 		IMQUIC_CONFIG_HTTP3_PATH, options.path,
+		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
+		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
+		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {
 		ret = 1;
@@ -323,6 +352,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_announce_error_cb(client, imquic_demo_announce_error);
 	imquic_set_incoming_subscribe_cb(client, imquic_demo_incoming_subscribe);
 	imquic_set_incoming_unsubscribe_cb(client, imquic_demo_incoming_unsubscribe);
+	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);
 

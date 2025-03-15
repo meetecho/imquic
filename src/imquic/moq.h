@@ -351,6 +351,16 @@ typedef struct imquic_moq_namespace {
 	/*! \brief Next namespace in this list, if this is a tuple */
 	struct imquic_moq_namespace *next;
 } imquic_moq_namespace;
+/*! \brief Helper to stringify a namespace (optionally the whole tuple)
+ * \note If \c tuple is FALSE, the \c next property of the namespace is ignored,
+ * otherwise a single string is built for the whole tuple, using a slash
+ * character as a separator.
+ * @param[in] tns The namespace (or the start of a namespace tuple) to stringify
+ * @param[out] buffer The buffer to write the string to
+ * @param[in] blen The size of the output buffer
+ * @param[in] tuple Whether the whole tuple should be stringified, or only the specific namespace
+ * @returns A pointer to the output buffer, if successful, or NULL otherwise */
+const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple);
 
 /*! \brief MoQ Track Name */
 typedef struct imquic_moq_name {
@@ -359,6 +369,12 @@ typedef struct imquic_moq_name {
 	/*! \brief Size of the name data */
 	size_t length;
 } imquic_moq_name;
+/* Helper to stringify a track name
+ * @param[in] tn The track name to stringify
+ * @param[out] buffer The buffer to write the string to
+ * @param[in] blen The size of the output buffer
+ * @returns A pointer to the output buffer, if successful, or NULL otherwise */
+const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen);
 
 /*! \brief MoQ Auth Info */
 typedef struct imquic_moq_auth_info {
@@ -589,7 +605,7 @@ void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_announce_cancel Pointer to the function that will handle the incoming \c ANNOUNCE_CANCEL */
 void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns));
+	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when an
  * \c ANNOUNCE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -769,7 +785,7 @@ typedef enum imquic_moq_version {
 	/* Draft version -09 */
 	IMQUIC_MOQ_VERSION_09 = 0xff000009,
 	/* Draft version -10 */
-	IMQUIC_MOQ_VERSION_10 = 0xff000010,
+	IMQUIC_MOQ_VERSION_10 = 0xff00000A,
 	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_10,
 	/* Any post-v06 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */

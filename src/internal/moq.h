@@ -26,6 +26,7 @@
 #include "../imquic/imquic.h"
 #include "../imquic/moq.h"
 #include "utils.h"
+#include "qlog.h"
 #include "refcount.h"
 
 #define IMQUIC_MOQ		7171953
@@ -302,6 +303,8 @@ const char *imquic_moq_fetch_type_str(imquic_moq_fetch_type type);
 typedef struct imquic_moq_context {
 	/*! \brief Associated QUIC connection */
 	imquic_connection *conn;
+	/*! \brief Peer versions */
+	GList *supported_versions;
 	/*! \brief Negotiated version */
 	imquic_moq_version version;
 	/*! \brief Whether a version has been set */
@@ -803,8 +806,11 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param track_namespace Namespace for which to cancel the announcement
+ * @param error Error code associated to the message
+ * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace);
+size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
+	imquic_moq_announce_error_code error, const char *reason);
 /*! \brief Helper to add a \c SUBSCRIBE message (version -03 of the draft) to a buffer
  * @note This sends the \c -03 variant of the message
  * @param moq The imquic_moq_context generating the message
@@ -1263,7 +1269,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE messages */
 	void (* incoming_announce)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_CANCEL messages */
-	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns);
+	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ACCEPTED messages */
 	void (* announce_accepted)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ERROR messages */
@@ -1335,5 +1341,97 @@ void imquic_moq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
  * @param conn The imquic_connection instance that is now gone */
 void imquic_moq_connection_gone(imquic_connection *conn);
 ///@}
+
+#ifdef HAVE_QLOG
+/** @name QLOG events tracing for MoQT
+ */
+///@{
+/*! \brief Helper to create a new QLOG MoQT message
+ * @note This automatically fills in the \c type property
+ * @param type The name of the message
+ * @returns A message instance to fill in before using it it, if successful, or NULL otherwise */
+json_t *imquic_qlog_moq_message_prepare(const char *type);
+/*! \brief Helper to add a stringified namespace tuple array to a message
+ * @note This automatically fills in the \c track_namespace property
+ * @param message The message object to update
+ * @param track_namespace The namespace to serialize to an array */
+void imquic_qlog_moq_message_add_namespace(json_t *message, imquic_moq_namespace *track_namespace);
+/*! \brief Helper to create a stringifled track name to a message
+ * @note This automatically fills in the \c track_name property
+ * @param message The message object to update
+ * @param track_name The track name to add */
+void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_name *track_name);
+/*! \brief Add a \c control_message_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this message
+ * @param length The length of the message
+ * @param message The message content */
+void imquic_moq_qlog_control_message_created(imquic_qlog *qlog, uint64_t stream_id, size_t length, json_t *message);
+/*! \brief Add a \c control_message_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this message
+ * @param length The length of the message
+ * @param message The message content */
+void imquic_moq_qlog_control_message_parsed(imquic_qlog *qlog, uint64_t stream_id, size_t length, json_t *message);
+/*! \brief Add a \c stream_type_set event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param local Whether this is a local or remote stream
+ * @param stream_id The Stream ID used for this message
+ * @param type The stream type */
+void imquic_moq_qlog_stream_type_set(imquic_qlog *qlog, gboolean local, uint64_t stream_id, const char *type);
+/*! \brief Add a \c object_datagram_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_created(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c object_datagram_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_parsed(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c object_datagram_status_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_status_created(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c object_datagram_status_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param object The object instance */
+void imquic_moq_qlog_object_datagram_status_parsed(imquic_qlog *qlog, imquic_moq_object *object);
+/*! \brief Add a \c subgroup_header_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream The stream used for this header */
+void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c subgroup_header_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream The stream used for this header */
+void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c subgroup_header_object_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_subgroup_header_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+/*! \brief Add a \c subgroup_header_object_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_subgroup_header_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+/*! \brief Add a \c fetch_header_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream The stream used for this header */
+void imquic_moq_qlog_fetch_header_created(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c fetch_header_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream The stream used for this header */
+void imquic_moq_qlog_fetch_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream);
+/*! \brief Add a \c fetch_header_object_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_fetch_header_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+/*! \brief Add a \c fetch_header_object_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this object
+ * @param object The object instance */
+void imquic_moq_qlog_fetch_header_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+///@}
+#endif
 
 #endif

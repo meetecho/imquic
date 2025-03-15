@@ -29,6 +29,8 @@ libimquic_la_SOURCES = \
 	internal/loop.h \
 	network.c \
 	internal/network.h \
+	qlog.c \
+	internal/qlog.h \
 	utils.c \
 	internal/utils.h \
 	listmap.c \
@@ -56,6 +58,7 @@ libimquic_la_CFLAGS = \
 	$(IMQUIC_CFLAGS) \
 	$(QUICTLS_CFLAGS) \
 	$(BORINGSSL_CFLAGS) \
+	$(JANSSON_CFLAGS) \
 	$(NULL)
 libimquic_la_LDFLAGS = \
 	-version-info $(IMQUIC_VERSION_SO) \
@@ -65,6 +68,7 @@ libimquic_la_LIBADD = \
 	$(IMQUIC_MANUAL_LIBS) \
 	$(QUICTLS_LIBS) \
 	$(BORINGSSL_LIBS) \
+	$(JANSSON_LIBS) \
 	$(NULL)
 
 BUILT_SOURCES = version.c

@@ -51,6 +51,12 @@ typedef struct imquic_configuration {
 	const char *h3_path;
 	/*! \brief In case WebTransport is used, the subprotocol to negotiate (currently unused) */
 	const char *subprotocol;
+	/*! \brief Path to save QLOG files to, if needed/supported: a filename for clients, a folder for servers */
+	const char *qlog_path;
+	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */
+	gboolean qlog_sequential;
+	/*! \brief Whether QUIC and/or MoQT events should be saved to QLOG, if supported */
+	gboolean qlog_quic, qlog_moq;
 	/*! \brief Path to the certificate file to use for TLS */
 	const char *cert_pem;
 	/*! \brief Path to the key file to use for TLS */
