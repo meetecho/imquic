@@ -11,6 +11,8 @@ There are a few different client/server examples showing how you can use imquic 
 
 You can choose which examples to build by passing arguments to the `./configure` script.
 
+All demos allow you to create QLOG files, assuming QLOG support is available in the library. You can enable it passing `-Q <path>`, where `<path>` will need to be the path to a valid folder for server examples, and a path to a file to create for client examples. By default, this will serialize QLOG to contained JSON files, but you can create sequential JSON files by passing `-J` instead. The Echo and RoQ examples log QUIC events to QLOG files; the MoQ examples, instead, don't log anything, and require you to specify what you want to trace using one or multiple calls to `-l <protocol>` (where `<protocol>` can be `quic` or `moq`; `-l quic -l moc` will trace both).
+
 ## Echo examples
 
 To build the client/server echo examples, pass `--enable-echo-examples` to the `./configure` script. This will build two command line applications, namely:
@@ -36,7 +38,7 @@ This has the echo client connect to that server:
 
 	./examples/imquic-echo-client -w -r 127.0.0.1 -R 9000
 
-In both cases, the client will then send a single `ciao` buffer on a bidirectional \c STREAM that the server will echo back. Both client and server can be configured to offer both raw QUIC and WebTransport at the same time.
+In both cases, the client will then send a single `ciao` buffer on a bidirectional `STREAM` that the server will echo back. Both client and server can be configured to offer both raw QUIC and WebTransport at the same time.
 
 ## RTP Over QUIC (RoQ) examples
 
@@ -51,7 +53,7 @@ This launches the RoQ server on port `9000`, using the provided certificate, and
 
 	./examples/imquic-roq-server -q -p 9000 -c ../localhost.crt -k ../localhost.key -s ../key_log.log
 
-This launches the RoQ client to connect to that server, waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate \c STREAM for each RTP packet:
+This launches the RoQ client to connect to that server, waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate `STREAM` for each RTP packet:
 
 	./examples/imquic-roq-client -q -a 15002 -A 0 -v 15004 -V 1 -r 127.0.0.1 -R 9000 -m streams
 
