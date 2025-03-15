@@ -1305,19 +1305,21 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 	if(client_initiated == conn->is_server) {
 		if(bidirectional) {
 			/* Check if we need to send a MAX_STREAMS to extend the limit */
-			uint64_t threshold = conn->current_max_streams_bidi/2;
+			uint64_t threshold = conn->flow_control.local_max_streams_bidi/2;
 			if(actual_id >= threshold) {
-				conn->current_max_streams_bidi += conn->local_params.initial_max_streams_bidi;
-				conn->max_streams_bidi_updated = TRUE;
-				IMQUIC_LOG(IMQUIC_LOG_VERB, "Extending limit of maximum bidirectional streams\n");
+				conn->flow_control.local_max_streams_bidi *= 2;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Increasing max_streams (bidirectional): %"SCNu64"\n",
+					imquic_get_connection_name(conn), conn->flow_control.local_max_streams_bidi);
+				imquic_send_credits(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid), IMQUIC_MAX_STREAMS, 0);
 			}
 		} else {
 			/* Check if we need to send a MAX_STREAMS to extend the limit */
-			uint64_t threshold = conn->current_max_streams_uni/2;
+			uint64_t threshold = conn->flow_control.local_max_streams_uni/2;
 			if(actual_id >= threshold) {
-				conn->current_max_streams_uni += conn->local_params.initial_max_streams_uni;
-				conn->max_streams_uni_updated = TRUE;
-				IMQUIC_LOG(IMQUIC_LOG_VERB, "Extending limit of maximum unidirectional streams\n");
+				conn->flow_control.local_max_streams_uni *= 2;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Increasing max_streams (unidirectional): %"SCNu64"\n",
+					imquic_get_connection_name(conn), conn->flow_control.local_max_streams_uni);
+				imquic_send_credits(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid), IMQUIC_MAX_STREAMS_UNI, 0);
 			}
 		}
 	}
@@ -3080,33 +3082,6 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 		/* Prepare one or more QUIC packets */
 		if(pkt == NULL)
 			pkt = imquic_packet_create();
-		/* Any MAX_STREAM to send too? */
-		if(conn->max_streams_bidi_updated) {
-			conn->max_streams_bidi_updated = FALSE;
-			size = imquic_payload_add_max_streams(conn, pkt, buffer, max_len,
-				TRUE, conn->current_max_streams_bidi);
-			/* Create a frame and append it to the packet */
-			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, buffer, size);
-#ifdef HAVE_QLOG
-			frame->qlog_frame = pkt->qlog_frame;
-			pkt->qlog_frame = NULL;
-#endif
-			pkt->frames = g_list_prepend(pkt->frames, frame);
-			pkt->frames_size += frame->size;
-		}
-		if(conn->max_streams_uni_updated) {
-			conn->max_streams_uni_updated = FALSE;
-			size = imquic_payload_add_max_streams(conn, pkt, buffer, max_len,
-				FALSE, conn->current_max_streams_uni);
-			/* Create a frame and append it to the packet */
-			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, buffer, size);
-#ifdef HAVE_QLOG
-			frame->qlog_frame = pkt->qlog_frame;
-			pkt->qlog_frame = NULL;
-#endif
-			pkt->frames = g_list_prepend(pkt->frames, frame);
-			pkt->frames_size += frame->size;
-		}
 		while((chunk = imquic_buffer_peek(stream->out_data)) != NULL) {
 			if(pkt == NULL)
 				pkt = imquic_packet_create();
@@ -3375,65 +3350,6 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 		if(pkt->level == ssl_encryption_initial || offset + size <= max_len) {
 			conn->send_ack[pkt->level] = FALSE;
 			offset += size;
-		}
-	}
-	/* Check if we need to (and can) add some MAX_STREAMS too */
-	if(conn->max_streams_bidi_updated) {
-		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Added %s\n", imquic_frame_type_str(IMQUIC_MAX_STREAMS));
-		size = imquic_payload_add_max_streams(conn, pkt, &pkt->payload.buffer[offset], p_len - offset, TRUE, conn->current_max_streams_bidi);
-		if(offset + size <= max_len) {
-			/* Create a frame and append it to the packet, as we'll need it for retransmissions */
-			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, &pkt->payload.buffer[offset], size);
-#ifdef HAVE_QLOG
-			frame->qlog_frame = pkt->qlog_frame;
-			pkt->qlog_frame = NULL;
-			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && frame->qlog_frame != NULL)
-				json_array_append(pkt->qlog_frames, frame->qlog_frame);
-#endif
-			pkt->frames = g_list_append(pkt->frames, frame);
-			pkt->frames_size += frame->size;
-			if(!pkt->ack_eliciting)
-				pkt->ack_eliciting = TRUE;
-			if(!pkt->retransmit_if_lost)
-				pkt->retransmit_if_lost = TRUE;
-			/* Move on */
-			conn->max_streams_bidi_updated = FALSE;
-			offset += size;
-		} else {
-#ifdef HAVE_QLOG
-			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && pkt->qlog_frame != NULL) {
-				json_array_append_new(pkt->qlog_frames, pkt->qlog_frame);
-				pkt->qlog_frame = NULL;
-			}
-#endif
-		}
-	}
-	if(conn->max_streams_uni_updated) {
-		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Added %s\n", imquic_frame_type_str(IMQUIC_MAX_STREAMS));
-		size = imquic_payload_add_max_streams(conn, pkt, &pkt->payload.buffer[offset], p_len - offset, FALSE, conn->current_max_streams_uni);
-		if(offset + size <= max_len) {
-			/* Create a frame and append it to the packet, as we'll need it for retransmissions */
-			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, &pkt->payload.buffer[offset], size);
-#ifdef HAVE_QLOG
-			frame->qlog_frame = pkt->qlog_frame;
-			pkt->qlog_frame = NULL;
-			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && frame->qlog_frame != NULL)
-				json_array_append(pkt->qlog_frames, frame->qlog_frame);
-#endif
-			pkt->frames = g_list_append(pkt->frames, frame);
-			pkt->frames_size += frame->size;
-			if(!pkt->retransmit_if_lost)
-				pkt->retransmit_if_lost = TRUE;
-			/* Move on */
-			conn->max_streams_uni_updated = FALSE;
-			offset += size;
-		} else {
-#ifdef HAVE_QLOG
-			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt->qlog_frames != NULL && pkt->qlog_frame != NULL) {
-				json_array_append_new(pkt->qlog_frames, pkt->qlog_frame);
-				pkt->qlog_frame = NULL;
-			}
-#endif
 		}
 	}
 	/* To conclude, let's see if we need some padding */

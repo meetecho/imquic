@@ -106,6 +106,8 @@ typedef struct imquic_connection_flow_control {
 	uint64_t local_max_streams_bidi, remote_max_streams_bidi;
 	/*! \brief Current values of local and remote unidirectional max_streams */
 	uint64_t local_max_streams_uni, remote_max_streams_uni;
+	/*! \brief Size of incoming and outgoing stream data so far */
+	uint64_t in_size, out_size;
 } imquic_connection_flow_control;
 
 /*! \brief QUIC Connection */
@@ -143,13 +145,6 @@ struct imquic_connection {
 	 * \todo We need a better, and less memory hungry, way of tracking streams, especially
 	 * in cases where new streams are created and closed frequently */
 	GHashTable *streams, *streams_done;
-	/*! \brief Current cap for the maximum number of unidirectional and
-	 * bidirectional streams we're prepared to accept */
-	uint64_t current_max_streams_uni, current_max_streams_bidi;
-	/*! \brief Whether our QUIC stack just updated the cap for the maximum
-	 * number of unidirectional and bidirectional streams we're prepared to
-	 * accept (to trigger a new QUIC frame to extend them) */
-	gboolean max_streams_uni_updated, max_streams_bidi_updated;
 	/*! \brief Queued streams to process */
 	GQueue *incoming_data;
 	/*! \brief Queued data to send

@@ -45,6 +45,8 @@ typedef struct imquic_stream {
 	gboolean client_initiated, bidirectional;
 	/*! \brief Whether the stream can send and receive data */
 	gboolean can_send, can_receive;
+	/*! \brief Size of stream incoming and outgoing data so far (for flow control) */
+	uint64_t in_size, out_size;
 	/*! \brief Stream incoming and outgoing final size (for flow control) */
 	uint64_t in_finalsize, out_finalsize;
 	/*! \brief Stream incoming and outgoing state */

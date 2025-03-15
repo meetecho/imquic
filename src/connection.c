@@ -149,8 +149,8 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	/* FIXME Maybe these should be configurable */
 	conn->local_params.max_idle_timeout = 60000;
 	conn->local_params.active_connection_id_limit = 8;
-	conn->local_params.initial_max_streams_bidi = conn->current_max_streams_bidi = 128;
-	conn->local_params.initial_max_streams_uni = conn->current_max_streams_uni = 128;
+	conn->local_params.initial_max_streams_bidi = 128;
+	conn->local_params.initial_max_streams_uni = 128;
 	conn->local_params.initial_max_data = 1048576;
 	conn->local_params.initial_max_stream_data_bidi_remote = 1048576;
 	conn->local_params.initial_max_stream_data_bidi_local = 1048576;
