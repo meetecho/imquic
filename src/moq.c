@@ -91,7 +91,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		/* FIXME Generate a CLIENT_SETUP */
 		uint8_t parameters[100];
 		size_t params_num = 0, params_size = sizeof(parameters), params_len = 0;
-		if(moq->version < IMQUIC_MOQ_VERSION_08 || moq->version > IMQUIC_MOQ_VERSION_09) {
+		if(moq->version < IMQUIC_MOQ_VERSION_08) {
 			params_num++;
 			params_len += imquic_moq_parameter_add_int(moq, parameters, params_size,
 				IMQUIC_MOQ_PARAM_ROLE, moq->type);

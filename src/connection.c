@@ -198,11 +198,11 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 			g_snprintf(filename, sizeof(filename), "%s/imquic-%"SCNi64"-%"SCNu64".qlog",
 				conn->socket->qlog_path, g_get_real_time(), id);
 			conn->qlog = imquic_qlog_create(conn->name, conn->socket->qlog_sequential,
-				TRUE, filename, conn->socket->qlog_quic, conn->socket->qlog_moq);
+				TRUE, filename, conn->socket->qlog_quic, conn->socket->qlog_roq, conn->socket->qlog_moq);
 		} else {
 			conn->qlog = imquic_qlog_create(conn->name, conn->socket->qlog_sequential,
 				FALSE, (char *)conn->socket->qlog_path,
-				conn->socket->qlog_quic, conn->socket->qlog_moq);
+				conn->socket->qlog_quic, conn->socket->qlog_roq, conn->socket->qlog_moq);
 		}
 	}
 #endif
@@ -636,7 +636,6 @@ void imquic_connection_close(imquic_connection *conn, uint64_t error_code, uint6
 	/* FIXME Send a CONNECTION CLOSE (01c) */
 	if(conn == NULL || conn->socket == NULL)
 		return;
-	imquic_send_close_connection(conn, error_code, frame_type, reason);
 #if HAVE_QLOG
 	if(conn->qlog != NULL && conn->qlog->quic) {
 		imquic_qlog_connection_closed(conn->qlog, TRUE,
@@ -645,4 +644,5 @@ void imquic_connection_close(imquic_connection *conn, uint64_t error_code, uint6
 			reason);
 	}
 #endif
+	imquic_send_close_connection(conn, error_code, frame_type, reason);
 }

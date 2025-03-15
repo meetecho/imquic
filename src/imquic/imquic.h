@@ -270,6 +270,9 @@ typedef enum imquic_config {
 	/*! \brief Whether to save QUIC events to QLOG (true by default)
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_QUIC,
+	/*! \brief Whether to save RoQ events to QLOG
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_ROQ,
 	/*! \brief Whether to save MoQ events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_MOQ,

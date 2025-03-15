@@ -151,11 +151,23 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled\n");
 
 	/* Check if we need to create a QLOG file */
+	gboolean qlog_quic = FALSE, qlog_roq = FALSE;
 	if(options.qlog_path != NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG file(s) in '%s'\n", options.qlog_path);
 		if(options.qlog_sequential)
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using sequential JSON\n");
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
+		int i = 0;
+		while(options.qlog_logging != NULL && options.qlog_logging[i] != NULL) {
+			if(!strcasecmp(options.qlog_logging[i], "quic")) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
+				qlog_quic = TRUE;
+			} else if(!strcasecmp(options.qlog_logging[i], "roq")) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging RoQ events\n");
+				qlog_roq = TRUE;
+			}
+			i++;
+		}
 	}
 
 	/* Initialize the library and create a server */
@@ -173,7 +185,8 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
 		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
-		IMQUIC_CONFIG_QLOG_QUIC, (options.qlog_path != NULL),
+		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
+		IMQUIC_CONFIG_QLOG_ROQ, qlog_roq,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
 		IMQUIC_CONFIG_DONE, NULL);
