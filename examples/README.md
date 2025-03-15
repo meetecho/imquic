@@ -11,7 +11,7 @@ There are a few different client/server examples showing how you can use imquic 
 
 You can choose which examples to build by passing arguments to the `./configure` script.
 
-All demos allow you to create QLOG files, assuming QLOG support is available in the library. You can enable it passing `-Q <path>`, where `<path>` will need to be the path to a valid folder for server examples, and a path to a file to create for client examples. By default, this will serialize QLOG to contained JSON files, but you can create sequential JSON files by passing `-J` instead. The Echo and RoQ examples log QUIC events to QLOG files; the MoQ examples, instead, don't log anything, and require you to specify what you want to trace using one or multiple calls to `-l <protocol>` (where `<protocol>` can be `quic` or `moq`; `-l quic -l moc` will trace both).
+All demos allow you to create QLOG files, assuming QLOG support is available in the library. You can enable it passing `-Q <path>`, where `<path>` will need to be the path to a valid folder for server examples, and a path to a file to create for client examples. By default, this will serialize QLOG to contained JSON files, but you can create sequential JSON files by passing `-J` instead. The Echo and RoQ examples log QUIC events to QLOG files; the MoQ examples, instead, don't save anything by default, and require you to specify what you want to trace using one or multiple calls to `-l <protocol>` (where `<protocol>` can be `quic` or `moq`; `-l quic -l moq` will trace both).
 
 ## Echo examples
 
