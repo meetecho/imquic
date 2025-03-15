@@ -301,7 +301,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		uint8_t type = (byte & 0x30) >> 4;
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- Packet Type: %02x (%s)\n", type, imquic_long_packet_type_str(type));
 		pkt->type = type;
-		/* FIXME Set the encryption level */
+		/* Set the encryption level */
 		if(type == IMQUIC_INITIAL)
 			pkt->level = ssl_encryption_initial;
 		else if(type == IMQUIC_0RTT)
@@ -387,7 +387,6 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 #endif
 				return bytes;
 			}
-			/* FIXME */
 			size_t token_len = bytes - offset - 16;
 			if(token_len > sizeof(conn->retry_token.buffer)) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring Retry packet, token too large\n");
@@ -405,7 +404,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Retry token (%zu bytes)\n", token_len);
 			imquic_print_hex(IMQUIC_LOG_HUGE, conn->retry_token.buffer, conn->retry_token.length);
 			offset += token_len;
-			/* TODO Validate Retry integrity tag */
+			/* Validate Retry integrity tag */
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Retry integrity tag (%zu bytes)\n", bytes-offset);
 			imquic_print_hex(IMQUIC_LOG_HUGE, &quic[offset], 16);
 			if(imquic_verify_retry(quic, bytes, conn->remote_cid.id, conn->remote_cid.len) < 0) {
@@ -494,7 +493,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			uint64_t token_len = imquic_read_varint(&quic[offset], bytes-offset, &length);
 			IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- Token (len): %"SCNu64"\n", token_len);
 			if(length > 0) {
-				/* FIXME Skip token*/
+				/* FIXME Skip token */
 				imquic_print_hex(IMQUIC_LOG_HUGE, &quic[offset], length);
 				offset += length;
 			}
@@ -503,7 +502,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- Length:      %"SCNu64"\n", p_len);
 		pkt->length_offset = offset;
 		offset += length;
-		/* FIXME Now we are where the packet number is, which we need for the sample */
+		/* Now we are where the packet number is, which we need for the sample */
 		size_t pn_offset = offset;
 		if(bytes-offset-4 < 16) {
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "Invalid packet: not enough bytes for header protection sample\n");
@@ -686,7 +685,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		}
 		conn = g_hash_table_lookup(connections, &pkt->destination);
 		if(conn == NULL) {
-			/* FIXME Connection not found: is this a new one? */
+			/* Connection not found: is this a new one? */
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Dropping packet for unknown connection\n");
 			pkt->is_valid = FALSE;
 			return -1;
@@ -747,7 +746,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			imquic_encryption_level_str(pkt->level), pkt->packet_number, conn->largest[pkt->level], pn, pn_length);
 		/* Check if there's a phase change */
 		if(pkt->key_phase != conn->current_phase) {
-			/* TODO Key phase change, update the keys */
+			/* Key phase change, update the keys */
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Detected key update to phase %d\n", pkt->key_phase);
 			imquic_update_keys(&conn->keys[ssl_encryption_application], pkt->key_phase);
 			conn->current_phase = pkt->key_phase;
@@ -771,7 +770,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		imquic_print_hex(IMQUIC_LOG_HUGE, &quic[offset+pn_length], p_len - pn_length);
 		/* Decrypt the payload */
 		pkt->payload_offset = offset+pn_length;
-		/* FIXME Check which keys we should use */
+		/* Check which keys we should use */
 		uint8_t *key = conn->keys[pkt->level].remote.key[conn->current_phase];
 		size_t key_len = conn->keys[pkt->level].remote.key_len;
 		uint8_t *iv = conn->keys[pkt->level].remote.iv[conn->current_phase];
@@ -807,7 +806,7 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 		/* Now parse the frames in the payload */
 		imquic_parse_frames(conn, pkt);
 
-		/* Done: the rest is padding (FIXME or another packet?) */
+		/* Done: the rest is padding (or another packet?) */
 		pkt->data.length = pkt->payload_offset + pkt->payload.length;
 		memcpy(pkt->data.buffer, quic, pkt->data.length);
 		offset += p_len;
@@ -1145,7 +1144,7 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uin
 	while(temp != NULL) {
 		imquic_sent_packet *sent_pkt = (imquic_sent_packet *)temp->data;
 		if(sent_pkt != NULL) {
-			/* FIXME Retransmit this packet if needed, or get rid of it */
+			/* Retransmit this packet if needed, or get rid of it */
 			IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- -- %"SCNu64" (%s)\n",
 				sent_pkt->packet_number, imquic_encryption_level_str(sent_pkt->level));
 			imquic_retransmit_packet(conn, sent_pkt);
@@ -1214,7 +1213,7 @@ size_t imquic_payload_parse_stop_sending(imquic_connection *conn, imquic_packet 
 	imquic_mutex_lock(&conn->mutex);
 	imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
 	if(stream != NULL) {
-		/* TODO Check f we should send a CC with STREAM_STATE_ERROR */
+		/* TODO Check if we should send a CC with STREAM_STATE_ERROR */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "We've been asked to stop sending on stream %"SCNu64"\n", stream_id);
 		stream->can_send = FALSE;
 	}
@@ -1281,7 +1280,7 @@ size_t imquic_payload_parse_new_token(imquic_connection *conn, imquic_packet *pk
 #ifdef HAVE_QLOG
 	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
 		json_t *frame = imquic_qlog_prepare_packet_frame("new_token");
-		/* TODO Token */
+		/* TODO Add token type and details */
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
@@ -1673,7 +1672,6 @@ size_t imquic_payload_parse_path_response(imquic_connection *conn, imquic_packet
 size_t imquic_payload_parse_connection_close(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 3 || (bytes[0] != IMQUIC_CONNECTION_CLOSE && bytes[0] != IMQUIC_CONNECTION_CLOSE_APP))
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t error = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1714,7 +1712,7 @@ size_t imquic_payload_parse_connection_close(imquic_connection *conn, imquic_pac
 		}
 	}
 #endif
-	/* FIXME Notify the application that the connection is gone */
+	/* Notify the application that the connection is gone */
 	imquic_network_endpoint_remove_connection(conn->socket, conn, TRUE);
 	/* Done */
 	return offset;
@@ -1932,7 +1930,7 @@ size_t imquic_payload_add_new_token(imquic_connection *conn, imquic_packet *pkt,
 #ifdef HAVE_QLOG
 	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
 		json_t *frame = imquic_qlog_prepare_packet_frame("new_token");
-		/* TODO Add Token */
+		/* TODO Add token type and details */
 		if(pkt->qlog_frame != NULL)
 			json_decref(pkt->qlog_frame);
 		pkt->qlog_frame = frame;
@@ -2279,7 +2277,7 @@ size_t imquic_transport_parameter_add_connection_id(uint8_t *bytes, size_t blen,
 
 /* Parsers */
 int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, size_t blen) {
-	/* TODO Store those transport parameters in the connection state */
+	/* Store those transport parameters in the connection state */
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Parsing transport parameters (%zu bytes)\n",
 		imquic_get_connection_name(conn), blen);
 	imquic_print_hex(IMQUIC_LOG_HUGE, bytes, blen);
@@ -2688,7 +2686,7 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
 					imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 				}
 				pkt->level = level;
-				/* FIXME Set packet number */
+				/* Set packet number */
 				pkt->packet_number = conn->pkn[pkt->level];
 				conn->pkn[pkt->level]++;
 				/* Reorder the list of frames and serialize them */
@@ -2857,7 +2855,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				/* This packet is ready, craft a short header packet */
 				imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 				pkt->level = level;
-				/* FIXME Set packet number */
+				/* Set packet number */
 				pkt->packet_number = conn->pkn[pkt->level];
 				conn->pkn[pkt->level]++;
 				/* Reorder the list of frames and serialize them */
@@ -2945,7 +2943,7 @@ int imquic_send_pending_datagram(imquic_connection *conn, imquic_connection_id *
 				/* This packet is ready, craft a short header packet */
 				imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 				pkt->level = level;
-				/* FIXME Set packet number */
+				/* Set packet number */
 				pkt->packet_number = conn->pkn[pkt->level];
 				conn->pkn[pkt->level]++;
 				/* Reorder the list of frames and serialize them */
@@ -2983,7 +2981,7 @@ int imquic_send_close_connection(imquic_connection *conn, imquic_error_code erro
 		imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 	}
 	pkt->level = conn->level;
-	/* FIXME Set packet number */
+	/* Set packet number */
 	pkt->packet_number = conn->pkn[pkt->level];
 	/* Payload */
 	uint8_t buffer[1200];
@@ -3187,7 +3185,7 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 		pkt->length_offset = offset;
 		uint64_t p_len = pkn_len + pkt->payload.length + 16;
 		offset += imquic_write_varint(p_len, &pkt->data.buffer[pkt->length_offset], 4);
-		/* FIXME Packet number */
+		/* Packet number */
 		pkt->pkn_offset = offset;
 		memcpy(&pkt->data.buffer[offset], pkn_bytes + (4-pkn_len), pkn_len);
 		offset += pkn_len;
@@ -3204,7 +3202,7 @@ int imquic_serialize_packet(imquic_connection *conn, imquic_packet *pkt) {
 			memcpy(&pkt->data.buffer[offset], pkt->destination.id, pkt->destination.len);
 			offset += pkt->destination.len;
 		}
-		/* FIXME Packet number */
+		/* Packet number */
 		pkt->pkn_offset = offset;
 		memcpy(&pkt->data.buffer[offset], pkn_bytes + (4-pkn_len), pkn_len);
 		offset += pkn_len;
@@ -3390,7 +3388,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 			}
 			imquic_buffer_chunk_free(chunk);
 			if(level == ssl_encryption_initial && new_stack) {
-				/* FIXME Set our transport parameters (these params should be configurable) */
+				/* Set our transport parameters (FIXME these params should be configurable) */
 				uint8_t local_params[200];
 				size_t p_len = sizeof(local_params);
 				memset(local_params, 0, p_len);
@@ -3484,7 +3482,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 				}
 			}
 			if(!conn->have_params) {
-				/* FIXME Parse the peer transport params (we should take note of these and enforce them) */
+				/* Parse the peer transport params (take note of these and enforce them) */
 				const uint8_t *params;
 				size_t params_len = 0;
 				SSL_get_peer_quic_transport_params(conn->ssl, &params, &params_len);
