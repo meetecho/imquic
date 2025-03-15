@@ -55,7 +55,7 @@ void imquic_buffer_destroy(imquic_buffer *buf);
  * @param data The data to add to the buffer
  * @param offset Offset in the overall buffer where this new data should be placed
  * @param length Length of this new data
- * @returns 0 in case of success, a negative integer otherwise */
+ * @returns The number of bytes actually added to the buffer in case of success, a negative integer otherwise */
 int imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64_t length);
 /*! \brief Helper method to add new data at the end of the buffer, as a new chunk
  * @param buf The imquic_buffer instance to add data to

@@ -1330,20 +1330,25 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 	if(stream == NULL) {
 		/* Make sure the stream wasn't previousy done */
 		if(g_hash_table_lookup(conn->streams_done, &stream_id) != NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Got data on completed stream %"SCNu64", ignoring\n", stream_id);
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got data on completed stream %"SCNu64", ignoring\n",
+				imquic_get_connection_name(conn), stream_id);
 		} else {
 			/* New stream, take note of it */
 			stream = imquic_stream_create(stream_id, conn->socket->is_server);
 			if(conn->socket->is_server != stream->client_initiated) {
 				/* FIXME */
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "Got a new %s initiated stream, but we're a %s, ignoring\n",
-					stream->client_initiated ? "client" : "server", conn->socket->is_server ? "server" : "client");
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got a new %s initiated stream, but we're a %s, ignoring\n",
+					imquic_get_connection_name(conn),
+					stream->client_initiated ? "client" : "server",
+					conn->socket->is_server ? "server" : "client");
 				imquic_stream_destroy(stream);
 				stream = NULL;
 			} else {
 				new_stream = TRUE;
-				IMQUIC_LOG(IMQUIC_LOG_VERB, "Got new %s initiated %s stream '%"SCNu64"'\n",
-					stream->client_initiated ? "client" : "server", stream->bidirectional ? "bidirectional" : "unidirectional", stream_id);
+				IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Got new %s initiated %s stream '%"SCNu64"'\n",
+					imquic_get_connection_name(conn),
+					stream->client_initiated ? "client" : "server",
+					stream->bidirectional ? "bidirectional" : "unidirectional", stream_id);
 				g_hash_table_insert(conn->streams, imquic_dup_uint64(stream_id), stream);
 #ifdef HAVE_QLOG
 				if(conn->qlog != NULL && conn->qlog->quic) {
@@ -1363,12 +1368,13 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 			}
 		}
 	} else if(!stream->can_receive || stream->in_state == IMQUIC_STREAM_INACTIVE) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "Got data on unidirectional stream, ignoring\n");
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got data on unidirectional stream, ignoring\n",
+			imquic_get_connection_name(conn));
 		stream = NULL;
 	} else if(stream->in_state == IMQUIC_STREAM_BLOCKED || stream->in_state == IMQUIC_STREAM_RESET || stream->in_state == IMQUIC_STREAM_COMPLETE) {
 		/* Stream is in a state that prevents handling data, ignore */
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "Got data on %s stream, ignoring\n",
-			imquic_stream_state_str(stream->in_state));
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got data on %s stream, ignoring\n",
+			imquic_get_connection_name(conn), imquic_stream_state_str(stream->in_state));
 		stream = NULL;
 	}
 	if(stream != NULL)
@@ -1410,7 +1416,14 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 		imquic_refcount_decrease(&stream->ref);
 		goto done;
 	}
-	imquic_buffer_put(stream->in_data, &bytes[offset], stream_offset, stream_length);
+	int added = imquic_buffer_put(stream->in_data, &bytes[offset], stream_offset, stream_length);
+	if(added > 0)
+		stream->in_size += added;
+	/* FIXME Check if flow control was exceeded */
+	if(stream->in_size > stream->local_max_data) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Flow control exceeded for stream %"SCNu64" (we should close the connection)\n",
+			imquic_get_connection_name(conn), stream_id);
+	}
 	if(fbit)
 		imquic_stream_mark_complete(stream, TRUE);
 	/* What should we do with the data now? */
@@ -1431,7 +1444,8 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 	}
 	if(imquic_stream_is_done(stream)) {
 		imquic_mutex_unlock(&stream->mutex);
-		IMQUIC_LOG(IMQUIC_LOG_VERB, "Stream %"SCNu64" is done, removing it\n", stream_id);
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Stream %"SCNu64" is done, removing it\n",
+			imquic_get_connection_name(conn), stream_id);
 		/* FIXME */
 		imquic_mutex_lock(&conn->mutex);
 		g_hash_table_remove(conn->streams, &stream_id);
@@ -3090,6 +3104,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				imquic_buffer_get(stream->out_data);
 				if(stream->out_finalsize > 0 && imquic_buffer_peek(stream->out_data) == NULL)
 					stream->out_state = IMQUIC_STREAM_COMPLETE;
+				stream->out_size += chunk->length;
 				size = imquic_payload_add_stream(conn, pkt, buffer, max_len,
 					stream->stream_id, chunk->data, chunk->offset, chunk->length,
 					(stream->out_state == IMQUIC_STREAM_COMPLETE), FALSE);
@@ -3105,6 +3120,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 			} else {
 				/* We can only add a portion of it */
 				size_t part_len = max_len - pkt->frames_size;
+				stream->out_size += part_len;
 				size = imquic_payload_add_stream(conn, pkt, buffer, max_len,
 					stream->stream_id, chunk->data, chunk->offset, part_len, FALSE, FALSE);
 				/* Create a frame and append it to the packet */

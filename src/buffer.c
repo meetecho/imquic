@@ -94,7 +94,7 @@ int imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64
 			buf->chunks = g_list_append(buf->chunks, chunk);
 		}
 	}
-	return 0;
+	return chunk->length;
 }
 
 int imquic_buffer_append(imquic_buffer *buf, uint8_t *data, uint64_t length) {
