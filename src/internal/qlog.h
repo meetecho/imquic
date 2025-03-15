@@ -54,8 +54,8 @@ typedef struct imquic_qlog {
 	gboolean sequential;
 	/*! \brief Whether this is for a client or server connection */
 	gboolean is_server;
-	/*! \brief Whether QUIC and/or MoQT events should be saved */
-	gboolean quic, moq;
+	/*! \brief Whether QUIC and/or RoQ and/or MoQT events should be saved */
+	gboolean quic, roq, moq;
 	/*! \brief Jansson JSON instance */
 	json_t *root;
 	/*! \brief Reference to the common fields entry */
@@ -85,9 +85,11 @@ typedef struct imquic_qlog {
  * @param is_server Whether this is for a client or server connection
  * @param filename Path to where the JSON file should be saved
  * @param quic Whether QUIC events should be added to the QLOG
- * @param moq Whether MoQ events should be added to the QLOG
+ * @param roq Whether RoQ events should be added to the QLOG
+ * @param moq Whether MoQT events should be added to the QLOG
  * @returns A pointer to a new imquic_qlog instance, if successful, or NULL otherwise */
-imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server, char *filename, gboolean quic, gboolean moq);
+imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server,
+	char *filename, gboolean quic, gboolean roq, gboolean moq);
 /*! \brief Set/update the Original Destination Connection ID
  * @param qlog The imquic_qlog instance to update
  * @param odcid The Original Destination Connection ID to write, as a imquic_connection_id instance */

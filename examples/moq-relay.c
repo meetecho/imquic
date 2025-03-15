@@ -1004,6 +1004,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
+		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(server == NULL) {
 		ret = 1;

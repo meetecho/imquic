@@ -72,6 +72,8 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
+			config.qlog_roq = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
@@ -163,6 +165,8 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
+			config.qlog_roq = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);

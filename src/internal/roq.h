@@ -21,6 +21,7 @@
 #include <glib.h>
 
 #include "../imquic/imquic.h"
+#include "qlog.h"
 #include "mutex.h"
 #include "refcount.h"
 
@@ -93,5 +94,44 @@ void imquic_roq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
  * @param conn The imquic_connection instance that is now gone */
 void imquic_roq_connection_gone(imquic_connection *conn);
 ///@}
+
+#ifdef HAVE_QLOG
+/** @name QLOG events tracing for RoQ
+ */
+///@{
+/*! \brief Helper to add fields for RtpPacket to an event
+ * @param data The data object to add the properties to
+ * @param flow_id The RoQ flow ID to add
+ * @param length The length of the RTP packet */
+void imquic_roq_qlog_add_rtp_packet(json_t *data, uint64_t flow_id, uint64_t length);
+/*! \brief Add a \c stream_opened event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID that was opened
+ * @param flow_id The RoQ flow ID used in the stream */
+void imquic_roq_qlog_stream_opened(imquic_qlog *qlog, uint64_t stream_id, uint64_t flow_id);
+/*! \brief Add a \c stream_packet_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for the packet
+ * @param flow_id The RoQ flow ID used in the stream
+ * @param length The length of the RTP packet */
+void imquic_roq_qlog_stream_packet_created(imquic_qlog *qlog, uint64_t stream_id, uint64_t flow_id, uint64_t length);
+/*! \brief Add a \c stream_packet_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for the packet
+ * @param flow_id The RoQ flow ID used in the stream
+ * @param length The length of the RTP packet */
+void imquic_roq_qlog_stream_packet_parsed(imquic_qlog *qlog, uint64_t stream_id, uint64_t flow_id, uint64_t length);
+/*! \brief Add a \c datagram_packet_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param flow_id The RoQ flow ID used in the datagram
+ * @param length The length of the RTP packet */
+void imquic_roq_qlog_datagram_packet_created(imquic_qlog *qlog, uint64_t flow_id, uint64_t length);
+/*! \brief Add a \c datagram_packet_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param flow_id The RoQ flow ID used in the datagram
+ * @param length The length of the RTP packet */
+void imquic_roq_qlog_datagram_packet_parsed(imquic_qlog *qlog, uint64_t flow_id, uint64_t length);
+///@}
+#endif
 
 #endif

@@ -48,11 +48,12 @@ static void imquic_qlog_free(const imquic_refcount *qlog_ref) {
 	g_free(qlog);
 }
 
-imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server, char *filename, gboolean quic, gboolean moq) {
+imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server,
+		char *filename, gboolean quic, gboolean roq, gboolean moq) {
 	if(id == NULL || filename == NULL)
 		return NULL;
-	if(!quic && !moq) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't create QLOG instance, at least one of QUIC and MoQ should be enabled\n", id);
+	if(!quic && !roq && !moq) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't create QLOG instance, at least one of QUIC, RoQ and MoQ should be enabled\n", id);
 		return NULL;
 	}
 	imquic_qlog *qlog = g_malloc0(sizeof(imquic_qlog));
@@ -68,6 +69,7 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 	qlog->is_server = is_server;
 	qlog->filename = g_strdup(filename);
 	qlog->quic = quic;
+	qlog->roq = roq;
 	qlog->moq = moq;
 	/* Initialize the QLOG structure */
 	qlog->root = json_object();
@@ -82,6 +84,10 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 	if(quic) {
 		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:quic-09"));
 		json_array_append_new(protocols, json_string("QUIC"));
+	}
+	if(roq) {
+		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:roq-00"));
+		json_array_append_new(protocols, json_string("ROQ"));
 	}
 	if(moq) {
 		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:moqt-00"));
