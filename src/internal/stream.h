@@ -54,6 +54,8 @@ typedef struct imquic_stream {
 	size_t skip_in, skip_out;
 	/*! \brief Incoming and outgoing buffers */
 	imquic_buffer *in_data, *out_data;
+	/*! \brief Flow control state for this stream */
+	uint64_t local_max_data, remote_max_data;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this instance has been destroyed (reference counting) */

@@ -9,6 +9,7 @@
  * \ingroup Core
  */
 
+#include "internal/connection.h"
 #include "internal/stream.h"
 #include "imquic/debug.h"
 

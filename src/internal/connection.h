@@ -98,6 +98,16 @@ typedef struct imquic_connection_rtt {
 	int64_t first_sample;
 } imquic_connection_rtt;
 
+/*! \brief Flow control tracking */
+typedef struct imquic_connection_flow_control {
+	/*! \brief Current values of local and remote max_data */
+	uint64_t local_max_data, remote_max_data;
+	/*! \brief Current values of local and remote bidirectional max_streams */
+	uint64_t local_max_streams_bidi, remote_max_streams_bidi;
+	/*! \brief Current values of local and remote unidirectional max_streams */
+	uint64_t local_max_streams_uni, remote_max_streams_uni;
+} imquic_connection_flow_control;
+
 /*! \brief QUIC Connection */
 struct imquic_connection {
 	/*! \brief Name of this connection (for logging purposes) */
@@ -152,6 +162,8 @@ struct imquic_connection {
 	volatile gint wakeup;
 	/*! \brief Different RTTs for this connection */
 	imquic_connection_rtt rtt;
+	/*! \brief Flow control state */
+	imquic_connection_flow_control flow_control;
 	/*! \brief List of received packet numbers, for each encryption level
 	 * \todo We'll need a better and less memory hungry way of keeping
 	 * track of packet numbers, as this list is currently never pruned */

@@ -1350,6 +1350,14 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 						(!bidirectional ? "receiving" : NULL), "open");
 				}
 #endif
+				/* FIXME Flow control */
+				if(bidirectional) {
+					stream->local_max_data = conn->local_params.initial_max_stream_data_bidi_remote;
+					stream->remote_max_data = conn->remote_params.initial_max_stream_data_bidi_local;
+				} else {
+					stream->local_max_data = conn->local_params.initial_max_stream_data_uni;
+					stream->remote_max_data = conn->remote_params.initial_max_stream_data_uni;
+				}
 			}
 		}
 	} else if(!stream->can_receive || stream->in_state == IMQUIC_STREAM_INACTIVE) {
@@ -1445,7 +1453,6 @@ done:
 size_t imquic_payload_parse_max_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || bytes[0] != IMQUIC_MAX_DATA)
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t maximum = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1458,13 +1465,23 @@ size_t imquic_payload_parse_max_data(imquic_connection *conn, imquic_packet *pkt
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	/* FIXME Update the info we had */
+	if(conn != NULL) {
+		if(maximum > conn->flow_control.remote_max_data) {
+			conn->flow_control.remote_max_data = maximum;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got new max_data from peer: %"SCNu64"\n",
+				imquic_get_connection_name(conn), conn->flow_control.remote_max_data);
+		} else {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Ignoring new max_data from peer (%"SCNu64" <= %"SCNu64")\n",
+				imquic_get_connection_name(conn), maximum, conn->flow_control.remote_max_data);
+		}
+	}
 	return offset;
 }
 
 size_t imquic_payload_parse_max_stream_data(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 3 || bytes[0] != IMQUIC_MAX_STREAM_DATA)
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t stream_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1481,13 +1498,28 @@ size_t imquic_payload_parse_max_stream_data(imquic_connection *conn, imquic_pack
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	/* FIXME Update the info we had */
+	if(conn != NULL) {
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			if(maximum > stream->remote_max_data) {
+				stream->remote_max_data = maximum;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got new max_data for stream %"SCNu64" from peer: %"SCNu64"\n",
+					imquic_get_connection_name(conn), stream_id, stream->remote_max_data);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Ignoring new max_data for stream %"SCNu64" from peer (%"SCNu64" <= %"SCNu64")\n",
+					imquic_get_connection_name(conn), stream_id, maximum, conn->flow_control.remote_max_data);
+			}
+		}
+		imquic_mutex_unlock(&conn->mutex);
+	}
 	return offset;
 }
 
 size_t imquic_payload_parse_max_streams(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || (bytes[0] != IMQUIC_MAX_STREAMS && bytes[0] != IMQUIC_MAX_STREAMS_UNI))
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t maximum = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1502,13 +1534,36 @@ size_t imquic_payload_parse_max_streams(imquic_connection *conn, imquic_packet *
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	/* FIXME Update the info we had */
+	if(conn != NULL) {
+		if(bytes[0] == IMQUIC_MAX_STREAMS) {
+			/* Update on bidirectional streams */
+			if(maximum > conn->flow_control.remote_max_streams_bidi) {
+				conn->flow_control.remote_max_streams_bidi = maximum;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got new bidirectional max_streams from peer: %"SCNu64"\n",
+					imquic_get_connection_name(conn), conn->flow_control.remote_max_streams_bidi);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Ignoring new bidirectional max_streams from peer (%"SCNu64" <= %"SCNu64")\n",
+					imquic_get_connection_name(conn), maximum, conn->flow_control.remote_max_streams_bidi);
+			}
+		} else {
+			/* Update on unirectional streams */
+			if(maximum > conn->flow_control.remote_max_streams_uni) {
+				conn->flow_control.remote_max_streams_uni = maximum;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got new unirectional max_streams from peer: %"SCNu64"\n",
+					imquic_get_connection_name(conn), conn->flow_control.remote_max_streams_uni);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Ignoring new unirectional max_streams from peer (%"SCNu64" <= %"SCNu64")\n",
+					imquic_get_connection_name(conn), maximum, conn->flow_control.remote_max_streams_uni);
+			}
+		}
+	}
 	return offset;
 }
 
 size_t imquic_payload_parse_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || bytes[0] != IMQUIC_DATA_BLOCKED)
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t limit = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1521,13 +1576,20 @@ size_t imquic_payload_parse_data_blocked(imquic_connection *conn, imquic_packet 
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	/* FIXME Let's react by giving more credit (TODO Should we involve the application?) */
+	if(conn != NULL) {
+		while(limit >= conn->flow_control.local_max_data)
+			conn->flow_control.local_max_data *= 2;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Increasing max_data: %"SCNu64"\n",
+			imquic_get_connection_name(conn), conn->flow_control.local_max_data);
+		imquic_send_credits(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid), IMQUIC_MAX_DATA, 0);
+	}
 	return offset;
 }
 
 size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 3 || bytes[0] != IMQUIC_STREAM_DATA_BLOCKED)
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t stream_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1544,27 +1606,55 @@ size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, imquic_
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	/* FIXME Let's react by giving more credit (TODO Should we involve the application?) */
+	if(conn != NULL) {
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			while(limit >= stream->local_max_data)
+				stream->local_max_data *= 2;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Increasing max_data for stream %"SCNu64": %"SCNu64"\n",
+				imquic_get_connection_name(conn), stream_id, stream->local_max_data);
+			imquic_send_credits(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid), IMQUIC_MAX_STREAM_DATA, stream_id);
+		}
+		imquic_mutex_unlock(&conn->mutex);
+	}
 	return offset;
 }
 
 size_t imquic_payload_parse_streams_blocked(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 2 || (bytes[0] != IMQUIC_STREAMS_BLOCKED && bytes[0] != IMQUIC_STREAMS_BLOCKED_UNI))
 		return 0;
-	/* TODO Actually do something with this */
 	size_t offset = 1;
 	uint8_t length = 0;
 	uint64_t limit = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Limited Streams: %"SCNu64" (length %"SCNu8")\n", limit, length);
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Applied to:      %s\n", (bytes[0] == IMQUIC_MAX_STREAMS ? "bidirectional" : "unidirectional"));
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Applied to:      %s\n", (bytes[0] == IMQUIC_STREAMS_BLOCKED ? "bidirectional" : "unidirectional"));
 #ifdef HAVE_QLOG
 	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic && pkt != NULL && pkt->qlog_frames != NULL) {
 		json_t *frame = imquic_qlog_prepare_packet_frame("streams_blocked");
-		json_object_set_new(frame, "stream_type", json_string(bytes[0] == IMQUIC_MAX_STREAMS ? "bidirectional" : "unidirectional"));
+		json_object_set_new(frame, "stream_type", json_string(bytes[0] == IMQUIC_STREAMS_BLOCKED ? "bidirectional" : "unidirectional"));
 		json_object_set_new(frame, "limit", json_integer(limit));
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	/* FIXME Let's react by giving more credit (TODO Should we involve the application?) */
+	if(conn != NULL) {
+		if(bytes[0] == IMQUIC_STREAMS_BLOCKED) {
+			while(limit >= conn->flow_control.local_max_streams_bidi)
+				conn->flow_control.local_max_streams_bidi *= 2;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Increasing max_streams (bidirectional): %"SCNu64"\n",
+				imquic_get_connection_name(conn), conn->flow_control.local_max_streams_bidi);
+			imquic_send_credits(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid), IMQUIC_MAX_STREAMS, 0);
+		} else {
+			while(limit >= conn->flow_control.local_max_streams_uni)
+				conn->flow_control.local_max_streams_uni *= 2;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Increasing max_streams (undirectional): %"SCNu64"\n",
+				imquic_get_connection_name(conn), conn->flow_control.local_max_streams_uni);
+			imquic_send_credits(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid), IMQUIC_MAX_STREAMS_UNI, 0);
+		}
+	}
 	return offset;
 }
 
@@ -2397,8 +2487,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				uint64_t value = imquic_read_varint(bytes + offset, blen - offset, &length);
 				IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- [%"SCNu64"][%s][%"SCNu64"] %"SCNu64"\n",
 					param, imquic_transport_parameter_str(param), p_len, value);
-				if(conn != NULL)
+				if(conn != NULL) {
 					conn->remote_params.initial_max_data = value;
+					conn->flow_control.remote_max_data = value;
+				}
 #ifdef HAVE_QLOG
 				if(data != NULL)
 					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
@@ -2449,8 +2541,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				uint64_t value = imquic_read_varint(bytes + offset, blen - offset, &length);
 				IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- [%"SCNu64"][%s][%"SCNu64"] %"SCNu64"\n",
 					param, imquic_transport_parameter_str(param), p_len, value);
-				if(conn != NULL)
+				if(conn != NULL) {
 					conn->remote_params.initial_max_streams_bidi = value;
+					conn->flow_control.remote_max_streams_bidi = conn->remote_params.initial_max_streams_bidi;
+				}
 #ifdef HAVE_QLOG
 				if(data != NULL)
 					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
@@ -2462,8 +2556,10 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
 				uint64_t value = imquic_read_varint(bytes + offset, blen - offset, &length);
 				IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- [%"SCNu64"][%s][%"SCNu64"] %"SCNu64"\n",
 					param, imquic_transport_parameter_str(param), p_len, value);
-				if(conn != NULL)
+				if(conn != NULL) {
 					conn->remote_params.initial_max_streams_uni = value;
+					conn->flow_control.remote_max_streams_uni = conn->remote_params.initial_max_streams_uni;
+				}
 #ifdef HAVE_QLOG
 				if(data != NULL)
 					json_object_set_new(data, imquic_transport_parameter_str(param), json_integer(value));
@@ -2675,8 +2771,10 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
 						/* Add padding to increase the size of this packet */
 						frame = imquic_frame_create(IMQUIC_PADDING, NULL, max_len - pkt->frames_size);
 #ifdef HAVE_QLOG
-						frame->qlog_frame = imquic_qlog_prepare_packet_frame("padding");
-						json_object_set_new(frame->qlog_frame, "payload_length", json_integer(max_len - pkt->frames_size));
+						if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+							frame->qlog_frame = imquic_qlog_prepare_packet_frame("padding");
+							json_object_set_new(frame->qlog_frame, "payload_length", json_integer(max_len - pkt->frames_size));
+						}
 #endif
 						pkt->frames = g_list_prepend(pkt->frames, frame);
 						pkt->frames_size += frame->size;
@@ -2739,8 +2837,205 @@ int imquic_send_keepalive(imquic_connection *conn, imquic_connection_id *dest) {
 	imquic_frame *frame = imquic_frame_create(IMQUIC_PING, NULL, 1);
 	imquic_payload_add_ping(conn, pkt, frame->buffer, frame->size);
 #ifdef HAVE_QLOG
-	frame->qlog_frame = imquic_qlog_prepare_packet_frame("ping");
+	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic)
+		frame->qlog_frame = imquic_qlog_prepare_packet_frame("ping");
 #endif
+	pkt->frames = g_list_append(pkt->frames, frame);
+	pkt->frames_size += frame->size;
+	if(imquic_serialize_packet(conn, pkt) < 0) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error serializing packet\n",
+			imquic_get_connection_name(conn));
+		imquic_packet_destroy(pkt);
+		return -1;
+	}
+	/* Send the message */
+	imquic_send_packet(conn, pkt);
+	return 0;
+}
+
+int imquic_send_credits(imquic_connection *conn, imquic_connection_id *dest, imquic_frame_type type, uint64_t stream_id) {
+	if(conn == NULL || g_atomic_int_get(&conn->destroyed))
+		return -1;
+	if(type != IMQUIC_MAX_DATA && type != IMQUIC_MAX_STREAMS && type != IMQUIC_MAX_STREAMS_UNI && type != IMQUIC_MAX_STREAM_DATA) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Can't grant more credits, invalid frame provided (%s)\n",
+			imquic_get_connection_name(conn), imquic_frame_type_str(type));
+		return -1;
+	}
+	imquic_packet *pkt = imquic_packet_create();
+	enum ssl_encryption_level_t level = ssl_encryption_application;
+	imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
+	pkt->level = level;
+	pkt->packet_number = conn->pkn[pkt->level];
+	conn->pkn[pkt->level]++;
+	/* Check what frame we should send */
+	imquic_frame *frame = NULL;
+	uint8_t buffer[40];
+	size_t max_len = sizeof(buffer), size = 0;
+	if(type == IMQUIC_MAX_DATA) {
+		/* Add a MAX_DATA frame */
+		size = imquic_payload_add_max_data(conn, pkt, buffer, max_len, conn->flow_control.local_max_data);
+		if(size > 0) {
+			frame = imquic_frame_create(IMQUIC_MAX_DATA, buffer, size);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				frame->qlog_frame = imquic_qlog_prepare_packet_frame("max_data");
+				json_object_set_new(frame->qlog_frame, "maximum", json_integer(conn->flow_control.local_max_data));
+			}
+#endif
+		}
+	} else if(type == IMQUIC_MAX_STREAMS) {
+		/* Add a MAX_STREAMS frame */
+		size = imquic_payload_add_max_streams(conn, pkt, buffer, max_len, TRUE, conn->flow_control.local_max_streams_bidi);
+		if(size > 0) {
+			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, buffer, size);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				frame->qlog_frame = imquic_qlog_prepare_packet_frame("max_streams");
+				json_object_set_new(frame->qlog_frame, "stream_type", json_string("bidirectional"));
+				json_object_set_new(frame->qlog_frame, "maximum", json_integer(conn->flow_control.local_max_streams_bidi));
+			}
+#endif
+		}
+	} else if(type == IMQUIC_MAX_STREAMS_UNI) {
+		/* Add a MAX_STREAMS frame (unidirectional) */
+		size = imquic_payload_add_max_streams(conn, pkt, buffer, max_len, FALSE, conn->flow_control.local_max_streams_uni);
+		if(size > 0) {
+			frame = imquic_frame_create(IMQUIC_MAX_STREAMS, buffer, size);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				frame->qlog_frame = imquic_qlog_prepare_packet_frame("max_streams");
+				json_object_set_new(frame->qlog_frame, "stream_type", json_string("unidirectional"));
+				json_object_set_new(frame->qlog_frame, "maximum", json_integer(conn->flow_control.local_max_streams_uni));
+			}
+#endif
+		}
+	} else if(type == IMQUIC_MAX_STREAM_DATA) {
+		/* Add a MAX_STREAM_DATA frame */
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			gboolean bidirectional = stream->bidirectional;
+			uint64_t maximum = stream->local_max_data;
+			imquic_mutex_unlock(&conn->mutex);
+			size = imquic_payload_add_max_stream_data(conn, pkt, buffer, max_len, stream_id, maximum);
+			if(size > 0) {
+				frame = imquic_frame_create(IMQUIC_MAX_STREAMS, buffer, size);
+#ifdef HAVE_QLOG
+				if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+					frame->qlog_frame = imquic_qlog_prepare_packet_frame("max_stream_data");
+					json_object_set_new(frame->qlog_frame, "stream_type", json_string(bidirectional ? "bidirectional" : "unidirectional"));
+					json_object_set_new(frame->qlog_frame, "maximum", json_integer(maximum));
+				}
+#endif
+			}
+		} else {
+			imquic_mutex_unlock(&conn->mutex);
+		}
+	}
+	if(frame == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Can't grant more credits, no frame prepared\n",
+			imquic_get_connection_name(conn));
+		imquic_packet_destroy(pkt);
+		return -1;
+	}
+	pkt->frames = g_list_append(pkt->frames, frame);
+	pkt->frames_size += frame->size;
+	if(imquic_serialize_packet(conn, pkt) < 0) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error serializing packet\n",
+			imquic_get_connection_name(conn));
+		imquic_packet_destroy(pkt);
+		return -1;
+	}
+	/* Send the message */
+	imquic_send_packet(conn, pkt);
+	return 0;
+}
+
+int imquic_send_blocked(imquic_connection *conn, imquic_connection_id *dest, imquic_frame_type type, uint64_t stream_id) {
+	if(conn == NULL || g_atomic_int_get(&conn->destroyed))
+		return -1;
+	if(type != IMQUIC_DATA_BLOCKED && type != IMQUIC_STREAMS_BLOCKED && type != IMQUIC_STREAMS_BLOCKED_UNI && type != IMQUIC_STREAM_DATA_BLOCKED) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Can't ask for more credits, invalid frame provided (%s)\n",
+			imquic_get_connection_name(conn), imquic_frame_type_str(type));
+		return -1;
+	}
+	imquic_packet *pkt = imquic_packet_create();
+	enum ssl_encryption_level_t level = ssl_encryption_application;
+	imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
+	pkt->level = level;
+	pkt->packet_number = conn->pkn[pkt->level];
+	conn->pkn[pkt->level]++;
+	/* Check what frame we should send */
+	imquic_frame *frame = NULL;
+	uint8_t buffer[40];
+	size_t max_len = sizeof(buffer), size = 0;
+	if(type == IMQUIC_DATA_BLOCKED) {
+		/* Add a DATA_BLOCKED frame */
+		size = imquic_payload_add_data_blocked(conn, pkt, buffer, max_len, conn->flow_control.remote_max_data);
+		if(size > 0) {
+			frame = imquic_frame_create(IMQUIC_DATA_BLOCKED, buffer, size);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				frame->qlog_frame = imquic_qlog_prepare_packet_frame("data_blocked");
+				json_object_set_new(frame->qlog_frame, "limit", json_integer(conn->flow_control.remote_max_data));
+			}
+#endif
+		}
+	} else if(type == IMQUIC_STREAMS_BLOCKED) {
+		/* Add a STREAMS_BLOCKED frame */
+		size = imquic_payload_add_streams_blocked(conn, pkt, buffer, max_len, TRUE, conn->flow_control.remote_max_streams_bidi);
+		if(size > 0) {
+			frame = imquic_frame_create(IMQUIC_STREAMS_BLOCKED, buffer, size);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				frame->qlog_frame = imquic_qlog_prepare_packet_frame("streams_blocked");
+				json_object_set_new(frame->qlog_frame, "stream_type", json_string("bidirectional"));
+				json_object_set_new(frame->qlog_frame, "limit", json_integer(conn->flow_control.remote_max_streams_bidi));
+			}
+#endif
+		}
+	} else if(type == IMQUIC_STREAMS_BLOCKED_UNI) {
+		/* Add a STREAMS_BLOCKED frame (unidirectional) */
+		size = imquic_payload_add_streams_blocked(conn, pkt, buffer, max_len, FALSE, conn->flow_control.remote_max_streams_uni);
+		if(size > 0) {
+			frame = imquic_frame_create(IMQUIC_STREAMS_BLOCKED_UNI, buffer, size);
+#ifdef HAVE_QLOG
+			if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+				frame->qlog_frame = imquic_qlog_prepare_packet_frame("streams_blocked");
+				json_object_set_new(frame->qlog_frame, "stream_type", json_string("unidirectional"));
+				json_object_set_new(frame->qlog_frame, "limit", json_integer(conn->flow_control.remote_max_streams_uni));
+			}
+#endif
+		}
+	} else if(type == IMQUIC_STREAM_DATA_BLOCKED) {
+		/* Add a STREAM_DATA_BLOCKED frame */
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			gboolean bidirectional = stream->bidirectional;
+			uint64_t limit = stream->remote_max_data;
+			imquic_mutex_unlock(&conn->mutex);
+			size = imquic_payload_add_stream_data_blocked(conn, pkt, buffer, max_len, stream_id, limit);
+			if(size > 0) {
+				frame = imquic_frame_create(IMQUIC_STREAM_DATA_BLOCKED, buffer, size);
+#ifdef HAVE_QLOG
+				if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
+					frame->qlog_frame = imquic_qlog_prepare_packet_frame("stream_data_blocked");
+					json_object_set_new(frame->qlog_frame, "stream_type", json_string(bidirectional ? "bidirectional" : "unidirectional"));
+					json_object_set_new(frame->qlog_frame, "limit", json_integer(limit));
+				}
+#endif
+			}
+		} else {
+			imquic_mutex_unlock(&conn->mutex);
+		}
+	}
+	if(frame == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Can't ask for more credits, no frame prepared\n",
+			imquic_get_connection_name(conn));
+		imquic_packet_destroy(pkt);
+		return -1;
+	}
 	pkt->frames = g_list_append(pkt->frames, frame);
 	pkt->frames_size += frame->size;
 	if(imquic_serialize_packet(conn, pkt) < 0) {

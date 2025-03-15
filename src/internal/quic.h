@@ -674,6 +674,22 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
  * @param dest The destinatiob Connection ID, if any
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_send_keepalive(imquic_connection *conn, imquic_connection_id *dest);
+/*! \brief Helper method to generate a packet containing more flow control credits and send it
+ * @note This may include a few other frames too, in case the stack thinks they're neede
+ * @param conn The imquic_connection to send the message on
+ * @param dest The destinatiob Connection ID, if any
+ * @param type The frame to send, specifying which credits to grant
+ * @param stream_id The ID of the stream the credits apply to
+ * @returns 0 in case of success, or a negative integer otherwise */
+int imquic_send_credits(imquic_connection *conn, imquic_connection_id *dest, imquic_frame_type type, uint64_t stream_id);
+/*! \brief Helper method to generate a packet containing a request for more flow control credits and send it
+ * @note This may include a few other frames too, in case the stack thinks they're neede
+ * @param conn The imquic_connection to send the message on
+ * @param dest The destinatiob Connection ID, if any
+ * @param type The frame to send, specifying which credits to ask for
+ * @param stream_id The ID of the stream the credits apply to
+ * @returns 0 in case of success, or a negative integer otherwise */
+int imquic_send_blocked(imquic_connection *conn, imquic_connection_id *dest, imquic_frame_type type, uint64_t stream_id);
 /*! \brief Helper method to generate one or more packets containing one or more \c STREAM frames and send them
  * @note This may include a few other frames too, in case the stack thinks they're neede
  * @param conn The imquic_connection to send the message(s) on

@@ -529,5 +529,4 @@ uint64_t imquic_uint64_random(void);
  * @returns A pointer to a uint64_t number, if successful, NULL otherwise */
 uint64_t *imquic_uint64_dup(uint64_t num);
 ///@}
-
 #endif

@@ -157,6 +157,10 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	conn->local_params.initial_max_stream_data_uni = 1048576;
 	conn->local_params.max_udp_payload_size = 1472;
 	conn->local_params.max_datagram_frame_size = 65535;
+	/* FIXME Flow control */
+	conn->flow_control.local_max_data = conn->local_params.initial_max_data;
+	conn->flow_control.local_max_streams_bidi = conn->local_params.initial_max_streams_bidi;
+	conn->flow_control.local_max_streams_uni = conn->local_params.initial_max_streams_uni;
 	/* RTT initialization */
 	conn->rtt.smoothed = 333;	/* FIXME Default in RFC 9002 */
 	conn->rtt.rttvar = conn->rtt.smoothed / 2;
@@ -514,6 +518,14 @@ int imquic_connection_new_stream_id(imquic_connection *conn, gboolean bidirectio
 			(!bidirectional ? "sending" : NULL), "open");
 	}
 #endif
+	/* FIXME Flow control */
+	if(bidirectional) {
+		stream->local_max_data = conn->local_params.initial_max_stream_data_bidi_local;
+		stream->remote_max_data = conn->remote_params.initial_max_stream_data_bidi_remote;
+	} else {
+		stream->local_max_data = conn->local_params.initial_max_stream_data_uni;
+		stream->remote_max_data = conn->remote_params.initial_max_stream_data_uni;
+	}
 	if(conn->http3 != NULL && conn->http3->webtransport) {
 		/* We need to write the info on the new WebTransport stream */
 		uint8_t prefix[10];
