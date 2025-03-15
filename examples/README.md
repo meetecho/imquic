@@ -95,4 +95,10 @@ Assuming Meta's [moxygen](https://github.com/facebookexperimental/moxygen) relay
 
 	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -w -n clock -N now -t text -M 8 -f ascending -j 0
 
-`imquic-moq-test` implements the publisher side of the MoQT tester. At the time of writing, even though it's a publisher, it acts as a QUIC and/or WebTransport server and never announces any namespace, meaning it's expected that subscribers interested in testing it will need to connect to it directly, as part of point-to-point functional tests.
+`imquic-moq-test` implements the publisher side of the [MoQT tester draft](https://afrind.github.io/moq-test/). At the time of writing, even though it's a publisher, it acts as a QUIC and/or WebTransport server and never announces any namespace, meaning it's expected that subscribers interested in testing it will need to connect to it directly, as part of point-to-point functional tests. This is an example of how it can be launched as a server that supports both raw QUIC and WebTransport (since both `-q` and `-w` are passed):
+
+	./examples/imquic-moq-test -c ../localhost.crt -k ../localhost.key -p 9000 -q -w
+
+You can then use the demo subscriber to specify which objects should be delivered and how by using the namespace tuple as specified in the draft, e.g.:
+
+	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -w -n moq-test-00 -n 0 -n 2 -n 1 -n 10 -n "" -n 6 -n 10 -n 2 -n 500 -n 2 -n 2 -n 1 -n 3 -n 3 -N ""
