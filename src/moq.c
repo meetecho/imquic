@@ -1029,7 +1029,7 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("client_setup");
-		json_object_set_new(message, "number_of_support_versions", json_integer(supported_vers));
+		json_object_set_new(message, "number_of_supported_versions", json_integer(supported_vers));
 		json_t *versions = json_array();
 		GList *temp = moq->supported_versions;
 		while(temp) {
@@ -3670,7 +3670,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	};
 #ifdef HAVE_QLOG
 	if(moq_stream != NULL && moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
-		imquic_moq_qlog_subgroup_header_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
+		imquic_moq_qlog_subgroup_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
@@ -3833,7 +3833,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	};
 #ifdef HAVE_QLOG
 	if(moq_stream != NULL && moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
-		imquic_moq_qlog_fetch_header_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
+		imquic_moq_qlog_fetch_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
@@ -3934,7 +3934,7 @@ size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("client_setup");
-		json_object_set_new(message, "number_of_support_versions", json_integer(g_list_length(supported_versions)));
+		json_object_set_new(message, "number_of_supported_versions", json_integer(g_list_length(supported_versions)));
 		json_t *versions = json_array();
 		temp = supported_versions;
 		while(temp) {
@@ -6524,7 +6524,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	gboolean has_payload = (object->payload_len > 0 && object->payload != NULL);
 	gboolean valid_pkt = has_payload || (moq->version >= IMQUIC_MOQ_VERSION_04 && object->object_status != IMQUIC_MOQ_NORMAL_OBJECT);
 	/* FIXME Check how we should send this */
-	uint8_t buffer[40960];
+	uint8_t buffer[65536];
 	if(object->delivery == IMQUIC_MOQ_USE_DATAGRAM) {
 		/* Use a datagram */
 		if(has_payload || moq->version < IMQUIC_MOQ_VERSION_08) {
@@ -6676,7 +6676,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				object->extensions_count, object->extensions, object->extensions_len);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
-				imquic_moq_qlog_subgroup_header_object_created(conn->qlog, moq_stream->stream_id, object);
+				imquic_moq_qlog_subgroup_object_created(conn->qlog, moq_stream->stream_id, object);
 #endif
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
@@ -6802,7 +6802,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				object->extensions_count, object->extensions, object->extensions_len);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
-				imquic_moq_qlog_fetch_header_object_created(conn->qlog, moq_stream->stream_id, object);
+				imquic_moq_qlog_fetch_object_created(conn->qlog, moq_stream->stream_id, object);
 #endif
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
@@ -6987,10 +6987,10 @@ void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_subgroup_header_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
+void imquic_moq_qlog_subgroup_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
 	if(qlog == NULL || object == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_header_object_created");
+	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_object_created");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream_id));
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
@@ -7005,10 +7005,10 @@ void imquic_moq_qlog_subgroup_header_object_created(imquic_qlog *qlog, uint64_t 
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_subgroup_header_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
+void imquic_moq_qlog_subgroup_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
 	if(qlog == NULL || object == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_header_object_parsed");
+	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_object_parsed");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream_id));
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
@@ -7043,10 +7043,10 @@ void imquic_moq_qlog_fetch_header_parsed(imquic_qlog *qlog, imquic_moq_stream *s
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_fetch_header_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
+void imquic_moq_qlog_fetch_object_created(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
 	if(qlog == NULL || object == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("moqt:fetch_header_object_created");
+	json_t *event = imquic_qlog_event_prepare("moqt:fetch_object_created");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream_id));
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
@@ -7060,10 +7060,10 @@ void imquic_moq_qlog_fetch_header_object_created(imquic_qlog *qlog, uint64_t str
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_fetch_header_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
+void imquic_moq_qlog_fetch_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object) {
 	if(qlog == NULL || object == NULL)
 		return;
-	json_t *event = imquic_qlog_event_prepare("moqt:fetch_header_object_parsed");
+	json_t *event = imquic_qlog_event_prepare("moqt:fetch_object_parsed");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream_id));
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
