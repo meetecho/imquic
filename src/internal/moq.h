@@ -181,7 +181,7 @@ const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, 
  * @returns The associated imquic_moq_delivery mode, if successful, or -1 otherwise */
 imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_message_type type, imquic_moq_version version);
 
-/*! \brief MoQ setup parameters */
+/*! \brief MoQ setup parameter types */
 typedef enum imquic_moq_setup_parameter_type {
 	IMQUIC_MOQ_PARAM_ROLE = 0x00,	/* Deprecated since v08 */
 	IMQUIC_MOQ_PARAM_PATH = 0x01,
@@ -192,7 +192,7 @@ typedef enum imquic_moq_setup_parameter_type {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type type);
 
-/*! \brief MoQ subscribe parameters */
+/*! \brief MoQ subscribe parameter types */
 typedef enum imquic_moq_subscribe_parameter_type {
 	IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO = 0x02,
 	IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT = 0x03,
@@ -215,19 +215,23 @@ typedef enum imquic_moq_role_type {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_role_type_str(imquic_moq_role_type type);
 
-/*! \brief Parsed MoQ setup parameter */
-typedef struct imquic_moq_parsed_setup_parameter {
-	/*! \brief The setup parameter ID */
-	imquic_moq_setup_parameter_type type;
-	union {
-		/*! \brief ROLE */
-		imquic_moq_role_type role;
-		/*! \brief PATH */
-		char *path;
-		/*! \brief MAX_SUBSCRIBE_ID */
-		uint64_t max_subscribe_id;
-	} value;
-} imquic_moq_parsed_setup_parameter;
+/*! \brief MoQ setup parameters */
+typedef struct imquic_moq_setup_parameters {
+	/*! \brief Whether the role parameter is set */
+	gboolean role_set;
+	/*! \brief Value of the role parameter */
+	imquic_moq_role_type role;
+	/*! \brief Whether the path parameter is set */
+	gboolean path_set;
+	/*! \brief Value of the path parameter */
+	char *path;
+	/*! \brief Whether the max_subscribe_id parameter is set */
+	gboolean max_subscribe_id_set;
+	/*! \brief Value of the role parameter */
+	uint64_t max_subscribe_id;
+	/*! \brief Whether there's unknown parameters */
+	gboolean unknown;
+} imquic_moq_setup_parameters;
 
 /*! \brief Parsed MoQ subscribe parameter */
 typedef struct imquic_moq_parsed_subscribe_parameter {
@@ -738,21 +742,19 @@ size_t imquic_moq_add_control_message(imquic_moq_context *moq, imquic_moq_messag
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param supported_versions List of supported versions
- * @param params_num Number of parameters to add to the message, if any
- * @param parameters A buffer containing an already serialized list of parameters
+ * @param parameters The setup parameters to send
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	GList *supported_versions, size_t params_num, imquic_data *parameters);
+	GList *supported_versions, imquic_moq_setup_parameters *parameters);
 /*! \brief Helper method to add a \c SERVER_SETUP message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param version Negotiated version
- * @param params_num Number of parameters to add to the message, if any
- * @param parameters A buffer containing an already serialized list of parameters
+ * @param parameters The setup parameters to send
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint32_t version, size_t params_num, imquic_data *parameters);
+	uint32_t version, imquic_moq_setup_parameters *parameters);
 /*! \brief Helper method to add a \c MAX_SUBSCRIBE_ID message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1226,11 +1228,11 @@ size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes,
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
  * @param[in] bytes Buffer containing the parameter to parse
  * @param[in] blen Size of the buffer to parse
- * @param[out] param imquic_moq_parsed_setup_parameter instance to put the parsed parameter in
+ * @param[out] params imquic_moq_setup_parameters instance to put the parsed parameter in
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parameter, if successful, or 0 otherwise */
 size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	imquic_moq_parsed_setup_parameter *param, uint8_t *error);
+	imquic_moq_setup_parameters *params, uint8_t *error);
 /*! \brief Helper method to parse a MoQ subscribe parameter
  * @note This method does nothing at the moment
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
