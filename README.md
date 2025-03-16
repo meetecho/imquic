@@ -36,11 +36,16 @@ to generate the configure file. After that, configure and compile as usual to st
 	make
 	make install
 
-Note that the configure script uses `pkg-config` to look for quictls by using the `openssl+quictls` name, which is how it's packaged in some repositories to avoid conflicts with OpenSSL. In case that doesn't work for you, you use the `QUICTLS_CFLAGS` and `QUICTLS_LIBS` environment variables to specify the include and lib directory of the library when launching the configure script, e.g.
+Note that the configure script uses `pkg-config` to look for quictls by using the `openssl+quictls` name, which is how it's packaged in some repositories to avoid conflicts with OpenSSL. In case that doesn't work for you, you can use the `QUICTLS_CFLAGS` and `QUICTLS_LIBS` environment variables to specify the include and lib directory of the library when launching the configure script, e.g.
 
 	QUICTLS_CFLAGS="-I/opt/quictls/include/" \
 	QUICTLS_LIBS="-L/opt/quictls/lib64/ -lssl -lcrypto" \
 	./configure [..]
+
+Should that still result in compilation issues, you can try adding the path to the quictls library to ld, which is what the above mentioned repositories do, e.g.
+
+	echo "/opt/quictls/lib64" > /etc/ld.so.conf.d/quictls-x86_64.conf
+	ldconfig
 
 If you're interested in QLOG support, add `--enable-qlog` when launching the `configure` script. Notice that this will require [Jansson](https://github.com/akheron/jansson).
 
