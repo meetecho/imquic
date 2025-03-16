@@ -848,11 +848,13 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
-		imquic_get_connection_name(conn), object->subscribe_id, object->track_alias,
-		object->group_id, object->subgroup_id, object->object_id, object->object_send_order,
-		object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
-		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+	if(!options.quiet) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
+			imquic_get_connection_name(conn), object->subscribe_id, object->track_alias,
+			object->group_id, object->subgroup_id, object->object_id, object->object_send_order,
+			object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
+			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+	}
 	/* Find the track associated to this subscription */
 	g_mutex_lock(&mutex);
 	imquic_demo_moq_track *track = g_hash_table_lookup(subscriptions, &object->track_alias);
@@ -866,8 +868,10 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	g_mutex_lock(&track->mutex);
 	track->objects = g_list_prepend(track->objects, imquic_moq_object_duplicate(object));
 	/* Relay the object to all subscribers */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Relaying to %d subscribers\n",
-		imquic_get_connection_name(conn), g_list_length(track->subscriptions));
+	if(!options.quiet) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Relaying to %d subscribers\n",
+			imquic_get_connection_name(conn), g_list_length(track->subscriptions));
+	}
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
@@ -985,6 +989,8 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 	}
+	if(options.quiet)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Quiet mode (won't print incoming objects)\n");
 
 	/* Initialize the library and create a server */
 	if(imquic_init(options.secrets_log) < 0) {
