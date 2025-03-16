@@ -1631,9 +1631,11 @@ size_t imquic_payload_parse_stream_data_blocked(imquic_connection *conn, imquic_
 				stream->local_max_data *= 2;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Increasing max_data for stream %"SCNu64": %"SCNu64"\n",
 				imquic_get_connection_name(conn), stream_id, stream->local_max_data);
+			imquic_mutex_unlock(&conn->mutex);
 			imquic_send_credits(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid), IMQUIC_MAX_STREAM_DATA, stream_id);
+		} else {
+			imquic_mutex_unlock(&conn->mutex);
 		}
-		imquic_mutex_unlock(&conn->mutex);
 	}
 	return offset;
 }
