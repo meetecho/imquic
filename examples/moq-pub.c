@@ -97,7 +97,7 @@ static void imquic_demo_announce_error(imquic_connection *conn, imquic_moq_names
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_auth_info *auth) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
@@ -105,14 +105,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t sub
 		imquic_get_connection_name(conn), ns, name, subscribe_id, track_alias);
 	/* TODO Check if it matches our announced namespace */
 	/* Check if there's authorization needed */
-	char auth_info[256];
-	auth_info[0] = '\0';
-	if(auth && auth->buffer && auth->length > 0) {
-		g_snprintf(auth_info, sizeof(auth_info), "%.*s", (int)auth->length, auth->buffer);
+	if(auth != NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
-			imquic_get_connection_name(conn), auth_info);
+			imquic_get_connection_name(conn), auth);
 	}
-	if(options.auth_info && strcmp(options.auth_info, auth_info)) {
+	if(options.auth_info && (auth == NULL || strcmp(options.auth_info, auth))) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
 		imquic_moq_reject_subscribe(conn, subscribe_id, 403, "Unauthorized access", track_alias);
 		if(moq_version >= IMQUIC_MOQ_VERSION_06)

@@ -487,16 +487,16 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_auth_info *auth) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, subscribe_id, track_alias);
-	if(auth && auth->buffer && auth->length > 0) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %.*s\n",
-			imquic_get_connection_name(conn), (int)auth->length, auth->buffer);
+	if(auth != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
+			imquic_get_connection_name(conn), auth);
 	}
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
@@ -638,15 +638,15 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t s
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_auth_info *auth) {
+static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, const char *auth) {
 	/* We received a subscribe for a namespace tuple */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for announcement prefix '%s'\n",
 		imquic_get_connection_name(conn), ns);
-	if(auth && auth->buffer && auth->length > 0) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %.*s\n",
-			imquic_get_connection_name(conn), (int)auth->length, auth->buffer);
+	if(auth != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
+			imquic_get_connection_name(conn), auth);
 	}
 	/* Keep track of this as a monitor */
 	g_mutex_lock(&mutex);
@@ -679,7 +679,7 @@ static void imquic_demo_incoming_unsubscribe_announces(imquic_connection *conn, 
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth) {
+		gboolean descending, imquic_moq_fetch_range *range, const char *auth) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -687,9 +687,9 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s'/'%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, subscribe_id, descending ? "descending" : "ascending",
 		range->start.group, range->start.object, range->end.group, range->end.object);
-	if(auth && auth->buffer && auth->length > 0) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %.*s\n",
-			imquic_get_connection_name(conn), (int)auth->length, auth->buffer);
+	if(auth != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
+			imquic_get_connection_name(conn), auth);
 	}
 	/* Find the namespace */
 	g_mutex_lock(&mutex);
@@ -760,13 +760,13 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 }
 
 static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id ,
-		uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth) {
+		uint64_t preceding_group_offset, gboolean descending, const char *auth) {
 	/* We received a joining fetch */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming joining fetch for subscription %"SCNu64" (ID %"SCNu64"; %"SCNu64" groups; %s order)\n",
 		imquic_get_connection_name(conn), joining_subscribe_id, subscribe_id, preceding_group_offset, descending ? "descending" : "ascending");
-	if(auth && auth->buffer && auth->length > 0) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %.*s\n",
-			imquic_get_connection_name(conn), (int)auth->length, auth->buffer);
+	if(auth != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
+			imquic_get_connection_name(conn), auth);
 	}
 	g_mutex_lock(&mutex);
 	/* Create a subscriber, if needed */

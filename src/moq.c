@@ -530,7 +530,79 @@ const char *imquic_moq_fetch_type_str(imquic_moq_fetch_type type) {
 	return NULL;
 }
 
-/* Moq Buffer */
+/* MoQ parameters */
+size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
+		imquic_moq_setup_parameters *parameters,
+		uint8_t *bytes, size_t blen, uint8_t *params_num) {
+	*params_num = 0;
+	if(bytes == NULL || blen == 0)
+		return 0;
+	size_t offset = 0;
+	if(parameters == NULL) {
+		/* No parameters */
+		offset += imquic_write_varint(0, &bytes[offset], blen-offset);
+	} else {
+		if(parameters->role_set)
+			*params_num = *params_num + 1;
+		if(parameters->path_set)
+			*params_num = *params_num + 1;
+		if(parameters->max_subscribe_id_set)
+			*params_num = *params_num + 1;
+		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
+		if(*params_num > 0) {
+			if(parameters->role_set) {
+				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_PARAM_ROLE, parameters->role);
+			}
+			if(parameters->path_set) {
+				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_PARAM_PATH, (uint8_t *)parameters->path, strlen(parameters->path));
+			}
+			if(parameters->max_subscribe_id_set) {
+				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_PARAM_MAX_SUBSCRIBE_ID, parameters->max_subscribe_id);
+			}
+		}
+	}
+	return offset;
+}
+
+size_t imquic_moq_subscribe_parameters_serialize(imquic_moq_context *moq,
+		imquic_moq_subscribe_parameters *parameters,
+		uint8_t *bytes, size_t blen, uint8_t *params_num) {
+	if(bytes == NULL || blen == 0)
+		return 0;
+	size_t offset = 0;
+	if(parameters == NULL) {
+		/* No parameters */
+		offset += imquic_write_varint(0, &bytes[offset], blen-offset);
+	} else {
+		if(parameters->auth_info_set)
+			*params_num = *params_num + 1;
+		if(parameters->delivery_timeout_set)
+			*params_num = *params_num + 1;
+		if(parameters->max_cache_duration_set)
+			*params_num = *params_num + 1;
+		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
+		if(*params_num > 0) {
+			if(parameters->auth_info_set) {
+				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO, (uint8_t *)parameters->auth_info, strlen(parameters->auth_info));
+			}
+			if(parameters->delivery_timeout_set) {
+				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT, parameters->delivery_timeout);
+			}
+			if(parameters->max_cache_duration_set) {
+				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION, parameters->max_cache_duration);
+			}
+		}
+	}
+	return offset;
+}
+
+/* MoQ Buffer */
 gboolean imquic_moq_buffer_resize(imquic_moq_buffer *buffer, uint64_t new_size) {
 	if(buffer == NULL || buffer->size >= new_size)
 		return FALSE;
@@ -1008,15 +1080,15 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
-	imquic_moq_setup_parameters params = { 0 };
+	imquic_moq_setup_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &params, error);
+		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken CLIENT_SETUP");
-		if(params.role_set) {
+		if(parameters.role_set) {
 			/* TODO Keep track of it and/or validate it */
-		} else if(params.max_subscribe_id_set && moq->version >= IMQUIC_MOQ_VERSION_06) {
+		} else if(parameters.max_subscribe_id_set && moq->version >= IMQUIC_MOQ_VERSION_06) {
 			/* Update the value we have */
-			moq->max_subscribe_id = params.max_subscribe_id;
+			moq->max_subscribe_id = parameters.max_subscribe_id;
 		}
 	}
 #ifdef HAVE_QLOG
@@ -1031,49 +1103,24 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		}
 		json_object_set_new(message, "supported_versions", versions);
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		if(params.role_set) {
-			json_t *role = json_object();
-			json_object_set_new(role, "name", json_string("role"));
-			json_object_set_new(role, "value", json_integer(params.role));
-			json_array_append_new(parameters, role);
-		}
-		if(params.path_set) {
-			json_t *path = json_object();
-			json_object_set_new(path, "name", json_string("path"));
-			if(params.path != NULL)
-				json_object_set_new(path, "value", json_string(params.path));
-			json_array_append_new(parameters, path);
-		}
-		if(params.max_subscribe_id_set) {
-			json_t *max_subscribe_id = json_object();
-			json_object_set_new(max_subscribe_id, "name", json_string("max_subscribe_id"));
-			json_object_set_new(max_subscribe_id, "value", json_integer(params.max_subscribe_id));
-			json_array_append_new(parameters, max_subscribe_id);
-		}
-		if(params.unknown) {
-			json_t *unknown = json_object();
-			json_object_set_new(unknown, "name", json_string("unknown"));
-			json_array_append_new(parameters, unknown);
-		}
-		json_object_set_new(message, "setup_parameters", parameters);
+		imquic_qlog_moq_message_add_setup_parameters(message, &parameters, "setup_parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
 	/* Generate a SERVER_SETUP to send back */
 	if(moq) {
-		imquic_moq_setup_parameters parameters = { 0 };
+		imquic_moq_setup_parameters s_parameters = { 0 };
 		if(moq->version < IMQUIC_MOQ_VERSION_08) {
-			parameters.role_set = TRUE;
-			parameters.role = moq->type;
+			s_parameters.role_set = TRUE;
+			s_parameters.role = moq->type;
 		}
 		if(moq->version >= IMQUIC_MOQ_VERSION_06 && moq->local_max_subscribe_id > 0) {
-			parameters.max_subscribe_id_set = TRUE;
-			parameters.max_subscribe_id = moq->local_max_subscribe_id;
+			s_parameters.max_subscribe_id_set = TRUE;
+			s_parameters.max_subscribe_id = moq->local_max_subscribe_id;
 		}
 		uint8_t buffer[200];
 		size_t blen = sizeof(buffer), poffset = 5, start = 0;
-		size_t ss_len = imquic_moq_add_server_setup(moq, &buffer[poffset], blen-offset, moq->version, &parameters);
+		size_t ss_len = imquic_moq_add_server_setup(moq, &buffer[poffset], blen-offset, moq->version, &s_parameters);
 		ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP, buffer, blen, poffset, ss_len, &start);
 		imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
 			&buffer[start], moq->control_stream_offset, ss_len, FALSE);
@@ -1124,15 +1171,15 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
 	uint64_t i = 0;
-	imquic_moq_setup_parameters params = { 0 };
+	imquic_moq_setup_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &params, error);
+		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken SERVER_SETUP");
-		if(params.role_set) {
+		if(parameters.role_set) {
 			/* TODO Keep track of it and/or validate it */
-		} else if(params.max_subscribe_id_set && moq->version >= IMQUIC_MOQ_VERSION_06) {
+		} else if(parameters.max_subscribe_id_set && moq->version >= IMQUIC_MOQ_VERSION_06) {
 			/* Update the value we have */
-			moq->max_subscribe_id = params.max_subscribe_id;
+			moq->max_subscribe_id = parameters.max_subscribe_id;
 		}
 	}
 	if(moq->max_subscribe_id == 0) {
@@ -1145,32 +1192,7 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
 		json_object_set_new(message, "selected_version", json_integer(version));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		if(params.role_set) {
-			json_t *role = json_object();
-			json_object_set_new(role, "name", json_string("role"));
-			json_object_set_new(role, "value", json_integer(params.role));
-			json_array_append_new(parameters, role);
-		}
-		if(params.path_set) {
-			json_t *path = json_object();
-			json_object_set_new(path, "name", json_string("path"));
-			if(params.path != NULL)
-				json_object_set_new(path, "value", json_string(params.path));
-			json_array_append_new(parameters, path);
-		}
-		if(params.max_subscribe_id_set) {
-			json_t *max_subscribe_id = json_object();
-			json_object_set_new(max_subscribe_id, "name", json_string("max_subscribe_id"));
-			json_object_set_new(max_subscribe_id, "value", json_integer(params.max_subscribe_id));
-			json_array_append_new(parameters, max_subscribe_id);
-		}
-		if(params.unknown) {
-			json_t *unknown = json_object();
-			json_object_set_new(unknown, "name", json_string("unknown"));
-			json_array_append_new(parameters, unknown);
-		}
-		json_object_set_new(message, "setup_parameters", parameters);
+		imquic_qlog_moq_message_add_setup_parameters(message, &parameters, "setup_parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -1293,27 +1315,25 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 			offset += tns_len;
 		}
 	}
-	uint64_t params = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken ANNOUNCE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params);
+		imquic_get_connection_name(moq->conn), params_num);
 	uint64_t i = 0;
-	for(i = 0; i<params; i++) {
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	for(i = 0; i<params_num; i++) {
 		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken ANNOUNCE");
-		imquic_moq_parsed_subscribe_parameter param = { 0 };
-		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &param, error);
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken ANNOUNCE");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
-		json_object_set_new(message, "number_of_parameters", json_integer(params));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "parameters", parameters);
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -1796,24 +1816,18 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 			}
 		}
 	}
-	uint64_t params = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken SUBSCRIBE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params);
+		imquic_get_connection_name(moq->conn), params_num);
 	uint64_t i = 0;
-	imquic_moq_auth_info auth = { 0 };
-	for(i = 0; i<params; i++) {
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	for(i = 0; i<params_num; i++) {
 		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken SUBSCRIBE");
-		imquic_moq_parsed_subscribe_parameter param = { 0 };
-		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &param, error);
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken SUBSCRIBE");
-		if(param.type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO && param.value.auth_info.length > 0 && auth.buffer == NULL) {
-			auth.length = param.value.auth_info.length;
-			auth.buffer = g_malloc(auth.length);
-			memcpy(auth.buffer, param.value.auth_info.buffer, auth.length);
-		}
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -1824,10 +1838,8 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		imquic_qlog_moq_message_add_track(message, &tn);
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
 		json_object_set_new(message, "group_order", json_integer(group_order));
-		json_object_set_new(message, "number_of_parameters", json_integer(params));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -1867,13 +1879,13 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		imquic_mutex_unlock(&moq->mutex);
 		/* Notify the application */
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe) {
-			moq->conn->socket->callbacks.moq.incoming_subscribe(moq->conn, subscribe_id, track_alias, &tns[0], &tn, &auth);
+			moq->conn->socket->callbacks.moq.incoming_subscribe(moq->conn,
+				subscribe_id, track_alias, &tns[0], &tn, (parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_subscribe(moq->conn, subscribe_id, 500, "Not handled", track_alias);
 		}
 	}
-	g_free(auth.buffer);
 	if(error)
 		*error = 0;
 	return offset;
@@ -1921,24 +1933,18 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Subscriber Priority: %"SCNu8")\n",
 			imquic_get_connection_name(moq->conn), priority);
 	}
-	uint64_t params = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken SUBSCRIBE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params);
+		imquic_get_connection_name(moq->conn), params_num);
 	uint64_t i = 0;
-	imquic_moq_auth_info auth = { 0 };
-	for(i = 0; i<params; i++) {
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	for(i = 0; i<params_num; i++) {
 		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken SUBSCRIBE");
-		imquic_moq_parsed_subscribe_parameter param = { 0 };
-		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &param, error);
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken SUBSCRIBE");
-		if(param.type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO && param.value.auth_info.length > 0 && auth.buffer == NULL) {
-			auth.length = param.value.auth_info.length;
-			auth.buffer = g_malloc(auth.length);
-			memcpy(auth.buffer, param.value.auth_info.buffer, auth.length);
-		}
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -1948,17 +1954,16 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 		json_object_set_new(message, "start_object", json_integer(start_object));
 		json_object_set_new(message, "end_group", json_integer(end_group));
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
-		json_object_set_new(message, "number_of_parameters", json_integer(params));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
 	/* TODO Notify the application */
-	//~ if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_update)
-		//~ moq->conn->socket->callbacks.moq.incoming_subscribe_update(moq->conn, subscribe_id, track_alias, &tns, &tn, &auth);
-	g_free(auth.buffer);
+	//~ if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_update) {
+		//~ moq->conn->socket->callbacks.moq.incoming_subscribe_update(moq->conn,
+			//~ subscribe_id, track_alias, &tns, &tn, (parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
+	//~ }
 	if(error)
 		*error = 0;
 	return offset;
@@ -2013,20 +2018,20 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Object ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), lo_id);
 	}
-	uint64_t params = 0;
+	uint64_t params_num = 0;
+	imquic_moq_subscribe_parameters parameters = { 0 };
 	if(moq->version >= IMQUIC_MOQ_VERSION_06) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken SUBSCRIBE_OK");
-		params = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken SUBSCRIBE_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-			imquic_get_connection_name(moq->conn), params);
+			imquic_get_connection_name(moq->conn), params_num);
 		uint64_t i = 0;
-		for(i = 0; i<params; i++) {
+		for(i = 0; i<params_num; i++) {
 			/* TODO Take note of the parsed parameter */
 			IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken SUBSCRIBE_OK");
-			imquic_moq_parsed_subscribe_parameter param = { 0 };
-			offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &param, error);
+			offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 			IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken SUBSCRIBE_OK");
 		}
 	}
@@ -2041,10 +2046,8 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 			json_object_set_new(message, "largest_group_id", json_integer(lg_id));
 			json_object_set_new(message, "largest_object_id", json_integer(lo_id));
 		}
-		json_object_set_new(message, "number_of_parameters", json_integer(params));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -2259,38 +2262,31 @@ size_t imquic_moq_parse_subscribe_announces(imquic_moq_context *moq, uint8_t *by
 		tns[i].next = (i == tns_num - 1) ? NULL : (i < 31 ? &tns[i+1] : NULL);
 		offset += tns_len;
 	}
-	uint64_t params = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken SUBSCRIBE_ANNOUNCES");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params);
-	imquic_moq_auth_info auth = { 0 };
-	for(i = 0; i<params; i++) {
+		imquic_get_connection_name(moq->conn), params_num);
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	for(i = 0; i<params_num; i++) {
 		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken SUBSCRIBE_ANNOUNCES");
-		imquic_moq_parsed_subscribe_parameter param = { 0 };
-		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &param, error);
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken SUBSCRIBE_ANNOUNCES");
-		if(param.type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO && param.value.auth_info.length > 0 && auth.buffer == NULL) {
-			auth.length = param.value.auth_info.length;
-			auth.buffer = g_malloc(auth.length);
-			memcpy(auth.buffer, param.value.auth_info.buffer, auth.length);
-		}
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
-		json_object_set_new(message, "number_of_parameters", json_integer(params));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "parameters", parameters);
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_announces) {
-		moq->conn->socket->callbacks.moq.incoming_subscribe_announces(moq->conn, &tns[0], &auth);
+		moq->conn->socket->callbacks.moq.incoming_subscribe_announces(moq->conn,
+			&tns[0], (parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
 	} else {
 		/* FIXME No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe_announces(moq->conn, &tns[0], 500, "Not handled");
@@ -2622,24 +2618,18 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Object: %"SCNu64")\n",
 			imquic_get_connection_name(moq->conn), range.end.object);
 	}
-	uint64_t params = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken FETCH");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params);
-	imquic_moq_auth_info auth = { 0 };
+		imquic_get_connection_name(moq->conn), params_num);
+	imquic_moq_subscribe_parameters parameters = { 0 };
 	uint64_t i = 0;
-	for(i = 0; i<params; i++) {
+	for(i = 0; i<params_num; i++) {
 		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken FETCH");
-		imquic_moq_parsed_subscribe_parameter param = { 0 };
-		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &param, error);
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken FETCH");
-		if(param.type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO && param.value.auth_info.length > 0 && auth.buffer == NULL) {
-			auth.length = param.value.auth_info.length;
-			auth.buffer = g_malloc(auth.length);
-			memcpy(auth.buffer, param.value.auth_info.buffer, auth.length);
-		}
 	}
 	/* Track this fetch subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(subscribe_id, 0);
@@ -2665,30 +2655,31 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 			json_object_set_new(message, "joining_subscribe_id", json_integer(joining_subscribe_id));
 			json_object_set_new(message, "preceding_group_offset", json_integer(preceding_group_offset));
 		}
-		json_object_set_new(message, "number_of_parameters", json_integer(params));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "parameters", parameters);
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
 	/* Notify the application */
 	if(moq->version < IMQUIC_MOQ_VERSION_08 || type == IMQUIC_MOQ_FETCH_STANDALONE) {
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_standalone_fetch) {
-			moq->conn->socket->callbacks.moq.incoming_standalone_fetch(moq->conn, subscribe_id, &tns[0], &tn, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), &range, &auth);
+			moq->conn->socket->callbacks.moq.incoming_standalone_fetch(moq->conn,
+				subscribe_id, &tns[0], &tn, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), &range,
+				(parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_fetch(moq->conn, subscribe_id, 500, "Not handled");
 		}
 	} else {
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_joining_fetch) {
-			moq->conn->socket->callbacks.moq.incoming_joining_fetch(moq->conn, subscribe_id, joining_subscribe_id, preceding_group_offset, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), &auth);
+			moq->conn->socket->callbacks.moq.incoming_joining_fetch(moq->conn,
+				subscribe_id, joining_subscribe_id, preceding_group_offset, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING),
+				(parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_fetch(moq->conn, subscribe_id, 500, "Not handled");
 		}
 	}
-	g_free(auth.buffer);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2770,17 +2761,17 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Object ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), largest.object);
-	uint64_t params = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, 0, "Broken FETCH_OK");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params);
+		imquic_get_connection_name(moq->conn), params_num);
 	uint64_t i = 0;
-	for(i = 0; i<params; i++) {
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	for(i = 0; i<params_num; i++) {
 		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, 0, "Broken FETCH_OK");
-		imquic_moq_parsed_subscribe_parameter param = { 0 };
-		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &param, error);
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, 0, "Broken FETCH_OK");
 	}
 #ifdef HAVE_QLOG
@@ -2791,10 +2782,8 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 		json_object_set_new(message, "end_of_track", json_integer(end_of_track));
 		json_object_set_new(message, "largest_group_id", json_integer(largest.group));
 		json_object_set_new(message, "largest_object_id", json_integer(largest.object));
-		json_object_set_new(message, "number_of_parameters", json_integer(params));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -3956,31 +3945,7 @@ size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size
 		temp = temp->next;
 	}
 	uint8_t params_num = 0;
-	if(parameters == NULL) {
-		/* No parameters */
-		offset += imquic_write_varint(0, &bytes[offset], blen-offset);
-	} else {
-		if(parameters->role_set)
-			params_num++;
-		if(parameters->path_set)
-			params_num++;
-		if(parameters->max_subscribe_id_set)
-			params_num++;
-		offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-		if(params_num > 0) {
-			if(parameters->role_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_PARAM_ROLE, parameters->role);
-			}
-			if(parameters->path_set) {
-				/* TODO Add support for writing PATH parameter */
-			}
-			if(parameters->max_subscribe_id_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_PARAM_MAX_SUBSCRIBE_ID, parameters->max_subscribe_id);
-			}
-		}
-	}
+	offset += imquic_moq_setup_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("client_setup");
@@ -3994,32 +3959,7 @@ size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size
 		}
 		json_object_set_new(message, "supported_versions", versions);
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *params = json_array();
-		if(parameters->role_set) {
-			json_t *role = json_object();
-			json_object_set_new(role, "name", json_string("role"));
-			json_object_set_new(role, "value", json_integer(parameters->role));
-			json_array_append_new(params, role);
-		}
-		if(parameters->path_set) {
-			json_t *path = json_object();
-			json_object_set_new(path, "name", json_string("path"));
-			if(parameters->path != NULL)
-				json_object_set_new(path, "value", json_string(parameters->path));
-			json_array_append_new(params, path);
-		}
-		if(parameters->max_subscribe_id_set) {
-			json_t *max_subscribe_id = json_object();
-			json_object_set_new(max_subscribe_id, "name", json_string("max_subscribe_id"));
-			json_object_set_new(max_subscribe_id, "value", json_integer(parameters->max_subscribe_id));
-			json_array_append_new(params, max_subscribe_id);
-		}
-		if(parameters->unknown) {
-			json_t *unknown = json_object();
-			json_object_set_new(unknown, "name", json_string("unknown"));
-			json_array_append_new(params, unknown);
-		}
-		json_object_set_new(message, "setup_parameters", params);
+		imquic_qlog_moq_message_add_setup_parameters(message, parameters, "setup_parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4035,62 +3975,13 @@ size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size
 	}
 	size_t offset = imquic_write_varint(version, bytes, blen);
 	uint8_t params_num = 0;
-	if(parameters == NULL) {
-		/* No parameters */
-		offset += imquic_write_varint(0, &bytes[offset], blen-offset);
-	} else {
-		if(parameters->role_set)
-			params_num++;
-		if(parameters->path_set)
-			params_num++;
-		if(parameters->max_subscribe_id_set)
-			params_num++;
-		offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-		if(params_num > 0) {
-			if(parameters->role_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_PARAM_ROLE, parameters->role);
-			}
-			if(parameters->path_set) {
-				/* TODO Add support for writing PATH parameter */
-			}
-			if(parameters->max_subscribe_id_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_PARAM_MAX_SUBSCRIBE_ID, parameters->max_subscribe_id);
-			}
-		}
-	}
+	offset += imquic_moq_setup_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
 		json_object_set_new(message, "selected_version", json_integer(version));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *params = json_array();
-		if(parameters->role_set) {
-			json_t *role = json_object();
-			json_object_set_new(role, "name", json_string("role"));
-			json_object_set_new(role, "value", json_integer(parameters->role));
-			json_array_append_new(params, role);
-		}
-		if(parameters->path_set) {
-			json_t *path = json_object();
-			json_object_set_new(path, "name", json_string("path"));
-			if(parameters->path != NULL)
-				json_object_set_new(path, "value", json_string(parameters->path));
-			json_array_append_new(params, path);
-		}
-		if(parameters->max_subscribe_id_set) {
-			json_t *max_subscribe_id = json_object();
-			json_object_set_new(max_subscribe_id, "name", json_string("max_subscribe_id"));
-			json_object_set_new(max_subscribe_id, "value", json_integer(parameters->max_subscribe_id));
-			json_array_append_new(params, max_subscribe_id);
-		}
-		if(parameters->unknown) {
-			json_t *unknown = json_object();
-			json_object_set_new(unknown, "name", json_string("unknown"));
-			json_array_append_new(params, unknown);
-		}
-		json_object_set_new(message, "setup_parameters", params);
+		imquic_qlog_moq_message_add_setup_parameters(message, parameters, "setup_parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4144,9 +4035,8 @@ size_t imquic_moq_add_subscribes_blocked(imquic_moq_context *moq, uint8_t *bytes
 }
 
 size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_namespace *track_namespace, size_t params_num, imquic_data *parameters) {
-	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
-			(params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+		imquic_moq_namespace *track_namespace, imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1 || track_namespace == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE));
 		return 0;
@@ -4193,19 +4083,14 @@ size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t b
 			temp = temp->next;
 		}
 	}
-	offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-	if(params_num > 0) {
-		memcpy(&bytes[offset], parameters->buffer, parameters->length);
-		offset += parameters->length;
-	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "parameters", parameters);
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4468,11 +4353,10 @@ size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, s
 
 size_t imquic_moq_add_subscribe_v03(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t subscribe_id, uint64_t track_alias,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_location *start_group, imquic_moq_location *start_object,
-		imquic_moq_location *end_group, imquic_moq_location *end_object, size_t params_num, imquic_data *parameters) {
+		imquic_moq_location *end_group, imquic_moq_location *end_object, imquic_moq_subscribe_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
 			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0) ||
-			start_group == NULL || start_object == NULL || end_group == NULL || end_object == NULL ||
-			(params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+			start_group == NULL || start_object == NULL || end_group == NULL || end_object == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
 		return 0;
@@ -4541,11 +4425,8 @@ size_t imquic_moq_add_subscribe_v03(imquic_moq_context *moq, uint8_t *bytes, siz
 	if(end_object->mode != IMQUIC_MOQ_LOCATION_NONE) {
 		offset += imquic_write_varint(end_object->value, &bytes[offset], blen-offset);
 	}
-	offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-	if(params_num > 0) {
-		memcpy(&bytes[offset], parameters->buffer, parameters->length);
-		offset += parameters->length;
-	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe");
@@ -4554,9 +4435,7 @@ size_t imquic_moq_add_subscribe_v03(imquic_moq_context *moq, uint8_t *bytes, siz
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		imquic_qlog_moq_message_add_track(message, track_name);
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4565,10 +4444,9 @@ size_t imquic_moq_add_subscribe_v03(imquic_moq_context *moq, uint8_t *bytes, siz
 
 size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t subscribe_id, uint64_t track_alias,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, imquic_moq_filter_type filter,
-		uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, size_t params_num, imquic_data *parameters) {
+		uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
-			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0) ||
-			(params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
 		return 0;
@@ -4637,11 +4515,8 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		if(moq->version < IMQUIC_MOQ_VERSION_08)
 			offset += imquic_write_varint(end_object, &bytes[offset], blen-offset);
 	}
-	offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-	if(params_num > 0) {
-		memcpy(&bytes[offset], parameters->buffer, parameters->length);
-		offset += parameters->length;
-	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe");
@@ -4653,9 +4528,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "filter_type", json_integer(filter));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4664,9 +4537,8 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
 
 size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t subscribe_id,
 		uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, uint8_t priority,
-		size_t params_num, imquic_data *parameters) {
-	if(bytes == NULL || blen < 1 ||
-			(params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+		imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_UPDATE));
 		return 0;
@@ -4681,11 +4553,8 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
 		bytes[offset] = priority;
 		offset++;
 	}
-	offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-	if(params_num > 0) {
-		memcpy(&bytes[offset], parameters->buffer, parameters->length);
-		offset += parameters->length;
-	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_update");
@@ -4695,9 +4564,7 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
 		json_object_set_new(message, "end_group", json_integer(end_group));
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4706,9 +4573,8 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
 
 size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t subscribe_id,
 		uint64_t expires, imquic_moq_group_order group_order, gboolean content_exists,
-		uint64_t largest_group_id, uint64_t largest_object_id, size_t params_num, imquic_data *parameters) {
-	if(bytes == NULL || blen < 1 ||
-			(moq->version >= IMQUIC_MOQ_VERSION_06 && params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+		uint64_t largest_group_id, uint64_t largest_object_id, imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_OK));
 		return 0;
@@ -4725,13 +4591,9 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
 		offset += imquic_write_varint(largest_group_id, &bytes[offset], blen-offset);
 		offset += imquic_write_varint(largest_object_id, &bytes[offset], blen-offset);
 	}
-	if(moq->version >= IMQUIC_MOQ_VERSION_06) {
-		offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-		if(params_num > 0) {
-			memcpy(&bytes[offset], parameters->buffer, parameters->length);
-			offset += parameters->length;
-		}
-	}
+	uint8_t params_num = 0;
+	if(moq->version >= IMQUIC_MOQ_VERSION_06)
+		offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_ok");
@@ -4743,10 +4605,10 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
 			json_object_set_new(message, "largest_group_id", json_integer(largest_group_id));
 			json_object_set_new(message, "largest_object_id", json_integer(largest_object_id));
 		}
-		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		if(moq->version >= IMQUIC_MOQ_VERSION_06) {
+			json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+			imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		}
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4840,9 +4702,8 @@ size_t imquic_moq_add_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, si
 }
 
 size_t imquic_moq_add_subscribe_announces(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_namespace *track_namespace, size_t params_num, imquic_data *parameters) {
-	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
-			(params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+		imquic_moq_namespace *track_namespace, imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1 || track_namespace == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES));
 		return 0;
@@ -4875,19 +4736,14 @@ size_t imquic_moq_add_subscribe_announces(imquic_moq_context *moq, uint8_t *byte
 		}
 		temp = temp->next;
 	}
-	offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-	if(params_num > 0) {
-		memcpy(&bytes[offset], parameters->buffer, parameters->length);
-		offset += parameters->length;
-	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "parameters", parameters);
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -5040,8 +4896,8 @@ size_t imquic_moq_add_unsubscribe_announces(imquic_moq_context *moq, uint8_t *by
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 		uint64_t subscribe_id, uint64_t joining_subscribe_id, uint64_t preceding_group_offset,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, imquic_moq_group_order group_order,
-		uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, size_t params_num, imquic_data *parameters) {
-	if(bytes == NULL || blen < 1 || (params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+		uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH));
 		return 0;
@@ -5128,11 +4984,8 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 		offset += imquic_write_varint(end_group, &bytes[offset], blen-offset);
 		offset += imquic_write_varint(end_object, &bytes[offset], blen-offset);
 	}
-	offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-	if(params_num > 0) {
-		memcpy(&bytes[offset], parameters->buffer, parameters->length);
-		offset += parameters->length;
-	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch");
@@ -5152,9 +5005,7 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 			json_object_set_new(message, "preceding_group_offset", json_integer(preceding_group_offset));
 		}
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "parameters", parameters);
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -5185,9 +5036,8 @@ size_t imquic_moq_add_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, size
 }
 
 size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t subscribe_id, uint8_t group_order,
-		uint8_t end_of_track, uint64_t largest_group_id, uint64_t largest_object_id, size_t params_num, imquic_data *parameters) {
-	if(bytes == NULL || blen < 1 ||
-			(params_num > 0 && (parameters == NULL || parameters->buffer == NULL || parameters->length == 0))) {
+		uint8_t end_of_track, uint64_t largest_group_id, uint64_t largest_object_id, imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH_OK));
 		return 0;
@@ -5205,11 +5055,8 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
 	offset++;
 	offset += imquic_write_varint(largest_group_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(largest_object_id, &bytes[offset], blen-offset);
-	offset += imquic_write_varint(params_num, &bytes[offset], blen-offset);
-	if(params_num > 0) {
-		memcpy(&bytes[offset], parameters->buffer, parameters->length);
-		offset += parameters->length;
-	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch_ok");
@@ -5219,9 +5066,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
 		json_object_set_new(message, "largest_group_id", json_integer(largest_group_id));
 		json_object_set_new(message, "largest_object_id", json_integer(largest_object_id));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		json_t *parameters = json_array();
-		/* TODO Implement tracing of parameters */
-		json_object_set_new(message, "subscribe_parameters", parameters);
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -5751,107 +5596,6 @@ size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes,
 	return offset;
 }
 
-/* Parameters parsing */
-size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_setup_parameters *params, uint8_t *error) {
-	if(error)
-		*error = 1;
-	if(bytes == NULL || blen < 2) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't parse MoQ setup parameter: not enough data (%zu bytes)\n",
-			imquic_get_connection_name(moq->conn), bytes ? blen : 0);
-		return 0;
-	}
-	size_t offset = 0;
-	uint8_t length = 0;
-	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ setup parameter");
-	offset += length;
-	uint64_t len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0, 0, "Broken MoQ setup parameter");
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64"), length %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), imquic_moq_setup_parameter_type_str(type), type, len);
-	IMQUIC_MOQ_CHECK_ERR(len > blen-offset, 0, "Broken MoQ setup parameter");
-	/* Update the parsed parameter */
-	if(type == IMQUIC_MOQ_PARAM_ROLE && len > 0) {
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_role_type_str(bytes[offset]));
-		params->role_set = TRUE;
-		params->role = bytes[offset];
-	} else if(type == IMQUIC_MOQ_PARAM_PATH) {
-		/* TODO Do something with this */
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] PATH setup parameter not supported yet\n",
-			imquic_get_connection_name(moq->conn));
-		params->path_set = TRUE;
-		params->path = NULL;
-	} else if(type == IMQUIC_MOQ_PARAM_MAX_SUBSCRIBE_ID && len > 0) {
-		params->max_subscribe_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, 0, "Broken MoQ setup parameter");
-		params->max_subscribe_id_set = TRUE;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), params->max_subscribe_id);
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter '%"SCNu64"'\n",
-			imquic_get_connection_name(moq->conn), type);
-		params->unknown = TRUE;
-	}
-	offset += len;
-	if(error)
-		*error = 0;
-	return offset;
-}
-
-size_t imquic_moq_parse_subscribe_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_parsed_subscribe_parameter *param, uint8_t *error) {
-	if(error)
-		*error = 1;
-	if(param) {
-		memset(param, 0, sizeof(*param));
-		param->type = 0xFF;
-	}
-	if(bytes == NULL || blen < 2) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't parse MoQ subscribe parameter: not enough data (%zu bytes)\n",
-			imquic_get_connection_name(moq->conn), bytes ? blen : 0);
-		return 0;
-	}
-	size_t offset = 0;
-	uint8_t length = 0;
-	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ subscribe parameter");
-	offset += length;
-	uint64_t len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ subscribe parameter");
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64"), length %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), imquic_moq_subscribe_parameter_type_str(type), type, len);
-	IMQUIC_MOQ_CHECK_ERR(len == 0 || len > blen-offset, 0, "Broken MoQ subscribe parameter");
-	/* Update the parsed parameter */
-	param->type = type;
-	if(type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO) {
-		param->value.auth_info.length = len;
-		param->value.auth_info.buffer = &bytes[offset];
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %.*s\n",
-			imquic_get_connection_name(moq->conn), (int)param->value.auth_info.length, param->value.auth_info.buffer);
-	} else if(type == IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT) {
-		param->value.delivery_timeout = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0, 0, "Broken MoQ subscribe parameter");
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), param->value.delivery_timeout);
-	} else if(type == IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION) {
-		param->value.max_cache_duration = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0, 0, "Broken MoQ subscribe parameter");
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), param->value.max_cache_duration);
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter\n",
-			imquic_get_connection_name(moq->conn));
-	}
-	offset += len;
-	if(error)
-		*error = 0;
-	return offset;
-}
-
 /* Adding parameters to a buffer */
 size_t imquic_moq_parameter_add_int(imquic_moq_context *moq, uint8_t *bytes, size_t blen, int param, uint64_t number) {
 	if(bytes == NULL || blen == 0) {
@@ -5885,6 +5629,104 @@ size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, si
 		memcpy(&bytes[offset], buf, buflen);
 		offset += buflen;
 	}
+	return offset;
+}
+
+size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		imquic_moq_setup_parameters *params, uint8_t *error) {
+	if(error)
+		*error = 1;
+	if(bytes == NULL || blen < 1) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't parse MoQ setup parameter: not enough data (%zu bytes)\n",
+			imquic_get_connection_name(moq->conn), bytes ? blen : 0);
+		return 0;
+	}
+	size_t offset = 0;
+	uint8_t length = 0;
+	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ setup parameter");
+	offset += length;
+	uint64_t len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0, 0, "Broken MoQ setup parameter");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64"), length %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), imquic_moq_setup_parameter_type_str(type), type, len);
+	IMQUIC_MOQ_CHECK_ERR(len > blen-offset, 0, "Broken MoQ setup parameter");
+	/* Update the parsed parameter */
+	if(type == IMQUIC_MOQ_PARAM_ROLE && len > 0) {
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_role_type_str(bytes[offset]));
+		params->role_set = TRUE;
+		params->role = bytes[offset];
+	} else if(type == IMQUIC_MOQ_PARAM_PATH) {
+		params->path_set = TRUE;
+		if(len > 0)
+			g_snprintf(params->path, sizeof(params->path), "%.*s", (int)len, &bytes[offset]);
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
+			imquic_get_connection_name(moq->conn), params->path);
+	} else if(type == IMQUIC_MOQ_PARAM_MAX_SUBSCRIBE_ID && len > 0) {
+		params->max_subscribe_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, 0, "Broken MoQ setup parameter");
+		params->max_subscribe_id_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_subscribe_id);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter '%"SCNu64"'\n",
+			imquic_get_connection_name(moq->conn), type);
+		params->unknown = TRUE;
+	}
+	offset += len;
+	if(error)
+		*error = 0;
+	return offset;
+}
+
+size_t imquic_moq_parse_subscribe_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		imquic_moq_subscribe_parameters *params, uint8_t *error) {
+	if(error)
+		*error = 1;
+	if(bytes == NULL || blen == 0) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't parse MoQ subscribe parameter: not enough data (%zu bytes)\n",
+			imquic_get_connection_name(moq->conn), bytes ? blen : 0);
+		return 0;
+	}
+	size_t offset = 0;
+	uint8_t length = 0;
+	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ subscribe parameter");
+	offset += length;
+	uint64_t len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ subscribe parameter");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64"), length %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), imquic_moq_subscribe_parameter_type_str(type), type, len);
+	IMQUIC_MOQ_CHECK_ERR(len == 0 || len > blen-offset, 0, "Broken MoQ subscribe parameter");
+	/* Update the parsed parameter */
+	if(type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO) {
+		params->auth_info_set = TRUE;
+		if(len > 0)
+			g_snprintf(params->auth_info, sizeof(params->auth_info), "%.*s", (int)len, &bytes[offset]);
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
+			imquic_get_connection_name(moq->conn), params->auth_info);
+	} else if(type == IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT && len > 0) {
+		params->delivery_timeout = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0, 0, "Broken MoQ subscribe parameter");
+		params->delivery_timeout_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->delivery_timeout);
+	} else if(type == IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION && len > 0) {
+		params->max_cache_duration = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0, 0, "Broken MoQ subscribe parameter");
+		params->max_cache_duration_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_cache_duration);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter\n",
+			imquic_get_connection_name(moq->conn));
+	}
+	offset += len;
+	if(error)
+		*error = 0;
 	return offset;
 }
 
@@ -6127,7 +5969,7 @@ int imquic_moq_announce(imquic_connection *conn, imquic_moq_namespace *tns) {
 	/* TODO Check if this namespace exists and was announced here */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
-	size_t ann_len = imquic_moq_add_announce(moq, &buffer[poffset], blen-poffset, tns, 0, NULL);
+	size_t ann_len = imquic_moq_add_announce(moq, &buffer[poffset], blen-poffset, tns, NULL);
 	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_ANNOUNCE, buffer, blen, poffset, ann_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, ann_len, FALSE);
@@ -6208,7 +6050,7 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
 }
 
 int imquic_moq_subscribe(imquic_connection *conn, uint64_t subscribe_id,
-		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_auth_info *auth) {
+		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
@@ -6237,16 +6079,10 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t subscribe_id,
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t sb_len = 0;
-	uint8_t parameters[100];
-	uint8_t num_params = 0;
-	imquic_data params = {
-		.buffer = parameters,
-		.length = 0
-	};
-	if(auth && auth->buffer && auth->length > 0) {
-		params.length = imquic_moq_parameter_add_data(moq, parameters, sizeof(parameters),
-			IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO, auth->buffer, auth->length);
-		num_params = 1;
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	if(auth && strlen(auth) > 0) {
+		parameters.auth_info_set = TRUE;
+		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
 	}
 	if(moq->version == IMQUIC_MOQ_VERSION_03) {
 		/* FIXME WE should make locations configurable */
@@ -6263,12 +6099,12 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t subscribe_id,
 			.value = 0
 		};
 		sb_len = imquic_moq_add_subscribe_v03(moq, &buffer[poffset], blen-poffset,
-			subscribe_id, track_alias, tns, tn, &sg, &so, &e, &e, num_params, &params);
+			subscribe_id, track_alias, tns, tn, &sg, &so, &e, &e, &parameters);
 	} else {
 		/* FIXME WE should make filters configurable */
 		sb_len = imquic_moq_add_subscribe(moq, &buffer[poffset], blen-poffset,
 			subscribe_id, track_alias, tns, tn, 0, 0,
-			IMQUIC_MOQ_FILTER_LATEST_OBJECT, 0, 0, 0, 0, num_params, &params);
+			IMQUIC_MOQ_FILTER_LATEST_OBJECT, 0, 0, 0, 0, &parameters);
 	}
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
@@ -6299,8 +6135,7 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t subscribe_id, 
 		FALSE,	/* FIXME Content exists */
 		0,		/* FIXME Largest group ID */
 		0,		/* FIXME Largest object ID */
-		0,		/* FIXME Params num */
-		NULL);
+		NULL);	/* FIXME Parameters */
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_OK, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
@@ -6357,7 +6192,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t subscribe_id) {
 	return 0;
 }
 
-int imquic_moq_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_auth_info *auth) {
+int imquic_moq_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, const char *auth) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
@@ -6370,18 +6205,12 @@ int imquic_moq_subscribe_announces(imquic_connection *conn, imquic_moq_namespace
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t sb_len = 0;
-	uint8_t parameters[100];
-	uint8_t num_params = 0;
-	imquic_data params = {
-		.buffer = parameters,
-		.length = 0
-	};
-	if(auth && auth->buffer && auth->length > 0) {
-		params.length = imquic_moq_parameter_add_data(moq, parameters, sizeof(parameters),
-			IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO, auth->buffer, auth->length);
-		num_params = 1;
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	if(auth && strlen(auth) > 0) {
+		parameters.auth_info_set = TRUE;
+		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
 	}
-	sb_len = imquic_moq_add_subscribe_announces(moq, &buffer[poffset], blen-poffset, tns, num_params, &params);
+	sb_len = imquic_moq_add_subscribe_announces(moq, &buffer[poffset], blen-poffset, tns, &parameters);
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
@@ -6462,7 +6291,7 @@ int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespa
 }
 
 int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth) {
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tn == NULL ||
@@ -6477,16 +6306,10 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id,
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t f_len = 0;
-	uint8_t parameters[100];
-	uint8_t num_params = 0;
-	imquic_data params = {
-		.buffer = parameters,
-		.length = 0
-	};
-	if(auth && auth->buffer && auth->length > 0) {
-		params.length = imquic_moq_parameter_add_data(moq, parameters, sizeof(parameters),
-			IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO, auth->buffer, auth->length);
-		num_params = 1;
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	if(auth && strlen(auth) > 0) {
+		parameters.auth_info_set = TRUE;
+		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
 	}
 	/* FIXME WE should make start/end group/object configurable */
 	f_len = imquic_moq_add_fetch(moq, &buffer[poffset], blen-poffset,
@@ -6498,7 +6321,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id,
 		range->start.object,	/* Start Object */
 		range->end.group,		/* End group */
 		range->end.object,		/* End Object */
-		num_params, &params);
+		&parameters);
 	f_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_FETCH, buffer, blen, poffset, f_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, f_len, FALSE);
@@ -6510,7 +6333,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id,
 }
 
 int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
-		uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth) {
+		uint64_t preceding_group_offset, gboolean descending, const char *auth) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	imquic_refcount_increase(&moq->ref);
@@ -6520,16 +6343,10 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uin
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t f_len = 0;
-	uint8_t parameters[100];
-	uint8_t num_params = 0;
-	imquic_data params = {
-		.buffer = parameters,
-		.length = 0
-	};
-	if(auth && auth->buffer && auth->length > 0) {
-		params.length = imquic_moq_parameter_add_data(moq, parameters, sizeof(parameters),
-			IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO, auth->buffer, auth->length);
-		num_params = 1;
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	if(auth && strlen(auth) > 0) {
+		parameters.auth_info_set = TRUE;
+		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
 	}
 	/* FIXME WE should make start/end group/object configurable */
 	f_len = imquic_moq_add_fetch(moq, &buffer[poffset], blen-poffset,
@@ -6538,7 +6355,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uin
 		0,	/* TODO Priority */
 		descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING,	/* FIXME Group order */
 		0, 0, 0, 0,
-		num_params, &params);
+		&parameters);
 	f_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_FETCH, buffer, blen, poffset, f_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, f_len, FALSE);
@@ -6568,7 +6385,7 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t subscribe_id, gboo
 		0,	/* TODO End of track */
 		largest->group,		/* Largest group */
 		largest->object,	/* Largest Object */
-		0, NULL);
+		NULL);
 	f_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_FETCH_OK, buffer, blen, poffset, f_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, f_len, FALSE);
@@ -6987,6 +6804,66 @@ void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_name *track_n
 	json_t *tn = json_object();
 	json_object_set_new(tn, "value", json_string(name ? name : ""));
 	json_object_set_new(message, "track_name", tn);
+}
+
+void imquic_qlog_moq_message_add_setup_parameters(json_t *message, imquic_moq_setup_parameters *parameters, const char *name) {
+	if(message == NULL || parameters == NULL || name == NULL)
+		return;
+	json_t *params = json_array();
+	if(parameters->role_set) {
+		json_t *role = json_object();
+		json_object_set_new(role, "name", json_string("role"));
+		json_object_set_new(role, "value", json_integer(parameters->role));
+		json_array_append_new(params, role);
+	}
+	if(parameters->path_set) {
+		json_t *path = json_object();
+		json_object_set_new(path, "name", json_string("path"));
+		json_object_set_new(path, "value", json_string(parameters->path));
+		json_array_append_new(params, path);
+	}
+	if(parameters->max_subscribe_id_set) {
+		json_t *max_subscribe_id = json_object();
+		json_object_set_new(max_subscribe_id, "name", json_string("max_subscribe_id"));
+		json_object_set_new(max_subscribe_id, "value", json_integer(parameters->max_subscribe_id));
+		json_array_append_new(params, max_subscribe_id);
+	}
+	if(parameters->unknown) {
+		json_t *unknown = json_object();
+		json_object_set_new(unknown, "name", json_string("unknown"));
+		json_array_append_new(params, unknown);
+	}
+	json_object_set_new(message, name, params);
+}
+
+void imquic_qlog_moq_message_add_subscribe_parameters(json_t *message, imquic_moq_subscribe_parameters *parameters, const char *name) {
+	if(message == NULL || parameters == NULL || name == NULL)
+		return;
+	json_t *params = json_array();
+	if(parameters->auth_info_set) {
+		json_t *auth_info = json_object();
+		json_object_set_new(auth_info, "name", json_string("authorization_info"));
+		json_object_set_new(auth_info, "value", json_string(parameters->auth_info));
+		json_array_append_new(params, auth_info);
+	}
+	if(parameters->delivery_timeout_set) {
+		json_t *delivery_timeout = json_object();
+		json_object_set_new(delivery_timeout, "name", json_string("delivery_timeout"));
+		json_object_set_new(delivery_timeout, "value", json_integer(parameters->delivery_timeout));
+		json_array_append_new(params, delivery_timeout);
+	}
+	if(parameters->max_cache_duration_set) {
+		json_t *max_cache_duration = json_object();
+		json_object_set_new(max_cache_duration, "name", json_string("max_cache_duration"));
+		json_object_set_new(max_cache_duration, "value", json_integer(parameters->max_cache_duration));
+		json_array_append_new(params, max_cache_duration);
+	}
+	if(parameters->unknown) {
+		json_t *unknown = json_object();
+		json_object_set_new(unknown, "name", json_string("unknown"));
+		json_array_append_new(params, unknown);
+	}
+	json_object_set_new(message, name, params);
 }
 
 void imquic_moq_qlog_control_message_created(imquic_qlog *qlog, uint64_t stream_id, size_t length, json_t *message) {

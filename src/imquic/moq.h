@@ -284,7 +284,7 @@
  * must provided the information to uniquely address the resource
  * they're interested in (the namespace via \ref imquic_moq_namespace,
  * the track name via \ref imquic_moq_name and, if needed, the authentication
- * info via \ref imquic_moq_auth_info), but at the same time they should
+ * info via a string), but at the same time they should
  * also provide unique \c subscribe_id and \c track_alias numeric identifiers
  * to act as shortcuts to address that subscription in subsequent responses,
  * events and incoming objects. Subscribing can be done with a call to the
@@ -375,14 +375,6 @@ typedef struct imquic_moq_name {
  * @param[in] blen The size of the output buffer
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen);
-
-/*! \brief MoQ Auth Info */
-typedef struct imquic_moq_auth_info {
-	/*! \brief Auth info data (typically a non-null terminated string) */
-	uint8_t *buffer;
-	/*! \brief Size of the auth info data */
-	size_t length;
-} imquic_moq_auth_info;
 
 /*! \brief MoQ Group/Object couple (for ranges) */
 typedef struct imquic_moq_position {
@@ -629,7 +621,7 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe Pointer to the function that will handle the incoming \c SUBSCRIBE */
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_auth_info *auth));
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -668,7 +660,7 @@ void imquic_set_subscribes_blocked_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe_announces Pointer to the function that will handle the incoming \c SUBSCRIBE_ANNOUNCES */
 void imquic_set_incoming_subscribe_announces_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe_announces)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_auth_info *auth));
+	void (* incoming_subscribe_announces)(imquic_connection *conn, imquic_moq_namespace *tns, const char *auth));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_ANNOUNCES we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -693,14 +685,14 @@ void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
  * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t subscribe_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth));
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_joining_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
-		uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth));
+		uint64_t preceding_group_offset, gboolean descending, const char *auth));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c FETCH_CANCEL request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -852,9 +844,9 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param tn The imquic_moq_name track name to subscribe to
- * @param auth The imquic_moq_auth_info authentication info, if needed
+ * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_auth_info *auth);
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth);
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param subscribe_id The unique \c subscribe_id value associated to the subscription to accept
@@ -878,9 +870,9 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t subscribe_id);
 /*! \brief Function to send a \c SUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
- * @param auth The imquic_moq_auth_info authentication info, if needed
+ * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_auth_info *auth);
+int imquic_moq_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, const char *auth);
 /*! \brief Function to accept an incoming \c SUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace to accept notifications for
@@ -905,21 +897,21 @@ int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespa
  * @param tn The imquic_moq_name track name to fetch to
  * @param descending Whether objects should be fetched in descending group order
  * @param range The range of groups/objects to fetch
- * @param auth The imquic_moq_auth_info authentication info, if needed
+ * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn,
-	gboolean descending, imquic_moq_fetch_range *range, imquic_moq_auth_info *auth);
+	gboolean descending, imquic_moq_fetch_range *range, const char *auth);
 /*! \brief Function to send a joining \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param subscribe_id A unique numeric identifier to associate to this subscription
  * @param joining_subscribe_id Existing subscription to join
  * @param preceding_group_offset How many groups to retrieve before the current one
  * @param descending Whether objects should be fetched in descending group order
- * @param auth The imquic_moq_auth_info authentication info, if needed
+ * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
-	uint64_t preceding_group_offset, gboolean descending, imquic_moq_auth_info *auth);
+	uint64_t preceding_group_offset, gboolean descending, const char *auth);
 /*! \brief Function to accept an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param subscribe_id The unique \c subscribe_id value associated to the subscription to accept

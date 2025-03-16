@@ -101,10 +101,6 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
-	imquic_moq_auth_info auth = {
-		.buffer = (uint8_t *)options.auth_info,
-		.length = options.auth_info ? strlen(options.auth_info) : 0
-	};
 	i = 0;
 	while(options.track_name[i] != NULL) {
 		const char *track_name = options.track_name[i];
@@ -117,7 +113,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		};
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
-			imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, &auth);
+			imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, options.auth_info);
 		} else {
 			/* Send a FETCH */
 			if(options.join_offset < 0) {
@@ -129,13 +125,13 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				range.end.group = 1000;
 				range.end.object = 0;
 				imquic_moq_standalone_fetch(conn, subscribe_id, &tns[0], &tn,
-					!strcasecmp(options.fetch, "descending"), &range, &auth);
+					!strcasecmp(options.fetch, "descending"), &range, options.auth_info);
 			} else {
 				/* Send a SUBSCRIBE first */
-				imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, &auth);
+				imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, options.auth_info);
 				/* Now send a Joining Fetch referencing that subscription */
 				imquic_moq_joining_fetch(conn, subscribe_id + 1, subscribe_id,
-					options.join_offset, !strcasecmp(options.fetch, "descending"), &auth);
+					options.join_offset, !strcasecmp(options.fetch, "descending"), options.auth_info);
 			}
 		}
 		i++;
@@ -268,11 +264,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
-		imquic_moq_auth_info auth = {
-			.buffer = (uint8_t *)options.auth_info,
-			.length = options.auth_info ? strlen(options.auth_info) : 0
-		};
-		imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, &auth);
+		imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, options.auth_info);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
