@@ -1279,7 +1279,7 @@ size_t imquic_moq_subscribe_parameters_serialize(imquic_moq_context *moq,
 	uint8_t *bytes, size_t blen, uint8_t *params_num);
 ///@}
 
-/*! \brief RoQ public callbacks */
+/*! \brief MoQ public callbacks */
 typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about new moQ connections */
 	void (* new_connection)(imquic_connection *conn, void *user_data);
@@ -1330,7 +1330,7 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
 	void (* incoming_goaway)(imquic_connection *conn, const char *uri);
-	/*! \brief Callback function to be notified about RoQ connections being closed */
+	/*! \brief Callback function to be notified about MoQ connections being closed */
 	void (* connection_gone)(imquic_connection *conn);
 } imquic_moq_callbacks;
 
