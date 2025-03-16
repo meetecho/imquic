@@ -6895,7 +6895,7 @@ void imquic_moq_qlog_stream_type_set(imquic_qlog *qlog, gboolean local, uint64_t
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "owner", json_string(local ? "local" : "remote"));
 	json_object_set_new(data, "stream_id", json_integer(stream_id));
-	json_object_set_new(data, "type", json_string(type));
+	json_object_set_new(data, "stream_type", json_string(type));
 	imquic_qlog_append_event(qlog, event);
 }
 
