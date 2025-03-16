@@ -6523,12 +6523,13 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* Check if we have data to send */
 	gboolean has_payload = (object->payload_len > 0 && object->payload != NULL);
 	gboolean valid_pkt = has_payload || (moq->version >= IMQUIC_MOQ_VERSION_04 && object->object_status != IMQUIC_MOQ_NORMAL_OBJECT);
-	/* FIXME Check how we should send this */
-	uint8_t buffer[65536];
+	/* Check how we should send this */
+	size_t bufsize = object->extensions_len + object->payload_len + 100;
+	uint8_t *buffer = g_malloc(bufsize);	/* FIXME */
 	if(object->delivery == IMQUIC_MOQ_USE_DATAGRAM) {
 		/* Use a datagram */
 		if(has_payload || moq->version < IMQUIC_MOQ_VERSION_08) {
-			size_t dg_len = imquic_moq_add_object_datagram(moq, buffer, sizeof(buffer),
+			size_t dg_len = imquic_moq_add_object_datagram(moq, buffer, bufsize,
 				object->subscribe_id, object->track_alias, object->group_id, object->object_id, object->object_status,
 				object->object_send_order, object->priority, object->payload, object->payload_len,
 				object->extensions_count, object->extensions, object->extensions_len);
@@ -6538,7 +6539,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 #endif
 			imquic_connection_send_on_datagram(conn, buffer, dg_len);
 		} else if(!has_payload && moq->version >= IMQUIC_MOQ_VERSION_08) {
-			size_t dg_len = imquic_moq_add_object_datagram_status(moq, buffer, sizeof(buffer),
+			size_t dg_len = imquic_moq_add_object_datagram_status(moq, buffer, bufsize,
 				object->track_alias, object->group_id, object->object_id, object->priority,
 				object->object_status, object->extensions, object->extensions_len);
 			imquic_connection_send_on_datagram(conn, buffer, dg_len);
@@ -6553,9 +6554,10 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send OBJECT_STREAM on a connection using %s\n",
 				imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
-		size_t st_len = imquic_moq_add_object_stream(moq, buffer, sizeof(buffer),
+		size_t st_len = imquic_moq_add_object_stream(moq, buffer, bufsize,
 			object->subscribe_id, object->track_alias, object->group_id, object->object_id, object->object_status,
 			object->object_send_order, object->priority, object->payload, object->payload_len);
 		uint64_t stream_id;
@@ -6568,6 +6570,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send STREAM_HEADER_GROUP on a connection using %s\n",
 				imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		imquic_mutex_lock(&moq->mutex);
@@ -6577,6 +6580,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
 				imquic_get_connection_name(conn), object->subscribe_id);
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		imquic_moq_stream *moq_stream = g_hash_table_lookup(moq_sub->streams_by_group, &object->group_id);
@@ -6585,6 +6589,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				/* Nothing to do here */
 				imquic_mutex_unlock(&moq->mutex);
 				imquic_refcount_decrease(&moq->ref);
+				g_free(buffer);
 				return -1;
 			}
 			/* Create a new stream */
@@ -6594,7 +6599,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			g_hash_table_insert(moq_sub->streams_by_group, imquic_dup_uint64(object->group_id), moq_stream);
 			imquic_mutex_unlock(&moq->mutex);
 			/* Send a STREAM_HEADER_GROUP */
-			size_t shg_len = imquic_moq_add_stream_header_group(moq, buffer, sizeof(buffer),
+			size_t shg_len = imquic_moq_add_stream_header_group(moq, buffer, bufsize,
 				object->subscribe_id, object->track_alias, object->group_id, object->object_send_order, object->priority);
 			imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 				buffer, moq_stream->stream_offset, shg_len, FALSE);
@@ -6605,7 +6610,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shgo_len = 0;
 		if(valid_pkt) {
-			shgo_len = imquic_moq_add_stream_header_group_object(moq, buffer, sizeof(buffer),
+			shgo_len = imquic_moq_add_stream_header_group_object(moq, buffer, bufsize,
 				object->object_id, object->object_status, object->payload, object->payload_len);
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
@@ -6624,6 +6629,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send SUBGROUP_HEADER on a connection using %s\n",
 				imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		imquic_mutex_lock(&moq->mutex);
@@ -6633,6 +6639,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription with track alias '%"SCNu64"' served by this connection\n",
 				imquic_get_connection_name(conn), object->track_alias);
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		/* FIXME Create a single lookup key out of both group and subgroup IDs */
@@ -6643,6 +6650,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				/* Nothing to do here */
 				imquic_mutex_unlock(&moq->mutex);
 				imquic_refcount_decrease(&moq->ref);
+				g_free(buffer);
 				return -1;
 			}
 			/* Create a new stream */
@@ -6656,7 +6664,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				imquic_moq_qlog_stream_type_set(conn->qlog, TRUE, moq_stream->stream_id, "subgroup_header");
 #endif
 			/* Send a SUBGROUP_HEADER */
-			size_t shg_len = imquic_moq_add_subgroup_header(moq, buffer, sizeof(buffer),
+			size_t shg_len = imquic_moq_add_subgroup_header(moq, buffer, bufsize,
 				object->subscribe_id, object->track_alias, object->group_id, object->subgroup_id, object->priority);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
@@ -6671,7 +6679,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shgo_len = 0;
 		if(valid_pkt) {
-			shgo_len = imquic_moq_add_subgroup_header_object(moq, buffer, sizeof(buffer),
+			shgo_len = imquic_moq_add_subgroup_header_object(moq, buffer, bufsize,
 				object->object_id, object->object_status, object->payload, object->payload_len,
 				object->extensions_count, object->extensions, object->extensions_len);
 #ifdef HAVE_QLOG
@@ -6695,6 +6703,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send STREAM_HEADER_TRACK on a connection using %s\n",
 				imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		imquic_mutex_lock(&moq->mutex);
@@ -6704,6 +6713,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
 				imquic_get_connection_name(conn), object->subscribe_id);
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		imquic_moq_stream *moq_stream = moq_sub->stream;
@@ -6712,6 +6722,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				/* Nothing to do here */
 				imquic_mutex_unlock(&moq->mutex);
 				imquic_refcount_decrease(&moq->ref);
+				g_free(buffer);
 				return -1;
 			}
 			/* Create a new stream */
@@ -6721,7 +6732,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_sub->stream = moq_stream;
 			imquic_mutex_unlock(&moq->mutex);
 			/* Send a STREAM_HEADER_TRACK */
-			size_t sht_len = imquic_moq_add_stream_header_track(moq, buffer, sizeof(buffer),
+			size_t sht_len = imquic_moq_add_stream_header_track(moq, buffer, bufsize,
 				object->subscribe_id, object->track_alias, object->object_send_order, object->priority);
 			imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 				buffer, moq_stream->stream_offset, sht_len, FALSE);
@@ -6732,7 +6743,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shto_len = 0;
 		if(valid_pkt) {
-			shto_len = imquic_moq_add_stream_header_track_object(moq, buffer, sizeof(buffer),
+			shto_len = imquic_moq_add_stream_header_track_object(moq, buffer, bufsize,
 				object->group_id, object->object_id, object->object_status, object->payload, object->payload_len);
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
@@ -6752,6 +6763,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send FETCH_HEADER on a connection using %s\n",
 				imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		imquic_mutex_lock(&moq->mutex);
@@ -6761,6 +6773,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
 				imquic_get_connection_name(conn), object->subscribe_id);
 			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
 			return -1;
 		}
 		imquic_moq_stream *moq_stream = moq_sub->stream;
@@ -6769,6 +6782,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				/* Nothing to do here */
 				imquic_mutex_unlock(&moq->mutex);
 				imquic_refcount_decrease(&moq->ref);
+				g_free(buffer);
 				return -1;
 			}
 			/* Create a new stream */
@@ -6782,7 +6796,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				imquic_moq_qlog_stream_type_set(conn->qlog, TRUE, moq_stream->stream_id, "fetch_header");
 #endif
 			/* Send a FETCH_HEADER */
-			size_t sht_len = imquic_moq_add_fetch_header(moq, buffer, sizeof(buffer), object->subscribe_id);
+			size_t sht_len = imquic_moq_add_fetch_header(moq, buffer, bufsize, object->subscribe_id);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_fetch_header_created(conn->qlog, moq_stream);
@@ -6796,7 +6810,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shto_len = 0;
 		if(valid_pkt) {
-			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, sizeof(buffer),
+			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize,
 				object->group_id, object->subgroup_id, object->object_id, object->priority,
 				object->object_status, object->payload, object->payload_len,
 				object->extensions_count, object->extensions, object->extensions_len);
@@ -6818,6 +6832,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	}
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
+	g_free(buffer);
 	return 0;
 }
 
