@@ -5655,22 +5655,22 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ setup parameter");
 	offset += length;
 	uint64_t len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, 0, "Broken MoQ setup parameter");
+	IMQUIC_MOQ_CHECK_ERR(length == 0, 0, "Broken MoQ setup parameter");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64"), length %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_setup_parameter_type_str(type), type, len);
-	IMQUIC_MOQ_CHECK_ERR(len == 0 || len > blen-offset, 0, "Broken MoQ setup parameter");
+	IMQUIC_MOQ_CHECK_ERR(len > blen-offset, 0, "Broken MoQ setup parameter");
 	/* Update the parsed parameter */
 	param->type = type;
-	if(type == IMQUIC_MOQ_PARAM_ROLE) {
+	if(type == IMQUIC_MOQ_PARAM_ROLE && len > 0) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_role_type_str(bytes[offset]));
 		param->value.role = bytes[offset];
-	} else if(type == IMQUIC_MOQ_PARAM_PATH) {
+	} else if(type == IMQUIC_MOQ_PARAM_PATH && len > 0) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] PATH setup parameter not supported yet\n",
 			imquic_get_connection_name(moq->conn));
 		param->value.path = NULL;
-	} else if(type == IMQUIC_MOQ_PARAM_MAX_SUBSCRIBE_ID) {
+	} else if(type == IMQUIC_MOQ_PARAM_MAX_SUBSCRIBE_ID && len > 0) {
 		param->value.max_subscribe_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, 0, "Broken MoQ setup parameter");
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
