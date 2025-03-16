@@ -199,8 +199,9 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	if(conn->socket->qlog_path != NULL) {
 		if(conn->is_server) {
 			char filename[1024];
-			g_snprintf(filename, sizeof(filename), "%s/imquic-%"SCNi64"-%"SCNu64".qlog",
-				conn->socket->qlog_path, g_get_real_time(), id);
+			g_snprintf(filename, sizeof(filename), "%s/imquic-%"SCNi64"-%"SCNu64".%s",
+				conn->socket->qlog_path, g_get_real_time(), id,
+				conn->socket->qlog_sequential ? "sqlog" : "qlog");
 			conn->qlog = imquic_qlog_create(conn->name, conn->socket->qlog_sequential,
 				TRUE, filename, conn->socket->qlog_quic, conn->socket->qlog_roq, conn->socket->qlog_moq);
 		} else {
