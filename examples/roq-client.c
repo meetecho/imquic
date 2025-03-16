@@ -18,6 +18,7 @@
 #else
 #include <endian.h>
 #endif
+#include <unistd.h>
 #include <poll.h>
 
 #include <imquic/imquic.h>
