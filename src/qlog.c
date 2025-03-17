@@ -212,8 +212,8 @@ json_t *imquic_qlog_event_add_data(json_t *event) {
 	return data;
 }
 
-void imquic_qlog_event_add_raw(json_t *data, const char *name, uint8_t *bytes, size_t length) {
-	if(data == NULL || name == NULL)
+void imquic_qlog_event_add_raw(json_t *parent, const char *name, uint8_t *bytes, size_t length) {
+	if(parent == NULL || (!json_is_object(parent) && !json_is_array(parent)) || (json_is_object(parent) && name == NULL))
 		return;
 	json_t *raw = json_object();
 	/* FIXME We should add the payload_length property too */
@@ -224,7 +224,10 @@ void imquic_qlog_event_add_raw(json_t *data, const char *name, uint8_t *bytes, s
 			length = 40;	/* Truncate */
 		json_object_set_new(raw, "data", json_string(imquic_hex_str(bytes, length, b_str, sizeof(b_str))));
 	}
-	json_object_set_new(data, name, raw);
+	if(json_is_object(parent))
+		json_object_set_new(parent, name, raw);
+	else
+		json_array_append_new(parent, raw);
 }
 
 static json_t *imquic_qlog_event_add_datagram_ids(json_t *data, uint32_t id) {
@@ -422,7 +425,7 @@ json_t *imquic_qlog_prepare_packet_frame(const char *type) {
 	if(type == NULL)
 		return NULL;
 	json_t *frame = json_object();
-	json_object_set_new(frame, "type", json_string(type));
+	json_object_set_new(frame, "frame_type", json_string(type));
 	return frame;
 }
 
@@ -491,7 +494,9 @@ void imquic_qlog_udp_datagrams_sent(imquic_qlog *qlog, uint32_t id, size_t lengt
 	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_sent");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
-	imquic_qlog_event_add_raw(data, "raw", NULL, length);
+	json_t *array = json_array();
+	imquic_qlog_event_add_raw(array, NULL, NULL, length);
+	json_object_set_new(data, "raw", array);
 	if(id > 0)
 		imquic_qlog_event_add_datagram_ids(data, id);
 	imquic_qlog_append_event(qlog, event);
@@ -503,7 +508,9 @@ void imquic_qlog_udp_datagrams_received(imquic_qlog *qlog, uint32_t id, size_t l
 	json_t *event = imquic_qlog_event_prepare("quic:udp_datagrams_received");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "count", json_integer(1));
-	imquic_qlog_event_add_raw(data, "raw", NULL, length);
+	json_t *array = json_array();
+	imquic_qlog_event_add_raw(array, NULL, NULL, length);
+	json_object_set_new(data, "raw", array);
 	if(id > 0)
 		imquic_qlog_event_add_datagram_ids(data, id);
 	imquic_qlog_append_event(qlog, event);
