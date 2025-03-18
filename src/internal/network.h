@@ -109,8 +109,8 @@ typedef struct imquic_network_endpoint {
 	char *qlog_path;
 	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */
 	gboolean qlog_sequential;
-	/*! \brief Whether QUIC and/or RoQ and/or MoQT events should be saved to QLOG, if supported */
-	gboolean qlog_quic, qlog_roq, qlog_moq;
+	/*! \brief Whether QUIC and/or HTTP/3 and/or RoQ and/or MoQT events should be saved to QLOG, if supported */
+	gboolean qlog_quic, qlog_http3, qlog_roq, qlog_moq;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection has been started */

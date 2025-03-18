@@ -19,6 +19,7 @@
 #include "qpack.h"
 #include "buffer.h"
 #include "stream.h"
+#include "qlog.h"
 #include "refcount.h"
 
 /*! \brief HTTP/3 stream type */
@@ -148,6 +149,8 @@ typedef struct imquic_http3_connection {
 		local_qpack_encoder_stream, remote_qpack_encoder_stream,
 		local_qpack_decoder_stream, remote_qpack_decoder_stream,
 		request_stream;
+	/*! \brief Whether the request stream has been set */
+	gboolean request_stream_set;
 	/*! \brief Whether there (already) are bidirectional streams in this connection */
 	gboolean has_bidi_streams;
 	/*! \brief QPACK context */
@@ -243,5 +246,49 @@ size_t imquic_http3_settings_add_int(uint8_t *bytes, size_t blen, imquic_http3_s
  * @param h3c The imquic_http3_connection instance to send the \c CONNECT on */
 void imquic_http3_check_send_connect(imquic_http3_connection *h3c);
 ///@}
+
+#ifdef HAVE_QLOG
+/** @name QLOG events tracing for HTTP/3
+ */
+///@{
+/*! \brief Add a \c parameters_set event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param local Whether this is a local or remote parameters set
+ * @param extended_connect Whether SETTINGS_ENABLE_CONNECT_PROTOCOL is set
+ * @param h3_datagram Whether SETTINGS_H3_DATAGRAM is set */
+void imquic_http3_qlog_parameters_set(imquic_qlog *qlog, gboolean local, gboolean extended_connect, gboolean h3_datagram);
+/*! \brief Add a \c stream_type_set
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param local Whether this is a local or remote stream
+ * @param stream_id The Stream ID used for this message
+ * @param type The stream type */
+void imquic_http3_qlog_stream_type_set(imquic_qlog *qlog, gboolean local, uint64_t stream_id, const char *type);
+/*! \brief Helper to prepare a frame or an object/array, and add it to a parent if it's specified
+ * @note If no parent is specified, a \c frame_type property is set in the new object automatically;
+ * if it is, the object/array will be empty and added to the parent with the provided name
+ * @param parent The object/array to add the object to, if any
+ * @param name The object/array name, or the \c frame_type property in the object
+ * @param array Whether to create an array or an object (ignored if \c parent is NULL)
+ * @returns A pointer to the new object, if successful, or NULL otherwise */
+json_t *imquic_qlog_http3_prepare_content(json_t *parent, const char *name, gboolean array);
+/*! \brief Helper to append a name/value object to an array
+ * @param parent The array to append the new name/value obect to
+ * @param name The object name
+ * @param value The object value */
+void imquic_qlog_http3_append_object(json_t *parent, const char *name, const char *value);
+/*! \brief Add a \c frame_created
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this message
+ * @param length The size of the frame
+ * @param frame The frame that was created */
+void imquic_http3_qlog_frame_created(imquic_qlog *qlog, uint64_t stream_id, uint64_t length, json_t *frame);
+/*! \brief Add a \c frame_parsed
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this message
+ * @param length The size of the frame
+ * @param frame The frame that was parsed */
+void imquic_http3_qlog_frame_parsed(imquic_qlog *qlog, uint64_t stream_id, uint64_t length, json_t *frame);
+///@}
+#endif
 
 #endif

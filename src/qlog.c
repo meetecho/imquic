@@ -49,11 +49,11 @@ static void imquic_qlog_free(const imquic_refcount *qlog_ref) {
 }
 
 imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server,
-		char *filename, gboolean quic, gboolean roq, gboolean moq) {
+		char *filename, gboolean quic, gboolean http3, gboolean roq, gboolean moq) {
 	if(id == NULL || filename == NULL)
 		return NULL;
-	if(!quic && !roq && !moq) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't create QLOG instance, at least one of QUIC, RoQ and MoQ should be enabled\n", id);
+	if(!quic && !http3 && !roq && !moq) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't create QLOG instance, at least one of QUIC, HTTP/3, RoQ and MoQ should be enabled\n", id);
 		return NULL;
 	}
 	imquic_qlog *qlog = g_malloc0(sizeof(imquic_qlog));
@@ -69,6 +69,7 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 	qlog->is_server = is_server;
 	qlog->filename = g_strdup(filename);
 	qlog->quic = quic;
+	qlog->http3 = http3;
 	qlog->roq = roq;
 	qlog->moq = moq;
 	/* Initialize the QLOG structure */
@@ -84,6 +85,10 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 	if(quic) {
 		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:quic-09"));
 		json_array_append_new(protocols, json_string("QUIC"));
+	}
+	if(http3) {
+		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:http3-09"));
+		json_array_append_new(protocols, json_string("HTTP/3"));
 	}
 	if(roq) {
 		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:roq-00"));

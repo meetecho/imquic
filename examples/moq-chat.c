@@ -389,7 +389,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* Check if we need to create a QLOG file, and which we should save */
-	gboolean qlog_quic = FALSE, qlog_moq = FALSE;
+	gboolean qlog_quic = FALSE, qlog_http3 = FALSE, qlog_moq = FALSE;
 	if(options.qlog_path != NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG file '%s'\n", options.qlog_path);
 		if(options.qlog_sequential)
@@ -399,6 +399,9 @@ int main(int argc, char *argv[]) {
 			if(!strcasecmp(options.qlog_logging[i], "quic")) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
 				qlog_quic = TRUE;
+			} else if(!strcasecmp(options.qlog_logging[i], "http3") && options.webtransport) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging HTTP/3 events\n");
+				qlog_http3 = TRUE;
 			} else if(!strcasecmp(options.qlog_logging[i], "moq")) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging MoQT events\n");
 				qlog_moq = TRUE;
@@ -429,6 +432,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_HTTP3_PATH, options.path,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
+		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_DONE, NULL);

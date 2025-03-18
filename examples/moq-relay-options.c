@@ -26,7 +26,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "zero-rtt", '0', 0, G_OPTION_ARG_NONE, &options->early_data, "Whether early data via 0-RTT should be supported (default=no)", NULL },
 		{ "secrets-log", 's', 0, G_OPTION_ARG_STRING, &options->secrets_log, "Save the exchanged secrets to a file compatible with Wireshark (default=none)", "path" },
 		{ "qlog-path", 'Q', 0, G_OPTION_ARG_STRING, &options->qlog_path, "Path to a folder where to save QLOG files for all connections (default=none)", "path" },
-		{ "qlog-logging", 'l', 0, G_OPTION_ARG_STRING_ARRAY, &options->qlog_logging, "Save these events to QLOG (can be called multiple times to save multiple things; default=none)", "quic|moq" },
+		{ "qlog-logging", 'l', 0, G_OPTION_ARG_STRING_ARRAY, &options->qlog_logging, "Save these events to QLOG (can be called multiple times to save multiple things; default=none)", "quic|http3|moq" },
 		{ "qlog-sequential", 'J', 0, G_OPTION_ARG_NONE, &options->qlog_sequential, "Whether sequential JSON should be used for the QLOG file, instead of regular JSON (default=no)", NULL },
 		{ "quiet", 'Z', 0, G_OPTION_ARG_NONE, &options->quiet, "If set, don't print about incoming objects on stdout (default=no)", NULL },
 		{ "debug-level", 'd', 0, G_OPTION_ARG_INT, &options->debug_level, "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)", "1-7" },

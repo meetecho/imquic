@@ -28,7 +28,6 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = TRUE;
-	config.qlog_quic = TRUE;
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
@@ -72,6 +71,8 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
+			config.qlog_http3 = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
@@ -166,6 +167,8 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
+			config.qlog_http3 = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
