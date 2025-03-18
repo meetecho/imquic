@@ -267,9 +267,12 @@ typedef enum imquic_config {
 	 * filename, as servers will handle multiple connections. This property
 	 * is ignored (apart from a warning) if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_PATH,
-	/*! \brief Whether to save QUIC events to QLOG (true by default)
+	/*! \brief Whether to save QUIC events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_QUIC,
+	/*! \brief Whether to save HTTP/3 events to QLOG (ignored if not offering WebTransport)
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_HTTP3,
 	/*! \brief Whether to save RoQ events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_ROQ,

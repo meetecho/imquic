@@ -113,21 +113,29 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, uint8_t *bytes, si
 	imquic_print_hex(IMQUIC_LOG_HUGE, bytes, blen);
 	size_t offset = 0;
 	uint8_t length = 0;
-	uint64_t type = 0, s_len = 0, value = 0;
+	uint64_t type = 0, settings_len = 0, value = 0;
 	if(bytes[0] != IMQUIC_HTTP3_SETTINGS) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Not a SETTINGS payload\n",
 			imquic_get_connection_name(h3c->conn));
 		return -1;
 	}
 	offset++;
-	s_len = imquic_read_varint(bytes + offset, blen - offset, &length);
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- SETTINGS has length %zu\n", s_len);
+	settings_len = imquic_read_varint(bytes + offset, blen - offset, &length);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- SETTINGS has length %zu\n", settings_len);
 	offset += length;
-	if(s_len > blen - offset) {
+	if(settings_len > blen - offset) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Not enough bytes for SETTINGS\n",
 			imquic_get_connection_name(h3c->conn));
 		return -1;
 	}
+#ifdef HAVE_QLOG
+	json_t *frame = NULL, *settings = NULL;
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
+		frame = imquic_qlog_http3_prepare_content(NULL, "settings", FALSE);
+		settings = imquic_qlog_http3_prepare_content(frame, "settings", FALSE);
+	}
+#endif
+	uint64_t s_len = settings_len;
 	while(s_len > 0) {
 		type = imquic_read_varint(bytes + offset, blen - offset, &length);
 		offset += length;
@@ -137,10 +145,42 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, uint8_t *bytes, si
 		s_len -= length;
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- [%"SCNu64"][%s] %"SCNu64"\n",
 			type, imquic_http3_settings_type_str(type), value);
+#ifdef HAVE_QLOG
+		if(settings != NULL) {
+			switch(type) {
+				case IMQUIC_HTTP3_SETTINGS_QPACK_MAX_TABLE_CAPACITY:
+					json_object_set_new(settings, "settings_qpack_max_table_capacity", json_integer(value));
+					break;
+				case IMQUIC_HTTP3_SETTINGS_MAX_FIELD_SECTION_SIZE:
+					json_object_set_new(settings, "settings_max_field_section_size", json_integer(value));
+					break;
+				case IMQUIC_HTTP3_SETTINGS_QPACK_BLOCKED_STREAMS:
+					json_object_set_new(settings, "settings_qpack_blocked_streams", json_integer(value));
+					break;
+				case IMQUIC_HTTP3_SETTINGS_ENABLE_CONNECT_PROTOCOL:
+					json_object_set_new(settings, "settings_enable_connect_protocol", json_integer(value));
+					break;
+				case IMQUIC_HTTP3_SETTINGS_H3_DATAGRAM:
+					json_object_set_new(settings, "settings_h3_datagram", json_integer(value));
+					break;
+				case IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT:
+					json_object_set_new(settings, "settings_enable_webtransport", json_integer(value));
+					break;
+				case IMQUIC_HTTP3_SETTINGS_WEBTRANSPORT_MAX_SESSIONS:
+					json_object_set_new(settings, "settings_webtransport_max_sessions", json_integer(value));
+					break;
+				default: break;
+			}
+		}
+#endif
 		/* FIXME */
 		if(type == IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT && value != 0)
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Establishing WebTransport\n", imquic_get_connection_name(h3c->conn));
 	}
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+		imquic_http3_qlog_frame_parsed(h3c->conn->qlog, h3c->remote_control_stream, settings_len, frame);
+#endif
 	h3c->settings_received = TRUE;
 	if(h3c->is_server) {
 		/* FIXME As an HTTP/3 server, reply with our own SETTINGS */
@@ -234,13 +274,25 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- %s '%"SCNu64"'\n", imquic_http3_stream_type_str(stream_type), stream->stream_id);
 		if(stream_type == IMQUIC_HTTP3_CONTROL_STREAM) {
 			h3c->remote_control_stream = stream->stream_id;
+#ifdef HAVE_QLOG
+			if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+				imquic_http3_qlog_stream_type_set(h3c->conn->qlog, FALSE, h3c->remote_control_stream, "control");
+#endif
 		} else if(stream_type == IMQUIC_HTTP3_QPACK_ENCODER_STREAM) {
 			h3c->remote_qpack_encoder_stream = stream->stream_id;
+#ifdef HAVE_QLOG
+			if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+				imquic_http3_qlog_stream_type_set(h3c->conn->qlog, FALSE, h3c->remote_qpack_encoder_stream, "qpack_encode");
+#endif
 			/* FIXME */
 			if(h3c->qpack == NULL)
 				h3c->qpack = imquic_qpack_context_create(4096);
 		} else if(stream_type == IMQUIC_HTTP3_QPACK_DECODER_STREAM) {
 			h3c->remote_qpack_decoder_stream = stream->stream_id;
+#ifdef HAVE_QLOG
+			if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+				imquic_http3_qlog_stream_type_set(h3c->conn->qlog, FALSE, h3c->remote_qpack_decoder_stream, "qpack_decode");
+#endif
 			/* FIXME */
 			if(h3c->qpack == NULL)
 				h3c->qpack = imquic_qpack_context_create(4096);
@@ -274,8 +326,14 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 	} else if(stream->bidirectional) {
 		if(!h3c->webtransport || stream->stream_id == h3c->request_stream) {
 			/* Request */
-			if(h3c->request_stream == 0)
+			if(!h3c->request_stream_set) {
+				h3c->request_stream_set = TRUE;
 				h3c->request_stream = stream->stream_id;
+#ifdef HAVE_QLOG
+				if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+					imquic_http3_qlog_stream_type_set(h3c->conn->qlog, FALSE, h3c->request_stream, "request");
+#endif
+			}
 			imquic_http3_parse_request(h3c, stream, chunk->data + p_offset, chunk->length - p_offset);
 		} else {
 			/* Got WebTransport data on a bidirectional stream */
@@ -328,6 +386,13 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 	imquic_print_hex(IMQUIC_LOG_HUGE, bytes, blen);
 	if(h3c->qpack == NULL)
 		h3c->qpack = imquic_qpack_context_create(4096);
+#ifdef HAVE_QLOG
+	json_t *frame = NULL, *frame_headers = NULL;
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
+		frame = imquic_qlog_http3_prepare_content(NULL, "headers", FALSE);
+		frame_headers = imquic_qlog_http3_prepare_content(frame, "headers", TRUE);
+	}
+#endif
 	size_t bread = 0;
 	GList *headers = imquic_qpack_process(h3c->qpack, bytes, blen, &bread);
 	GList *temp = headers;
@@ -335,9 +400,17 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 	while(temp) {
 		header = (imquic_qpack_entry *)temp->data;
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- -- %s = %s\n", header->name, header->value);
+#ifdef HAVE_QLOG
+		if(frame_headers != NULL)
+			imquic_qlog_http3_append_object(frame_headers, header->name, header->value);
+#endif
 		temp = temp->next;
 	}
 	g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+		imquic_http3_qlog_frame_parsed(h3c->conn->qlog, h3c->request_stream, blen, frame);
+#endif
 	if(!h3c->is_server) {
 		/* Done */
 		h3c->webtransport = TRUE;
@@ -370,6 +443,12 @@ size_t imquic_http3_parse_request_data(imquic_http3_connection *h3c, imquic_stre
 	IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Parsing HTTP/3 DATA\n",
 		imquic_get_connection_name(h3c->conn));
 	imquic_print_hex(IMQUIC_LOG_HUGE, bytes, blen);
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
+		json_t *frame = imquic_qlog_http3_prepare_content(NULL, "data", FALSE);
+		imquic_http3_qlog_frame_parsed(h3c->conn->qlog, h3c->request_stream, blen, frame);
+	}
+#endif
 	return blen;
 }
 
@@ -402,6 +481,22 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 			imquic_get_connection_name(h3c->conn));
 		return -1;
 	}
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
+		json_t *frame = imquic_qlog_http3_prepare_content(NULL, "headers", FALSE);
+		json_t *headers = imquic_qlog_http3_prepare_content(frame, "headers", TRUE);
+		imquic_qlog_http3_append_object(headers, ":method", "CONNECT");
+		imquic_qlog_http3_append_object(headers, ":scheme", "https");
+		imquic_qlog_http3_append_object(headers, ":authority",
+			imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address), TRUE));
+		imquic_qlog_http3_append_object(headers, ":path", "path");
+		imquic_qlog_http3_append_object(headers, ":protocol", "webtransport");
+		imquic_qlog_http3_append_object(headers, "user-agent", "imquic/0.0.1alpha");
+		imquic_qlog_http3_append_object(headers, "sec-fetch-dest", "webtransport");
+		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
+		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->request_stream, r_len, frame);
+	}
+#endif
 	/* Check if we have an encoder strean */
 	*es_len = e_len;
 	if(e_len > 0) {
@@ -458,6 +553,16 @@ int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, uint8_t 
 	memcpy(rs + 1 + h_len, rbuf, r_len);
 	*rs_len = 1 + h_len + r_len;
 	imquic_print_hex(IMQUIC_LOG_HUGE, rs, *rs_len);
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
+		json_t *frame = imquic_qlog_http3_prepare_content(NULL, "headers", FALSE);
+		json_t *headers = imquic_qlog_http3_prepare_content(frame, "headers", TRUE);
+		imquic_qlog_http3_append_object(headers, ":status", "200");
+		imquic_qlog_http3_append_object(headers, "server", server);
+		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
+		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->request_stream, r_len, frame);
+	}
+#endif
 	/* Done */
 	h3c->webtransport = TRUE;
 	if(h3c->conn->socket->new_connection)
@@ -488,7 +593,12 @@ void imquic_http3_check_send_connect(imquic_http3_connection *h3c) {
 			}
 			uint64_t stream_id = 0;
 			imquic_connection_new_stream_id(h3c->conn, TRUE, &stream_id);
+			h3c->request_stream_set = TRUE;
 			h3c->request_stream = stream_id;
+#ifdef HAVE_QLOG
+			if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+				imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, stream_id, "request");
+#endif
 			imquic_connection_send_on_stream(h3c->conn, stream_id, buffer, 0, offset, FALSE);
 			imquic_connection_flush_stream(h3c->conn, stream_id);
 			h3c->conn->wakeup = TRUE;
@@ -512,11 +622,32 @@ int imquic_http3_prepare_settings(imquic_http3_connection *h3c) {
 	settings[2] = s_offset - 3;
 	/* FIXME Add STREAMs */
 	imquic_connection_new_stream_id(h3c->conn, FALSE, &h3c->local_control_stream);
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
+		imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, h3c->local_control_stream, "control");
+		json_t *frame = imquic_qlog_http3_prepare_content(NULL, "settings", FALSE);
+		json_t *settings = imquic_qlog_http3_prepare_content(frame, "settings", FALSE);
+		json_object_set_new(settings, "settings_qpack_max_table_capacity", json_integer(4096));
+		json_object_set_new(settings, "settings_qpack_blocked_streams", json_integer(16));
+		json_object_set_new(settings, "settings_enable_connect_protocol", json_integer(1));
+		json_object_set_new(settings, "settings_h3_datagram", json_integer(1));
+		json_object_set_new(settings, "settings_enable_webtransport", json_integer(1));
+		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->local_control_stream, s_offset - 3, frame);
+	}
+#endif
 	imquic_connection_send_on_stream(h3c->conn, h3c->local_control_stream, settings, 0, s_offset, FALSE);
 	imquic_connection_new_stream_id(h3c->conn, FALSE, &h3c->local_qpack_encoder_stream);
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+		imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, h3c->local_qpack_encoder_stream, "qpack_encode");
+#endif
 	settings[0] = IMQUIC_HTTP3_QPACK_ENCODER_STREAM;
 	imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_encoder_stream, settings, 0, 1, FALSE);
 	imquic_connection_new_stream_id(h3c->conn, FALSE, &h3c->local_qpack_decoder_stream);
+#ifdef HAVE_QLOG
+	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
+		imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, h3c->local_qpack_decoder_stream, "qpack_decode");
+#endif
 	settings[0] = IMQUIC_HTTP3_QPACK_DECODER_STREAM;
 	imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_decoder_stream, settings, 0, 1, FALSE);
 	imquic_connection_flush_stream(h3c->conn, h3c->local_control_stream);
@@ -528,3 +659,83 @@ int imquic_http3_prepare_settings(imquic_http3_connection *h3c) {
 		imquic_http3_check_send_connect(h3c);
 	return 0;
 }
+
+#ifdef HAVE_QLOG
+void imquic_http3_qlog_parameters_set(imquic_qlog *qlog, gboolean local, gboolean extended_connect, gboolean h3_datagram) {
+	if(qlog == NULL)
+		return;
+	json_t *event = imquic_qlog_event_prepare("http3:parameters_set");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "extended_connect", json_integer(extended_connect));
+	json_object_set_new(data, "h3_datagram", json_integer(h3_datagram));
+	if(local)
+		json_object_set_new(data, "wait_for_settings", json_true());
+	imquic_qlog_append_event(qlog, event);
+}
+
+json_t *imquic_qlog_http3_prepare_content(json_t *parent, const char *name, gboolean array) {
+	if(parent != NULL && !json_is_object(parent) && !json_is_array(parent))
+		return NULL;
+	if((parent == NULL || array) && name == NULL)
+		return NULL;
+	json_t *content = (!array || parent == NULL) ? json_object() : json_array();
+	if(parent == NULL) {
+		json_object_set_new(content, "frame_type", json_string(name));
+	} else {
+		if(json_is_array(parent))
+			json_array_append_new(parent, content);
+		else
+			json_object_set_new(parent, name, content);
+	}
+	return content;
+}
+
+void imquic_qlog_http3_append_object(json_t *parent, const char *name, const char *value) {
+	if(parent == NULL || !json_is_array(parent) || name == NULL || value == NULL)
+		return;
+	json_t *object = json_object();
+	json_object_set_new(object, name, json_string(value));
+	json_array_append_new(parent, object);
+}
+
+void imquic_http3_qlog_stream_type_set(imquic_qlog *qlog, gboolean local, uint64_t stream_id, const char *type) {
+	if(qlog == NULL)
+		return;
+	json_t *event = imquic_qlog_event_prepare("http3:stream_type_set");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "owner", json_string(local ? "local" : "remote"));
+	json_object_set_new(data, "stream_id", json_integer(stream_id));
+	json_object_set_new(data, "stream_type", json_string(type));
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_http3_qlog_frame_created(imquic_qlog *qlog, uint64_t stream_id, uint64_t length, json_t *frame) {
+	if(qlog == NULL) {
+		if(frame != NULL)
+			json_decref(frame);
+		return;
+	}
+	json_t *event = imquic_qlog_event_prepare("http3:frame_created");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "stream_id", json_integer(stream_id));
+	json_object_set_new(data, "length", json_integer(length));
+	if(frame != NULL)
+		json_object_set_new(data, "frame", frame);
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_http3_qlog_frame_parsed(imquic_qlog *qlog, uint64_t stream_id, uint64_t length, json_t *frame) {
+	if(qlog == NULL) {
+		if(frame != NULL)
+			json_decref(frame);
+		return;
+	}
+	json_t *event = imquic_qlog_event_prepare("http3:frame_parsed");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "stream_id", json_integer(stream_id));
+	json_object_set_new(data, "length", json_integer(length));
+	if(frame != NULL)
+		json_object_set_new(data, "frame", frame);
+	imquic_qlog_append_event(qlog, event);
+}
+#endif
