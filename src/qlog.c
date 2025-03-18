@@ -87,7 +87,7 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 		json_array_append_new(protocols, json_string("QUIC"));
 	}
 	if(http3) {
-		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:http3-07"));
+		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:http3-09"));
 		json_array_append_new(protocols, json_string("HTTP/3"));
 	}
 	if(roq) {
