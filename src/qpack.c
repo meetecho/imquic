@@ -589,6 +589,8 @@ int imquic_qpack_encode(imquic_qpack_context *ctx, GList *headers, uint8_t *byte
 	 * encoder instructions to send on our encoder stream as well */
 	imquic_qpack_entry *entry = NULL, *ref = NULL;
 	gboolean dynamic = FALSE, full_match = FALSE;
+	memset(bytes, 0, *blen);
+	memset(qenc, 0, *qenclen);
 	uint8_t temp[1024], encoded[100];
 	size_t tlen = sizeof(temp);
 	memset(temp, 0, tlen);
