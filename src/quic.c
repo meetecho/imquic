@@ -3139,7 +3139,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				chunk->length -= part_len;
 				memmove(chunk->data, chunk->data + part_len, chunk->length);
 			}
-			if(pkt->frames_size >= max_len || imquic_buffer_peek(stream->out_data) == NULL) {
+			if(pkt->frames_size >= max_len || (imquic_buffer_peek(stream->out_data) == NULL && g_queue_get_length(conn->outgoing_data) == 0)) {
 				/* This packet is ready, craft a short header packet */
 				imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
 				pkt->level = level;
