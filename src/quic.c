@@ -1417,12 +1417,18 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 		goto done;
 	}
 	int added = imquic_buffer_put(stream->in_data, &bytes[offset], stream_offset, stream_length);
-	if(added > 0)
+	if(added > 0) {
 		stream->in_size += added;
+		conn->flow_control.in_size += added;
+	}
 	/* FIXME Check if flow control was exceeded */
 	if(stream->in_size > stream->local_max_data) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Flow control exceeded for stream %"SCNu64" (we should close the connection)\n",
 			imquic_get_connection_name(conn), stream_id);
+	}
+	if(conn->flow_control.in_size > conn->flow_control.local_max_data) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Flow control exceeded for connection (we should close the connection)\n",
+			imquic_get_connection_name(conn));
 	}
 	if(fbit)
 		imquic_stream_mark_complete(stream, TRUE);
@@ -3107,6 +3113,8 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				if(stream->out_finalsize > 0 && imquic_buffer_peek(stream->out_data) == NULL)
 					stream->out_state = IMQUIC_STREAM_COMPLETE;
 				stream->out_size += chunk->length;
+				conn->flow_control.out_size += chunk->length;
+				/* TODO Check flow control */
 				size = imquic_payload_add_stream(conn, pkt, buffer, max_len,
 					stream->stream_id, chunk->data, chunk->offset, chunk->length,
 					(stream->out_state == IMQUIC_STREAM_COMPLETE), FALSE);
@@ -3123,6 +3131,8 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				/* We can only add a portion of it */
 				size_t part_len = max_len - pkt->frames_size;
 				stream->out_size += part_len;
+				conn->flow_control.out_size += part_len;
+				/* TODO Check flow control */
 				size = imquic_payload_add_stream(conn, pkt, buffer, max_len,
 					stream->stream_id, chunk->data, chunk->offset, part_len, FALSE, FALSE);
 				/* Create a frame and append it to the packet */

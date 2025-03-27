@@ -35,50 +35,58 @@ void imquic_buffer_chunk_free(imquic_buffer_chunk *chunk) {
 	}
 }
 
+/* Helper to create a chunk out of existing data */
+static imquic_buffer_chunk *imquic_buffer_chunk_create(uint8_t *data, uint64_t offset, uint64_t length) {
+	if(length == 0 || (length > 0 && data == NULL))
+		return NULL;
+	imquic_buffer_chunk *chunk = g_malloc(sizeof(imquic_buffer_chunk));
+	chunk->data = g_malloc(length);
+	memcpy(chunk->data, data, length);
+	chunk->offset = offset;
+	chunk->length = length;
+	return chunk;
+}
 /* Helpers to add or get from the buffer */
-int imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64_t length) {
-	if(buf == NULL || (length > 0 && data == NULL))
-		return -1;
+uint64_t imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64_t length) {
+	if(buf == NULL || length == 0 || (length > 0 && data == NULL))
+		return 0;
 	if(offset < buf->base_offset) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%"SCNu64"] Ignoring already processed chunk (%"SCNu64" < %"SCNu64")\n",
 			buf->stream_id, offset, buf->base_offset);
-		return -2;
+		return 0;
 	}
-	/* Create the chunk */
-	imquic_buffer_chunk *chunk = g_malloc(sizeof(imquic_buffer_chunk));
-	if(length > 0) {
-		chunk->data = g_malloc(length);
-		memcpy(chunk->data, data, length);
-	} else {
-		chunk->data = NULL;
-	}
-	chunk->offset = offset;
-	chunk->length = length;
 	/* Check where we have to put it */
 	GList *temp = buf->chunks;
 	if(temp == NULL) {
 		/* Empty list, easy enough */
-		buf->chunks = g_list_append(buf->chunks, chunk);
+		buf->chunks = g_list_append(buf->chunks, imquic_buffer_chunk_create(data, offset, length));
 	} else {
 		/* Traverse the list and find the correct insert point */
 		gboolean inserted = FALSE;
 		imquic_buffer_chunk *tc = NULL, *prev = NULL;
 		while(temp) {
 			tc = (imquic_buffer_chunk *)temp->data;
-			if(tc->offset > chunk->offset) {
+			if(tc->offset > offset) {
 				/* Insert here */
-				if(chunk->offset + chunk->length > tc->offset) {
+				if(offset + length > tc->offset) {
 					IMQUIC_LOG(IMQUIC_LOG_WARN, "[%"SCNu64"] Overlapping buffer (%"SCNu64"+%"SCNu64" > %"SCNu64"), truncating chunk\n",
-						buf->stream_id, chunk->offset, chunk->length, tc->offset);
-					chunk->length = tc->offset - chunk->offset;
+						buf->stream_id, offset, length, tc->offset);
+					length = tc->offset - offset;
 				}
-				if(prev != NULL && prev->offset + prev->length > chunk->offset) {
+				if(prev != NULL && (prev->offset + prev->length > offset)) {
 					IMQUIC_LOG(IMQUIC_LOG_WARN, "[%"SCNu64"] Overlapping buffer (%"SCNu64"+%"SCNu64" > %"SCNu64"), truncating chunk\n",
-						buf->stream_id, prev->offset, prev->length, chunk->offset);
-					prev->length = chunk->offset - prev->offset;
+						buf->stream_id, prev->offset, prev->length, offset);
+					uint64_t diff = prev->offset + prev->length - offset;
+					offset += diff;
+					data += diff;
+					if(length >= diff)
+						length -= diff;
+					else
+						length = 0;
 				}
 				inserted = TRUE;
-				buf->chunks = g_list_insert_before(buf->chunks, temp, chunk);
+				if(length > 0)
+					buf->chunks = g_list_insert_before(buf->chunks, temp, imquic_buffer_chunk_create(data, offset, length));
 				break;
 			}
 			prev = tc;
@@ -86,35 +94,32 @@ int imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64
 		}
 		if(!inserted) {
 			/* Append at the end */
-			if(prev != NULL && prev->offset + prev->length > chunk->offset) {
+			if(prev != NULL && (prev->offset + prev->length > offset)) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%"SCNu64"] Overlapping buffer (%"SCNu64"+%"SCNu64" > %"SCNu64"), truncating chunk\n",
-					buf->stream_id, prev->offset, prev->length, chunk->offset);
-				prev->length = chunk->offset - prev->offset;
+					buf->stream_id, prev->offset, prev->length, offset);
+				uint64_t diff = prev->offset + prev->length - offset;
+				offset += diff;
+				data += diff;
+				if(length >= diff)
+					length -= diff;
+				else
+					length = 0;
 			}
-			buf->chunks = g_list_append(buf->chunks, chunk);
+			if(length > 0)
+				buf->chunks = g_list_insert_before(buf->chunks, temp, imquic_buffer_chunk_create(data, offset, length));
 		}
 	}
-	return chunk->length;
+	return length;
 }
 
-int imquic_buffer_append(imquic_buffer *buf, uint8_t *data, uint64_t length) {
-	if(buf == NULL || (length > 0 && data == NULL))
-		return -1;
+uint64_t imquic_buffer_append(imquic_buffer *buf, uint8_t *data, uint64_t length) {
+	if(buf == NULL || length == 0 || (length > 0 && data == NULL))
+		return 0;
 	GList *last = g_list_last(buf->chunks);
 	imquic_buffer_chunk *last_chunk = (imquic_buffer_chunk *)(last ? last->data : NULL);
 	uint64_t offset = last_chunk ? (last_chunk->offset + last_chunk->length) : buf->base_offset;
-	/* Create the chunk */
-	imquic_buffer_chunk *chunk = g_malloc(sizeof(imquic_buffer_chunk));
-	if(length > 0) {
-		chunk->data = g_malloc(length);
-		memcpy(chunk->data, data, length);
-	} else {
-		chunk->data = NULL;
-	}
-	chunk->offset = offset;
-	chunk->length = length;
 	/* Always appending, easy enough */
-	buf->chunks = g_list_append(buf->chunks, chunk);
+	buf->chunks = g_list_append(buf->chunks, imquic_buffer_chunk_create(data, offset, length));
 	return 0;
 }
 

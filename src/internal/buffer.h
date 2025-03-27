@@ -55,14 +55,14 @@ void imquic_buffer_destroy(imquic_buffer *buf);
  * @param data The data to add to the buffer
  * @param offset Offset in the overall buffer where this new data should be placed
  * @param length Length of this new data
- * @returns The number of bytes actually added to the buffer in case of success, a negative integer otherwise */
-int imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64_t length);
+ * @returns The number of bytes actually added to the buffer in case of success, or 0 otherwise */
+uint64_t imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64_t length);
 /*! \brief Helper method to add new data at the end of the buffer, as a new chunk
  * @param buf The imquic_buffer instance to add data to
  * @param data The data to add to the buffer
  * @param length Length of this new data
- * @returns 0 in case of success, a negative integer otherwise */
-int imquic_buffer_append(imquic_buffer *buf, uint8_t *data, uint64_t length);
+ * @returns The number of bytes actually added to the buffer in case of success, or 0 otherwise */
+uint64_t imquic_buffer_append(imquic_buffer *buf, uint8_t *data, uint64_t length);
 /*! \brief Helper method to peek at a buffer and check if there's data to read
  * @note If there's data in the buffer, but the current offset points at a gap
  * of data that hasn't been added yet, this function will not return anything,
