@@ -648,7 +648,7 @@ void imquic_connection_flush_stream(imquic_connection *conn, uint64_t stream_id)
 /* Helpers to close connections */
 void imquic_connection_close(imquic_connection *conn, uint64_t error_code, uint64_t frame_type, const char *reason) {
 	/* FIXME Send a CONNECTION CLOSE (01c) */
-	if(conn == NULL || conn->socket == NULL)
+	if(conn == NULL || conn->socket == NULL || !g_atomic_int_compare_and_exchange(&conn->closed, 0, 1))
 		return;
 #if HAVE_QLOG
 	if(conn->qlog != NULL && conn->qlog->quic) {

@@ -862,7 +862,7 @@ int imquic_parse_frames(imquic_connection *conn, imquic_packet *pkt) {
 #endif
 	/* Iterate on all frames */
 	pkt->ack_eliciting = FALSE;
-	while(blen > 0) {
+	while(blen > 0 && !g_atomic_int_get(&conn->closed)) {
 		imquic_frame_type type = bytes[offset];
 		if(type == IMQUIC_PADDING) {
 			padding++;
@@ -1357,7 +1357,7 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 						(!bidirectional ? "receiving" : NULL), "open");
 				}
 #endif
-				/* FIXME Flow control */
+				/* Flow control */
 				if(bidirectional) {
 					stream->local_max_data = conn->local_params.initial_max_stream_data_bidi_remote;
 					stream->remote_max_data = conn->remote_params.initial_max_stream_data_bidi_local;
@@ -1412,23 +1412,33 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 		goto done;
 	imquic_mutex_lock(&stream->mutex);
 	if(!imquic_stream_can_receive(stream, stream_offset, stream_length, TRUE)) {
-		imquic_mutex_lock(&stream->mutex);
+		imquic_mutex_unlock(&stream->mutex);
 		imquic_refcount_decrease(&stream->ref);
 		goto done;
 	}
-	int added = imquic_buffer_put(stream->in_data, &bytes[offset], stream_offset, stream_length);
+	uint64_t added = imquic_buffer_put(stream->in_data, &bytes[offset], stream_offset, stream_length);
 	if(added > 0) {
 		stream->in_size += added;
 		conn->flow_control.in_size += added;
 	}
-	/* FIXME Check if flow control was exceeded */
+	/* Check if flow control was exceeded */
 	if(stream->in_size > stream->local_max_data) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Flow control exceeded for stream %"SCNu64" (we should close the connection)\n",
-			imquic_get_connection_name(conn), stream_id);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Flow control exceeded for stream %"SCNu64" (%"SCNu64" > %"SCNu64")\n",
+			imquic_get_connection_name(conn), stream_id, stream->in_size, stream->local_max_data);
+		/* Flow control limits exceeded (stream) */
+		imquic_mutex_unlock(&stream->mutex);
+		imquic_refcount_decrease(&stream->ref);
+		imquic_connection_close(conn, IMQUIC_FLOW_CONTROL_ERROR, IMQUIC_STREAM, "Flow control limits exceeded (stream)");
+		goto done;
 	}
 	if(conn->flow_control.in_size > conn->flow_control.local_max_data) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Flow control exceeded for connection (we should close the connection)\n",
-			imquic_get_connection_name(conn));
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Flow control exceeded for connection (%"SCNu64" > %"SCNu64")\n",
+			imquic_get_connection_name(conn), conn->flow_control.in_size, conn->flow_control.local_max_data);
+		/* Flow control limits exceeded (connection) */
+		imquic_mutex_unlock(&stream->mutex);
+		imquic_refcount_decrease(&stream->ref);
+		imquic_connection_close(conn, IMQUIC_FLOW_CONTROL_ERROR, IMQUIC_STREAM, "Flow control limits exceeded (connection)");
+		goto done;
 	}
 	if(fbit)
 		imquic_stream_mark_complete(stream, TRUE);
@@ -1800,16 +1810,15 @@ size_t imquic_payload_parse_connection_close(imquic_connection *conn, imquic_pac
 	uint64_t rlen = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	offset += length;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Reason (len): %"SCNu64" (length %"SCNu8")\n", rlen, length);
+	char reason[256];
+	reason[0] = '\0';
 	if(rlen > 0) {
-		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Reason Phrase: %.*s\n", (int)rlen, &bytes[offset]);
+		g_snprintf(reason, sizeof(reason), "%.*s", (int)rlen, &bytes[offset]);
+		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Reason Phrase: %s\n", reason);
 		offset += rlen;
 	}
 #if HAVE_QLOG
 	if(conn != NULL && conn->qlog != NULL && conn->qlog->quic) {
-		char reason[256];
-		reason[0] = '\0';
-		if(rlen > 0)
-			g_snprintf(reason, sizeof(reason), "%.*s", (int)rlen, &bytes[offset]);
 		imquic_qlog_connection_closed(conn->qlog, FALSE,
 			(bytes[0] == IMQUIC_CONNECTION_CLOSE ? error : 0),
 			(bytes[0] == IMQUIC_CONNECTION_CLOSE_APP ? error : 0),
@@ -1827,6 +1836,8 @@ size_t imquic_payload_parse_connection_close(imquic_connection *conn, imquic_pac
 	}
 #endif
 	/* Notify the application that the connection is gone */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed by peer%s%s\n",
+		imquic_get_connection_name(conn), (rlen > 0 ? ": " : ""), (rlen > 0 ? reason : ""));
 	imquic_network_endpoint_remove_connection(conn->socket, conn, TRUE);
 	/* Done */
 	return offset;
