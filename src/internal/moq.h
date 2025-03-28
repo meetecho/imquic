@@ -307,6 +307,37 @@ typedef enum imquic_moq_fetch_type {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_fetch_type_str(imquic_moq_fetch_type type);
 
+/*! \brief MoQ buffer */
+typedef struct imquic_moq_buffer {
+	/*! \brief Buffer containing the data */
+	uint8_t *bytes;
+	/*! \brief Size of the data currently in the buffer */
+	uint64_t length;
+	/*! \brief Overall size of the buffer */
+	uint64_t size;
+} imquic_moq_buffer;
+/*! \brief Resize an existing buffer
+ * @note We can only increase the size of the buffer, not reduce it.
+ * @param buffer Buffer to resize
+ * @param new_size New size of the buffer
+ * @returns TRUE if successful, a negative integer otherwise */
+gboolean imquic_moq_buffer_resize(imquic_moq_buffer *buffer, uint64_t new_size);
+/*! \brief Append data at the end of the buffer
+ * @note This automatically resizes the buffer with imquic_moq_buffer_resize,
+ * if appending the new data would exceeds the buffer size.
+ * @param buffer Buffer to append the new data to
+ * @param bytes Data to append
+ * @param length Size of the data to append */
+void imquic_moq_buffer_append(imquic_moq_buffer *buffer, uint8_t *bytes, uint64_t length);
+/*! \brief Move the data in the buffer back of a specific number of bytes
+ * @note This automatically updates the buffer length accordingly.
+ * @param buffer Buffer to update
+ * @param length How many bytes back the buffer should be moved */
+void imquic_moq_buffer_shift(imquic_moq_buffer *buffer, uint64_t length);
+/*! \brief Destroy an existing buffer
+ * @param buffer Buffer to destroy */
+void imquic_moq_buffer_destroy(imquic_moq_buffer *buffer);
+
 /*! \brief MoQ context */
 typedef struct imquic_moq_context {
 	/*! \brief Associated QUIC connection */
@@ -339,6 +370,8 @@ typedef struct imquic_moq_context {
 	uint64_t expected_subscribe_id, next_subscribe_id;
 	/*! \brief Maximum Subscribe IDs we can send and the one we accept */
 	uint64_t max_subscribe_id, local_max_subscribe_id;
+	/*! \brief Buffer to process incoming messages */
+	imquic_moq_buffer *buffer;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether we have established a connection */
@@ -348,37 +381,6 @@ typedef struct imquic_moq_context {
 	/*! \brief Reference counter */
 	imquic_refcount ref;
 } imquic_moq_context;
-
-/*! \brief MoQ buffer */
-typedef struct imquic_moq_buffer {
-	/*! \brief Buffer containing the data */
-	uint8_t *bytes;
-	/*! \brief Size of the data currently in the buffer */
-	uint64_t length;
-	/*! \brief Overall size of the buffer */
-	uint64_t size;
-} imquic_moq_buffer;
-/*! \brief Resize an existing buffer
- * @note We can only increase the size of the buffer, not reduce it.
- * @param buffer Buffer to resize
- * @param new_size New size of the buffer
- * @returns TRUE if successful, a negative integer otherwise */
-gboolean imquic_moq_buffer_resize(imquic_moq_buffer *buffer, uint64_t new_size);
-/*! \brief Append data at the end of the buffer
- * @note This automatically resizes the buffer with imquic_moq_buffer_resize,
- * if appending the new data would exceeds the buffer size.
- * @param buffer Buffer to append the new data to
- * @param bytes Data to append
- * @param length Size of the data to append */
-void imquic_moq_buffer_append(imquic_moq_buffer *buffer, uint8_t *bytes, uint64_t length);
-/*! \brief Move the data in the buffer back of a specific number of bytes
- * @note This automatically updates the buffer length accordingly.
- * @param buffer Buffer to update
- * @param length How many bytes back the buffer should be moved */
-void imquic_moq_buffer_shift(imquic_moq_buffer *buffer, uint64_t length);
-/*! \brief Destroy an existing buffer
- * @param buffer Buffer to destroy */
-void imquic_moq_buffer_destroy(imquic_moq_buffer *buffer);
 
 /*! \brief MoQ stream */
 typedef struct imquic_moq_stream {

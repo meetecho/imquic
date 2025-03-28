@@ -61,6 +61,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		(GDestroyNotify)g_free, NULL);
 	moq->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_subscription_destroy);
+	moq->buffer = g_malloc0(sizeof(imquic_moq_buffer));
 	imquic_mutex_init(&moq->mutex);
 	imquic_refcount_init(&moq->ref, imquic_moq_context_free);
 	imquic_mutex_lock(&moq_mutex);
@@ -200,6 +201,7 @@ static void imquic_moq_context_free(const imquic_refcount *moq_ref) {
 		g_hash_table_unref(moq->subscriptions);
 	if(moq->subscriptions_by_id)
 		g_hash_table_unref(moq->subscriptions_by_id);
+	imquic_moq_buffer_destroy(moq->buffer);
 	g_free(moq);
 }
 
@@ -707,6 +709,11 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 	}
 	/* Check if this is a media stream */
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams, &stream_id);
+	if(stream_id == moq->control_stream_id) {
+		imquic_moq_buffer_append(moq->buffer, bytes, blen);
+		bytes = moq->buffer->bytes;
+		blen = moq->buffer->length;
+	}
 	/* Iterate on all frames */
 	while(moq_stream == NULL && blen-offset > 0) {
 		/* If we're here, we're either on the control stream, or on a media stream waiting to know what it will be like */
@@ -745,146 +752,108 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				IMQUIC_MOQ_CHECK_ERR(tlen == 0, -1, "Broken MoQ Message");
 				offset += tlen;
 				if(plen > blen-offset) {
-					IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Not enough data available to parse this message (%zu > %zu)\n",
+					/* Try again later */
+					IMQUIC_LOG(IMQUIC_MOQ_LOG_VERB, "[%s][MoQ] Not enough bytes available to parse this message (%zu > %zu), waiting for more data\n",
 						imquic_get_connection_name(moq->conn), plen, blen-offset);
-					return -1;
+					return 0;
 				}
 			}
 			if(type == IMQUIC_MOQ_CLIENT_SETUP) {
 				/* Parse this CLIENT_SETUP message */
 				parsed = imquic_moq_parse_client_setup(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SERVER_SETUP) {
 				/* Parse this SERVER_SETUP message */
 				parsed = imquic_moq_parse_server_setup(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_MAX_SUBSCRIBE_ID) {
 				/* Parse this MAX_SUBSCRIBE_ID message */
 				parsed = imquic_moq_parse_max_subscribe_id(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBES_BLOCKED) {
 				/* Parse this SUBSCRIBES_BLOCKED message */
 				parsed = imquic_moq_parse_subscribes_blocked(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_ANNOUNCE) {
 				/* Parse this ANNOUNCE message */
 				parsed = imquic_moq_parse_announce(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_ANNOUNCE_OK) {
 				/* Parse this ANNOUNCE_OK message */
 				parsed = imquic_moq_parse_announce_ok(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_ANNOUNCE_ERROR) {
 				/* Parse this ANNOUNCE_ERROR message */
 				parsed = imquic_moq_parse_announce_error(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_UNANNOUNCE) {
 				/* Parse this UNANNOUNCE message */
 				parsed = imquic_moq_parse_unannounce(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_ANNOUNCE_CANCEL) {
 				/* Parse this ANNOUNCE_CANCEL message */
 				parsed = imquic_moq_parse_announce_cancel(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE) {
 				/* Parse this SUBSCRIBE message */
 				parsed = imquic_moq_parse_subscribe(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_UPDATE) {
 				/* Parse this SUBSCRIBE_UPDATE message */
 				parsed = imquic_moq_parse_subscribe_update(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_OK) {
 				/* Parse this SUBSCRIBE_OK message */
 				parsed = imquic_moq_parse_subscribe_ok(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_ERROR) {
 				/* Parse this SUBSCRIBE_ERROR message */
 				parsed = imquic_moq_parse_subscribe_error(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_UNSUBSCRIBE) {
 				/* Parse this UNSUBSCRIBE message */
 				parsed = imquic_moq_parse_unsubscribe(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_DONE) {
 				/* Parse this SUBSCRIBE_DONE message */
 				parsed = imquic_moq_parse_subscribe_done(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES) {
 				/* Parse this SUBSCRIBE_ANNOUNCES message */
 				parsed = imquic_moq_parse_subscribe_announces(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES_OK) {
 				/* Parse this SUBSCRIBE_ANNOUNCES_OK message */
 				parsed = imquic_moq_parse_subscribe_announces_ok(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES_ERROR) {
 				/* Parse this SUBSCRIBE_ANNOUNCES_ERROR message */
 				parsed = imquic_moq_parse_subscribe_announces_error(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_UNSUBSCRIBE_ANNOUNCES) {
 				/* Parse this UNSUBSCRIBE_ANNOUNCES message */
 				parsed = imquic_moq_parse_unsubscribe_announces(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_FETCH) {
 				/* Parse this FETCH message */
 				parsed = imquic_moq_parse_fetch(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_FETCH_CANCEL) {
 				/* Parse this FETCH_CANCEL message */
 				parsed = imquic_moq_parse_fetch_cancel(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_FETCH_OK) {
 				/* Parse this FETCH_OK message */
 				parsed = imquic_moq_parse_fetch_ok(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_FETCH_ERROR) {
 				/* Parse this FETCH_ERROR message */
 				parsed = imquic_moq_parse_fetch_error(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_TRACK_STATUS_REQUEST) {
 				/* Parse this TRACK_STATUS_REQUEST message */
 				parsed = imquic_moq_parse_track_status_request(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_TRACK_STATUS) {
 				/* Parse this TRACK_STATUS message */
 				parsed = imquic_moq_parse_track_status_request(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else if(type == IMQUIC_MOQ_GOAWAY) {
 				/* Parse this GOAWAY message */
 				parsed = imquic_moq_parse_goaway(moq, &bytes[offset], plen, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, -1, "Broken MoQ Message");
-				offset += parsed;
 			} else {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported message '%02x'\n",
 					imquic_get_connection_name(moq->conn), type);
+				imquic_moq_buffer_shift(moq->buffer, plen);
 				return -1;
 			}
+			if(error) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Broken MoQ message %s\n",
+					imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(type));
+				imquic_moq_buffer_shift(moq->buffer, plen);
+				return -1;
+			}
+			/* Move to the next message */
+			offset += parsed;
+			imquic_moq_buffer_shift(moq->buffer, offset);
+			bytes = moq->buffer->bytes;
+			blen = moq->buffer->length;
+			offset = 0;
 		} else {
 			/* Data message */
 			if((imquic_moq_data_message_type)type == IMQUIC_MOQ_OBJECT_STREAM) {
