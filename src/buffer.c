@@ -28,15 +28,7 @@ void imquic_buffer_destroy(imquic_buffer *buf) {
 	g_free(buf);
 }
 
-void imquic_buffer_chunk_free(imquic_buffer_chunk *chunk) {
-	if(chunk != NULL) {
-		g_free(chunk->data);
-		g_free(chunk);
-	}
-}
-
-/* Helper to create a chunk out of existing data */
-static imquic_buffer_chunk *imquic_buffer_chunk_create(uint8_t *data, uint64_t offset, uint64_t length) {
+imquic_buffer_chunk *imquic_buffer_chunk_create(uint8_t *data, uint64_t offset, uint64_t length) {
 	if(length == 0 || (length > 0 && data == NULL))
 		return NULL;
 	imquic_buffer_chunk *chunk = g_malloc(sizeof(imquic_buffer_chunk));
@@ -46,6 +38,14 @@ static imquic_buffer_chunk *imquic_buffer_chunk_create(uint8_t *data, uint64_t o
 	chunk->length = length;
 	return chunk;
 }
+
+void imquic_buffer_chunk_free(imquic_buffer_chunk *chunk) {
+	if(chunk != NULL) {
+		g_free(chunk->data);
+		g_free(chunk);
+	}
+}
+
 /* Helpers to add or get from the buffer */
 uint64_t imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64_t length) {
 	if(buf == NULL || length == 0 || (length > 0 && data == NULL))

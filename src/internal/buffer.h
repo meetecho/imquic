@@ -27,6 +27,12 @@ typedef struct imquic_buffer_chunk {
 	/*! \brief Size of this this buffer chunk */
 	uint64_t length;
 } imquic_buffer_chunk;
+/*! \brief Helper to create a chunk out of existing data
+ * @param data The data to put in the chunk
+ * @param offset The offset of the data in the parent buffer
+ * @param length The size of the data
+ * @returns A pointer to a new imquic_buffer_chunk instance, if successful, or NULL otherwise */
+imquic_buffer_chunk *imquic_buffer_chunk_create(uint8_t *data, uint64_t offset, uint64_t length);
 /*! \brief Helper to quickly free a buffer chunk
  * @param chunk The buffer chunk to free */
 void imquic_buffer_chunk_free(imquic_buffer_chunk *chunk);

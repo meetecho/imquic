@@ -159,6 +159,8 @@ typedef struct imquic_http3_connection {
 	gboolean webtransport;
 	/*! \brief Subprotocol to negotiate on WebTransport, if any (currently unused) */
 	char *subprotocol;
+	/*! \brief Buffers for incoming data, indexed by stream ID */
+	GHashTable *buffers;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
 	volatile gint destroyed;
 	/*! \brief Reference counter */
@@ -206,10 +208,11 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 size_t imquic_http3_parse_request_data(imquic_http3_connection *h3c, imquic_stream *stream, uint8_t *bytes, size_t blen);
 /*! brief Helper method to parse an incoming \c SETTINGS frame
  * @param h3c The imquic_http3_connection instance to parse the \c SETTINGS for
+ * @param stream The imquic_stream instance in the connection the data has been received on
  * @param bytes Data to process
  * @param blen Size of the data to process
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_http3_parse_settings(imquic_http3_connection *h3c, uint8_t *bytes, size_t blen);
+int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *stream, uint8_t *bytes, size_t blen);
 ///@}
 
 /** @name Creating and sending HTTP/3 messages

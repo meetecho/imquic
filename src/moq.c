@@ -745,8 +745,9 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				IMQUIC_MOQ_CHECK_ERR(tlen == 0, -1, "Broken MoQ Message");
 				offset += tlen;
 				if(plen > blen-offset) {
-					IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough data available to parse this message (%zu > %zu)\n",
-						plen, blen-offset);
+					IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Not enough data available to parse this message (%zu > %zu)\n",
+						imquic_get_connection_name(moq->conn), plen, blen-offset);
+					return -1;
 				}
 			}
 			if(type == IMQUIC_MOQ_CLIENT_SETUP) {

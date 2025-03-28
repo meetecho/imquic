@@ -3137,10 +3137,22 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 			}
 			continue;
 		}
+		/* FIXME Check if we reached any flow control limits */
+		if(stream->out_size == stream->remote_max_data || conn->flow_control.out_size == conn->flow_control.remote_max_data) {
+			/* We did, mark the stream as blocked for now */
+			if(imquic_listmap_find(conn->blocked_streams, &stream->stream_id) == NULL)
+				imquic_listmap_append(conn->blocked_streams, &stream->stream_id, imquic_uint64_dup(stream->stream_id));
+			imquic_mutex_unlock(&stream->mutex);
+			imquic_refcount_decrease(&stream->ref);
+			continue;
+		}
 		/* Prepare one or more QUIC packets */
 		if(pkt == NULL)
 			pkt = imquic_packet_create();
 		while((chunk = imquic_buffer_peek(stream->out_data)) != NULL) {
+			/* FIXME Check if we reached any flow control limits */
+			if(stream->out_size == stream->remote_max_data || conn->flow_control.out_size == conn->flow_control.remote_max_data)
+				break;
 			if(pkt == NULL)
 				pkt = imquic_packet_create();
 			/* FIXME Check if sending new data could overfloe the flow control limits */
@@ -3175,7 +3187,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 #endif
 				pkt->frames = g_list_prepend(pkt->frames, frame);
 				pkt->frames_size += frame->size;
-			} else {
+			} else if(max_len - pkt->frames_size > 0) {
 				/* We can only add a portion of it */
 				size_t part_len = max_len - pkt->frames_size;
 				stream->out_size += part_len;
@@ -3195,6 +3207,38 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				chunk->offset += part_len;
 				chunk->length -= part_len;
 				memmove(chunk->data, chunk->data + part_len, chunk->length);
+			}
+			/* FIXME Check if we reached any flow control limits, and notify the peer in case */
+			if(stream->out_size == stream->remote_max_data || conn->flow_control.out_size == conn->flow_control.remote_max_data) {
+				/* We did, send one or more blocked messages and mark the stream as blocked */
+				if(stream->out_size == stream->remote_max_data) {
+					/* Add a STREAM_DATA_BLOCKED frame */
+					size = imquic_payload_add_stream_data_blocked(conn, pkt, buffer, buf_len,
+						stream->stream_id, stream->remote_max_data);
+					/* Create a frame and append it to the packet */
+					frame = imquic_frame_create(IMQUIC_STREAM_DATA_BLOCKED, buffer, size);
+#ifdef HAVE_QLOG
+					frame->qlog_frame = pkt->qlog_frame;
+					pkt->qlog_frame = NULL;
+#endif
+					pkt->frames = g_list_prepend(pkt->frames, frame);
+					pkt->frames_size += frame->size;
+				}
+				if(conn->flow_control.out_size == conn->flow_control.remote_max_data) {
+					/* Add a DATA_BLOCKED frame */
+					size = imquic_payload_add_data_blocked(conn, pkt, buffer, buf_len,
+						conn->flow_control.remote_max_data);
+					/* Create a frame and append it to the packet */
+					frame = imquic_frame_create(IMQUIC_DATA_BLOCKED, buffer, size);
+#ifdef HAVE_QLOG
+					frame->qlog_frame = pkt->qlog_frame;
+					pkt->qlog_frame = NULL;
+#endif
+					pkt->frames = g_list_prepend(pkt->frames, frame);
+					pkt->frames_size += frame->size;
+				}
+				if(imquic_listmap_find(conn->blocked_streams, &stream->stream_id) == NULL)
+					imquic_listmap_append(conn->blocked_streams, &stream->stream_id, imquic_uint64_dup(stream->stream_id));
 			}
 			if(pkt->frames != NULL && (pkt->frames_size >= buf_len || (imquic_buffer_peek(stream->out_data) == NULL && g_queue_get_length(conn->outgoing_data) == 0))) {
 				/* This packet is ready, craft a short header packet */
@@ -3216,17 +3260,6 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				}
 				/* Prepare a new packet next */
 				pkt = NULL;
-			}
-			/* FIXME Check if we reached any flow control limits, and notify the peer in case */
-			if(stream->out_size == stream->remote_max_data || conn->flow_control.out_size == conn->flow_control.remote_max_data) {
-				/* We did, send one or more blocked messages and mark the stream as blocked */
-				if(stream->out_size == stream->remote_max_data)
-					imquic_send_blocked(conn, dest, IMQUIC_STREAM_DATA_BLOCKED, stream->stream_id);
-				if(conn->flow_control.out_size == conn->flow_control.remote_max_data)
-					imquic_send_blocked(conn, dest, IMQUIC_DATA_BLOCKED, 0);
-				if(imquic_listmap_find(conn->blocked_streams, &stream->stream_id) == NULL)
-					imquic_listmap_append(conn->blocked_streams, &stream->stream_id, imquic_uint64_dup(stream->stream_id));
-				break;
 			}
 		}
 		if(imquic_stream_is_done(stream)) {
