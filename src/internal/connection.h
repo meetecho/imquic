@@ -152,6 +152,11 @@ struct imquic_connection {
 	 * along with a generic refactoring of the event loop (e.g., for
 	 * congestion control, and/or the need to perform pacing/probing) */
 	GQueue *outgoing_data, *outgoing_datagram;
+	/*! \brief Listmap of blocked streams, in case we're waiting for credits
+	 * \todo The queueing of data needs to be improved considerably,
+	 * along with a generic refactoring of the event loop (e.g., for
+	 * congestion control, and/or the need to perform pacing/probing) */
+	imquic_listmap *blocked_streams;
 	/*! \brief Trigger to wake the loop for this connection as part
 	 * of the imquic_connection_source management */
 	volatile gint wakeup;

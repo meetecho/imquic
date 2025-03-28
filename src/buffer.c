@@ -79,10 +79,7 @@ uint64_t imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, u
 					uint64_t diff = prev->offset + prev->length - offset;
 					offset += diff;
 					data += diff;
-					if(length >= diff)
-						length -= diff;
-					else
-						length = 0;
+					length = (length >= diff ? (length - diff) : 0);
 				}
 				inserted = TRUE;
 				if(length > 0)
@@ -100,10 +97,7 @@ uint64_t imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, u
 				uint64_t diff = prev->offset + prev->length - offset;
 				offset += diff;
 				data += diff;
-				if(length >= diff)
-					length -= diff;
-				else
-					length = 0;
+				length = (length >= diff ? (length - diff) : 0);
 			}
 			if(length > 0)
 				buf->chunks = g_list_insert_before(buf->chunks, temp, imquic_buffer_chunk_create(data, offset, length));
