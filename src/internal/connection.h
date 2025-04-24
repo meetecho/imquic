@@ -27,6 +27,7 @@
 #include "utils.h"
 #include "listmap.h"
 #include "refcount.h"
+#include "../imquic/cctrl.h"
 
 /*! \brief QUIC Connection ID */
 typedef struct imquic_connection_id {
@@ -215,6 +216,8 @@ struct imquic_connection {
 	imquic_source *idle_timer;
 	/*! \brief PTO count */
 	uint8_t pto_count;
+	/*! |brief Congestion control */
+	imquic_congestion_control *cc_algo;
 	/*! \brief Loop source */
 	imquic_source *loop_source;
 	/*! \brief Incoming and outgoing datagram IDs */

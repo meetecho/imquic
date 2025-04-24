@@ -123,6 +123,7 @@ static void imquic_network_endpoint_free(const imquic_refcount *ne_ref) {
 	g_free(ne->alpn);
 	g_free(ne->h3_path);
 	g_free(ne->subprotocol);
+	g_free(ne->cc_algo);
 	g_free(ne->qlog_path);
 	g_hash_table_unref(ne->connections);
 	imquic_tls_destroy(ne->tls);
@@ -424,6 +425,16 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 			ne->h3_path = g_strdup(config->h3_path);
 		ne->subprotocol = config->subprotocol ? g_strdup(config->subprotocol) : NULL;
 	}
+	if(config->cc_algo == NULL)
+		config->cc_algo = IMQUIC_CONGESTION_CONTROL_NEWRENO;
+	if(!imquic_quic_congestion_control_exists(config->cc_algo)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported congestion control algorithm '%s', falling back to '%s'\n",
+			config->name, config->cc_algo, IMQUIC_CONGESTION_CONTROL_NEWRENO);
+		config->cc_algo = IMQUIC_CONGESTION_CONTROL_NEWRENO;
+	}
+	ne->cc_algo = g_strdup(config->cc_algo);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Using congestion control algorithm '%s'\n",
+		config->name, ne->cc_algo);
 	if(config->qlog_path != NULL) {
 #ifndef HAVE_QLOG
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG support not compiled, ignoring\n", config->name);

@@ -79,6 +79,8 @@ typedef struct imquic_network_endpoint {
 	char *h3_path;
 	/*! \brief In case WebTransport is used, subprotocol to negotiate (currently unused) */
 	char *subprotocol;
+	/*! \brief Congestion control algorithm to use */
+	char *cc_algo;
 	/*! \brief List of connections handled by this socket (may be more than one for servers) */
 	GHashTable *connections;
 	/*! \brief Number of connections handled by this socket (may be more than one for servers) */

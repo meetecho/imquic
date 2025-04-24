@@ -29,6 +29,11 @@ libimquic_la_SOURCES = \
 	internal/loop.h \
 	network.c \
 	internal/network.h \
+	imquic/cctrl.h \
+	newreno.c \
+	internal/newreno.h \
+	ccnone.c \
+	internal/ccnone.h \
 	qlog.c \
 	internal/qlog.h \
 	utils.c \

@@ -105,6 +105,8 @@ static void imquic_connection_free(const imquic_refcount *conn_ref) {
 	g_queue_free_full(conn->outgoing_data, (GDestroyNotify)g_free);
 	g_queue_free_full(conn->outgoing_datagram, (GDestroyNotify)g_free);
 	imquic_listmap_destroy(conn->blocked_streams);
+	if(conn->cc_algo != NULL && conn->cc_algo->destroy != NULL)
+		conn->cc_algo->destroy(conn->cc_algo);
 	if(conn->ld_timer != NULL)
 		g_source_destroy((GSource *)conn->ld_timer);
 	if(conn->idle_timer != NULL)
@@ -138,6 +140,7 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	conn->just_started = TRUE;
 	conn->is_server = socket->is_server;
 	conn->socket = socket;
+	conn->cc_algo = imquic_quic_congestion_control_create(socket->cc_algo, 1472);
 	imquic_refcount_increase(&socket->ref);
 	conn->level = ssl_encryption_initial;
 	enum ssl_encryption_level_t level;

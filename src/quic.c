@@ -13,6 +13,8 @@
 #include <netdb.h>
 
 #include "internal/quic.h"
+#include "internal/newreno.h"
+#include "internal/ccnone.h"
 #include "internal/error.h"
 #include "internal/utils.h"
 #include "imquic/debug.h"
@@ -32,14 +34,64 @@ void imquic_quic_connection_remove(imquic_connection_id *cid) {
 	g_hash_table_remove(connections, cid);
 }
 
+/* Congestion control algorithms */
+static GHashTable *cc_algos = NULL;
+static imquic_mutex cc_mutex = IMQUIC_MUTEX_INITIALIZER;
+
+gboolean imquic_quic_congestion_control_register(const char *name,
+		imquic_congestion_control *(* create_instance)(size_t max_datagram_size)) {
+	if(name == NULL || create_instance == NULL)
+		return FALSE;
+	imquic_mutex_lock(&cc_mutex);
+	gboolean done = g_hash_table_insert(cc_algos, g_strdup(name), create_instance);
+	imquic_mutex_unlock(&cc_mutex);
+	if(done) {
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "Registered congestion algorithm '%s'\n", name);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Registration of congestion algorithm '%s' failed\n", name);
+	}
+	return done;
+}
+
+gboolean imquic_quic_congestion_control_exists(const char *name) {
+	if(name == NULL)
+		return FALSE;
+	imquic_mutex_lock(&cc_mutex);
+	void *func = g_hash_table_lookup(cc_algos, name);
+	imquic_mutex_unlock(&cc_mutex);
+	return func != NULL;
+};
+
+imquic_congestion_control *imquic_quic_congestion_control_create(const char *name, size_t max_datagram_size) {
+	if(name == NULL || max_datagram_size == 0)
+		return NULL;
+	imquic_congestion_control *(* create_instance)(size_t max_datagram_size) = NULL;
+	imquic_mutex_lock(&cc_mutex);
+	create_instance = g_hash_table_lookup(cc_algos, name);
+	imquic_mutex_unlock(&cc_mutex);
+	if(create_instance == NULL)
+		return NULL;
+	return create_instance(max_datagram_size);
+};
+
 /* Initialize the stack */
 void imquic_quic_init(void) {
 	connections = g_hash_table_new_full(imquic_connection_id_hash, imquic_connection_id_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_connection_unref);
+	/* Initialize the integrated congestion control algorithms */
+	cc_algos = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+	imquic_quic_congestion_control_register(IMQUIC_CONGESTION_CONTROL_NONE,
+		imquic_congestion_control_ccnone_create);
+	imquic_quic_congestion_control_register(IMQUIC_CONGESTION_CONTROL_NEWRENO,
+		imquic_congestion_control_newreno_create);
 }
 
 void imquic_quic_deinit(void) {
-	/* TODO */
+	imquic_mutex_lock(&cc_mutex);
+	if(cc_algos != NULL)
+		g_hash_table_unref(cc_algos);
+	cc_algos = NULL;
+	imquic_mutex_unlock(&cc_mutex);
 }
 
 /* QUIC stack */

@@ -67,6 +67,8 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
+			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
@@ -163,6 +165,8 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
+			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {

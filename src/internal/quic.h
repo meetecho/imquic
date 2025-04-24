@@ -26,6 +26,25 @@ void imquic_quic_init(void);
 /*! \brief Uninitialize the QUIC stack */
 void imquic_quic_deinit(void);
 
+/*! \brief Register a new QUIC Congestion Control algorithm
+ * @param name Unique name to identify the algorithm in the library
+ * @param create_instance Pointer to function to use to create a new instance of the algorithm
+ * @returns TRUE if the algorithm was registered, FALSE otherwise */
+gboolean imquic_quic_congestion_control_register(const char *name,
+	imquic_congestion_control *(* create_instance)(size_t max_datagram_size));
+
+/*! \brief Check if a specific QUIC Congestion Control algorithm is known to the library
+ * @param name Unique name to identify the algorithm in the library
+ * @returns TRUE if the algorithm is supported, FALSE otherwise */
+gboolean imquic_quic_congestion_control_exists(const char *name);
+
+/*! \brief Create an instance of a congestion control alogrithm by its name
+ * @param name Registered name of the congestion control alogrithm
+ * @param max_datagram_size Maximum datagram size
+ * @returns A pointer to a new \ref imquic_congestion_control instance,
+ * if successful, or NULL otherwise */
+imquic_congestion_control *imquic_quic_congestion_control_create(const char *name, size_t max_datagram_size);
+
 /*! \brief Track a Connection ID and map it to a connection
  * @note This will add a reference to the connections
  * @param conn The imquic_connection instance the ID is associated with

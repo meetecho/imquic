@@ -146,6 +146,7 @@
 #define IMQUIC_IMQUIC_H
 
 #include "debug.h"
+#include "cctrl.h"
 
 /* Opaque structures */
 typedef struct imquic_connection imquic_connection;
@@ -262,6 +263,8 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_HTTP3_PATH,
 	/*! \brief Subprotocol to negotiate on the main ALPN, if any (string) */
 	IMQUIC_CONFIG_SUBPROTOCOL,
+	/*! \brief Custom congestion control algorithm to use (string, defaults to "NewReno") */
+	IMQUIC_CONFIG_CONGESTION_CONTROL,
 	/*! \brief Save a QLOG file to this path
 	 * \note For servers, this will need to be a folder, and not a specific
 	 * filename, as servers will handle multiple connections. This property

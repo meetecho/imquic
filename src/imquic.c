@@ -171,12 +171,20 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_WEBTRANSPORT";
 		case IMQUIC_CONFIG_SUBPROTOCOL:
 			return "IMQUIC_CONFIG_SUBPROTOCOL";
+		case IMQUIC_CONFIG_CONGESTION_CONTROL:
+			return "IMQUIC_CONFIG_CONGESTION_CONTROL";
 		case IMQUIC_CONFIG_DONE:
 			return "IMQUIC_CONFIG_DONE";
 		default:
 			break;
 	}
 	return NULL;
+}
+
+/* Custom congestion control algorithms */
+gboolean imquic_congestion_control_register(const char *name,
+		imquic_congestion_control *(* create_instance)(size_t max_datagram_size)) {
+	return imquic_quic_congestion_control_register(name, create_instance);
 }
 
 /* Create a server */
@@ -234,6 +242,8 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
 			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
+			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
@@ -314,6 +324,8 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.h3_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
 			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
+			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {

@@ -60,6 +60,8 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
+			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_RAW_QUIC) {
 			config.raw_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_WEBTRANSPORT) {
@@ -154,6 +156,8 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
+			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_RAW_QUIC) {
 			config.raw_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_WEBTRANSPORT) {
