@@ -225,6 +225,8 @@ struct imquic_connection {
 #endif
 	/*! \brief Mutex */
 	imquic_mutex mutex;
+	/*! \brief Whether this connection should be closed */
+	gboolean should_close;
 	/*! \brief Whether this connection has been closed */
 	volatile gint closed;
 	/*! \brief Whether this instance has been destroyed (reference counting) */

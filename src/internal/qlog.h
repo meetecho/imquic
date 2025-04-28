@@ -125,17 +125,24 @@ json_t *imquic_qlog_event_add_data(json_t *event);
  * @param bytes The content of the raw data, if needed
  * @param length The size of the raw data */
 void imquic_qlog_event_add_raw(json_t *parent, const char *name, uint8_t *bytes, size_t length);
+/*! \brief Helper to add/append a PathEndpointInfo object to the specified object or array
+ * @note The method automatically fills in either the v4 or v6 info by looking at the address
+ * @param parent The object or array to add/append the info to
+ * @param name Name to give to the object, if the parent is an object (ignored for arrays)
+ * @param ip The IP address
+ * @param port The port */
+void imquic_qlog_event_add_path_endpoint_info(json_t *parent, const char *name, const char *ip, uint16_t port);
 /*! \brief Helper to add a complete event object to an existing QLOG instance
  * @param qlog The imquic_qlog instance to add the event to
  * @param event The event to add to the QLOG instance */
 void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event);
 /*! \brief Add a \c connection_started event
  * @param qlog The imquic_qlog instance to add the event to
- * @param src_ip The address the connection is coming from
- * @param src_port The port the connection is coming from
- * @param dst_ip The address the connection is going to
- * @param dst_port The port the connection is going to */
-void imquic_qlog_connection_started(imquic_qlog *qlog, const char *src_ip, uint16_t src_port, const char *dst_ip, uint16_t dst_port);
+ * @param local_ip The local address the connection
+ * @param src_port The local port the connection
+ * @param dst_ip The remote address the connection
+ * @param dst_port The remote port the connection */
+void imquic_qlog_connection_started(imquic_qlog *qlog, const char *local_ip, uint16_t local_port, const char *remote_ip, uint16_t remote_port);
 /*! \brief Add a \c connection_closed event
  * @param qlog The imquic_qlog instance to add the event to
  * @param local Whether this is a local or remote event

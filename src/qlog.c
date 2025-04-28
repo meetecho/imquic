@@ -83,11 +83,11 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 	json_t *protocols = json_array();
 	json_t *schemas = json_array();
 	if(quic) {
-		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:quic-09"));
+		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:quic-10"));
 		json_array_append_new(protocols, json_string("QUIC"));
 	}
 	if(http3) {
-		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:http3-09"));
+		json_array_append_new(schemas, json_string("urn:ietf:params:qlog:events:http3-10"));
 		json_array_append_new(protocols, json_string("HTTP/3"));
 	}
 	if(roq) {
@@ -235,6 +235,19 @@ void imquic_qlog_event_add_raw(json_t *parent, const char *name, uint8_t *bytes,
 		json_array_append_new(parent, raw);
 }
 
+void imquic_qlog_event_add_path_endpoint_info(json_t *parent, const char *name, const char *ip, uint16_t port) {
+	if(parent == NULL || ip == NULL || (!json_is_object(parent) && !json_is_array(parent)) || (json_is_object(parent) && name == NULL))
+		return;
+	gboolean ipv6 = (strstr(ip, ":") != NULL);
+	json_t *info = json_object();
+	json_object_set_new(info, (ipv6 ? "ip_v6" : "ip_v4"), json_string(ip));
+	json_object_set_new(info, (ipv6 ? "port_v6" : "port_v4"), json_integer(port));
+	if(json_is_object(parent))
+		json_object_set_new(parent, name, info);
+	else
+		json_array_append_new(parent, info);
+}
+
 static json_t *imquic_qlog_event_add_datagram_ids(json_t *data, uint32_t id) {
 	if(data == NULL)
 		return NULL;
@@ -290,15 +303,13 @@ void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event) {
 }
 
 /* Events tracing */
-void imquic_qlog_connection_started(imquic_qlog *qlog, const char *src_ip, uint16_t src_port, const char *dst_ip, uint16_t dst_port) {
+void imquic_qlog_connection_started(imquic_qlog *qlog, const char *local_ip, uint16_t local_port, const char *remote_ip, uint16_t remote_port) {
 	if(qlog == NULL)
 		return;
 	json_t *event = imquic_qlog_event_prepare("quic:connection_started");
 	json_t *data = imquic_qlog_event_add_data(event);
-	json_object_set_new(data, "src_ip", json_string(src_ip));
-	json_object_set_new(data, "src_port", json_integer(src_port));
-	json_object_set_new(data, "dst_ip", json_string(dst_ip));
-	json_object_set_new(data, "dst_port", json_integer(dst_port));
+	imquic_qlog_event_add_path_endpoint_info(data, "local", local_ip, local_port);
+	imquic_qlog_event_add_path_endpoint_info(data, "remote", remote_ip, remote_port);
 	imquic_qlog_append_event(qlog, event);
 }
 
