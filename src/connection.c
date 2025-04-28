@@ -407,22 +407,31 @@ gboolean imquic_connection_loss_detection_timeout(gpointer user_data) {
 		/* Time threshold loss detection */
 		GList *lost = imquic_connection_detect_lost(conn);
 		if(lost != NULL) {
-			/* TODO This is also used for congestion control, see OnPacketsLost
-			 * https://quicwg.org/base-drafts/rfc9002.html#appendix-B.8 */
 			IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Lost packets (%d)\n",
 				imquic_get_connection_name(conn), g_list_length(lost));
 			GList *temp = lost;
 			while(temp != NULL) {
 				imquic_sent_packet *sent_pkt = (imquic_sent_packet *)temp->data;
-				if(sent_pkt != NULL) {
+				if(sent_pkt != NULL && sent_pkt->ack_eliciting) {
+					/* Notify congestion control algorithm about lost packets */
+					if(sent_pkt->ack_eliciting && conn->cc_algo != NULL && conn->cc_algo->packet_lost != NULL) {
+						imquic_congestion_control_packet cp = { 0 };
+						cp.sent_time = sent_pkt->sent_time;
+						cp.pkt_size = sent_pkt->packet_size;
+						cp.first = (temp == lost);
+						cp.last = (temp->next == NULL);
+						cp.first_rtt_sample = conn->rtt.first_sample;
+						conn->cc_algo->packet_lost(conn->cc_algo, &cp);
+					}
 					/* FIXME Retransmit this packet if needed, or get rid of it */
 					IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- %"SCNu64" (%s)\n",
 						sent_pkt->packet_number, imquic_encryption_level_str(sent_pkt->level));
 					imquic_retransmit_packet(conn, sent_pkt);
+				} else {
+					imquic_listmap_remove(conn->sent_pkts[level], &sent_pkt->packet_number);
 				}
 				temp = temp->next;
 			}
-
 			g_list_free(lost);
 		}
 		imquic_connection_update_loss_timer(conn);

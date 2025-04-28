@@ -28,6 +28,8 @@ static void imquic_congestion_control_newreno_packet_sent(imquic_congestion_cont
 		return;
 	/* https://datatracker.ietf.org/doc/html/rfc9002#section-b.4 */
 	nr->bytes_in_flight += pkt->pkt_size;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[NewReno][packet_sent] bytes_in_flight=%"SCNu64" (cw=%"SCNu64")\n",
+		nr->bytes_in_flight, nr->congestion_window);
 }
 
 static void imquic_congestion_control_newreno_packet_acked(imquic_congestion_control *cc, imquic_congestion_control_packet *pkt) {
@@ -39,6 +41,7 @@ static void imquic_congestion_control_newreno_packet_acked(imquic_congestion_con
 		nr->bytes_in_flight -= pkt->pkt_size;
 	else
 		nr->bytes_in_flight -= 0;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[NewReno][packet_acked] bytes_in_flight=%"SCNu64"\n", nr->bytes_in_flight);
 	/* TODO IsAppOrFlowControlLimited() */
 	if(pkt->sent_time <= nr->congestion_recovery_start_time) {
 		/* Don't increase congestion window in recovery period */
@@ -53,6 +56,7 @@ static void imquic_congestion_control_newreno_packet_acked(imquic_congestion_con
 		increment = increment / (float)(nr->congestion_window);
 		nr->congestion_window += (uint64_t)increment;
 	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[NewReno][packet_acked] congestion_window=%"SCNu64"\n", nr->congestion_window);
 }
 
 static void imquic_congestion_control_newreno_congestion_event(imquic_congestion_control_newreno *nr) {
@@ -70,6 +74,7 @@ static void imquic_congestion_control_newreno_congestion_event(imquic_congestion
 	nr->slow_start_threshold = sst;
 	if(nr->slow_start_threshold > nr->congestion_window)
 		nr->congestion_window = nr->slow_start_threshold;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[NewReno][congestion_event] congestion_window=%"SCNu64"\n", nr->congestion_window);
 	/* TODO */
 	nr->sent_time_of_last_loss = 0;
 }
@@ -87,6 +92,7 @@ static void imquic_congestion_control_newreno_packet_lost(imquic_congestion_cont
 		nr->bytes_in_flight -= pkt->pkt_size;
 	else
 		nr->bytes_in_flight -= 0;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[NewReno][packet_lost] bytes_in_flight=%"SCNu64"\n", nr->bytes_in_flight);
 	if(pkt->sent_time > nr->sent_time_of_last_loss) {
 		nr->sent_time_of_last_loss = pkt->sent_time;
 		if(pkt->first_rtt_sample > 0 && pkt->sent_time > pkt->first_rtt_sample)
@@ -101,6 +107,7 @@ static void imquic_congestion_control_newreno_packet_lost(imquic_congestion_cont
 	if(nr->persistent_congestion) {
 		nr->congestion_window = nr->minimum_window;
 		nr->congestion_recovery_start_time = 0;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[NewReno][packet_lost] congestion_window=%"SCNu64"\n", nr->congestion_window);
 	}
 }
 

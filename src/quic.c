@@ -1180,12 +1180,20 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uin
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- -- %"SCNu64" (%s)\n", *pn, imquic_encryption_level_str(level));
 		imquic_sent_packet *sent_pkt = (imquic_sent_packet *)imquic_listmap_find(conn->sent_pkts[level], pn);
 		if(sent_pkt != NULL) {
-			if(sent_pkt->ack_eliciting && conn->ack_eliciting_in_flight[sent_pkt->level] > 0)
+			if(sent_pkt->ack_eliciting && conn->ack_eliciting_in_flight[sent_pkt->level] > 0) {
 				conn->ack_eliciting_in_flight[sent_pkt->level]--;
+				/* Notify congestion control algorithm about acked packets */
+				if(conn->cc_algo != NULL && conn->cc_algo->packet_acked != NULL) {
+					imquic_congestion_control_packet cp = { 0 };
+					cp.sent_time = sent_pkt->sent_time;
+					cp.pkt_size = sent_pkt->packet_size;
+					cp.first = (temp == acked);
+					cp.last = (temp->next == NULL);
+					conn->cc_algo->packet_acked(conn->cc_algo, &cp);
+				}
+			}
 			imquic_listmap_remove(conn->sent_pkts[level], &sent_pkt->packet_number);
 		}
-		/* TODO This is also used for congestion control, see OnPacketsAdded
-		 * https://quicwg.org/base-drafts/rfc9002.html#appendix-B.5 */
 		temp = temp->next;
 	}
 	g_list_free_full(acked, (GDestroyNotify)g_free);
@@ -1195,14 +1203,24 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uin
 	temp = lost;
 	while(temp != NULL) {
 		imquic_sent_packet *sent_pkt = (imquic_sent_packet *)temp->data;
-		if(sent_pkt != NULL) {
+		if(sent_pkt != NULL && sent_pkt->ack_eliciting) {
+			/* Notify congestion control algorithm about lost packets */
+			if(conn->cc_algo != NULL && conn->cc_algo->packet_lost != NULL) {
+				imquic_congestion_control_packet cp = { 0 };
+				cp.sent_time = sent_pkt->sent_time;
+				cp.pkt_size = sent_pkt->packet_size;
+				cp.first = (temp == lost);
+				cp.last = (temp->next == NULL);
+				cp.first_rtt_sample = conn->rtt.first_sample;
+				conn->cc_algo->packet_lost(conn->cc_algo, &cp);
+			}
 			/* Retransmit this packet if needed, or get rid of it */
 			IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- -- %"SCNu64" (%s)\n",
 				sent_pkt->packet_number, imquic_encryption_level_str(sent_pkt->level));
 			imquic_retransmit_packet(conn, sent_pkt);
+		} else {
+			imquic_listmap_remove(conn->sent_pkts[level], &sent_pkt->packet_number);
 		}
-		/* TODO This is also used for congestion control, see OnPacketsLost
-		 * https://quicwg.org/base-drafts/rfc9002.html#appendix-B.8 */
 		temp = temp->next;
 	}
 	g_list_free(lost);
@@ -3665,6 +3683,11 @@ int imquic_send_packet(imquic_connection *conn, imquic_packet *pkt) {
 		imquic_qlog_udp_datagrams_sent(conn->qlog, conn->dgram_id_out, pkt->data.length);
 	}
 #endif
+	if(res > 0 && conn->cc_algo != NULL && conn->cc_algo->packet_sent != NULL) {
+		imquic_congestion_control_packet cp = { 0 };
+		cp.pkt_size = pkt->data.length;
+		conn->cc_algo->packet_sent(conn->cc_algo, &cp);
+	}
 	/* Track when we sent this packet */
 	if(pkt->retransmit_if_lost && !pkt->ack_eliciting)
 		pkt->retransmit_if_lost = FALSE;
