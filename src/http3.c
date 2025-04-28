@@ -154,6 +154,7 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *str
 	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
 		frame = imquic_qlog_http3_prepare_content(NULL, "settings", FALSE);
 		settings = imquic_qlog_http3_prepare_content(frame, "settings", FALSE);
+		imquic_qlog_event_add_raw(frame, "raw", NULL, settings_len);
 	}
 #endif
 	uint64_t s_len = settings_len;
@@ -461,6 +462,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
 		frame = imquic_qlog_http3_prepare_content(NULL, "headers", FALSE);
 		frame_headers = imquic_qlog_http3_prepare_content(frame, "headers", TRUE);
+		imquic_qlog_event_add_raw(frame, "raw", NULL, blen);
 	}
 #endif
 	size_t bread = 0;
@@ -516,6 +518,7 @@ size_t imquic_http3_parse_request_data(imquic_http3_connection *h3c, imquic_stre
 #ifdef HAVE_QLOG
 	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
 		json_t *frame = imquic_qlog_http3_prepare_content(NULL, "data", FALSE);
+		imquic_qlog_event_add_raw(frame, "raw", NULL, blen);
 		imquic_http3_qlog_frame_parsed(h3c->conn->qlog, h3c->request_stream, blen, frame);
 	}
 #endif
@@ -564,6 +567,7 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 		imquic_qlog_http3_append_object(headers, "user-agent", "imquic/0.0.1alpha");
 		imquic_qlog_http3_append_object(headers, "sec-fetch-dest", "webtransport");
 		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
+		imquic_qlog_event_add_raw(frame, "raw", NULL, r_len);
 		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->request_stream, r_len, frame);
 	}
 #endif
@@ -630,6 +634,7 @@ int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, uint8_t 
 		imquic_qlog_http3_append_object(headers, ":status", "200");
 		imquic_qlog_http3_append_object(headers, "server", server);
 		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
+		imquic_qlog_event_add_raw(frame, "raw", NULL, r_len);
 		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->request_stream, r_len, frame);
 	}
 #endif
@@ -702,6 +707,7 @@ int imquic_http3_prepare_settings(imquic_http3_connection *h3c) {
 		json_object_set_new(settings, "settings_enable_connect_protocol", json_integer(1));
 		json_object_set_new(settings, "settings_h3_datagram", json_integer(1));
 		json_object_set_new(settings, "settings_enable_webtransport", json_integer(1));
+		imquic_qlog_event_add_raw(frame, "raw", NULL, s_offset - 3);
 		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->local_control_stream, s_offset - 3, frame);
 	}
 #endif
