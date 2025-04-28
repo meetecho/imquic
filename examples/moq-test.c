@@ -789,6 +789,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
 		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
+		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(server == NULL) {
