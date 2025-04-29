@@ -358,7 +358,7 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	/* Got new connection */
 	imquic_connection_ref(conn);
 	g_hash_table_insert(connections, conn, conn);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection (negotiating version)\n", imquic_get_connection_name(conn));
 	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBSUB);
 	imquic_moq_set_version(conn, moq_version);
 	imquic_moq_set_max_subscribe_id(conn, 20);

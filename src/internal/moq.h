@@ -42,12 +42,20 @@ typedef enum imquic_moq_error_code {
 	IMQUIC_MOQ_INTERNAL_ERROR = 0x1,
 	IMQUIC_MOQ_UNAUTHORIZED = 0x2,
 	IMQUIC_MOQ_PROTOCOL_VIOLATION = 0x3,
-	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x4,
-	IMQUIC_MOQ_PARAMETER_LENGTH_MISMATCH = 0x5,
-	IMQUIC_MOQ_TOO_MANY_SUBSCRIBES = 0x6,
+	IMQUIC_MOQ_INVALID_REQUEST_ID = 0x4,
+	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x5,
+	IMQUIC_MOQ_KEYVALUE_FORMATTING_ERROR = 0x6,
+	IMQUIC_MOQ_TOO_MANY_REQUESTS = 0x7,
+	IMQUIC_MOQ_INVALID_PATH = 0x8,
+	IMQUIC_MOQ_MALFORMED_PATH = 0x9,
 	IMQUIC_MOQ_GOAWAY_TIMEOUT = 0x10,
 	IMQUIC_MOQ_CONTROL_MESSAGE_TIMEOUT = 0x11,
-	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12
+	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
+	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
+	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
+	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,
+	/* Not an actual error */
+	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
 } imquic_moq_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_error_code value.
  * @param code The imquic_moq_error_code value
@@ -150,8 +158,10 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_FETCH_CANCEL = 0x17,
 	IMQUIC_MOQ_FETCH_OK = 0x18,
 	IMQUIC_MOQ_FETCH_ERROR = 0x19,
-	IMQUIC_MOQ_CLIENT_SETUP = 0x40,
-	IMQUIC_MOQ_SERVER_SETUP = 0x41,
+	IMQUIC_MOQ_CLIENT_SETUP = 0x20,
+	IMQUIC_MOQ_SERVER_SETUP = 0x21,
+	IMQUIC_MOQ_CLIENT_SETUP_LEGACY = 0x40,
+	IMQUIC_MOQ_SERVER_SETUP_LEGACY = 0x41,
 } imquic_moq_message_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_message_type value.
  * @param type The imquic_moq_message_type value
@@ -459,16 +469,18 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
+ * @param[in] legacy Whether this is a legacy \c CLIENT_SETUP message (before v11)
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen, gboolean legacy, uint8_t *error);
 /*! \brief Helper to parse a \c SERVER_SETUP message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
+ * @param[in] legacy Whether this is a legacy \c SERVER_SETUP message (before v11)
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen, gboolean legacy, uint8_t *error);
 /*! \brief Helper to parse a \c MAX_SUBSCRIBE_ID message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
