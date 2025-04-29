@@ -728,9 +728,12 @@ int main(int argc, char *argv[]) {
 
 	if(options.moq_version != NULL) {
 		if(!strcasecmp(options.moq_version, "any")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and %d\n", IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 11 and %d\n", IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY;
 		} else if(!strcasecmp(options.moq_version, "legacy")) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
+			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
+		} else if(!strcasecmp(options.moq_version, "ancient")) {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Versions lower than 6 don't support namespace tuples\n");
 			ret = 1;
 			goto done;

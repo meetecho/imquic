@@ -4,7 +4,7 @@
  * \brief  Media Over QUIC (MoQ) stack
  * \details Implementation of the Media Over QUIC (MoQ) stack as part
  * of the library itself. At the time of writing, this implements (most
- * of) versions -03 and -04 of the protocol.
+ * of) versions from -03 to to -11 of the protocol.
  *
  * \note This is the internal implementation of MoQ in the library. You're
  * still free to only use imquic as the underlying QUIC/WebTransport library,
@@ -103,12 +103,15 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		GList *versions = NULL;
 		if(moq->version == IMQUIC_MOQ_VERSION_ANY) {
 			/* Offer all newer supported versions */
+			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_11));
+		} else if(moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY) {
+			/* Offer all supported versions from -06 to -10 */
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_10));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_09));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_08));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_07));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_06));
-		} else if(moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY) {
+		} else if(moq->version == IMQUIC_MOQ_VERSION_ANY_ANCIENT) {
 			/* Offer all supported versions before -06 */
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_05));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_04));
@@ -1027,8 +1030,9 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 				moq->version_set = TRUE;
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- -- -- Selected version %"SCNu32"\n",
 					imquic_get_connection_name(moq->conn), moq->version);
-			} else if(((version >= IMQUIC_MOQ_VERSION_06 && version <= IMQUIC_MOQ_VERSION_MAX) && moq->version == IMQUIC_MOQ_VERSION_ANY) ||
-					((version >= IMQUIC_MOQ_VERSION_MIN && version < IMQUIC_MOQ_VERSION_06) && moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY)) {
+			} else if(((version >= IMQUIC_MOQ_VERSION_11 && version <= IMQUIC_MOQ_VERSION_MAX) && moq->version == IMQUIC_MOQ_VERSION_ANY) ||
+					((version >= IMQUIC_MOQ_VERSION_06 && version <= IMQUIC_MOQ_VERSION_10) && moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY) ||
+					((version >= IMQUIC_MOQ_VERSION_MIN && version < IMQUIC_MOQ_VERSION_06) && moq->version == IMQUIC_MOQ_VERSION_ANY_ANCIENT)) {
 				moq->version = version;
 				moq->version_set = TRUE;
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- Selected version %"SCNu32"\n",
@@ -1125,8 +1129,9 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		moq->version_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Selected version %"SCNu32"\n",
 			imquic_get_connection_name(moq->conn), moq->version);
-	} else if(((version >= IMQUIC_MOQ_VERSION_06 && version <= IMQUIC_MOQ_VERSION_MAX) && moq->version == IMQUIC_MOQ_VERSION_ANY) ||
-			((version >= IMQUIC_MOQ_VERSION_MIN && version < IMQUIC_MOQ_VERSION_06) && moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY)) {
+	} else if(((version >= IMQUIC_MOQ_VERSION_11 && version <= IMQUIC_MOQ_VERSION_MAX) && moq->version == IMQUIC_MOQ_VERSION_ANY) ||
+			((version >= IMQUIC_MOQ_VERSION_06 && version <= IMQUIC_MOQ_VERSION_10) && moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY) ||
+			((version >= IMQUIC_MOQ_VERSION_MIN && version < IMQUIC_MOQ_VERSION_06) && moq->version == IMQUIC_MOQ_VERSION_ANY_ANCIENT)) {
 		moq->version = version;
 		moq->version_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Selected version %"SCNu32"\n",
@@ -5785,8 +5790,10 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) 
 		case IMQUIC_MOQ_VERSION_08:
 		case IMQUIC_MOQ_VERSION_09:
 		case IMQUIC_MOQ_VERSION_10:
+		case IMQUIC_MOQ_VERSION_11:
 		case IMQUIC_MOQ_VERSION_ANY:
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
+		case IMQUIC_MOQ_VERSION_ANY_ANCIENT:
 			moq->version = version;
 			break;
 		default:
@@ -5794,7 +5801,7 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) 
 				imquic_get_connection_name(conn), version);
 			return -1;
 	}
-	if(!moq->role_set && moq->version >= IMQUIC_MOQ_VERSION_08 && moq->version != IMQUIC_MOQ_VERSION_ANY_LEGACY) {
+	if(!moq->role_set && moq->version >= IMQUIC_MOQ_VERSION_08 && moq->version != IMQUIC_MOQ_VERSION_ANY_ANCIENT) {
 		moq->role_set = TRUE;
 		moq->type = IMQUIC_MOQ_ROLE_ENDPOINT;
 	}

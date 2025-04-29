@@ -569,9 +569,11 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 		case IMQUIC_MOQ_VERSION_10:
 			return "draft-ietf-moq-transport-10";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "draft-ietf-moq-transport-XX";
+			return "draft-ietf-moq-transport-XX(-from-11)";
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
-			return "draft-ietf-moq-transport-XX(-pre-06)";
+			return "draft-ietf-moq-transport-XX(-from-06-to-10)";
+		case IMQUIC_MOQ_VERSION_ANY_ANCIENT:
+			return "draft-ietf-moq-transport-XX(-from-03-to-05)";
 		default: break;
 	}
 	return NULL;

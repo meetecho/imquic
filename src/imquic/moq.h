@@ -141,12 +141,17 @@
  * You can also specificy a version using the \ref imquic_moq_set_role function
  * in the same place. By default, the MoQ stack will set the version to
  * \c IMQUIC_MOQ_VERSION_ANY , which means that for clients it will offer
- * all supported versions higher than v06, while for servers it will accept the first
- * offered among the supported ones (still if higher than v06); a "legacy" version
- * called \c IMQUIC_MOQ_VERSION_ANY_LEGACY is available, to negotiate any supported
- * version that is lower than v06. At the time of writing, this stack
- * supports MoQ versions from v03 ( \c IMQUIC_MOQ_VERSION_03 ) up to
- * v10 ( \c IMQUIC_MOQ_VERSION_10 ), but not all versions will be supported
+ * all supported versions equal to or higher than v11, while for servers it
+ * will accept the first offered among the supported ones (still if equal to or
+ * higher than v11); a "legacy" version called \c IMQUIC_MOQ_VERSION_ANY_LEGACY
+ * is available, to negotiate any supported version between v06 and v10;
+ * finalle, an "ancient" version called \c IMQUIC_MOQ_VERSION_ANY_ANCIENT
+ * is also available, to negotiate support for any supported version up to
+ * v05. The reason for this separation of version negotiation in different
+ * groups is due to the incompatibility in the messaging on the wire, which
+ * saw breaking changes in v06 and v11. At the time of writing, this stack
+ * supports MoQ versions from v03 ( \c IMQUIC_MOQ_VERSION_03 ) up to v11
+ * ( \c IMQUIC_MOQ_VERSION_11 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
@@ -778,13 +783,18 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_09 = 0xff000009,
 	/* Draft version -10 */
 	IMQUIC_MOQ_VERSION_10 = 0xff00000A,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_10,
-	/* Any post-v06 version: for client, it means offer all supported versions;
+	/* Draft version -11 */
+	IMQUIC_MOQ_VERSION_11 = 0xff00000B,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_11,
+	/* Any post-v11 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,
-	/* Any pre-v06 version: for client, it means offer all supported versions;
+	/* Any version between v06 and v11: for client, it means offer all those versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY_LEGACY = 0xfffffffe,
+	/* Any pre-v06 version: for client, it means offer all those versions;
+	 * for servers, it means accept the first supported offered version */
+	IMQUIC_MOQ_VERSION_ANY_ANCIENT = 0xfffffffd,
 } imquic_moq_version;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_version property.
  * @param version The imquic_moq_version property
