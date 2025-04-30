@@ -714,7 +714,7 @@ void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_announce Pointer to the function that will handle the incoming \c ANNOUNCE */
 void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
-	void (* incoming_announce)(imquic_connection *conn, imquic_moq_namespace *tns));
+	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c ANNOUNCE_CANCEL request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -726,13 +726,13 @@ void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param announce_accepted Pointer to the function that will fire when an \c ANNOUNCE is accepted */
 void imquic_set_announce_accepted_cb(imquic_endpoint *endpoint,
-	void (* announce_accepted)(imquic_connection *conn, imquic_moq_namespace *tns));
+	void (* announce_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when an
  * \c ANNOUNCE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param announce_error Pointer to the function that will fire when an \c ANNOUNCE is rejected */
 void imquic_set_announce_error_cb(imquic_endpoint *endpoint,
-	void (* announce_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason));
+	void (* announce_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNANNOUNCE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -949,27 +949,35 @@ imquic_moq_version imquic_moq_get_version(imquic_connection *conn);
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_id);
 
+/*! \brief Helper function to get the next Request ID we can use
+ * @param conn The imquic_connection to query
+ * @returns The next Request ID */
+uint64_t imquic_moq_get_next_request_id(imquic_connection *conn);
+
 /** @name Using the MoQ API
  */
 ///@{
 /* Namespaces and subscriptions */
 /*! \brief Function to send an \c ANNOUNCE request
  * @param conn The imquic_connection to send the request on
+ * @param request_id A unique request ID (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to announce
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_announce(imquic_connection *conn, imquic_moq_namespace *tns);
+int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to accept an incoming \c ANNOUNCE request
  * @param conn The imquic_connection to send the request on
- * @param tns The imquic_moq_namespace namespace to accept
+ * @param request_id A unique request ID (only v11 and later)
+ * @param tns The imquic_moq_namespace namespace to accept (only before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_announce(imquic_connection *conn, imquic_moq_namespace *tns);
+int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to reject an incoming \c ANNOUNCE request
  * @param conn The imquic_connection to send the request on
- * @param tns The imquic_moq_namespace namespace to reject
+ * @param request_id A unique request ID (only v11 and later)
+ * @param tns The imquic_moq_namespace namespace to reject (only before v11)
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_announce(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
+int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
 /*! \brief Function to send an \c UNANNOUNCE request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace to unannounce

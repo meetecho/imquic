@@ -281,7 +281,7 @@ void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
-		void (* incoming_announce)(imquic_connection *conn, imquic_moq_namespace *tns)) {
+		void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -303,7 +303,7 @@ void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_announce_accepted_cb(imquic_endpoint *endpoint,
-		void (* announce_accepted)(imquic_connection *conn, imquic_moq_namespace *tns)) {
+		void (* announce_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -314,7 +314,7 @@ void imquic_set_announce_accepted_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_announce_error_cb(imquic_endpoint *endpoint,
-		void (* announce_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason)) {
+		void (* announce_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

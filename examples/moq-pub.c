@@ -78,17 +78,17 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		i++;
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
-	imquic_moq_announce(conn, &tns[0]);
+	imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &tns[0]);
 }
 
-static void imquic_demo_announce_accepted(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_announce_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announce '%s' accepted\n",
 		imquic_get_connection_name(conn), ns);
 }
 
-static void imquic_demo_announce_error(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
+static void imquic_demo_announce_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace '%s': error %d (%s)\n",

@@ -370,7 +370,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_get_connection_name(conn), imquic_moq_version_str(imquic_moq_get_version(conn)));
 }
 
-static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_incoming_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	/* We received an announce */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
@@ -382,7 +382,7 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_na
 		/* Already announced, reject */
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Already announced\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_announce(conn, tns, 400, "Already announced");
+		imquic_moq_reject_announce(conn, request_id, tns, 400, "Already announced");
 		return;
 	}
 	/* Find the publisher from this connection */
@@ -406,14 +406,14 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_na
 		while(temp) {
 			mon = (imquic_demo_moq_monitor *)temp->data;
 			if(mon->conn)
-				imquic_moq_announce(mon->conn, tns);
+				imquic_moq_announce(mon->conn, imquic_moq_get_next_request_id(conn), tns);
 			temp = temp->next;
 		}
 		g_list_free(list);
 	}
 	g_mutex_unlock(&mutex);
 	/* Accept the announcement */
-	imquic_moq_accept_announce(conn, tns);
+	imquic_moq_accept_announce(conn, request_id, tns);
 }
 
 static void imquic_demo_incoming_announce_cancel(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {

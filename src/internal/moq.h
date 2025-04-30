@@ -702,27 +702,32 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message (only v11 and later)
  * @param track_namespace Namespace to announce
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
-	imquic_moq_subscribe_parameters *parameters);
+size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add an \c ANNOUNCE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param track_namespace Namespace for which the announcement succeeded
+ * @param request_id The request ID to put in the message (only v11 and later)
+ * @param track_namespace Namespace for which the announcement succeeded (only before v11)
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace);
+size_t imquic_moq_add_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t request_id, imquic_moq_namespace *track_namespace);
 /*! \brief Helper method to add an \c ANNOUNCE_ERROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param track_namespace Namespace for which the announcement caused an error
+ * @param request_id The request ID to put in the message (only v11 and later)
+ * @param track_namespace Namespace for which the announcement caused an error (only before v11)
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
+size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t request_id, imquic_moq_namespace *track_namespace,
 	imquic_moq_announce_error_code error, const char *reason);
 /*! \brief Helper method to add an \c UNANNOUNCE message to a buffer
  * @param moq The imquic_moq_context generating the message
@@ -1218,13 +1223,13 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified when a MoQ connection is ready (setup performed on both ends) */
 	void (* moq_ready)(imquic_connection *conn);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE messages */
-	void (* incoming_announce)(imquic_connection *conn, imquic_moq_namespace *tns);
+	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_CANCEL messages */
 	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ACCEPTED messages */
-	void (* announce_accepted)(imquic_connection *conn, imquic_moq_namespace *tns);
+	void (* announce_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ERROR messages */
-	void (* announce_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
+	void (* announce_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNANNOUNCE messages */
 	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */

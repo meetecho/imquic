@@ -46,7 +46,7 @@ static GMutex mutex;
 static char *chat_timestamp = NULL;
 static volatile int send_objects = 0;
 static uint64_t moq_request_id = 0, moq_track_alias = 0;
-static uint64_t current_request_id = 0, max_request_id = 1;
+static uint64_t max_request_id = 1;
 
 /* Helper structs */
 typedef struct imquic_demo_moq_participant {
@@ -132,7 +132,7 @@ static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, im
 	mytns[4].buffer = (uint8_t *)timestamp;
 	mytns[4].length = strlen(timestamp);
 	mytns[4].next = NULL;
-	imquic_moq_announce(conn, &mytns[0]);
+	imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &mytns[0]);
 }
 
 static void imquic_demo_subscribe_announces_error(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
@@ -144,7 +144,7 @@ static void imquic_demo_subscribe_announces_error(imquic_connection *conn, imqui
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_announce_accepted(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_announce_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announce '%s' accepted\n",
@@ -152,7 +152,7 @@ static void imquic_demo_announce_accepted(imquic_connection *conn, imquic_moq_na
 	/* TODO Start sending chat messages */
 }
 
-static void imquic_demo_announce_error(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
+static void imquic_demo_announce_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace '%s': error %d (%s)\n",
@@ -161,7 +161,7 @@ static void imquic_demo_announce_error(imquic_connection *conn, imquic_moq_names
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_incoming_announce(imquic_connection *conn, uint64_t announce_request_id, imquic_moq_namespace *tns) {
 	/* We received an announce, which means a new participant has joined */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
@@ -169,9 +169,8 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_na
 		imquic_get_connection_name(conn), ns);
 	/* Subscribe to the new participant */
 	g_mutex_lock(&mutex);
-	uint64_t request_id = current_request_id;
+	uint64_t request_id = imquic_moq_get_next_request_id(conn);
 	uint64_t track_alias = request_id;	/* FIXME */
-	current_request_id++;
 	const char *track_name = "chat";
 	imquic_demo_moq_participant *p = imquic_demo_moq_participant_create(conn, track_name, request_id);
 	g_hash_table_insert(participants, imquic_uint64_dup(request_id), p);
