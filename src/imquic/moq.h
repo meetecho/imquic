@@ -792,19 +792,19 @@ void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe_announces Pointer to the function that will handle the incoming \c SUBSCRIBE_ANNOUNCES */
 void imquic_set_incoming_subscribe_announces_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe_announces)(imquic_connection *conn, imquic_moq_namespace *tns, const char *auth));
+	void (* incoming_subscribe_announces)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_ANNOUNCES we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_announces_accepted Pointer to the function that will fire when an \c SUBSCRIBE_ANNOUNCES is accepted */
 void imquic_set_subscribe_announces_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_announces_accepted)(imquic_connection *conn, imquic_moq_namespace *tns));
+	void (* subscribe_announces_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_ANNOUNCES we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_announces_error Pointer to the function that will fire when an \c SUBSCRIBE_ANNOUNCES is rejected */
 void imquic_set_subscribe_announces_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_announces_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason));
+	void (* subscribe_announces_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_ANNOUNCES request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -966,13 +966,13 @@ uint64_t imquic_moq_get_next_request_id(imquic_connection *conn);
 int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to accept an incoming \c ANNOUNCE request
  * @param conn The imquic_connection to send the request on
- * @param request_id A unique request ID (only v11 and later)
+ * @param request_id The request ID of the original \c ANNOUNCE request (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to accept (only before v11)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to reject an incoming \c ANNOUNCE request
  * @param conn The imquic_connection to send the request on
- * @param request_id A unique request ID (only v11 and later)
+ * @param request_id The request ID of the original \c ANNOUNCE request (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to reject (only before v11)
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
@@ -1024,22 +1024,25 @@ int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, im
 int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a \c SUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
+ * @param request_id A unique request ID (only v11 and later)
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, const char *auth);
+int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth);
 /*! \brief Function to accept an incoming \c SUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
- * @param tns The imquic_moq_namespace namespace to accept notifications for
+ * @param request_id The request ID of the original \c SUBSCRIBE_ANNOUNCES request (only v11 and later)
+ * @param tns The imquic_moq_namespace namespace to accept notifications for (only before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns);
+int imquic_moq_accept_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to reject an incoming \c SUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
- * @param tns The imquic_moq_namespace namespace to reject notifications for
+ * @param request_id The request ID of the original \c SUBSCRIBE_ANNOUNCES request (only v11 and later)
+ * @param tns The imquic_moq_namespace namespace to reject notifications for (only before v11)
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason);
+int imquic_moq_reject_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason);
 /*! \brief Function to send a \c UNSUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from

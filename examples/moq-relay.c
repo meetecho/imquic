@@ -639,7 +639,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, const char *auth) {
+static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth) {
 	/* We received a subscribe for a namespace tuple */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -654,7 +654,7 @@ static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, im
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, tns, ns);
 	monitors = g_list_prepend(monitors, mon);
 	g_mutex_unlock(&mutex);
-	imquic_moq_accept_subscribe_announces(conn, tns);
+	imquic_moq_accept_subscribe_announces(conn, request_id, tns);
 }
 
 static void imquic_demo_incoming_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns) {

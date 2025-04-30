@@ -103,10 +103,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	/* Send a SUBSCRIBE_ANNOUNCES */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to notifications for prefix '%s'\n",
 		imquic_get_connection_name(conn), ns);
-	imquic_moq_subscribe_announces(conn, &tns[0], options.auth_info);
+	imquic_moq_subscribe_announces(conn, imquic_moq_get_next_request_id(conn), &tns[0], options.auth_info);
 }
 
-static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	/* Subscribing to participants joining/leaving succeeded */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -135,7 +135,7 @@ static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, im
 	imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &mytns[0]);
 }
 
-static void imquic_demo_subscribe_announces_error(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
+static void imquic_demo_subscribe_announces_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to notifications for prefix '%s': error %d (%s)\n",
