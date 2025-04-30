@@ -763,7 +763,7 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * standardization efforts on whether this is actually useful or not,
  * or if it even works at all.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_done Pointer to the function that will fire when a \c SUBSCRIBE is done */
+ * @param subscribe_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
 void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
 	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
 /*! \brief Configure the callback function to be notified when a
@@ -1003,7 +1003,7 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
 /*! \brief Function to send a \c SUBSCRIBE_UPDATE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to update
- * @param start The group and object to start from
+ * @param start_location The group and object to start from
  * @param end_group The group to end at
  * @param priority The subscriber priority
  * @param forward Whether objects should be forwarded, when this subscription is updated (ignored before v11)
