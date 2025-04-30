@@ -50,7 +50,6 @@ static GList *fetches = NULL;
 typedef struct imquic_demo_moq_publisher {
 	imquic_connection *conn;
 	GHashTable *namespaces;
-	uint64_t relay_request_id;
 	uint64_t relay_track_alias;
 	GMutex mutex;
 } imquic_demo_moq_publisher;
@@ -544,10 +543,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE);
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
-		track->request_id = annc->pub->relay_request_id;
+		track->request_id = imquic_moq_get_next_request_id(annc->pub->conn);
 		track->track_alias = annc->pub->relay_track_alias;
-		uint64_t request_id_increment = (imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
-		annc->pub->relay_request_id += request_id_increment;
 		annc->pub->relay_track_alias++;
 		g_hash_table_insert(subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 		g_hash_table_insert(subscriptions, imquic_uint64_dup(track->track_alias), track);

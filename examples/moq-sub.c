@@ -91,7 +91,6 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	int i = 0;
 	uint64_t request_id = 0;
 	uint64_t track_alias = 0;
-	uint64_t request_id_increment = (imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
 	imquic_moq_namespace tns[32];	/* FIXME */
 	while(options.track_namespace[i] != NULL) {
 		const char *track_namespace = options.track_namespace[i];
@@ -112,6 +111,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
+		request_id = imquic_moq_get_next_request_id(conn);
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
 			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
@@ -131,13 +131,12 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				/* Send a SUBSCRIBE first */
 				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
 				/* Now send a Joining Fetch referencing that subscription */
-				imquic_moq_joining_fetch(conn, request_id + request_id_increment, request_id,
+				uint64_t fetch_request_id = imquic_moq_get_next_request_id(conn);
+				imquic_moq_joining_fetch(conn, fetch_request_id, request_id,
 					FALSE, options.join_offset, !strcasecmp(options.fetch, "descending"), options.auth_info);
-				request_id += request_id_increment;
 			}
 		}
 		i++;
-		request_id += request_id_increment;
 		track_alias++;
 	}
 }
