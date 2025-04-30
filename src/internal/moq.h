@@ -936,23 +936,28 @@ size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message (only v11 and later)
  * @param track_namespace The namespace to put in the message
  * @param track_name The track name to put in the message
+ * @param parameters The parameters to add, if any (only v11 and later)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_track_status_request(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name);
+	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper to add a \c TRACK_STATUS message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param track_namespace The namespace to put in the message
- * @param track_name The track name to put in the message
+ * @param request_id The request ID to put in the message (only v11 and later)
+ * @param track_namespace The namespace to put in the message (only before v11)
+ * @param track_name The track name to put in the message (only before v11)
  * @param status_code The status code to put in the message
  * @param last_group_id The last group ID to put in the message
  * @param last_object_id The last object ID to put in the message
+ * @param parameters The parameters to add, if any (only v11 and later)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t status_code, uint64_t last_group_id, uint64_t last_object_id);
+	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_name *track_name,
+	uint64_t status_code, uint64_t last_group_id, uint64_t last_object_id, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper to add an \c OBJECT_STREAM message to a buffer (only before v06)
  * @note This will create a throaway \c STREAM just to send this object
  * @param moq The imquic_moq_context generating the message
