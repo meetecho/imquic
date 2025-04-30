@@ -770,6 +770,7 @@ size_t imquic_moq_add_subscribe_v03(imquic_moq_context *moq, uint8_t *bytes, siz
  * @param track_name The track name to put in the message
  * @param priority The subscriber priority to put in the message (only after v05)
  * @param group_order The group order to put in the message (only after v05)
+ * @param forward The forward value to put in the message (only starting from v11)
  * @param filter The filter as a imquic_moq_filter_type value
  * @param start_group The start group ID to put in the message
  * @param start_object The start object ID to put in the message
@@ -778,8 +779,8 @@ size_t imquic_moq_add_subscribe_v03(imquic_moq_context *moq, uint8_t *bytes, siz
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, imquic_moq_filter_type filter,
-	uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, gboolean forward,
+	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_UPDATE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -790,11 +791,12 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
  * @param end_group The end group ID to put in the message
  * @param end_object The end object ID to put in the message
  * @param priority The subscriber priority to put in the message (only after v05)
+ * @param forward The forward value to put in the message (only starting from v11)
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, uint8_t priority,
-	imquic_moq_subscribe_parameters *parameters);
+	gboolean forward, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1221,11 +1223,13 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c UNANNOUNCE messages */
 	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth);
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
+	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */
+	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_DONE messages */
 	void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages */

@@ -487,7 +487,7 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -551,7 +551,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		annc->pub->relay_track_alias++;
 		g_hash_table_insert(subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 		g_hash_table_insert(subscriptions, imquic_uint64_dup(track->track_alias), track);
-		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn, auth);
+		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn, auth, TRUE);
 	}
 	g_mutex_unlock(&mutex);
 }

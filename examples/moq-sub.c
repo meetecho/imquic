@@ -114,7 +114,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		};
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
-			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info);
+			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
 		} else {
 			/* Send a FETCH */
 			if(options.join_offset < 0) {
@@ -129,7 +129,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					!strcasecmp(options.fetch, "descending"), &range, options.auth_info);
 			} else {
 				/* Send a SUBSCRIBE first */
-				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info);
+				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
 				/* Now send a Joining Fetch referencing that subscription */
 				imquic_moq_joining_fetch(conn, request_id + request_id_increment, request_id,
 					FALSE, options.join_offset, !strcasecmp(options.fetch, "descending"), options.auth_info);
@@ -266,7 +266,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
-		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info);
+		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",

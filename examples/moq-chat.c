@@ -183,7 +183,7 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_na
 	g_mutex_unlock(&mutex);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s'/'%s', using ID %"SCNu64"/%"SCNu64"\n",
 		imquic_get_connection_name(conn), ns, track_name, request_id, track_alias);
-	imquic_moq_subscribe(conn, request_id, track_alias, tns, &tn, options.auth_info);
+	imquic_moq_subscribe(conn, request_id, track_alias, tns, &tn, options.auth_info, TRUE);
 }
 
 static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
@@ -203,7 +203,7 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));

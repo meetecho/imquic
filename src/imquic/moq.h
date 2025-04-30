@@ -744,26 +744,35 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe Pointer to the function that will handle the incoming \c SUBSCRIBE */
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth));
-/*! \brief Configure the callback function to be notified when an
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward));
+/*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_accepted Pointer to the function that will fire when an \c SUBSCRIBE is accepted */
+ * @param subscribe_accepted Pointer to the function that will fire when a \c SUBSCRIBE is accepted */
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending));
-/*! \brief Configure the callback function to be notified when an
+/*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_error Pointer to the function that will fire when an \c SUBSCRIBE is rejected */
+ * @param subscribe_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
 void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias));
-/*! \brief Configure the callback function to be notified when an
+/*! \brief Configure the callback function to be notified when an update
+ * is received for a \c SUBSCRIBE we previously sent
+ * @note Currently unused, considering there are discussions in the MoQ
+ * standardization efforts on whether this is actually useful or not,
+ * or if it even works at all.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param subscribe_done Pointer to the function that will fire when a \c SUBSCRIBE is done */
+void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
+	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
+/*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent is now done
  * @note Currently unused, considering there are discussions in the MoQ
  * standardization efforts on whether this is actually useful or not,
  * or if it even works at all.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_done Pointer to the function that will fire when an \c SUBSCRIBE is done */
+ * @param subscribe_done Pointer to the function that will fire when a \c SUBSCRIBE is done */
 void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
 	void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
@@ -968,13 +977,14 @@ int imquic_moq_reject_announce(imquic_connection *conn, imquic_moq_namespace *tn
 int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
 /*! \brief Function to send a \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
- * @param request_id A unique numeric identifier to associate to this subscription
+ * @param request_id A unique request ID to associate to this subscription
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param tn The imquic_moq_name track name to subscribe to
  * @param auth The authentication info, if needed
+ * @param forward Whether objects should be forwarded, when this subscription is accepted (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth);
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward);
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
@@ -990,6 +1000,15 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
  * @param track_alias The unique \c track_alias value associated to the subscription to reject
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
+/*! \brief Function to send a \c SUBSCRIBE_UPDATE request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the subscription to update
+ * @param start The group and object to start from
+ * @param end_group The group to end at
+ * @param priority The subscriber priority
+ * @param forward Whether objects should be forwarded, when this subscription is updated (ignored before v11)
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
 /*! \brief Function to send a \c UNSUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to unsubscribe from
