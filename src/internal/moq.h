@@ -554,16 +554,18 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
+ * @param[in] dtype Type of \c OBJECT_DATAGRAM (only relevant starting from v11)
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error);
 /*! \brief Helper to parse an \c OBJECT_DATAGRAM_STATUS message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
+ * @param[in] dtype Type of \c OBJECT_DATAGRAM_STATUS (only relevant starting from v11)
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error);
 /*! \brief Helper to parse a \c STREAM_HEADER_TRACK message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_context instance the object is from
