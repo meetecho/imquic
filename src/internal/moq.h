@@ -4,7 +4,7 @@
  * \brief  Media Over QUIC (MoQ) stack (headers)
  * \details Implementation of the Media Over QUIC (MoQ) stack as part
  * of the library itself. At the time of writing, this implements (most
- * of) versions from -03 to to -11 of the protocol.
+ * of) versions from -06 to to -11 of the protocol.
  *
  * \note This is the internal implementation of MoQ in the library. You're
  * still free to only use imquic as the underlying QUIC/WebTransport library,
@@ -74,12 +74,11 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type);
 
 /*! \brief MoQ data messages */
 typedef enum imquic_moq_data_message_type {
-	IMQUIC_MOQ_OBJECT_STREAM = 0x0,
+	IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT = 0x0,
 	IMQUIC_MOQ_OBJECT_DATAGRAM = 0x1,
-	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x2,
-	IMQUIC_MOQ_STREAM_HEADER_TRACK = 0x50,
-		IMQUIC_MOQ_STREAM_HEADER_TRACK_V06 = 0x2,
-	IMQUIC_MOQ_STREAM_HEADER_GROUP = 0x51,
+	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x2,
+	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x3,
+	IMQUIC_MOQ_STREAM_HEADER_TRACK = 0x2,
 	IMQUIC_MOQ_SUBGROUP_HEADER = 0x4,
 	IMQUIC_MOQ_FETCH_HEADER = 0x5,
 } imquic_moq_data_message_type;
@@ -315,15 +314,13 @@ typedef struct imquic_moq_stream {
 	uint64_t track_alias;
 	/*! \brief Group ID */
 	uint64_t group_id;
-	/*! \brief Subgroup ID (only after v06) */
+	/*! \brief Subgroup ID */
 	uint64_t subgroup_id;
 	/*! \brief Object ID */
 	uint64_t object_id;
 	/*! \brief Object status */
 	imquic_moq_object_status object_status;
-	/*! \brief Object send order (v03 and v04 only) */
-	uint64_t object_send_order;
-	/*! \brief Publisher priority (only after v05) */
+	/*! \brief Publisher priority */
 	uint8_t priority;
 	/*! \brief Current stream offset */
 	uint64_t stream_offset;
@@ -553,14 +550,6 @@ size_t imquic_moq_parse_track_status_request(imquic_moq_context *moq, uint8_t *b
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c OBJECT_STREAM message
- * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] moq_stream The imquic_moq_context instance the message came from
- * @param[in] bytes The buffer containing the message to parse
- * @param[in] blen Size of the buffer to parse
- * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
- * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_object_stream(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse an \c OBJECT_DATAGRAM message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -591,22 +580,6 @@ size_t imquic_moq_parse_stream_header_track(imquic_moq_context *moq, imquic_moq_
  * @param[in] complete Whether this data marks the completion of the QUIC stream it came from
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_moq_parse_stream_header_track_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete);
-/*! \brief Helper to parse a \c STREAM_HEADER_GROUP message
- * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] moq_stream The imquic_moq_context instance the message came from
- * @param[in] bytes The buffer containing the message to parse
- * @param[in] blen Size of the buffer to parse
- * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
- * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_stream_header_group(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse a \c STREAM_HEADER_GROUP object
- * @note A negative response doesn't mean there's an error, but just that
- * the object isn't complete yet and we need to wait for more data.
- * @param[in] moq The imquic_moq_context instance the object is for
- * @param[in] moq_stream The imquic_moq_context instance the object is from
- * @param[in] complete Whether this data marks the completion of the QUIC stream it came from
- * @returns 0 in case of success, or a negative integer otherwise */
-int imquic_moq_parse_stream_header_group_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete);
 /*! \brief Helper to parse a \c SUBGROUP_HEADER message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_context instance the message came from
@@ -746,8 +719,7 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
 	imquic_moq_announce_error_code error, const char *reason);
-/*! \brief Helper to add a \c SUBSCRIBE message (version -03 of the draft) to a buffer
- * @note This sends the \c -03 variant of the message
+/*! \brief Helper to add a \c SUBSCRIBE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
@@ -755,26 +727,8 @@ size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, s
  * @param track_alias The track alias to put in the message
  * @param track_namespace The namespace to put in the message
  * @param track_name The track name to put in the message
- * @param start_group The start group as a imquic_moq_location instance, if any
- * @param start_object The start object as a imquic_moq_location instance, if any
- * @param end_group The end group as a imquic_moq_location instance, if any
- * @param end_object The end object as a imquic_moq_location instance, if any
- * @param parameters The parameters to add, if any
- * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_subscribe_v03(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_location *start_group, imquic_moq_location *start_object,
-	imquic_moq_location *end_group, imquic_moq_location *end_object, imquic_moq_subscribe_parameters *parameters);
-/*! \brief Helper to add a \c SUBSCRIBE message (any version of the draft except v03) to a buffer
- * @note This sends the \c -04 or \c -05 variant of the message
- * @param moq The imquic_moq_context generating the message
- * @param bytes The buffer to add the message to
- * @param blen The size of the buffer
- * @param request_id The request ID to put in the message
- * @param track_alias The track alias to put in the message
- * @param track_namespace The namespace to put in the message
- * @param track_name The track name to put in the message
- * @param priority The subscriber priority to put in the message (only after v05)
- * @param group_order The group order to put in the message (only after v05)
+ * @param priority The subscriber priority to put in the message
+ * @param group_order The group order to put in the message
  * @param forward The forward value to put in the message (only starting from v11)
  * @param filter The filter as a imquic_moq_filter_type value
  * @param start_group The start group ID to put in the message
@@ -795,7 +749,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
  * @param start_object The start object ID to put in the message
  * @param end_group The end group ID to put in the message
  * @param end_object The end object ID to put in the message
- * @param priority The subscriber priority to put in the message (only after v05)
+ * @param priority The subscriber priority to put in the message
  * @param forward The forward value to put in the message (only starting from v11)
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
@@ -808,7 +762,7 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
  * @param expires The expires value to put in the message
- * @param group_order The group order to put in the message (only after v05)
+ * @param group_order The group order to put in the message
  * @param content_exists Whether the following two properties should be added to the message
  * @param largest_group_id Largest group ID to add to the message, if needed
  * @param largest_object_id Largest object ID to add to the message, if needed
@@ -849,8 +803,7 @@ size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_
  * @returns The size of the generated message, if successful, or 0 otherwise (only before v08) */
 size_t imquic_moq_add_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_sub_done_code status, uint64_t streams_count, const char *reason, gboolean content_exists, uint64_t final_group, uint64_t final_object);
-/*! \brief Helper to add a \c SUBSCRIBE_ANNOUNCES message (version -04 of the draft) to a buffer
- * @note This sends the \c -04 or \c -05 variant of the message
+/*! \brief Helper to add a \c SUBSCRIBE_ANNOUNCES message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
@@ -888,8 +841,7 @@ size_t imquic_moq_add_subscribe_announces_error(imquic_moq_context *moq, uint8_t
  * @param track_namespace The namespace to put in the message
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_unsubscribe_announces(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace);
-/*! \brief Helper to add a \c FETCH message (any version of the draft except v03) to a buffer
- * @note This sends the \c -04 or \c -05 variant of the message
+/*! \brief Helper to add a \c FETCH message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
@@ -968,23 +920,6 @@ size_t imquic_moq_add_track_status_request(imquic_moq_context *moq, uint8_t *byt
 size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_name *track_name,
 	uint64_t status_code, uint64_t last_group_id, uint64_t last_object_id, imquic_moq_subscribe_parameters *parameters);
-/*! \brief Helper to add an \c OBJECT_STREAM message to a buffer (only before v06)
- * @note This will create a throaway \c STREAM just to send this object
- * @param moq The imquic_moq_context generating the message
- * @param bytes The buffer to add the message to
- * @param blen The size of the buffer
- * @param request_id The request ID to put in the message
- * @param track_alias The track alias to put in the message
- * @param group_id The group ID to put in the message
- * @param object_id The object ID to put in the message
- * @param object_status The object status (only added if the payload length is 0)
- * @param object_send_order The object send order to put in the message (v03 and v04 only)
- * @param priority The publisher priority to put in the message (only after v05)
- * @param payload The buffer containing the payload of the object
- * @param plen The size of the payload buffer
- * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_object_stream(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-	uint64_t group_id, uint64_t object_id, uint64_t object_status, uint64_t object_send_order, uint8_t priority, uint8_t *payload, size_t plen);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -995,8 +930,7 @@ size_t imquic_moq_add_object_stream(imquic_moq_context *moq, uint8_t *bytes, siz
  * @param group_id The group ID to put in the message
  * @param object_id The object ID to put in the message
  * @param object_status The object status (only added if the payload length is 0)
- * @param object_send_order The object send order to put in the message (v03 and v04 only)
- * @param priority The publisher priority to put in the message (only after v05)
+ * @param priority The publisher priority to put in the message
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
  * @param extensions_count The number of object extensions, if any (only in v08, deprecated in v09)
@@ -1004,7 +938,7 @@ size_t imquic_moq_add_object_stream(imquic_moq_context *moq, uint8_t *bytes, siz
  * @param elen The size of the object extensions buffer (only since v08)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-	uint64_t group_id, uint64_t object_id, uint64_t object_status, uint64_t object_send_order, uint8_t priority,
+	uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t priority,
 	uint8_t *payload, size_t plen, size_t extensions_count, uint8_t *extensions, size_t elen);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM_STATUS message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
@@ -1014,7 +948,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
  * @param track_alias The track alias to put in the message
  * @param group_id The group ID to put in the message
  * @param object_id The object ID to put in the message
- * @param priority The publisher priority to put in the message (only after v05)
+ * @param priority The publisher priority to put in the message
  * @param object_status The object status (only added if the payload length is 0)
  * @param extensions The buffer containing the object extensions, if any (only since v09)
  * @param elen The size of the object extensions buffer (only since v09)
@@ -1031,11 +965,10 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
  * @param track_alias The track alias to put in the message
- * @param object_send_order The object send order to put in the message (v03 and v04 only)
- * @param priority The publisher priority to put in the message (only after v05)
+ * @param priority The publisher priority to put in the message
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_stream_header_track(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t request_id, uint64_t track_alias, uint64_t object_send_order, uint8_t priority);
+	uint64_t request_id, uint64_t track_alias, uint8_t priority);
 /*! \brief Helper to add an object to a buffer, formatted as expected
  * for \c STREAM_HEADER_TRACK objects (so not all IDs) (only before v06)
  * @param moq The imquic_moq_context generating the object
@@ -1049,33 +982,6 @@ size_t imquic_moq_add_stream_header_track(imquic_moq_context *moq, uint8_t *byte
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_stream_header_track_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen);
-/*! \brief Helper to add a \c STREAM_HEADER_GROUP message to a buffer (only before v06)
- * @note This will create a new \c STREAM and send the header: after
- * that, imquic_moq_add_stream_header_group_object is used to send
- * all objects that belong to this group.
- * @param moq The imquic_moq_context generating the message
- * @param bytes The buffer to add the message to
- * @param blen The size of the buffer
- * @param request_id The request ID to put in the message
- * @param track_alias The track alias to put in the message
- * @param group_id The group ID to put in the message
- * @param object_send_order The object send order to put in the message (v03 and v04 only)
- * @param priority The publisher priority to put in the message (only after v05)
- * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_stream_header_group(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	uint64_t track_alias, uint64_t group_id, uint64_t object_send_order, uint8_t priority);
-/*! \brief Helper to add an object to a buffer, formatted as expected
- * for \c STREAM_HEADER_GROUP objects (so not all IDs) (only before v06)
- * @param moq The imquic_moq_context generating the object
- * @param bytes The buffer to add the object to
- * @param blen The size of the buffer
- * @param object_id The object ID
- * @param object_status The object status (only added if the payload length is 0)
- * @param payload The buffer containing the payload of the object
- * @param plen The size of the payload buffer
- * @returns The size of the generated object, if successful, or 0 otherwise */
-size_t imquic_moq_add_stream_header_group_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen);
 /*! \brief Helper to add a \c SUBGROUP_HEADER message to a buffer (only after v06)
  * @note This will create a new \c STREAM and send the header: after
  * that, imquic_moq_add_stream_header_subgroup_object is used to send

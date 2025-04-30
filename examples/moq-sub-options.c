@@ -15,7 +15,7 @@ static GOptionContext *opts = NULL;
 gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 	/* Supported command-line arguments */
 	GOptionEntry opt_entries[] = {
-		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any|legacy|ancient" },
+		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any|legacy" },
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to subscribe to (can be called multiple times to create a tuple; default=none)", "namespace" },
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_name, "MoQ track name to subscribe to (can be called multiple times to subscribe to multiple tracks; default=none)", "name" },
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to subscribe, if needed (default=none)", "string" },

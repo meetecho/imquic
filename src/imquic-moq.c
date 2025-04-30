@@ -563,12 +563,6 @@ const char *imquic_moq_role_str(imquic_moq_role role) {
 /* Versions */
 const char *imquic_moq_version_str(imquic_moq_version version) {
 	switch(version) {
-		case IMQUIC_MOQ_VERSION_03:
-			return "draft-ietf-moq-transport-03";
-		case IMQUIC_MOQ_VERSION_04:
-			return "draft-ietf-moq-transport-04";
-		case IMQUIC_MOQ_VERSION_05:
-			return "draft-ietf-moq-transport-05";
 		case IMQUIC_MOQ_VERSION_06:
 			return "draft-ietf-moq-transport-06";
 		case IMQUIC_MOQ_VERSION_07:
@@ -585,8 +579,6 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-XX(-from-11)";
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
 			return "draft-ietf-moq-transport-XX(-from-06-to-10)";
-		case IMQUIC_MOQ_VERSION_ANY_ANCIENT:
-			return "draft-ietf-moq-transport-XX(-from-03-to-05)";
 		default: break;
 	}
 	return NULL;
@@ -597,10 +589,6 @@ const char *imquic_moq_delivery_str(imquic_moq_delivery type) {
 	switch(type) {
 		case IMQUIC_MOQ_USE_DATAGRAM:
 			return "OBJECT_DATAGRAM";
-		case IMQUIC_MOQ_USE_STREAM:
-			return "OBJECT_STREAM";
-		case IMQUIC_MOQ_USE_GROUP:
-			return "STREAM_HEADER_GROUP";
 		case IMQUIC_MOQ_USE_SUBGROUP:
 			return "STREAM_HEADER_SUBGROUP";
 		case IMQUIC_MOQ_USE_TRACK:

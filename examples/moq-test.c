@@ -591,7 +591,6 @@ static void *imquic_demo_tester_thread(void *data) {
 			.subgroup_id = subgroup_id,
 			.object_id = object_id,
 			.object_status = 0,
-			.object_send_order = 0,
 			.payload = (num_objects == 0) ? obj0_p : obj_p,
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
 			.extensions = (extensions_len > 0) ? extensions : NULL,
@@ -734,10 +733,6 @@ int main(int argc, char *argv[]) {
 		} else if(!strcasecmp(options.moq_version, "legacy")) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
 			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
-		} else if(!strcasecmp(options.moq_version, "ancient")) {
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Versions lower than 6 don't support namespace tuples\n");
-			ret = 1;
-			goto done;
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {

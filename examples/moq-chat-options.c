@@ -15,7 +15,7 @@ static GOptionContext *opts = NULL;
 gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 	/* Supported command-line arguments */
 	GOptionEntry opt_entries[] = {
-		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any|legacy|ancient" },
+		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any|legacy" },
 		{ "id", 'i', 0, G_OPTION_ARG_STRING, &options->id, "Chat ID (default=none)", "string" },
 		{ "user-id", 'u', 0, G_OPTION_ARG_STRING, &options->user_id, "User ID (default=none)", "string" },
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to subscribe, if needed (default=none)", "string" },

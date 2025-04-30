@@ -15,11 +15,11 @@ static GOptionContext *opts = NULL;
 gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 	/* Supported command-line arguments */
 	GOptionEntry opt_entries[] = {
-		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any|legacy|ancient" },
+		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any|legacy" },
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to publish (can be called multiple times to create a tuple; default=none)", "namespace" },
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING, &options->track_name, "MoQ track name to publish (default=none)", "name" },
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info required to subscribe, if any (default=none)", "string" },
-		{ "delivery", 'D', 0, G_OPTION_ARG_STRING, &options->delivery, "How MoQ objects should be sent (default=subgroup; supported=datagram,stream,group,subgroup,track)", "type" },
+		{ "delivery", 'D', 0, G_OPTION_ARG_STRING, &options->delivery, "How MoQ objects should be sent (default=subgroup; supported=datagram,subgroup,track)", "type" },
 		{ "extensions", 'x', 0, G_OPTION_ARG_NONE, &options->extensions, "Send some extensions along objects (default=no; only supported for v08 and later)", NULL },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },

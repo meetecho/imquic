@@ -144,13 +144,11 @@
  * all supported versions equal to or higher than v11, while for servers it
  * will accept the first offered among the supported ones (still if equal to or
  * higher than v11); a "legacy" version called \c IMQUIC_MOQ_VERSION_ANY_LEGACY
- * is available, to negotiate any supported version between v06 and v10;
- * finalle, an "ancient" version called \c IMQUIC_MOQ_VERSION_ANY_ANCIENT
- * is also available, to negotiate support for any supported version up to
- * v05. The reason for this separation of version negotiation in different
+ * is available, to negotiate any supported version between v06 and v10.
+ * The reason for this separation of version negotiation in different
  * groups is due to the incompatibility in the messaging on the wire, which
  * saw breaking changes in v06 and v11. At the time of writing, this stack
- * supports MoQ versions from v03 ( \c IMQUIC_MOQ_VERSION_03 ) up to v11
+ * supports MoQ versions from v06 ( \c IMQUIC_MOQ_VERSION_06 ) up to v11
  * ( \c IMQUIC_MOQ_VERSION_11 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
@@ -402,15 +400,11 @@ typedef struct imquic_moq_fetch_range {
 typedef enum imquic_moq_delivery {
 	/*! \brief A single object on a \c DATAGRAM */
 	IMQUIC_MOQ_USE_DATAGRAM,
-	/*! \brief A single object on a \c STREAM (only before v06) */
-	IMQUIC_MOQ_USE_STREAM,
-	/*! \brief All objects of the same group on the same \c STREAM (only before v06) */
-	IMQUIC_MOQ_USE_GROUP,
-	/*! \brief All objects of the same subgroup on the same \c STREAM (v06 and v07 only) */
+	/*! \brief All objects of the same subgroup on the same \c STREAM */
 	IMQUIC_MOQ_USE_SUBGROUP,
-	/*! \brief All objects of the same track on the same \c STREAM (only before v07) */
+	/*! \brief All objects of the same track on the same \c STREAM (only v06) */
 	IMQUIC_MOQ_USE_TRACK,
-	/*! \brief All fetched objects on the same \c STREAM (only v07) */
+	/*! \brief All fetched objects on the same \c STREAM (starting from v07) */
 	IMQUIC_MOQ_USE_FETCH
 } imquic_moq_delivery;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_delivery property.
@@ -477,15 +471,13 @@ typedef struct imquic_moq_object {
 	uint64_t track_alias;
 	/*! \brief MoQ group_id */
 	uint64_t group_id;
-	/*! \brief MoQ subgroup_id (v06 and v07 only) */
+	/*! \brief MoQ subgroup_id */
 	uint64_t subgroup_id;
 	/*! \brief MoQ object_id */
 	uint64_t object_id;
 	/*! \brief MoQ object status */
 	imquic_moq_object_status object_status;
-	/*! \brief MoQ object_sent_order (v03 and v04 only) */
-	uint64_t object_send_order;
-	/*! \brief MoQ publisher priority (only after v05) */
+	/*! \brief MoQ publisher priority */
 	uint8_t priority;
 	/*! \brief MoQ object payload */
 	uint8_t *payload;
@@ -893,14 +885,8 @@ imquic_moq_role imquic_moq_get_role(imquic_connection *conn);
 typedef enum imquic_moq_version {
 	/* Base */
 	IMQUIC_MOQ_VERSION_BASE = 0xff000000,
-	/* Draft version -03 */
-	IMQUIC_MOQ_VERSION_MIN = 0xff000003,
-	IMQUIC_MOQ_VERSION_03 = 0xff000003,
-	/* Draft version -04 */
-	IMQUIC_MOQ_VERSION_04 = 0xff000004,
-	/* Draft version -05 */
-	IMQUIC_MOQ_VERSION_05 = 0xff000005,
 	/* Draft version -06 */
+	IMQUIC_MOQ_VERSION_MIN = 0xff000006,
 	IMQUIC_MOQ_VERSION_06 = 0xff000006,
 	/* Draft version -07 */
 	IMQUIC_MOQ_VERSION_07 = 0xff000007,
@@ -918,10 +904,7 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,
 	/* Any version between v06 and v11: for client, it means offer all those versions;
 	 * for servers, it means accept the first supported offered version */
-	IMQUIC_MOQ_VERSION_ANY_LEGACY = 0xfffffffe,
-	/* Any pre-v06 version: for client, it means offer all those versions;
-	 * for servers, it means accept the first supported offered version */
-	IMQUIC_MOQ_VERSION_ANY_ANCIENT = 0xfffffffd,
+	IMQUIC_MOQ_VERSION_ANY_LEGACY = 0xfffffffe
 } imquic_moq_version;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_version property.
  * @param version The imquic_moq_version property

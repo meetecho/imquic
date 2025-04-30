@@ -175,24 +175,19 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 		.subgroup_id = 0,
 		.object_id = object_id,
 		.object_status = 0,
-		.object_send_order = 0,
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
 		.extensions = extensions,
 		.extensions_len = extensions_len,
 		.extensions_count = extensions_count,
 		.delivery = delivery,
-		.end_of_stream = (last && imquic_moq_get_version(moq_conn) == IMQUIC_MOQ_VERSION_03)
+		.end_of_stream = FALSE
 	};
 	imquic_moq_send_object(moq_conn, &object);
-	if(last && imquic_moq_get_version(moq_conn) > IMQUIC_MOQ_VERSION_03 &&
-			(delivery == IMQUIC_MOQ_USE_GROUP || delivery == IMQUIC_MOQ_USE_SUBGROUP || delivery == IMQUIC_MOQ_USE_TRACK)) {
+	if(last && delivery == IMQUIC_MOQ_USE_SUBGROUP) {
 		/* Send an empty object with status "end of X" */
 		object.object_id++;
-		if(delivery == IMQUIC_MOQ_USE_GROUP || delivery == IMQUIC_MOQ_USE_SUBGROUP)
-			object.object_status = IMQUIC_MOQ_END_OF_GROUP;
-		else if(delivery == IMQUIC_MOQ_USE_TRACK)
-			object.object_status = IMQUIC_MOQ_END_OF_TRACK_AND_GROUP;
+		object.object_status = IMQUIC_MOQ_END_OF_GROUP;
 		object.payload_len = 0;
 		object.payload = NULL;
 		object.extensions = NULL;
@@ -253,9 +248,6 @@ int main(int argc, char *argv[]) {
 		} else if(!strcasecmp(options.moq_version, "legacy")) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
 			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
-		} else if(!strcasecmp(options.moq_version, "ancient")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and 5\n", IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE);
-			moq_version = IMQUIC_MOQ_VERSION_ANY_ANCIENT;
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
@@ -279,10 +271,6 @@ int main(int argc, char *argv[]) {
 	if(options.delivery != NULL) {
 		if(!strcasecmp(options.delivery, "datagram")) {
 			delivery = IMQUIC_MOQ_USE_DATAGRAM;
-		} else if(!strcasecmp(options.delivery, "stream")) {
-			delivery = IMQUIC_MOQ_USE_STREAM;
-		} else if(!strcasecmp(options.delivery, "group")) {
-			delivery = IMQUIC_MOQ_USE_GROUP;
 		} else if(!strcasecmp(options.delivery, "subgroup")) {
 			delivery = IMQUIC_MOQ_USE_SUBGROUP;
 		} else if(!strcasecmp(options.delivery, "track")) {
