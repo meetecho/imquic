@@ -196,7 +196,7 @@
  * it can be rejected with \ref imquic_moq_reject_subscribe.
  * While an incoming subscribe will include more info to address a specific
  * resource (most importantly the namespace in \ref imquic_moq_namespace
- * and the track name in \ref imquic_moq_name), a \c subscribe_id integer
+ * and the track name in \ref imquic_moq_name), a \c request_id integer
  * will act as a "shortcut" to address that specific subscription, both
  * in upcoming events (e.g., when notified about a will to unsubscribe)
  * and when sending responses or delivering objects.
@@ -209,7 +209,7 @@
  * wire, as it just expects the \ref imquic_moq_delivery mode as one
  * of the properties set on the object to send. Besides the delivery
  * mode, the object itself will need to be filled with the relevant
- * MoQ object data (e.g., subscribe_id, object_id, group_id, etc.), as
+ * MoQ object data (e.g., request_id, object_id, group_id, etc.), as
  * that info will be serialized accordingly, depending on the multiplexing
  * mode. Depending on the negotiated version, only a subset of the
  * properties may actually be serialized on the wire, while others may
@@ -255,7 +255,7 @@
  * about a subscription being completed (currently unused, as also the
  * subjects of discussions within the MoQ standardization efforts).
  *
- * All those callbacks refer to the \c subscribe_id identifier that was
+ * All those callbacks refer to the \c request_id identifier that was
  * previously mapped to that subscription (more on that later).
  *
  * Similar callbacks are available for when a \c SUBSCRIBE_ANNOUNCES has
@@ -290,7 +290,7 @@
  * they're interested in (the namespace via \ref imquic_moq_namespace,
  * the track name via \ref imquic_moq_name and, if needed, the authentication
  * info via a string), but at the same time they should
- * also provide unique \c subscribe_id and \c track_alias numeric identifiers
+ * also provide unique \c request_id and \c track_alias numeric identifiers
  * to act as shortcuts to address that subscription in subsequent responses,
  * events and incoming objects. Subscribing can be done with a call to the
  * \ref imquic_moq_subscribe function, while to unsubscribe the corresponding
@@ -298,9 +298,9 @@
  *
  * Issuing \c FETCH related requests is similar, as \ref imquic_moq_standalone_fetch
  * and \ref imquic_moq_joining_fetch allow you to try and fetch some objects
- * (in standalone or joining more, respectively), while \ref imquic_moq_cancel_fetch
+ * (in standalone or joining mode, respectively), while \ref imquic_moq_cancel_fetch
  * is what you use to stop the delivery and cancel the request. Just as
- * with \c SUBSCRIBE requests, a \c subscribe_id identifier is used to
+ * with \c SUBSCRIBE requests, a \c request_id identifier is used to
  * address a specific \c FETCH context. Notice that for a joining \c FETCH
  * you need to provide an existing \c SUBSCRIBE identifier as well.
  *
@@ -347,6 +347,9 @@
 
 #include "imquic.h"
 
+/** @name MoQ resources
+ */
+///@{
 /*! \brief MoQ Track Namespace */
 typedef struct imquic_moq_namespace {
 	/*! \brief Namespace data (typically a non-null terminated string) */
@@ -468,8 +471,8 @@ size_t imquic_moq_build_object_extensions(GList *extensions, uint8_t *bytes, siz
  * should be considered a higher level abstraction that the internal
  * MoQ stack may (and often will) use and notify differently */
 typedef struct imquic_moq_object {
-	/*! \brief MoQ subscribe_id */
-	uint64_t subscribe_id;
+	/*! \brief MoQ request_id */
+	uint64_t request_id;
 	/*! \brief MoQ track_alias */
 	uint64_t track_alias;
 	/*! \brief MoQ group_id */
@@ -499,6 +502,121 @@ typedef struct imquic_moq_object {
 	/*! \brief Whether this signals the end of the stream */
 	gboolean end_of_stream;
 } imquic_moq_object;
+///@}
+
+/** @name MoQ error and status codes
+ */
+///@{
+/*! \brief Generic error codes */
+typedef enum imquic_moq_error_code {
+	IMQUIC_MOQ_NO_ERROR = 0x0,
+	IMQUIC_MOQ_INTERNAL_ERROR = 0x1,
+	IMQUIC_MOQ_UNAUTHORIZED = 0x2,
+	IMQUIC_MOQ_PROTOCOL_VIOLATION = 0x3,
+	IMQUIC_MOQ_INVALID_REQUEST_ID = 0x4,
+	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x5,
+	IMQUIC_MOQ_KEYVALUE_FORMATTING_ERROR = 0x6,
+	IMQUIC_MOQ_TOO_MANY_REQUESTS = 0x7,
+	IMQUIC_MOQ_INVALID_PATH = 0x8,
+	IMQUIC_MOQ_MALFORMED_PATH = 0x9,
+	IMQUIC_MOQ_GOAWAY_TIMEOUT = 0x10,
+	IMQUIC_MOQ_CONTROL_MESSAGE_TIMEOUT = 0x11,
+	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
+	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
+	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
+	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,
+	/* Not an actual error */
+	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
+} imquic_moq_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_error_code value.
+ * @param code The imquic_moq_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_error_code_str(imquic_moq_error_code code);
+
+/*! \brief Announce error codes */
+typedef enum imquic_moq_announce_error_code {
+	IMQUIC_MOQ_ANNCERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_ANNCERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_ANNCERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_ANNCERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_ANNCERR_UNINTERESTED = 0x4,
+	IMQUIC_MOQ_ANNCERR_MALFORMED_AUTH_TOKEN = 0x10,
+	IMQUIC_MOQ_ANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_ANNCERR_EXPIRED_AUTH_TOKEN = 0x12,
+} imquic_moq_announce_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_announce_error_code value.
+ * @param code The imquic_moq_announce_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_announce_error_code_str(imquic_moq_announce_error_code code);
+
+/*! \brief Subscribe error codes */
+typedef enum imquic_moq_sub_error_code {
+	IMQUIC_MOQ_SUBERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_SUBERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_SUBERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_SUBERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST = 0x4,
+	IMQUIC_MOQ_SUBERR_INVALID_RANGE = 0x5,
+	IMQUIC_MOQ_SUBERR_RETRY_TRACK_ALIAS = 0x6,
+	IMQUIC_MOQ_SUBERR_MALFORMED_AUTH_TOKEN = 0x10,
+	IMQUIC_MOQ_SUBERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_SUBERR_EXPIRED_AUTH_TOKEN = 0x12,
+} imquic_moq_sub_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_sub_error_code value.
+ * @param code The imquic_moq_sub_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_sub_error_code_str(imquic_moq_sub_error_code code);
+
+/*! \brief Subscribe announces error codes */
+typedef enum imquic_moq_subannc_error_code {
+	IMQUIC_MOQ_SUBANNCERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_SUBANNCERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_SUBANNCERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_SUBANNCERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_SUBANNCERR_NAMESPACE_PREFIX_UNKNOWN = 0x4,
+	IMQUIC_MOQ_SUBANNCERR_MALFORMED_AUTH_TOKEN = 0x10,
+	IMQUIC_MOQ_SUBANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_SUBANNCERR_EXPIRED_AUTH_TOKEN = 0x12,
+} imquic_moq_subannc_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_subannc_error_code value.
+ * @param code The imquic_moq_subannc_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_subannc_error_code_str(imquic_moq_subannc_error_code code);
+
+/*! \brief Fetch error codes */
+typedef enum imquic_moq_fetch_error_code {
+	IMQUIC_MOQ_FETCHERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_FETCHERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_FETCHERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_FETCHERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_FETCHERR_TRACK_DOES_NOT_EXIST = 0x4,
+	IMQUIC_MOQ_FETCHERR_INVALID_RANGE = 0x5,
+	IMQUIC_MOQ_FETCHERR_NO_OBJECTS = 0x6,
+	IMQUIC_MOQ_FETCHERR_INVALID_JOINING_SUBSCRIBE_ID = 0x7,
+	IMQUIC_MOQ_FETCHERR_MALFORMED_AUTH_TOKEN = 0x10,
+	IMQUIC_MOQ_FETCHERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_FETCHERR_EXPIRED_AUTH_TOKEN = 0x12,
+} imquic_moq_fetch_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_fetch_error_code value.
+ * @param code The imquic_moq_fetch_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_fetch_error_code_str(imquic_moq_fetch_error_code code);
+
+/*! \brief Subscribe done codes */
+typedef enum imquic_moq_sub_done_code {
+	IMQUIC_MOQ_SUBDONE_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_SUBDONE_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_SUBDONE_TRACK_ENDED = 0x2,
+	IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED = 0x3,
+	IMQUIC_MOQ_SUBDONE_GOING_AWAY = 0x4,
+	IMQUIC_MOQ_SUBDONE_EXPIRED = 0x5,
+	IMQUIC_MOQ_SUBDONE_TOO_FAR_BEHIND = 0x6
+} imquic_moq_sub_done_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_sub_done_code value.
+ * @param code The imquic_moq_sub_done_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_sub_done_code_str(imquic_moq_sub_done_code code);
+///@}
 
 /** @name MoQ endpoints management
  */
@@ -602,7 +720,7 @@ void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_announce_cancel Pointer to the function that will handle the incoming \c ANNOUNCE_CANCEL */
 void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason));
+	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when an
  * \c ANNOUNCE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -614,7 +732,7 @@ void imquic_set_announce_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param announce_error Pointer to the function that will fire when an \c ANNOUNCE is rejected */
 void imquic_set_announce_error_cb(imquic_endpoint *endpoint,
-	void (* announce_error)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason));
+	void (* announce_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNANNOUNCE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -626,19 +744,19 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe Pointer to the function that will handle the incoming \c SUBSCRIBE */
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth));
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_accepted Pointer to the function that will fire when an \c SUBSCRIBE is accepted */
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t subscribe_id, uint64_t expires, gboolean descending));
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_error Pointer to the function that will fire when an \c SUBSCRIBE is rejected */
 void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_error)(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason, uint64_t track_alias));
+	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE we previously sent is now done
  * @note Currently unused, considering there are discussions in the MoQ
@@ -647,19 +765,19 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_done Pointer to the function that will fire when an \c SUBSCRIBE is done */
 void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
-	void (* subscribe_done)(imquic_connection *conn, uint64_t subscribe_id, int status_code, uint64_t streams_count, const char *reason));
+	void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe Pointer to the function that will handle the incoming \c UNSUBSCRIBE */
 void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
-	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t subscribe_id));
+	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c SUBSCRIBES_BLOCKED request.
+ * an incoming \c REQUESTS_BLOCKED request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribes_blocked Pointer to the function that will handle the incoming \c SUBSCRIBES_BLOCKED */
-void imquic_set_subscribes_blocked_cb(imquic_endpoint *endpoint,
-	void (* subscribes_blocked)(imquic_connection *conn, uint64_t max_subscribe_id));
+ * @param requests_blocked Pointer to the function that will handle the incoming \c REQUESTS_BLOCKED */
+void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
+	void (* requests_blocked)(imquic_connection *conn, uint64_t max_request_id));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE_ANNOUNCES request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -677,7 +795,7 @@ void imquic_set_subscribe_announces_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_announces_error Pointer to the function that will fire when an \c SUBSCRIBE_ANNOUNCES is rejected */
 void imquic_set_subscribe_announces_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_announces_error)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason));
+	void (* subscribe_announces_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_ANNOUNCES request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -689,33 +807,33 @@ void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
-	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t subscribe_id,
+	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_joining_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
-	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
-		uint64_t preceding_group_offset, gboolean descending, const char *auth));
+	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
+		gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c FETCH_CANCEL request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_fetch_cancel Pointer to the function that will handle the incoming \c FETCH_CANCEL */
 void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t subscribe_id));
+	void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when an
  * \c FETCH we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param fetch_accepted Pointer to the function that will fire when an \c FETCH is accepted */
 void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
-	void (* fetch_accepted)(imquic_connection *conn, uint64_t subscribe_id, gboolean descending, imquic_moq_position *largest));
+	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest));
 /*! \brief Configure the callback function to be notified when an
  * \c FETCH we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param fetch_error Pointer to the function that will fire when an \c FETCH is rejected */
 void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
-	void (* fetch_error)(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason));
+	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming MoQ object, independently of how it was multiplexed on the wire.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -814,13 +932,13 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version);
  * @returns The imquic_moq_version value */
 imquic_moq_version imquic_moq_get_version(imquic_connection *conn);
 
-/*! \brief Helper function to set the Maximum Subscribe ID a subscriber can send
+/*! \brief Helper function to set the Maximum Request ID a subscriber can send
  * \note If invoked before the MoQ connection setup, it will be put in the
- * setup parameter, otherwise it's sent in a \c MAX_SUBSCRIBE_ID request
+ * setup parameter, otherwise it's sent in a \c MAX_REQUEST_ID request
  * @param conn The imquic_connection to update
- * @param max_subscribe_id The Maximum Subscribe ID to enforce
+ * @param max_request_id The Maximum Request ID to enforce
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_set_max_subscribe_id(imquic_connection *conn, uint64_t max_subscribe_id);
+int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_id);
 
 /** @name Using the MoQ API
  */
@@ -842,7 +960,7 @@ int imquic_moq_accept_announce(imquic_connection *conn, imquic_moq_namespace *tn
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_announce(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason);
+int imquic_moq_reject_announce(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
 /*! \brief Function to send an \c UNANNOUNCE request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace to unannounce
@@ -850,33 +968,33 @@ int imquic_moq_reject_announce(imquic_connection *conn, imquic_moq_namespace *tn
 int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
 /*! \brief Function to send a \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id A unique numeric identifier to associate to this subscription
+ * @param request_id A unique numeric identifier to associate to this subscription
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param tn The imquic_moq_name track name to subscribe to
  * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth);
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth);
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id The unique \c subscribe_id value associated to the subscription to accept
+ * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param expires Value of \c expires to send back
  * @param descending Whether objects will be delivered in descending group order
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t expires, gboolean descending);
+int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending);
 /*! \brief Function to reject an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id The unique \c subscribe_id value associated to the subscription to reject
+ * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param track_alias The unique \c track_alias value associated to the subscription to reject
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason, uint64_t track_alias);
+int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 /*! \brief Function to send a \c UNSUBSCRIBE request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id The unique \c subscribe_id value associated to the subscription to unsubscribe from
+ * @param request_id The unique \c request_id value associated to the subscription to unsubscribe from
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t subscribe_id);
+int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a \c SUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
@@ -894,7 +1012,7 @@ int imquic_moq_accept_subscribe_announces(imquic_connection *conn, imquic_moq_na
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason);
+int imquic_moq_reject_subscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason);
 /*! \brief Function to send a \c UNSUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from
@@ -902,51 +1020,53 @@ int imquic_moq_reject_subscribe_announces(imquic_connection *conn, imquic_moq_na
 int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns);
 /*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id A unique numeric identifier to associate to this subscription
+ * @param request_id A unique numeric identifier to associate to this subscription
  * @param tns The imquic_moq_namespace namespace the track to fetch to belongs to
  * @param tn The imquic_moq_name track name to fetch to
  * @param descending Whether objects should be fetched in descending group order
  * @param range The range of groups/objects to fetch
  * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t subscribe_id,
+int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn,
 	gboolean descending, imquic_moq_fetch_range *range, const char *auth);
 /*! \brief Function to send a joining \c FETCH request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id A unique numeric identifier to associate to this subscription
- * @param joining_subscribe_id Existing subscription to join
- * @param preceding_group_offset How many groups to retrieve before the current one
+ * @param request_id A unique numeric identifier to associate to this subscription
+ * @param joining_request_id Existing subscription to join
+ * @param absolute Whether this is an absolute or relative joining \c FETCH
+ * @param joining_start How many groups to retrieve before the current one,
+ * for relative joins, or starting group ID for absolute joins
  * @param descending Whether objects should be fetched in descending group order
  * @param auth The authentication info, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id,
-	uint64_t preceding_group_offset, gboolean descending, const char *auth);
+int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
+	gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth);
 /*! \brief Function to accept an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id The unique \c subscribe_id value associated to the subscription to accept
+ * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param descending Whether objects will be delivered in descending group order
  * @param largest The largest group/object IDs
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t subscribe_id, gboolean descending, imquic_moq_position *largest);
+int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest);
 /*! \brief Function to reject an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id The unique \c subscribe_id value associated to the subscription to reject
+ * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason);
+int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason);
 /*! \brief Function to send a \c FETCH_CANCEL request
  * @param conn The imquic_connection to send the request on
- * @param subscribe_id The unique \c subscribe_id value associated to the subscription to cancel_fetch from
+ * @param request_id The unique \c request_id value associated to the subscription to cancel_fetch from
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t subscribe_id);
+int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a MoQ object
  * @note Depending on the delivery mode, to close the stream set the
  * \c end_of_stream property to \c TRUE in the object. There's no need to
  * do that when using \c OBJECT_STREAM or \c OBJECT_DATAGRAM . You can
  * also close the stream when you don't have any object to send: just set
- * the relevant properties (e.g., subscribe_id, group_id and subgroup_id)
+ * the relevant properties (e.g., request_id, group_id and subgroup_id)
  * without any payload, and the stack will find the right stream to close it.
  * @param conn The imquic_connection to send the object on
  * @param object The imquic_moq_object object to send, including all relevant identifiers and the payload

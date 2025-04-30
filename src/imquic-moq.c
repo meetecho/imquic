@@ -292,7 +292,7 @@ void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
-		void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason)) {
+		void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -314,7 +314,7 @@ void imquic_set_announce_accepted_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_announce_error_cb(imquic_endpoint *endpoint,
-		void (* announce_error)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason)) {
+		void (* announce_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -336,7 +336,7 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
-		void (* incoming_subscribe)(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth)) {
+		void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -347,7 +347,7 @@ void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-		void (* subscribe_accepted)(imquic_connection *conn, uint64_t subscribe_id, uint64_t expires, gboolean descending)) {
+		void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -358,7 +358,7 @@ void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
-		void (* subscribe_error)(imquic_connection *conn, uint64_t subscribe_id, int error_codes, const char *reason, uint64_t track_alias)) {
+		void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_codes, const char *reason, uint64_t track_alias)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -369,7 +369,7 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
-		void (* subscribe_done)(imquic_connection *conn, uint64_t subscribe_id, int status_code, uint64_t streams_count, const char *reason)) {
+		void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -380,7 +380,7 @@ void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
-		void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t subscribe_id)) {
+		void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t request_id)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -390,14 +390,14 @@ void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_subscribes_blocked_cb(imquic_endpoint *endpoint,
-		void (* subscribes_blocked)(imquic_connection *conn, uint64_t max_subscribe_id)) {
+void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
+		void (* requests_blocked)(imquic_connection *conn, uint64_t max_request_id)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.subscribes_blocked = subscribes_blocked;
+		endpoint->callbacks.moq.requests_blocked = requests_blocked;
 	}
 }
 
@@ -424,7 +424,7 @@ void imquic_set_subscribe_announces_accepted_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_announces_error_cb(imquic_endpoint *endpoint,
-		void (* subscribe_announces_error)(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason)) {
+		void (* subscribe_announces_error)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -446,7 +446,7 @@ void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
-		void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t subscribe_id, imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth)) {
+		void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -457,7 +457,7 @@ void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
-		void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t subscribe_id, uint64_t joining_subscribe_id, uint64_t preceding_group_offset, gboolean descending, const char *auth)) {
+		void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id, gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -468,7 +468,7 @@ void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
-		void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t subscribe_id)) {
+		void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t request_id)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -479,7 +479,7 @@ void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
-		void (* fetch_accepted)(imquic_connection *conn, uint64_t subscribe_id, gboolean descending, imquic_moq_position *largest)) {
+		void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -490,7 +490,7 @@ void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
-		void (* fetch_error)(imquic_connection *conn, uint64_t subscribe_id, int error_codes, const char *reason)) {
+		void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_codes, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

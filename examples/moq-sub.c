@@ -89,8 +89,9 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	moq_version = imquic_moq_get_version(conn);
 	/* Let's subscribe to the provided namespace/name(s) */
 	int i = 0;
-	uint64_t subscribe_id = 0;
+	uint64_t request_id = 0;
 	uint64_t track_alias = 0;
+	uint64_t request_id_increment = (imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
 	imquic_moq_namespace tns[32];	/* FIXME */
 	while(options.track_namespace[i] != NULL) {
 		const char *track_namespace = options.track_namespace[i];
@@ -106,14 +107,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		const char *track_name = options.track_name[i];
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s'/'%s' (%s), using ID %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn), (options.fetch == NULL ? "Subscribing" : "Fetching"),
-			ns, track_name, imquic_demo_media_type_str(media_type), subscribe_id, track_alias);
+			ns, track_name, imquic_demo_media_type_str(media_type), request_id, track_alias);
 		imquic_moq_name tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
-			imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, options.auth_info);
+			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info);
 		} else {
 			/* Send a FETCH */
 			if(options.join_offset < 0) {
@@ -124,49 +125,50 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				range.start.object = 0;
 				range.end.group = 1000;
 				range.end.object = 0;
-				imquic_moq_standalone_fetch(conn, subscribe_id, &tns[0], &tn,
+				imquic_moq_standalone_fetch(conn, request_id, &tns[0], &tn,
 					!strcasecmp(options.fetch, "descending"), &range, options.auth_info);
 			} else {
 				/* Send a SUBSCRIBE first */
-				imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, options.auth_info);
+				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info);
 				/* Now send a Joining Fetch referencing that subscription */
-				imquic_moq_joining_fetch(conn, subscribe_id + 1, subscribe_id,
-					options.join_offset, !strcasecmp(options.fetch, "descending"), options.auth_info);
+				imquic_moq_joining_fetch(conn, request_id + request_id_increment, request_id,
+					FALSE, options.join_offset, !strcasecmp(options.fetch, "descending"), options.auth_info);
+				request_id += request_id_increment;
 			}
 		}
 		i++;
-		subscribe_id++;
+		request_id += request_id_increment;
 		track_alias++;
 	}
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t subscribe_id, uint64_t expires, gboolean descending) {
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
-		imquic_get_connection_name(conn), subscribe_id, expires, descending ? "descending" : "ascending");
+		imquic_get_connection_name(conn), request_id, expires, descending ? "descending" : "ascending");
 }
 
-static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason, uint64_t track_alias) {
+static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64"/%"SCNu64": error %d (%s)\n",
-		imquic_get_connection_name(conn), subscribe_id, track_alias, error_code, reason);
+		imquic_get_connection_name(conn), request_id, track_alias, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t subscribe_id, int status_code, uint64_t streams_count, const char *reason) {
+static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done: status %d (%s)\n",
-		imquic_get_connection_name(conn), subscribe_id, status_code, reason);
+		imquic_get_connection_name(conn), request_id, status_code, reason);
 	/* TODO */
 }
 
-static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t subscribe_id, gboolean descending, imquic_moq_position *largest) {
+static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), subscribe_id, descending ? "descending" : "ascending", largest->group, largest->object);
+		imquic_get_connection_name(conn), request_id, descending ? "descending" : "ascending", largest->group, largest->object);
 }
 
-static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason) {
+static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error fetching via ID %"SCNu64": error %d (%s)\n",
-		imquic_get_connection_name(conn), subscribe_id, error_code, reason);
+		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here, unless it was a joining FETCH */
 	if(options.join_offset < 0)
 		g_atomic_int_inc(&stop);
@@ -175,7 +177,7 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t subscribe_
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
-		imquic_get_connection_name(conn), object->subscribe_id, object->track_alias,
+		imquic_get_connection_name(conn), object->request_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id, object->object_send_order,
 		object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
@@ -242,9 +244,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			offset += metadata_size;
 		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Payload:    %"SCNu64" bytes\n", object->payload_len-offset);
-	} else if(object->subscribe_id == 0 && media_type == DEMO_TYPE_MP4) {
-		/* FIXME Ugly hack: if this is mp4, and our response to subscribe ID 0, subscribe to another track */
-		uint64_t subscribe_id = 1;
+	} else if(object->request_id == 0 && media_type == DEMO_TYPE_MP4) {
+		/* FIXME Ugly hack: if this is mp4, and our response to request ID 0, subscribe to another track */
+		uint64_t request_id = 1;
 		uint64_t track_alias = 1;
 		const char *track_name = "1.m4s";
 		imquic_moq_namespace tns[32];	/* FIXME */
@@ -259,12 +261,12 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		char tns_buffer[256];
 		const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"/%"SCNu64"\n",
-			imquic_get_connection_name(conn), ns, track_name, imquic_demo_media_type_str(media_type), subscribe_id, track_alias);
+			imquic_get_connection_name(conn), ns, track_name, imquic_demo_media_type_str(media_type), request_id, track_alias);
 		imquic_moq_name tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
-		imquic_moq_subscribe(conn, subscribe_id, track_alias, &tns[0], &tn, options.auth_info);
+		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",

@@ -45,25 +45,25 @@ static GHashTable *participants = NULL, *participants_byns = NULL;
 static GMutex mutex;
 static char *chat_timestamp = NULL;
 static volatile int send_objects = 0;
-static uint64_t moq_subscribe_id = 0, moq_track_alias = 0;
-static uint64_t current_subscribe_id = 0, max_subscribe_id = 1;
+static uint64_t moq_request_id = 0, moq_track_alias = 0;
+static uint64_t current_request_id = 0, max_request_id = 1;
 
 /* Helper structs */
 typedef struct imquic_demo_moq_participant {
 	imquic_connection *conn;
 	char *name;
-	uint64_t subscribe_id;
+	uint64_t request_id;
 	GMutex mutex;
 } imquic_demo_moq_participant;
-static imquic_demo_moq_participant *imquic_demo_moq_participant_create(imquic_connection *conn, const char *name, uint64_t subscribe_id);
+static imquic_demo_moq_participant *imquic_demo_moq_participant_create(imquic_connection *conn, const char *name, uint64_t request_id);
 static void imquic_demo_moq_participant_destroy(imquic_demo_moq_participant *p);
 
 /* Constructors and destructors for helper structs */
-static imquic_demo_moq_participant *imquic_demo_moq_participant_create(imquic_connection *conn, const char *name, uint64_t subscribe_id) {
+static imquic_demo_moq_participant *imquic_demo_moq_participant_create(imquic_connection *conn, const char *name, uint64_t request_id) {
 	imquic_demo_moq_participant *p = g_malloc0(sizeof(imquic_demo_moq_participant));
 	p->conn = conn;
 	p->name = name ? g_strdup(name) : NULL;
-	p->subscribe_id = subscribe_id;
+	p->request_id = request_id;
 	g_mutex_init(&p->mutex);
 	return p;
 }
@@ -81,7 +81,7 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection (negotiating version)\n", imquic_get_connection_name(conn));
 	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBSUB);
 	imquic_moq_set_version(conn, moq_version);
-	imquic_moq_set_max_subscribe_id(conn, max_subscribe_id);
+	imquic_moq_set_max_request_id(conn, max_request_id);
 }
 
 static void imquic_demo_ready(imquic_connection *conn) {
@@ -135,7 +135,7 @@ static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, im
 	imquic_moq_announce(conn, &mytns[0]);
 }
 
-static void imquic_demo_subscribe_announces_error(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason) {
+static void imquic_demo_subscribe_announces_error(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to notifications for prefix '%s': error %d (%s)\n",
@@ -152,7 +152,7 @@ static void imquic_demo_announce_accepted(imquic_connection *conn, imquic_moq_na
 	/* TODO Start sending chat messages */
 }
 
-static void imquic_demo_announce_error(imquic_connection *conn, imquic_moq_namespace *tns, int error_code, const char *reason) {
+static void imquic_demo_announce_error(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace '%s': error %d (%s)\n",
@@ -169,12 +169,12 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_na
 		imquic_get_connection_name(conn), ns);
 	/* Subscribe to the new participant */
 	g_mutex_lock(&mutex);
-	uint64_t subscribe_id = current_subscribe_id;
-	uint64_t track_alias = subscribe_id;	/* FIXME */
-	current_subscribe_id++;
+	uint64_t request_id = current_request_id;
+	uint64_t track_alias = request_id;	/* FIXME */
+	current_request_id++;
 	const char *track_name = "chat";
-	imquic_demo_moq_participant *p = imquic_demo_moq_participant_create(conn, track_name, subscribe_id);
-	g_hash_table_insert(participants, imquic_uint64_dup(subscribe_id), p);
+	imquic_demo_moq_participant *p = imquic_demo_moq_participant_create(conn, track_name, request_id);
+	g_hash_table_insert(participants, imquic_uint64_dup(request_id), p);
 	g_hash_table_insert(participants_byns, g_strdup(ns), p);
 	imquic_moq_name tn = {
 		.buffer = (uint8_t *)track_name,
@@ -182,8 +182,8 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, imquic_moq_na
 	};
 	g_mutex_unlock(&mutex);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s'/'%s', using ID %"SCNu64"/%"SCNu64"\n",
-		imquic_get_connection_name(conn), ns, track_name, subscribe_id, track_alias);
-	imquic_moq_subscribe(conn, subscribe_id, track_alias, tns, &tn, options.auth_info);
+		imquic_get_connection_name(conn), ns, track_name, request_id, track_alias);
+	imquic_moq_subscribe(conn, request_id, track_alias, tns, &tn, options.auth_info);
 }
 
 static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
@@ -192,23 +192,23 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace unannounced: '%s'\n",
 		imquic_get_connection_name(conn), ns);
-	/* Find the subscribe_id associated to that namespace, and unsubscribe */
+	/* Find the request_id associated to that namespace, and unsubscribe */
 	g_mutex_lock(&mutex);
 	imquic_demo_moq_participant *p = g_hash_table_lookup(participants_byns, ns);
 	if(p != NULL) {
-		imquic_moq_unsubscribe(conn, p->subscribe_id);
+		imquic_moq_unsubscribe(conn, p->request_id);
 		g_hash_table_remove(participants_byns, ns);
-		g_hash_table_remove(participants, &p->subscribe_id);
+		g_hash_table_remove(participants, &p->request_id);
 	}
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t subscribe_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, subscribe_id, track_alias);
+		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
 	/* TODO Check if it matches our announced namespace */
 	/* Check if there's authorization needed */
 	if(auth != NULL) {
@@ -217,52 +217,52 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t sub
 	}
 	if(options.auth_info && (auth == NULL || strcmp(options.auth_info, auth))) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, subscribe_id, 403, "Unauthorized access", track_alias);
+		imquic_moq_reject_subscribe(conn, request_id, 403, "Unauthorized access", track_alias);
 		if(moq_version >= IMQUIC_MOQ_VERSION_06)
-			imquic_moq_set_max_subscribe_id(conn, ++max_subscribe_id);
+			imquic_moq_set_max_request_id(conn, ++max_request_id);
 		return;
 	}
 	/* Accept the subscription */
-	moq_subscribe_id = subscribe_id;
+	moq_request_id = request_id;
 	moq_track_alias = track_alias;
-	imquic_moq_accept_subscribe(conn, subscribe_id, 0, FALSE);
+	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE);
 	/* Start sending objects */
 	g_atomic_int_set(&send_objects, 1);
 }
 
-static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t subscribe_id) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for subscription %"SCNu64"\n", imquic_get_connection_name(conn), subscribe_id);
+static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for subscription %"SCNu64"\n", imquic_get_connection_name(conn), request_id);
 	/* TODO Stop sending objects */
 	g_atomic_int_set(&send_objects, 0);
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t subscribe_id, uint64_t expires, gboolean descending) {
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
-		imquic_get_connection_name(conn), subscribe_id, expires, descending ? "descending" : "ascending");
+		imquic_get_connection_name(conn), request_id, expires, descending ? "descending" : "ascending");
 }
 
-static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason, uint64_t track_alias) {
+static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64"/%"SCNu64": error %d (%s)\n",
-		imquic_get_connection_name(conn), subscribe_id, track_alias, error_code, reason);
+		imquic_get_connection_name(conn), request_id, track_alias, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t subscribe_id, int status_code, uint64_t streams_count, const char *reason) {
+static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done: status %d (%s)\n",
-		imquic_get_connection_name(conn), subscribe_id, status_code, reason);
+		imquic_get_connection_name(conn), request_id, status_code, reason);
 	/* TODO */
 }
 
-static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t subscribe_id, gboolean descending, imquic_moq_position *largest) {
+static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), subscribe_id, descending ? "descending" : "ascending", largest->group, largest->object);
+		imquic_get_connection_name(conn), request_id, descending ? "descending" : "ascending", largest->group, largest->object);
 }
 
-static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t subscribe_id, int error_code, const char *reason) {
+static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error fetching via ID %"SCNu64": error %d (%s)\n",
-		imquic_get_connection_name(conn), subscribe_id, error_code, reason);
+		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -270,7 +270,7 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t subscribe_
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: sub=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", order=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
-		imquic_get_connection_name(conn), object->subscribe_id, object->track_alias,
+		imquic_get_connection_name(conn), object->request_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id, object->object_send_order,
 		object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
