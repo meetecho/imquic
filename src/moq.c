@@ -456,6 +456,12 @@ const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, 
 		case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT:
 		case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS:
 			return "OBJECT_DATAGRAM_STATUS";
+		case IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
 		case IMQUIC_MOQ_SUBGROUP_HEADER:
 			return "SUBGROUP_HEADER";
 		case IMQUIC_MOQ_FETCH_HEADER:
@@ -472,6 +478,12 @@ imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_mes
 		case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT:
 		case IMQUIC_MOQ_OBJECT_DATAGRAM:
 			return IMQUIC_MOQ_USE_DATAGRAM;
+		case IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
+		case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
 		case IMQUIC_MOQ_SUBGROUP_HEADER:
 			return IMQUIC_MOQ_USE_SUBGROUP;
 		case IMQUIC_MOQ_FETCH_HEADER:
@@ -781,7 +793,8 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			/* Not the control stream, make sure it's a supported message */
 			imquic_moq_data_message_type dtype = (imquic_moq_data_message_type)type;
 			if((moq->version == IMQUIC_MOQ_VERSION_06 && dtype == IMQUIC_MOQ_STREAM_HEADER_TRACK) ||
-					dtype == IMQUIC_MOQ_SUBGROUP_HEADER || dtype == IMQUIC_MOQ_FETCH_HEADER) {
+					dtype == IMQUIC_MOQ_FETCH_HEADER || dtype == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
+					(dtype >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && dtype <= IMQUIC_MOQ_SUBGROUP_HEADER)) {
 				/* Create a new MoQ stream and track it */
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Stream %"SCNu64" will be used for %s\n",
 					imquic_get_connection_name(moq->conn), stream_id, imquic_moq_data_message_type_str(dtype, moq->version));
@@ -947,9 +960,11 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				parsed = imquic_moq_parse_stream_header_track(moq, moq_stream, &bytes[offset], blen-offset, &error);
 				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 				offset += parsed;
-			} else if((imquic_moq_data_message_type)type == IMQUIC_MOQ_SUBGROUP_HEADER) {
+			} else if((imquic_moq_data_message_type)type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
+					((imquic_moq_data_message_type)type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT &&
+						(imquic_moq_data_message_type)type <= IMQUIC_MOQ_SUBGROUP_HEADER)) {
 				/* Parse this SUBGROUP_HEADER message */
-				parsed = imquic_moq_parse_subgroup_header(moq, moq_stream, &bytes[offset], blen-offset, &error);
+				parsed = imquic_moq_parse_subgroup_header(moq, moq_stream, &bytes[offset], blen-offset, (imquic_moq_data_message_type)type, &error);
 				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 				offset += parsed;
 			} else if((imquic_moq_data_message_type)type == IMQUIC_MOQ_FETCH_HEADER) {
@@ -985,7 +1000,8 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 						imquic_get_connection_name(moq->conn));
 					break;
 				}
-			} else if(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER) {
+			} else if(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
+					(moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER)) {
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ][%zu] >> %s object\n",
 					imquic_get_connection_name(moq->conn), offset, imquic_moq_data_message_type_str(moq_stream->type, moq->version));
 				if(imquic_moq_parse_subgroup_header_object(moq, moq_stream, complete) < 0) {
@@ -1012,8 +1028,9 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 	if(moq_stream != NULL && complete) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Media stream %"SCNu64" is complete\n",
 			imquic_get_connection_name(moq->conn), stream_id);
-		if(!moq_stream->closed && (moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER ||
-				moq_stream->type == IMQUIC_MOQ_FETCH_HEADER ||
+		if(!moq_stream->closed && (moq_stream->type == IMQUIC_MOQ_FETCH_HEADER ||
+				moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
+					(moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER) ||
 				(moq->version == IMQUIC_MOQ_VERSION_06 && moq_stream->type == IMQUIC_MOQ_STREAM_HEADER_TRACK))) {
 			/* FIXME Notify an empty payload to signal the end of the stream */
 			imquic_moq_object object = {
@@ -3331,7 +3348,7 @@ int imquic_moq_parse_stream_header_track_object(imquic_moq_context *moq, imquic_
 	return 0;
 }
 
-size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 4)
@@ -3356,9 +3373,15 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:          %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
-	uint64_t subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
-	offset += length;
+	uint64_t subgroup_id = 0;
+	if(dtype == IMQUIC_MOQ_SUBGROUP_HEADER || dtype == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT || dtype == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY) {
+		/* Starting from v11, the subgroup ID property is optional */
+		subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
+		offset += length;
+	} else {
+		/* TODO The subgroup ID may beed to be set to the first object ID, in some cases */
+	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subgroup ID:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), subgroup_id);
 	uint8_t priority = bytes[offset];
@@ -3398,54 +3421,59 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	offset += length;
 	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	if(moq->version > IMQUIC_MOQ_VERSION_08) {
-		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		if(length == 0 || length >= blen-offset)
-			return -1;	/* Not enough data, try again later */
-		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), ext_len);
-		ext_offset = offset;
-		if(length == 0 || ext_len >= blen-offset)
-			return -1;	/* Not enough data, try again later */
-		offset += ext_len;
-	} else if(moq->version == IMQUIC_MOQ_VERSION_08) {
-		ext_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		if(length == 0 || length >= blen-offset)
-			return -1;	/* Not enough data, try again later */
-		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Count:   %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), ext_count);
-		ext_offset = offset;
-		if(ext_count > 0) {
-			/* Parse extensions */
-			uint64_t i = 0;
-			for(i=0; i<ext_count; i++) {
-				uint64_t ext_type = imquic_read_varint(&bytes[offset], blen-offset, &length);
-				if(length == 0 || length >= blen-offset)
-					return -1;	/* Not enough data, try again later */
-				offset += length;
-				if(ext_type % 2 == 0) {
-					/* Even types are followed by a numeric value */
-					uint64_t ext_val = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	if(moq->version >= IMQUIC_MOQ_VERSION_08 &&
+			(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
+			moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0)) {
+		/* The object contains extensions */
+		if(moq->version > IMQUIC_MOQ_VERSION_08) {
+			ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+			if(length == 0 || length >= blen-offset)
+				return -1;	/* Not enough data, try again later */
+			offset += length;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), ext_len);
+			ext_offset = offset;
+			if(length == 0 || ext_len >= blen-offset)
+				return -1;	/* Not enough data, try again later */
+			offset += ext_len;
+		} else if(moq->version == IMQUIC_MOQ_VERSION_08) {
+			ext_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
+			if(length == 0 || length >= blen-offset)
+				return -1;	/* Not enough data, try again later */
+			offset += length;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Count:   %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), ext_count);
+			ext_offset = offset;
+			if(ext_count > 0) {
+				/* Parse extensions */
+				uint64_t i = 0;
+				for(i=0; i<ext_count; i++) {
+					uint64_t ext_type = imquic_read_varint(&bytes[offset], blen-offset, &length);
 					if(length == 0 || length >= blen-offset)
 						return -1;	/* Not enough data, try again later */
-					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": %"SCNu64"\n",
-						imquic_get_connection_name(moq->conn), i, ext_val);
 					offset += length;
-				} else {
-					/* Odd typed are followed by a length and a value */
-					uint64_t ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-					if(length == 0 || length >= blen-offset || ext_len >= blen-offset)
-						return -1;	/* Not enough data, try again later */
-					offset += length;
-					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": (%"SCNu64" bytes)\n",
-						imquic_get_connection_name(moq->conn), i, ext_len);
-					imquic_print_hex(IMQUIC_MOQ_LOG_HUGE, &bytes[offset], ext_len);
-					offset += ext_len;
+					if(ext_type % 2 == 0) {
+						/* Even types are followed by a numeric value */
+						uint64_t ext_val = imquic_read_varint(&bytes[offset], blen-offset, &length);
+						if(length == 0 || length >= blen-offset)
+							return -1;	/* Not enough data, try again later */
+						IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": %"SCNu64"\n",
+							imquic_get_connection_name(moq->conn), i, ext_val);
+						offset += length;
+					} else {
+						/* Odd typed are followed by a length and a value */
+						uint64_t ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+						if(length == 0 || length >= blen-offset || ext_len >= blen-offset)
+							return -1;	/* Not enough data, try again later */
+						offset += length;
+						IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- #%"SCNu64": (%"SCNu64" bytes)\n",
+							imquic_get_connection_name(moq->conn), i, ext_len);
+						imquic_print_hex(IMQUIC_MOQ_LOG_HUGE, &bytes[offset], ext_len);
+						offset += ext_len;
+					}
 				}
+				ext_len = offset - ext_offset;
 			}
-			ext_len = offset - ext_offset;
 		}
 	}
 	uint64_t p_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -3469,6 +3497,14 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object Status:  %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), object_status);
 	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_11 && !moq_stream->got_objects &&
+			(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT)) {
+		/* Starting from v11, there are cases where the subgroup ID
+		 * is set to the first object we receive in the sequence */
+		moq_stream->subgroup_id = object_id;
+	}
+	if(!moq_stream->got_objects)
+		moq_stream->got_objects = TRUE;
 	/* Notify the payload at the application layer */
 	imquic_moq_object object = {
 		.request_id = moq_stream->request_id,
@@ -4999,14 +5035,19 @@ size_t imquic_moq_add_stream_header_track_object(imquic_moq_context *moq, uint8_
 	return offset;
 }
 
-size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-		uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, uint8_t priority) {
+size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
+		uint64_t request_id, uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, uint8_t priority) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_SUBGROUP_HEADER, moq->version));
 		return 0;
 	}
-	size_t offset = imquic_write_varint(IMQUIC_MOQ_SUBGROUP_HEADER, bytes, blen);
+	imquic_moq_data_message_type dtype = moq_stream->type;
+	if(moq->version < IMQUIC_MOQ_VERSION_11) {
+		/* Whatever was passed, ignore it and use the legacy type */
+		dtype = IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY;
+	}
+	size_t offset = imquic_write_varint(dtype, bytes, blen);
 	if(moq->version < IMQUIC_MOQ_VERSION_07)
 		offset += imquic_write_varint(request_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
@@ -5017,8 +5058,8 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, uint8_t *bytes, s
 	return offset;
 }
 
-size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen,
+size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+		uint8_t *bytes, size_t blen, uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen,
 		size_t extensions_count, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
@@ -5027,7 +5068,9 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, uint8_t *b
 	}
 	size_t offset = 0;
 	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
-	if(moq->version >= IMQUIC_MOQ_VERSION_08)
+	if(moq->version >= IMQUIC_MOQ_VERSION_08 &&
+			(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
+			moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0))
 		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions_count, extensions, elen);
 	if(payload == NULL)
 		plen = 0;
@@ -6121,7 +6164,14 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			}
 			/* Create a new stream */
 			moq_stream = g_malloc0(sizeof(imquic_moq_stream));
-			moq_stream->type = IMQUIC_MOQ_SUBGROUP_HEADER;
+			if(moq->version < IMQUIC_MOQ_VERSION_11) {
+				moq_stream->type = IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY;
+			} else {
+				/* TODO Change the type depending on whether extensions/subgroup will be set:
+				 * since we don't have an API for that, for now we always set the type
+				 * that will allow us to dynamically use them all */
+				moq_stream->type = IMQUIC_MOQ_SUBGROUP_HEADER;
+			}
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);
 			imquic_mutex_unlock(&moq->mutex);
@@ -6130,7 +6180,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				imquic_moq_qlog_stream_type_set(conn->qlog, TRUE, moq_stream->stream_id, "subgroup_header");
 #endif
 			/* Send a SUBGROUP_HEADER */
-			size_t shg_len = imquic_moq_add_subgroup_header(moq, buffer, bufsize,
+			size_t shg_len = imquic_moq_add_subgroup_header(moq, moq_stream, buffer, bufsize,
 				object->request_id, object->track_alias, object->group_id, object->subgroup_id, object->priority);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
@@ -6145,7 +6195,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shgo_len = 0;
 		if(valid_pkt) {
-			shgo_len = imquic_moq_add_subgroup_header_object(moq, buffer, bufsize,
+			shgo_len = imquic_moq_add_subgroup_header_object(moq, moq_stream, buffer, bufsize,
 				object->object_id, object->object_status, object->payload, object->payload_len,
 				object->extensions_count, object->extensions, object->extensions_len);
 #ifdef HAVE_QLOG

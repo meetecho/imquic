@@ -74,12 +74,18 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type);
 
 /*! \brief MoQ data messages */
 typedef enum imquic_moq_data_message_type {
-	IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT = 0x0,
 	IMQUIC_MOQ_OBJECT_DATAGRAM = 0x1,
-	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x2,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT = 0x0,
 	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x3,
-	IMQUIC_MOQ_STREAM_HEADER_TRACK = 0x2,
-	IMQUIC_MOQ_SUBGROUP_HEADER = 0x4,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x2,
+	IMQUIC_MOQ_STREAM_HEADER_TRACK = 0x2,	/* Deprecated in v07 */
+	IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY = 0x4,	/* Deprecated in v11 for the values below */
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT = 0x8,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 = 0x9,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT = 0xA,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID = 0xB,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT = 0xC,
+		IMQUIC_MOQ_SUBGROUP_HEADER = 0xD,
 	IMQUIC_MOQ_FETCH_HEADER = 0x5,
 } imquic_moq_data_message_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_data_message_type value.
@@ -326,6 +332,8 @@ typedef struct imquic_moq_stream {
 	uint64_t stream_offset;
 	/*! \brief Buffer to process incoming messages/objects */
 	imquic_moq_buffer *buffer;
+	/*! \brief Whether we got at least an object on this stream */
+	gboolean got_objects;
 	/*! \brief Whether we closed this stream */
 	gboolean closed;
 } imquic_moq_stream;
@@ -587,9 +595,10 @@ int imquic_moq_parse_stream_header_track_object(imquic_moq_context *moq, imquic_
  * @param[in] moq_stream The imquic_moq_context instance the message came from
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
+ * @param[in] dtype Type of \c SUBGROUP_HEADER (only relevant starting from v11)
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error);
 /*! \brief Helper to parse a \c SUBGROUP_HEADER object
  * @note A negative response doesn't mean there's an error, but just that
  * the object isn't complete yet and we need to wait for more data.
@@ -989,6 +998,7 @@ size_t imquic_moq_add_stream_header_track_object(imquic_moq_context *moq, uint8_
  * that, imquic_moq_add_stream_header_subgroup_object is used to send
  * all objects that belong to this subgroup.
  * @param moq The imquic_moq_context generating the message
+ * @param moq_stream The imquic_moq_context instance the object is for
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
@@ -997,11 +1007,12 @@ size_t imquic_moq_add_stream_header_track_object(imquic_moq_context *moq, uint8_
  * @param subgroup_id The subgroup ID to put in the message
  * @param priority The publisher priority to put in the message
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, uint8_t priority);
+size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
+	uint64_t request_id, uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, uint8_t priority);
 /*! \brief Helper to add an object to a buffer, formatted as expected
  * for \c SUBGROUP_HEADER objects (so not all IDs) (only after v06)
  * @param moq The imquic_moq_context generating the object
+ * @param moq_stream The imquic_moq_context instance the object is for
  * @param bytes The buffer to add the object to
  * @param blen The size of the buffer
  * @param object_id The object ID
@@ -1012,8 +1023,8 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, uint8_t *bytes, s
  * @param extensions The buffer containing the object extensions, if any (only since v08)
  * @param elen The size of the object extensions buffer (only since v08)
  * @returns The size of the generated object, if successful, or 0 otherwise */
-size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen,
+size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+	uint8_t *bytes, size_t blen, uint64_t object_id, uint64_t object_status, uint8_t *payload, size_t plen,
 	size_t extensions_count, uint8_t *extensions, size_t elen);
 /*! \brief Helper to add a \c FETCH_HEADER message to a buffer (only after v07)
  * @note This will create a new \c STREAM and send the header: after
