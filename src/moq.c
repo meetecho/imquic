@@ -422,7 +422,7 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type) {
 		case IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES_ERROR:
 			return "SUBSCRIBE_ANNOUNCES_ERROR";
 		case IMQUIC_MOQ_UNSUBSCRIBE_ANNOUNCES:
-			return "SUBSCRIBE_UNNAMESPACE";
+			return "UNSUBSCRIBE_ANNOUNCES";
 		case IMQUIC_MOQ_MAX_REQUEST_ID:
 			return "MAX_REQUEST_ID";
 		case IMQUIC_MOQ_REQUESTS_BLOCKED:
@@ -510,8 +510,9 @@ const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type 
 
 const char *imquic_moq_subscribe_parameter_type_str(imquic_moq_subscribe_parameter_type type) {
 	switch(type) {
-		case IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO:
-			return "AUTHORIZATION_INFO";
+		/* FIXME We're only returning the new values */
+		case IMQUIC_MOQ_PARAM_AUTHORIZATION_TOKEN:
+			return "AUTHORIZATION_TOKEN";
 		case IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT:
 			return "DELIVERY_TIMEOUT";
 		case IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION:
@@ -592,6 +593,21 @@ const char *imquic_moq_fetch_type_str(imquic_moq_fetch_type type) {
 	return NULL;
 }
 
+const char *imquic_moq_auth_token_alias_type_str(imquic_moq_auth_token_alias_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_AUTH_TOKEN_DELETE:
+			return "DELETE";
+		case IMQUIC_MOQ_AUTH_TOKEN_REGISTER:
+			return "REGISTER";
+		case IMQUIC_MOQ_AUTH_TOKEN_USE_ALIAS:
+			return "USE_ALIAS";
+		case IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE:
+			return "USE_VALUE";
+		default: break;
+	}
+	return NULL;
+}
+
 /* MoQ parameters */
 size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 		imquic_moq_setup_parameters *parameters,
@@ -654,12 +670,14 @@ size_t imquic_moq_subscribe_parameters_serialize(imquic_moq_context *moq,
 		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
 		if(*params_num > 0) {
 			if(parameters->auth_info_set) {
+				int param = (moq->version >= IMQUIC_MOQ_VERSION_11 ? IMQUIC_MOQ_PARAM_AUTHORIZATION_TOKEN : IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO);
 				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO, (uint8_t *)parameters->auth_info, strlen(parameters->auth_info));
+					param, parameters->auth_info, parameters->auth_info_len);
 			}
 			if(parameters->delivery_timeout_set) {
+				int param = (moq->version >= IMQUIC_MOQ_VERSION_11 ? IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT : IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT_LEGACY);
 				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT, parameters->delivery_timeout);
+					param, parameters->delivery_timeout);
 			}
 			if(parameters->max_cache_duration_set) {
 				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
@@ -1828,7 +1846,10 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		/* Notify the application */
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe) {
 			moq->conn->socket->callbacks.moq.incoming_subscribe(moq->conn,
-				request_id, track_alias, &tns[0], &tn, (parameters.auth_info_set ? (const char *)parameters.auth_info : NULL), forward);
+				request_id, track_alias, &tns[0], &tn,
+				(parameters.auth_info_set ? parameters.auth_info : NULL),
+				(parameters.auth_info_set ? parameters.auth_info_len : 0),
+				forward);
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_subscribe(moq->conn, request_id, 500, "Not handled", track_alias);
@@ -2242,8 +2263,9 @@ size_t imquic_moq_parse_subscribe_announces(imquic_moq_context *moq, uint8_t *by
 #endif
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_announces) {
-		moq->conn->socket->callbacks.moq.incoming_subscribe_announces(moq->conn, request_id,
-			&tns[0], (parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
+		moq->conn->socket->callbacks.moq.incoming_subscribe_announces(moq->conn, request_id, &tns[0],
+			(parameters.auth_info_set ? parameters.auth_info : NULL),
+			(parameters.auth_info_set ? parameters.auth_info_len : 0));
 	} else {
 		/* FIXME No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe_announces(moq->conn, request_id, &tns[0], 500, "Not handled");
@@ -2649,7 +2671,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_standalone_fetch) {
 			moq->conn->socket->callbacks.moq.incoming_standalone_fetch(moq->conn,
 				request_id, &tns[0], &tn, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), &range,
-				(parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
+				(parameters.auth_info_set ? parameters.auth_info : NULL),
+				(parameters.auth_info_set ? parameters.auth_info_len : 0));
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_fetch(moq->conn, request_id, 500, "Not handled");
@@ -2660,7 +2683,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 				request_id, joining_request_id,
 				(type == IMQUIC_MOQ_FETCH_JOINING_ABSOLUTE), joining_start,
 				(group_order == IMQUIC_MOQ_ORDERING_DESCENDING),
-				(parameters.auth_info_set ? (const char *)parameters.auth_info : NULL));
+				(parameters.auth_info_set ? parameters.auth_info : NULL),
+				(parameters.auth_info_set ? parameters.auth_info_len : 0));
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_fetch(moq->conn, request_id, 500, "Not handled");
@@ -5188,28 +5212,44 @@ size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes,
 /* Adding parameters to a buffer */
 size_t imquic_moq_parameter_add_int(imquic_moq_context *moq, uint8_t *bytes, size_t blen, int param, uint64_t number) {
 	if(bytes == NULL || blen == 0) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter: invalid arguments\n",
-			imquic_get_connection_name(moq->conn));
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter %d: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), param);
+		return 0;
+	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_11 && (param % 2 != 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter %d: type is odd\n",
+			imquic_get_connection_name(moq->conn), param);
 		return 0;
 	}
 	size_t offset = imquic_write_varint(param, &bytes[0], blen);
-	uint8_t buffer[8];
-	uint8_t length = imquic_write_varint(number, buffer, sizeof(buffer));
-	offset += imquic_write_varint(length, &bytes[offset], blen-offset);
-	if(length > blen-offset) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Insufficient buffer (%"SCNu8" > %zu), truncating...\n",
-			imquic_get_connection_name(moq->conn), length, blen-offset);
-		length = blen-offset;
+	if(moq->version < IMQUIC_MOQ_VERSION_11) {
+		/* Old way of serializing a numeric parameter, by prefixing a length property */
+		uint8_t buffer[8];
+		uint8_t length = imquic_write_varint(number, buffer, sizeof(buffer));
+		offset += imquic_write_varint(length, &bytes[offset], blen-offset);
+		if(length > blen-offset) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Insufficient buffer (%"SCNu8" > %zu), truncating...\n",
+				imquic_get_connection_name(moq->conn), length, blen-offset);
+			length = blen-offset;
+		}
+		memcpy(&bytes[offset], buffer, length);
+		offset += length;
+	} else {
+		/* New way of serializing a numeric parameter, by writing the number as varint right away */
+		offset += imquic_write_varint(number, &bytes[offset], blen-offset);
 	}
-	memcpy(&bytes[offset], buffer, length);
-	offset += length;
 	return offset;
 }
 
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen, int param, uint8_t *buf, size_t buflen) {
 	if(bytes == NULL || blen == 0 || (buflen > 0 && buf == 0)) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter: invalid arguments\n",
-			imquic_get_connection_name(moq->conn));
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %d: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), param);
+		return 0;
+	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_11 && (param % 2 != 1)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %d: type is even\n",
+			imquic_get_connection_name(moq->conn), param);
 		return 0;
 	}
 	size_t offset = imquic_write_varint(param, &bytes[0], blen);
@@ -5235,14 +5275,17 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
 	offset += length;
-	uint64_t len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ setup parameter");
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64"), length %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), imquic_moq_setup_parameter_type_str(type), type, len);
-	IMQUIC_MOQ_CHECK_ERR(len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64")\n",
+		imquic_get_connection_name(moq->conn), imquic_moq_setup_parameter_type_str(type), type);
+	uint64_t len = 0;
+	if(moq->version < IMQUIC_MOQ_VERSION_11 || (moq->version >= IMQUIC_MOQ_VERSION_11 && (type % 2 == 1))) {
+		len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ setup parameter");
+		offset += length;
+		IMQUIC_MOQ_CHECK_ERR(len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+	}
 	/* Update the parsed parameter */
-	if(type == IMQUIC_MOQ_PARAM_ROLE && len > 0) {
+	if(type == IMQUIC_MOQ_PARAM_ROLE && moq->version < IMQUIC_MOQ_VERSION_08 && len > 0) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_role_type_str(bytes[offset]));
 		params->role_set = TRUE;
@@ -5253,16 +5296,20 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 			g_snprintf(params->path, sizeof(params->path), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->path);
-	} else if(type == IMQUIC_MOQ_PARAM_MAX_REQUEST_ID && len > 0) {
+	} else if(type == IMQUIC_MOQ_PARAM_MAX_REQUEST_ID && (moq->version >= IMQUIC_MOQ_VERSION_11 || len > 0)) {
 		params->max_request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
 		params->max_request_id_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_request_id);
+		if(moq->version >= IMQUIC_MOQ_VERSION_11)
+			len = length;
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter '%"SCNu64"'\n",
 			imquic_get_connection_name(moq->conn), type);
 		params->unknown = TRUE;
+		if(moq->version >= IMQUIC_MOQ_VERSION_11 && (type % 2 == 0))
+			len = length;
 	}
 	offset += len;
 	if(error)
@@ -5284,34 +5331,52 @@ size_t imquic_moq_parse_subscribe_parameter(imquic_moq_context *moq, uint8_t *by
 	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ subscribe parameter");
 	offset += length;
-	uint64_t len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ subscribe parameter");
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64"), length %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), imquic_moq_subscribe_parameter_type_str(type), type, len);
-	IMQUIC_MOQ_CHECK_ERR(len == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ subscribe parameter");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64")\n",
+		imquic_get_connection_name(moq->conn), imquic_moq_subscribe_parameter_type_str(type), type);
+	uint64_t len = 0;
+	if(moq->version < IMQUIC_MOQ_VERSION_11 || (moq->version >= IMQUIC_MOQ_VERSION_11 && (type % 2 == 1))) {
+		len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ subscribe parameter");
+		offset += length;
+		IMQUIC_MOQ_CHECK_ERR(len > blen-offset, NULL, 0, 0, "Broken MoQ subscribe parameter");
+	}
 	/* Update the parsed parameter */
-	if(type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO) {
+	if((moq->version >= IMQUIC_MOQ_VERSION_11 && type == IMQUIC_MOQ_PARAM_AUTHORIZATION_TOKEN) ||
+			(moq->version < IMQUIC_MOQ_VERSION_11 && type == IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO)) {
 		params->auth_info_set = TRUE;
-		if(len > 0)
-			g_snprintf(params->auth_info, sizeof(params->auth_info), "%.*s", (int)len, &bytes[offset]);
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
-			imquic_get_connection_name(moq->conn), params->auth_info);
-	} else if(type == IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT && len > 0) {
+		size_t auth_len = len;
+		if(auth_len > sizeof(params->auth_info)) {
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+				imquic_get_connection_name(moq->conn), len, sizeof(params->auth_info));
+			auth_len = sizeof(params->auth_info);
+		}
+		memcpy(params->auth_info, &bytes[offset], auth_len);
+		params->auth_info_len = auth_len;
+		char ai_str[513];
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s\n",
+			imquic_get_connection_name(moq->conn), imquic_hex_str(&bytes[offset], auth_len, ai_str, sizeof(ai_str)));
+	} else if(((moq->version >= IMQUIC_MOQ_VERSION_11 && type == IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT) ||
+			(moq->version < IMQUIC_MOQ_VERSION_11 && type == IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT_LEGACY)) && (moq->version >= IMQUIC_MOQ_VERSION_11 || len > 0)) {
 		params->delivery_timeout = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ subscribe parameter");
 		params->delivery_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->delivery_timeout);
-	} else if(type == IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION && len > 0) {
+		if(moq->version >= IMQUIC_MOQ_VERSION_11)
+			len = length;
+	} else if(type == IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION && (moq->version >= IMQUIC_MOQ_VERSION_11 || len > 0)) {
 		params->max_cache_duration = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ subscribe parameter");
 		params->max_cache_duration_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_cache_duration);
+		if(moq->version >= IMQUIC_MOQ_VERSION_11)
+			len = length;
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter\n",
 			imquic_get_connection_name(moq->conn));
+		if(moq->version >= IMQUIC_MOQ_VERSION_11 && (type % 2 == 0))
+			len = length;
 	}
 	offset += len;
 	if(error)
@@ -5549,6 +5614,71 @@ size_t imquic_moq_build_object_extensions(GList *extensions, uint8_t *bytes, siz
 	return offset;
 }
 
+/* Auth token management */
+int imquic_moq_parse_auth_token(uint8_t *bytes, size_t blen, imquic_moq_auth_token *token) {
+	if(bytes == NULL || blen == 0 || token == NULL)
+		return -1;
+	memset(token, 0, sizeof(*token));
+	size_t offset = 0;
+	uint8_t length = 0;
+	uint64_t alias_type = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, -1, "Broken auth token");
+	offset += length;
+	if(alias_type != IMQUIC_MOQ_AUTH_TOKEN_DELETE && alias_type != IMQUIC_MOQ_AUTH_TOKEN_REGISTER &&
+			alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_ALIAS && alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid alias type %"SCNu64"\n", alias_type);
+		return -1;
+	}
+	token->alias_type = alias_type;
+	if(alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
+		uint64_t token_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, -1, "Broken auth token");
+		offset += length;
+		token->token_alias_set = TRUE;
+		token->token_alias = token_alias;
+	}
+	if(alias_type == IMQUIC_MOQ_AUTH_TOKEN_REGISTER || alias_type == IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
+		uint64_t token_type = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, -1, "Broken auth token");
+		offset += length;
+		token->token_type_set = TRUE;
+		token->token_type = token_type;
+		token->token_value.length = blen-offset;
+		token->token_value.buffer = (token->token_value.length > 0 ? &bytes[offset] : NULL);
+	}
+	return 0;
+}
+
+size_t imquic_moq_build_auth_token(imquic_moq_auth_token *token, uint8_t *bytes, size_t blen) {
+	if(token == NULL || bytes == NULL || blen == 0)
+		return 0;
+	if(token->alias_type != IMQUIC_MOQ_AUTH_TOKEN_DELETE && token->alias_type != IMQUIC_MOQ_AUTH_TOKEN_REGISTER &&
+			token->alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_ALIAS && token->alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid alias type %d\n", token->alias_type);
+		return 0;
+	}
+	size_t offset = imquic_write_varint(token->alias_type, bytes, blen);
+	if(token->alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
+		if(!token->token_alias_set) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Token alias is required when using %s\n", imquic_moq_auth_token_alias_type_str(token->alias_type));
+			return 0;
+		}
+		offset += imquic_write_varint(token->token_alias, &bytes[offset], blen-offset);
+	}
+	if(token->alias_type == IMQUIC_MOQ_AUTH_TOKEN_REGISTER || token->alias_type == IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
+		if(!token->token_type_set) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Token type is required when using %s\n", imquic_moq_auth_token_alias_type_str(token->alias_type));
+			return 0;
+		}
+		offset += imquic_write_varint(token->token_type, &bytes[offset], blen-offset);
+		if(token->token_value.buffer && token->token_value.length > 0) {
+			memcpy(&bytes[offset], token->token_value.buffer, token->token_value.length);
+			offset += token->token_value.length;
+		}
+	}
+	return offset;
+}
+
 /* Namespaces and subscriptions */
 int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
@@ -5664,7 +5794,7 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
 }
 
 int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
-		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward) {
+		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
@@ -5695,9 +5825,15 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t sb_len = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
-	if(auth && strlen(auth) > 0) {
+	if(auth && authlen > 0) {
 		parameters.auth_info_set = TRUE;
-		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
+		if(authlen > sizeof(parameters.auth_info)) {
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+				imquic_get_connection_name(moq->conn), authlen, sizeof(parameters.auth_info));
+			authlen = sizeof(parameters.auth_info);
+		}
+		memcpy(parameters.auth_info, auth, authlen);
+		parameters.auth_info_len = authlen;
 	}
 	/* FIXME Some properties are not exposed via API yet */
 	sb_len = imquic_moq_add_subscribe(moq, &buffer[poffset], blen-poffset,
@@ -5819,7 +5955,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	return 0;
 }
 
-int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth) {
+int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
@@ -5850,9 +5986,15 @@ int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id,
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t sb_len = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
-	if(auth && strlen(auth) > 0) {
+	if(auth && authlen > 0) {
 		parameters.auth_info_set = TRUE;
-		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
+		if(authlen > sizeof(parameters.auth_info)) {
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+				imquic_get_connection_name(moq->conn), authlen, sizeof(parameters.auth_info));
+			authlen = sizeof(parameters.auth_info);
+		}
+		memcpy(parameters.auth_info, auth, authlen);
+		parameters.auth_info_len = authlen;
 	}
 	sb_len = imquic_moq_add_subscribe_announces(moq, &buffer[poffset], blen-poffset, request_id, tns, &parameters);
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES, buffer, blen, poffset, sb_len, &start);
@@ -5939,7 +6081,7 @@ int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespa
 }
 
 int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth) {
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tn == NULL ||
@@ -5955,9 +6097,15 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t f_len = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
-	if(auth && strlen(auth) > 0) {
+	if(auth && authlen > 0) {
 		parameters.auth_info_set = TRUE;
-		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
+		if(authlen > sizeof(parameters.auth_info)) {
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+				imquic_get_connection_name(moq->conn), authlen, sizeof(parameters.auth_info));
+			authlen = sizeof(parameters.auth_info);
+		}
+		memcpy(parameters.auth_info, auth, authlen);
+		parameters.auth_info_len = authlen;
 	}
 	/* FIXME WE should make start/end group/object configurable */
 	f_len = imquic_moq_add_fetch(moq, &buffer[poffset], blen-poffset,
@@ -5981,7 +6129,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 }
 
 int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
-		gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth) {
+		gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
@@ -6002,9 +6150,15 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t f_len = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
-	if(auth && strlen(auth) > 0) {
+	if(auth && authlen > 0) {
 		parameters.auth_info_set = TRUE;
-		g_snprintf(parameters.auth_info, sizeof(parameters.auth_info), "%s", auth);
+		if(authlen > sizeof(parameters.auth_info)) {
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+				imquic_get_connection_name(moq->conn), authlen, sizeof(parameters.auth_info));
+			authlen = sizeof(parameters.auth_info);
+		}
+		memcpy(parameters.auth_info, auth, authlen);
+		parameters.auth_info_len = authlen;
 	}
 	/* FIXME WE should make start/end group/object configurable */
 	f_len = imquic_moq_add_fetch(moq, &buffer[poffset], blen-poffset,
@@ -6429,10 +6583,11 @@ void imquic_qlog_moq_message_add_subscribe_parameters(json_t *message, imquic_mo
 	if(message == NULL || parameters == NULL || name == NULL)
 		return;
 	json_t *params = json_array();
-	if(parameters->auth_info_set) {
+	if(parameters->auth_info_set && parameters->auth_info_len > 0) {
 		json_t *auth_info = json_object();
 		json_object_set_new(auth_info, "name", json_string("authorization_info"));
-		json_object_set_new(auth_info, "value", json_string(parameters->auth_info));
+		char ai_str[513];
+		json_object_set_new(auth_info, "value", json_string(imquic_hex_str(parameters->auth_info, parameters->auth_info_len, ai_str, sizeof(ai_str))));
 		json_array_append_new(params, auth_info);
 	}
 	if(parameters->delivery_timeout_set) {

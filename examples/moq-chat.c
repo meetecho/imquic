@@ -46,7 +46,7 @@ static GMutex mutex;
 static char *chat_timestamp = NULL;
 static volatile int send_objects = 0;
 static uint64_t moq_request_id = 0, moq_track_alias = 0;
-static uint64_t max_request_id = 1;
+static uint64_t max_request_id = 20;
 
 /* Helper structs */
 typedef struct imquic_demo_moq_participant {
@@ -103,7 +103,9 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	/* Send a SUBSCRIBE_ANNOUNCES */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to notifications for prefix '%s'\n",
 		imquic_get_connection_name(conn), ns);
-	imquic_moq_subscribe_announces(conn, imquic_moq_get_next_request_id(conn), &tns[0], options.auth_info);
+	/* TODO Refactor how auth info is generated */
+	imquic_moq_subscribe_announces(conn, imquic_moq_get_next_request_id(conn), &tns[0],
+		(uint8_t *)options.auth_info, (options.auth_info ? strlen(options.auth_info) : 0));
 }
 
 static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
@@ -182,7 +184,9 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, uint64_t anno
 	g_mutex_unlock(&mutex);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s'/'%s', using ID %"SCNu64"/%"SCNu64"\n",
 		imquic_get_connection_name(conn), ns, track_name, request_id, track_alias);
-	imquic_moq_subscribe(conn, request_id, track_alias, tns, &tn, options.auth_info, TRUE);
+	/* TODO Refactor how auth info is generated */
+	imquic_moq_subscribe(conn, request_id, track_alias, tns, &tn,
+		(uint8_t *)options.auth_info, (options.auth_info ? strlen(options.auth_info) : 0), TRUE);
 }
 
 static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
@@ -202,7 +206,7 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
@@ -210,15 +214,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
 	/* TODO Check if it matches our announced namespace */
 	/* Check if there's authorization needed */
-	if(auth != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
-			imquic_get_connection_name(conn), auth);
-	}
-	if(options.auth_info && (auth == NULL || strcmp(options.auth_info, auth))) {
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(!imquic_moq_check_auth_info(conn, options.auth_info, auth, authlen)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
 		imquic_moq_reject_subscribe(conn, request_id, 403, "Unauthorized access", track_alias);
-		if(moq_version >= IMQUIC_MOQ_VERSION_06)
-			imquic_moq_set_max_request_id(conn, ++max_request_id);
 		return;
 	}
 	/* Accept the subscription */

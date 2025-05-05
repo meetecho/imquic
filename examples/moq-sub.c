@@ -102,6 +102,18 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	i = 0;
+	/* Check if we need to prepare an auth token */
+	uint8_t auth[256];
+	size_t authlen = 0;
+	if(options.auth_info && strlen(options.auth_info) > 0) {
+		authlen = sizeof(auth);
+		if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen) < 0) {
+			authlen = 0;
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
+				imquic_get_connection_name(conn));
+		}
+	}
+	/* Iterate on all track names */
 	while(options.track_name[i] != NULL) {
 		const char *track_name = options.track_name[i];
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s'/'%s' (%s), using ID %"SCNu64"/%"SCNu64"\n",
@@ -114,7 +126,9 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		request_id = imquic_moq_get_next_request_id(conn);
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
-			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
+			/* TODO Refactor how auth info is generated */
+			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
+				auth, authlen, TRUE);
 		} else {
 			/* Send a FETCH */
 			if(options.join_offset < 0) {
@@ -126,14 +140,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				range.end.group = 1000;
 				range.end.object = 0;
 				imquic_moq_standalone_fetch(conn, request_id, &tns[0], &tn,
-					!strcasecmp(options.fetch, "descending"), &range, options.auth_info);
+					!strcasecmp(options.fetch, "descending"), &range, auth, authlen);
 			} else {
 				/* Send a SUBSCRIBE first */
-				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
+				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, auth, authlen, TRUE);
 				/* Now send a Joining Fetch referencing that subscription */
 				uint64_t fetch_request_id = imquic_moq_get_next_request_id(conn);
 				imquic_moq_joining_fetch(conn, fetch_request_id, request_id,
-					FALSE, options.join_offset, !strcasecmp(options.fetch, "descending"), options.auth_info);
+					FALSE, options.join_offset, !strcasecmp(options.fetch, "descending"), auth, authlen);
 			}
 		}
 		i++;
@@ -265,7 +279,12 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
-		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, options.auth_info, TRUE);
+		/* Check if we need to prepare an auth token */
+		uint8_t auth[256];
+		size_t authlen = 0;
+		if(options.auth_info && strlen(options.auth_info) > 0)
+			imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen);
+		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, auth, authlen, TRUE);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",

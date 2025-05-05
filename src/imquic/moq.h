@@ -454,7 +454,7 @@ typedef struct imquic_moq_object_extension {
  * @returns A GList instance containing a set of imquic_moq_object_extension, if successful, or NULL if no extensions were found */
 GList *imquic_moq_parse_object_extensions(uint8_t *extensions, size_t elen);
 /*! \brief Helper mode to craft an extensions buffer out of a GList of imquic_moq_object_extension
- * @param[in] extensions The buffer containing the extensions data
+ * @param[in] extensions The list of extensions to serialize
  * @param[out] bytes The buffer to write the extensions data to
  * @param[in] blen The size of the buffer to write to
  * @returns How many bytes were written, if successful */
@@ -495,6 +495,56 @@ typedef struct imquic_moq_object {
 	gboolean end_of_stream;
 } imquic_moq_object;
 ///@}
+
+/*! \brief MoQ Authorization Token Alias Type */
+typedef enum imquic_moq_auth_token_alias_type {
+	/*! \brief DELETE */
+	IMQUIC_MOQ_AUTH_TOKEN_DELETE = 0x0,
+	/*! \brief REGISTER */
+	IMQUIC_MOQ_AUTH_TOKEN_REGISTER = 0x1,
+	/*! \brief USE_ALIAS */
+	IMQUIC_MOQ_AUTH_TOKEN_USE_ALIAS = 0x2,
+	/*! \brief USE_VALUE */
+	IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE = 0x3,
+} imquic_moq_auth_token_alias_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_auth_token_alias_type property.
+ * @param type The imquic_moq_auth_token_alias_type property
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_auth_token_alias_type_str(imquic_moq_auth_token_alias_type type);
+
+/*! \brief MoQ Authorization Token */
+typedef struct imquic_moq_auth_token {
+	/*! \brief Alias type */
+	imquic_moq_auth_token_alias_type alias_type;
+	/*! \brief Whether there is a token alias */
+	gboolean token_alias_set;
+	/*! \brief Token alias, if any */
+	uint64_t token_alias;
+	/*! \brief Whether there is a token type */
+	gboolean token_type_set;
+	/*! \brief Token type, if any */
+	uint64_t token_type;
+	/*! \brief Token value, if any */
+	struct imquic_moq_auth_token_value {
+		uint64_t length;
+		uint8_t *buffer;
+	} token_value;
+} imquic_moq_auth_token;
+/*! \brief Helper mode to parse an auth token buffer to a imquic_moq_auth_token instance
+ * @note The buffer in the \c value property will point to data in the original \c bytes buffer,
+ * which means that no allocation will be performed by this method. If you need to store the
+ * token value somewhere, it's up to you to copy it before \c bytes is invalidated by the application
+ * @param[in] bytes The buffer containing the auth token data
+ * @param[in] blen The size of the buffer containing the auth token data data
+ * @param[out] token The imquic_moq_auth_token to put the parsed token info to
+ * @returns 0 in case of success, or a negative integer otherwise */
+int imquic_moq_parse_auth_token(uint8_t *bytes, size_t blen, imquic_moq_auth_token *token);
+/*! \brief Helper mode to craft an auth token buffer out of a imquic_moq_auth_token instance
+ * @param[in] token The imquic_moq_auth_token instance to serialize
+ * @param[out] bytes The buffer to write the auth token to
+ * @param[in] blen The size of the buffer to write to
+ * @returns How many bytes were written, if successful */
+size_t imquic_moq_build_auth_token(imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
 
 /** @name MoQ error and status codes
  */
@@ -736,7 +786,7 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe Pointer to the function that will handle the incoming \c SUBSCRIBE */
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward));
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -784,7 +834,7 @@ void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe_announces Pointer to the function that will handle the incoming \c SUBSCRIBE_ANNOUNCES */
 void imquic_set_incoming_subscribe_announces_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe_announces)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth));
+	void (* incoming_subscribe_announces)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_ANNOUNCES we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -809,14 +859,14 @@ void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
  * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth));
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_joining_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
-		gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth));
+		gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c FETCH_CANCEL request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -972,10 +1022,11 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param tn The imquic_moq_name track name to subscribe to
- * @param auth The authentication info, if needed
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
  * @param forward Whether objects should be forwarded, when this subscription is accepted (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward);
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward);
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
@@ -1009,9 +1060,10 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID (only v11 and later)
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
- * @param auth The authentication info, if needed
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth);
+int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen);
 /*! \brief Function to accept an incoming \c SUBSCRIBE_ANNOUNCES request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_ANNOUNCES request (only v11 and later)
@@ -1038,11 +1090,12 @@ int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespa
  * @param tn The imquic_moq_name track name to fetch to
  * @param descending Whether objects should be fetched in descending group order
  * @param range The range of groups/objects to fetch
- * @param auth The authentication info, if needed
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn,
-	gboolean descending, imquic_moq_fetch_range *range, const char *auth);
+	gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen);
 /*! \brief Function to send a joining \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
@@ -1051,10 +1104,11 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
  * @param joining_start How many groups to retrieve before the current one,
  * for relative joins, or starting group ID for absolute joins
  * @param descending Whether objects should be fetched in descending group order
- * @param auth The authentication info, if needed
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
-	gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth);
+	gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen);
 /*! \brief Function to accept an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept

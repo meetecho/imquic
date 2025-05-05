@@ -486,17 +486,15 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
-	if(auth != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
-			imquic_get_connection_name(conn), auth);
-	}
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
 	/* Find the namespace */
@@ -548,7 +546,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		annc->pub->relay_track_alias++;
 		g_hash_table_insert(subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 		g_hash_table_insert(subscriptions, imquic_uint64_dup(track->track_alias), track);
-		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn, auth, TRUE);
+		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn, auth, authlen, TRUE);
 	}
 	g_mutex_unlock(&mutex);
 }
@@ -636,16 +634,14 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth) {
+static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen) {
 	/* We received a subscribe for a namespace tuple */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for announcement prefix '%s'\n",
 		imquic_get_connection_name(conn), ns);
-	if(auth != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
-			imquic_get_connection_name(conn), auth);
-	}
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
 	/* Keep track of this as a monitor */
 	g_mutex_lock(&mutex);
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, tns, ns);
@@ -677,7 +673,7 @@ static void imquic_demo_incoming_unsubscribe_announces(imquic_connection *conn, 
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		gboolean descending, imquic_moq_fetch_range *range, const char *auth) {
+		gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -685,10 +681,8 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s'/'%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id, descending ? "descending" : "ascending",
 		range->start.group, range->start.object, range->end.group, range->end.object);
-	if(auth != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
-			imquic_get_connection_name(conn), auth);
-	}
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
 	/* Find the namespace */
 	g_mutex_lock(&mutex);
 	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
@@ -758,15 +752,13 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 }
 
 static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id ,
-		gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth) {
+		gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen) {
 	/* We received a joining fetch */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), (absolute ? "absolute" : "relative"),
 		joining_request_id, request_id, joining_start, descending ? "descending" : "ascending");
-	if(auth != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
-			imquic_get_connection_name(conn), auth);
-	}
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
 	g_mutex_lock(&mutex);
 	/* Create a subscriber, if needed */
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);

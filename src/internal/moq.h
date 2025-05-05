@@ -114,8 +114,10 @@ const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type 
 
 /*! \brief MoQ subscribe parameter types */
 typedef enum imquic_moq_subscribe_parameter_type {
-	IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO = 0x02,
-	IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT = 0x03,
+	IMQUIC_MOQ_PARAM_AUTHORIZATION_TOKEN = 0x01,
+		IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO = 0x02,	/* Deprecated in v11 for the value above */
+	IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT = 0x02,
+		IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT_LEGACY = 0x03,	/* Deprecated in v11 for the value above */
 	IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION = 0x04,
 } imquic_moq_subscribe_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_subscribe_parameter_type value.
@@ -162,7 +164,9 @@ typedef struct imquic_moq_subscribe_parameters {
 	/*! \brief Whether the AUTHORIZATION_INFO parameter is set */
 	gboolean auth_info_set;
 	/*! \brief Value of the AUTHORIZATION_INFO parameter */
-	char auth_info[256];
+	uint8_t auth_info[256];
+	/*! \brief Size of the AUTHORIZATION_INFO parameter */
+	size_t auth_info_len;
 	/*! \brief Whether the DELIVERY_TIMEOUT parameter is set */
 	gboolean delivery_timeout_set;
 	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
@@ -1157,7 +1161,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c UNANNOUNCE messages */
 	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward);
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
@@ -1171,7 +1175,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c REQUESTS_BLOCKED messages */
 	void (* requests_blocked)(imquic_connection *conn, uint64_t max_request_id);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ANNOUNCES messages */
-	void (* incoming_subscribe_announces)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *auth);
+	void (* incoming_subscribe_announces)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ANNOUNCES_ACCEPTED messages */
 	void (* subscribe_announces_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ANNOUNCES_ERROR messages */
@@ -1180,9 +1184,9 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_unsubscribe_announces)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, const char *auth);
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen);
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
-		gboolean absolute, uint64_t joining_start, gboolean descending, const char *auth);
+		gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified about incoming \c FETCH_CANCEL messages */
 	void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ACCEPTED messages */

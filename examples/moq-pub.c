@@ -44,7 +44,7 @@ static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
 static volatile int send_objects = 0;
-static uint64_t max_request_id = 1;
+static uint64_t max_request_id = 20;
 
 /* Callbacks */
 static void imquic_demo_new_connection(imquic_connection *conn, void *user_data) {
@@ -97,7 +97,7 @@ static void imquic_demo_announce_error(imquic_connection *conn, uint64_t request
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, const char *auth, gboolean forward) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
@@ -105,15 +105,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
 	/* TODO Check if it matches our announced namespace */
 	/* Check if there's authorization needed */
-	if(auth != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: %s\n",
-			imquic_get_connection_name(conn), auth);
-	}
-	if(options.auth_info && (auth == NULL || strcmp(options.auth_info, auth))) {
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(!imquic_moq_check_auth_info(conn, options.auth_info, auth, authlen)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
 		imquic_moq_reject_subscribe(conn, request_id, 403, "Unauthorized access", track_alias);
-		if(moq_version >= IMQUIC_MOQ_VERSION_06)
-			imquic_moq_set_max_request_id(conn, ++max_request_id);
 		return;
 	}
 	/* Accept the subscription */
