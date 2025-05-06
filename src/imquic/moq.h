@@ -1199,6 +1199,10 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic
  * @param object The imquic_moq_object object to send, including all relevant identifiers and the payload
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object);
+/*! \brief Function to send a \c REQUESTS_BLOCKED request
+ * @param conn The imquic_connection to send the request on
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_requests_blocked(imquic_connection *conn);
 /*! \brief Function to send a \c GOAWAY request
  * @param conn The imquic_connection to send the request on
  * @param uri Where the client can connect to continue the session

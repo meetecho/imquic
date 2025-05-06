@@ -6380,6 +6380,28 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic
 	return 0;
 }
 
+int imquic_moq_requests_blocked(imquic_connection *conn) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL) {
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer), poffset = 5, start = 0;
+	size_t r_len = imquic_moq_add_requests_blocked(moq, &buffer[poffset], blen-poffset, moq->max_request_id);
+	r_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_REQUESTS_BLOCKED, buffer, blen, poffset, r_len, &start);
+	imquic_connection_send_on_stream(conn, moq->control_stream_id,
+		&buffer[start], moq->control_stream_offset, r_len, FALSE);
+	moq->control_stream_offset += r_len;
+	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
 int imquic_moq_goaway(imquic_connection *conn, const char *uri) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
