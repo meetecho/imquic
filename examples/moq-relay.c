@@ -725,7 +725,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	/* Prepare the list of objects to send, out of the provided range */
 	GList *temp = track->objects;
 	imquic_moq_object *object = (imquic_moq_object *)(temp ? temp->data : NULL);
-	imquic_moq_position largest = {
+	imquic_moq_location largest = {
 		.group = (object ? object->group_id : 0),
 		.object = (object ? object->object_id : 0)
 	};
@@ -792,11 +792,11 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	/* Prepare the list of objects to send, using the provided group offset */
 	GList *temp = track->objects;
 	imquic_moq_object *object = (imquic_moq_object *)(temp ? temp->data : NULL);
-	imquic_moq_position start = {
+	imquic_moq_location start = {
 		.group = (object ? (absolute ? joining_start : (object->group_id - joining_start)) : 0),
 		.object = 0
 	};
-	imquic_moq_position largest = {
+	imquic_moq_location largest = {
 		.group = (object ? object->group_id : 0),
 		.object = (object ? object->object_id : 0)
 	};

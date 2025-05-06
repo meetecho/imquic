@@ -179,27 +179,6 @@ typedef struct imquic_moq_subscribe_parameters {
 	gboolean unknown;
 } imquic_moq_subscribe_parameters;
 
-
-/*! \brief MoQ location modes */
-typedef enum imquic_moq_location_mode {
-	IMQUIC_MOQ_LOCATION_NONE = 0x0,
-	IMQUIC_MOQ_LOCATION_ABSOLUTE = 0x1,
-	IMQUIC_MOQ_LOCATION_RELATIVEPREVIOUS = 0x2,
-	IMQUIC_MOQ_LOCATION_RELATIVENEXT = 0x3
-} imquic_moq_location_mode;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_location_mode value.
- * @param mode The imquic_moq_location_mode value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_location_mode_str(imquic_moq_location_mode mode);
-
-/*! \brief MoQ location */
-typedef struct imquic_moq_location {
-	/*! \brief Location mode */
-	imquic_moq_location_mode mode;
-	/*! \brief Value */
-	uint64_t value;
-} imquic_moq_location;
-
 /*! \brief MoQ filter type */
 typedef enum imquic_moq_filter_type {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
@@ -1167,7 +1146,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */
-	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
+	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_DONE messages */
 	void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages */
@@ -1190,13 +1169,13 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c FETCH_CANCEL messages */
 	void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ACCEPTED messages */
-	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest);
+	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_location *largest);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_REQUEST messages */
 	void (* incoming_track_status_request)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
-	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest);
+	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_location *largest);
 	/*! \brief Callback function to be notified about incoming MoQ objects */
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */

@@ -174,7 +174,7 @@ static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request
 	/* TODO */
 }
 
-static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest) {
+static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_location *largest) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), request_id, descending ? "descending" : "ascending", largest->group, largest->object);
 }

@@ -554,21 +554,6 @@ const char *imquic_moq_role_type_str(imquic_moq_role_type type) {
 	return NULL;
 }
 
-const char *imquic_moq_location_mode_str(imquic_moq_location_mode mode) {
-	switch(mode) {
-		case IMQUIC_MOQ_LOCATION_NONE:
-			return "None";
-		case IMQUIC_MOQ_LOCATION_ABSOLUTE:
-			return "Absolute";
-		case IMQUIC_MOQ_LOCATION_RELATIVEPREVIOUS:
-			return "RelativePrevious";
-		case IMQUIC_MOQ_LOCATION_RELATIVENEXT:
-			return "RelativeNext";
-		default: break;
-	}
-	return NULL;
-}
-
 const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
 	switch(type) {
 		case IMQUIC_MOQ_FILTER_NEXT_GROUP_START:
@@ -1895,7 +1880,7 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
-	imquic_moq_position start = { 0 };
+	imquic_moq_location start = { 0 };
 	start.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_UPDATE");
 	offset += length;
@@ -2791,7 +2776,7 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Of Track: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), end_of_track);
-	imquic_moq_position largest = { 0 };
+	imquic_moq_location largest = { 0 };
 	largest.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH_OK");
 	offset += length;
@@ -3042,7 +3027,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Status Code:    %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), status_code);
-	imquic_moq_position largest = { 0 };
+	imquic_moq_location largest = { 0 };
 	largest.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken TRACK_STATUS");
 	offset += length;
@@ -5997,7 +5982,7 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
 	return 0;
 }
 
-int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
+int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
@@ -6267,7 +6252,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 	return 0;
 }
 
-int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest) {
+int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_location *largest) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || largest == NULL) {
@@ -6366,7 +6351,7 @@ int imquic_moq_track_status_request(imquic_connection *conn, uint64_t request_id
 	return 0;
 }
 
-int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest) {
+int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_location *largest) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || (moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tn == NULL))) {

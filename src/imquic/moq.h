@@ -383,17 +383,17 @@ typedef struct imquic_moq_name {
 const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen);
 
 /*! \brief MoQ Group/Object couple (for ranges) */
-typedef struct imquic_moq_position {
+typedef struct imquic_moq_location {
 	uint64_t group;
 	uint64_t object;
-} imquic_moq_position;
+} imquic_moq_location;
 
 /*! \brief MoQ FETCH range (from where to where) */
 typedef struct imquic_moq_fetch_range {
 	/*! \brief Start group/object */
-	imquic_moq_position start;
+	imquic_moq_location start;
 	/*! \brief End group/object */
-	imquic_moq_position end;
+	imquic_moq_location end;
 } imquic_moq_fetch_range;
 
 /*! \brief Ways of sending objects */
@@ -820,7 +820,7 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
 void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
-	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
+	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent is now done
  * @note Currently unused, considering there are discussions in the MoQ
@@ -891,7 +891,7 @@ void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param fetch_accepted Pointer to the function that will fire when an \c FETCH is accepted */
 void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
-	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest));
+	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_location *largest));
 /*! \brief Configure the callback function to be notified when an
  * \c FETCH we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -909,7 +909,7 @@ void imquic_set_track_status_request_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param fetch_error Pointer to the function that will handle the incoming \c TRACK_STATUS */
 void imquic_set_track_status_cb(imquic_endpoint *endpoint,
-	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest));
+	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_location *largest));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming MoQ object, independently of how it was multiplexed on the wire.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1075,7 +1075,7 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
  * @param priority The subscriber priority
  * @param forward Whether objects should be forwarded, when this subscription is updated (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_position *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
+int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
 /*! \brief Function to send a \c UNSUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to unsubscribe from
@@ -1140,7 +1140,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
  * @param descending Whether objects will be delivered in descending group order
  * @param largest The largest group/object IDs
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest);
+int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_location *largest);
 /*! \brief Function to reject an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject
@@ -1168,7 +1168,7 @@ int imquic_moq_track_status_request(imquic_connection *conn, uint64_t request_id
  * @param status_code The status of the track
  * @param largest The largest group/object IDs
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest);
+int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_location *largest);
 /*! \brief Function to send a MoQ object
  * @note Depending on the delivery mode, to close the stream set the
  * \c end_of_stream property to \c TRUE in the object. There's no need to

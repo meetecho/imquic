@@ -387,7 +387,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		return;
 	}
 	/* Intersect the test settings with the provided range */
-	imquic_moq_position largest = {
+	imquic_moq_location largest = {
 		.group = test[TUPLE_FIELD_START_GROUP],
 		.object = test[TUPLE_FIELD_START_OBJECT]
 	};
