@@ -914,13 +914,13 @@ void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c TRACK_STATUS_REQUEST request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param fetch_error Pointer to the function that will handle the incoming \c TRACK_STATUS_REQUEST */
+ * @param incoming_track_status_request Pointer to the function that will handle the incoming \c TRACK_STATUS_REQUEST */
 void imquic_set_track_status_request_cb(imquic_endpoint *endpoint,
 	void (* incoming_track_status_request)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c TRACK_STATUS message.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param fetch_error Pointer to the function that will handle the incoming \c TRACK_STATUS */
+ * @param incoming_track_status Pointer to the function that will handle the incoming \c TRACK_STATUS */
 void imquic_set_track_status_cb(imquic_endpoint *endpoint,
 	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_location *largest));
 /*! \brief Configure the callback function to be notified when there's
@@ -1063,6 +1063,7 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
  * @param priority The subscriber priority
  * @param descending Whether objects should be fetched in descending order, per each group
  * @param forward Whether objects should be forwarded, when this subscription is accepted (ignored before v11)
+ * @param filter_type The subscription filter type
  * @param start_location The group and object to start from (ignored if the filter is not AbsoluteStart or AbsoluteRange)
  * @param end_location The group (and for v06/v07 the object) to end at (ignored if the filter is not AbsoluteRange)
  * @param auth The authentication info, if any

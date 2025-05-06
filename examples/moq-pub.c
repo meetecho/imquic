@@ -150,25 +150,36 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object_id, gboolean last) {
+static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object_id, gboolean first, gboolean last) {
 	uint8_t extensions[256];
 	size_t extensions_len = 0;
 	size_t extensions_count = 0;
-	if(options.extensions) {
-		/* Just for fun, we add a couple of fake extensions to the object: a numeric
-		 * extension set to the length of the text, and a data extension with a string */
+	if((first && options.first_group > 0) || options.extensions) {
+		/* We have extensions to add to the object */
 		GList *exts = NULL;
+		imquic_moq_object_extension pgidext = { 0 };
 		imquic_moq_object_extension numext = { 0 };
-		numext.id = 6;
-		numext.value.number = text ? strlen(text) : 0;
-		exts = g_list_append(exts, &numext);
 		imquic_moq_object_extension dataext = { 0 };
-		dataext.id = 7;
-		dataext.value.data.buffer = (uint8_t *)"lminiero";
-		dataext.value.data.length = strlen("lminiero");
-		exts = g_list_append(exts, &dataext);
+		if(first && options.first_group > 0) {
+			/* Add the Prior Group ID Gap extension */
+			pgidext.id = 0x40;
+			pgidext.value.number = options.first_group;
+			exts = g_list_append(exts, &pgidext);
+			extensions_count++;
+		}
+		if(options.extensions) {
+			/* Just for fun, we add a couple of fake extensions to the object: a numeric
+			 * extension set to the length of the text, and a data extension with a string */
+			numext.id = 0x6;	/* FIXME */
+			numext.value.number = text ? strlen(text) : 0;
+			exts = g_list_append(exts, &numext);
+			dataext.id = 0x7;	/* FIXME */
+			dataext.value.data.buffer = (uint8_t *)"lminiero";
+			dataext.value.data.length = strlen("lminiero");
+			exts = g_list_append(exts, &dataext);
+			extensions_count += 2;
+		}
 		extensions_len = imquic_moq_build_object_extensions(exts, extensions, sizeof(extensions));
-		extensions_count = 2;
 		g_list_free(exts);
 	}
 	/* Prepare the object and send it */
@@ -285,6 +296,13 @@ int main(int argc, char *argv[]) {
 			goto done;
 		}
 	}
+	if(options.first_group < 0) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid first group\n");
+		ret = 1;
+		goto done;
+	} else if(options.first_group > 0) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %d (will send the 'Prior Group ID Gap' extension)\n", options.first_group);
+	}
 
 	/* Check if we need to create a QLOG file, and which we should save */
 	gboolean qlog_quic = FALSE, qlog_http3 = FALSE, qlog_moq = FALSE;
@@ -359,9 +377,9 @@ int main(int argc, char *argv[]) {
 	time_t imquicltime;
 	int64_t now = g_get_monotonic_time(), before = now;
 	GList *objects = NULL;
-	uint64_t group_id = 0, object_id = 0;
+	uint64_t group_id = options.first_group, object_id = 0;
 	char *seconds = NULL;
-	gboolean last = FALSE;
+	gboolean first = TRUE, last = FALSE;
 	while(!stop) {
 		if(!g_atomic_int_get(&connected)) {
 			before = g_get_monotonic_time();
@@ -395,22 +413,31 @@ int main(int argc, char *argv[]) {
 			object_id = 0;
 			*seconds = '\0';
 			objects = g_list_append(objects, g_strdup(buffer));
-			if(g_atomic_int_get(&send_objects) == 2)
-				imquic_demo_send_data(buffer, group_id, object_id, FALSE);
+			if(g_atomic_int_get(&send_objects) == 2) {
+				imquic_demo_send_data(buffer, group_id, object_id, first, FALSE);
+				if(first)
+					first = FALSE;
+			}
 			*seconds = '0';
 		}
 		/* Add to the group */
 		if(objects == NULL) {
 			*seconds = '\0';
 			objects = g_list_append(objects, g_strdup(buffer));
-			if(g_atomic_int_get(&send_objects) == 2)
-				imquic_demo_send_data(buffer, group_id, object_id, last);
+			if(g_atomic_int_get(&send_objects) == 2) {
+				imquic_demo_send_data(buffer, group_id, object_id, first, last);
+				if(first)
+					first = FALSE;
+			}
 			*seconds = '0';
 		} else {
 			object_id++;
 			objects = g_list_append(objects, g_strdup(seconds));
-			if(g_atomic_int_get(&send_objects) == 2)
-				imquic_demo_send_data(seconds, group_id, object_id, last);
+			if(g_atomic_int_get(&send_objects) == 2) {
+				imquic_demo_send_data(seconds, group_id, object_id, first, last);
+				if(first)
+					first = FALSE;
+			}
 		}
 	}
 	g_list_free_full(objects, (GDestroyNotify)g_free);

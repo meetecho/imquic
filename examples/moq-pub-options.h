@@ -18,6 +18,7 @@ typedef struct demo_options {
 	char *moq_version;
 	const char **track_namespace;
 	const char *track_name;
+	int first_group;
 	const char *auth_info;
 	const char *delivery;
 	gboolean extensions;
