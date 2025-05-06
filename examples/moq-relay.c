@@ -616,6 +616,14 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	g_mutex_unlock(&mutex);
 }
 
+static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id);
+	/* TODO */
+	IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s]   -- SUBSCRIBE_UPDATE not supported in this relay yet\n",
+		imquic_get_connection_name(conn));
+}
+
 static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done: status %d (%s)\n",
@@ -1033,6 +1041,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_subscribe_cb(server, imquic_demo_incoming_subscribe);
 	imquic_set_subscribe_accepted_cb(server, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(server, imquic_demo_subscribe_error);
+	imquic_set_subscribe_updated_cb(server, imquic_demo_subscribe_updated);
 	imquic_set_subscribe_done_cb(server, imquic_demo_subscribe_done);
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_subscribe_announces_cb(server, imquic_demo_incoming_subscribe_announces);
