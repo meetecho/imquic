@@ -511,6 +511,28 @@ void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_track_status_request_cb(imquic_endpoint *endpoint,
+		void (* incoming_track_status_request)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_track_status_request = incoming_track_status_request;
+	}
+}
+
+void imquic_set_track_status_cb(imquic_endpoint *endpoint,
+		void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_track_status = incoming_track_status;
+	}
+}
+
 void imquic_set_incoming_object_cb(imquic_endpoint *endpoint,
 		void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object)) {
 	if(endpoint != NULL) {

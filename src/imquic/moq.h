@@ -658,6 +658,19 @@ typedef enum imquic_moq_sub_done_code {
  * @param code The imquic_moq_sub_done_code value
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_sub_done_code_str(imquic_moq_sub_done_code code);
+
+/*! \brief Track status codes */
+typedef enum imquic_moq_track_status_code {
+	IMQUIC_MOQ_STATUS_PROGRESS = 0x0,
+	IMQUIC_MOQ_STATUS_DOES_NOT_EXIST = 0x1,
+	IMQUIC_MOQ_STATUS_NOT_YET_BEGUN = 0x2,
+	IMQUIC_MOQ_STATUS_FINISHED = 0x3,
+	IMQUIC_MOQ_STATUS_CANNOT_OBTAIN = 0x4,
+} imquic_moq_track_status_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_track_status_code value.
+ * @param code The imquic_moq_track_status_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_track_status_code_str(imquic_moq_track_status_code code);
 ///@}
 
 /** @name MoQ endpoints management
@@ -885,6 +898,18 @@ void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
  * @param fetch_error Pointer to the function that will fire when an \c FETCH is rejected */
 void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c TRACK_STATUS_REQUEST request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param fetch_error Pointer to the function that will handle the incoming \c TRACK_STATUS_REQUEST */
+void imquic_set_track_status_request_cb(imquic_endpoint *endpoint,
+	void (* incoming_track_status_request)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c TRACK_STATUS message.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param fetch_error Pointer to the function that will handle the incoming \c TRACK_STATUS */
+void imquic_set_track_status_cb(imquic_endpoint *endpoint,
+	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming MoQ object, independently of how it was multiplexed on the wire.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1128,6 +1153,22 @@ int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id, imquic
  * @param request_id The unique \c request_id value associated to the subscription to cancel_fetch from
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
+/*! \brief Function to send a \c TRACK_STATUS_REQUEST request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the request (only v11 and after)
+ * @param tns The imquic_moq_namespace namespace to address in the request
+ * @param tn The imquic_moq_name track name to address in the request
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_track_status_request(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn);
+/*! \brief Function to send a \c TRACK_STATUS request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the original \c TRACK_STATUS_REQUEST request (only v11 and after)
+ * @param tns The imquic_moq_namespace namespace to address in the request (deprecated in v11)
+ * @param tn The imquic_moq_name track name to address in the request (deprecated in v11)
+ * @param status_code The status of the track
+ * @param largest The largest group/object IDs
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest);
 /*! \brief Function to send a MoQ object
  * @note Depending on the delivery mode, to close the stream set the
  * \c end_of_stream property to \c TRUE in the object. There's no need to
@@ -1139,6 +1180,11 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
  * @param object The imquic_moq_object object to send, including all relevant identifiers and the payload
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object);
+/*! \brief Function to send a \c GOAWAY request
+ * @param conn The imquic_connection to send the request on
+ * @param uri Where the client can connect to continue the session
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_goaway(imquic_connection *conn, const char *uri);
 ///@}
 
 #endif

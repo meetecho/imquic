@@ -1064,9 +1064,9 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param new_session_uri Buffer containint the new uri value to put in the message, if any
+ * @param new_session_uri New uri value to put in the message, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_data *new_session_uri);
+size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri);
 /*! \brief Helper method to add object extensions to a buffer
  * \note Object extensions were only added in v08, so this method does
  * nothing when used on a connection that negotiated an older version
@@ -1193,6 +1193,10 @@ typedef struct imquic_moq_callbacks {
 	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_position *largest);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason);
+	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_REQUEST messages */
+	void (* incoming_track_status_request)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn);
+	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
+	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_position *largest);
 	/*! \brief Callback function to be notified about incoming MoQ objects */
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
