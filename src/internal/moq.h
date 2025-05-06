@@ -179,18 +179,6 @@ typedef struct imquic_moq_subscribe_parameters {
 	gboolean unknown;
 } imquic_moq_subscribe_parameters;
 
-/*! \brief MoQ filter type */
-typedef enum imquic_moq_filter_type {
-	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
-	IMQUIC_MOQ_FILTER_LATEST_OBJECT = 0x2,
-	IMQUIC_MOQ_FILTER_ABSOLUTE_START = 0x3,
-	IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE = 0x4,
-} imquic_moq_filter_type;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_filter_type value.
- * @param type The imquic_moq_filter_type value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_filter_type_str(imquic_moq_filter_type type);
-
 /*! \brief Group ordering for FETCH
  * \note Only supported since version -07 of the protocol */
 typedef enum imquic_moq_group_order {
@@ -1140,9 +1128,10 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c UNANNOUNCE messages */
 	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward);
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending);
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */

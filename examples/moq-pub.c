@@ -97,12 +97,19 @@ static void imquic_demo_announce_error(imquic_connection *conn, uint64_t request
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
+	/* TODO Check priority, filters, forwarding */
+	if(descending) {
+		/* We don't support descending mode yet */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Descending group order unsupported, will send objects in ascending group order\n",
+			imquic_get_connection_name(conn));
+	}
 	/* TODO Check if it matches our announced namespace */
 	/* Check if there's authorization needed */
 	if(auth != NULL)
@@ -115,14 +122,15 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Accept the subscription */
 	moq_request_id = request_id;
 	moq_track_alias = track_alias;
-	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE);
+	/* TODO Fill in the largest location before answering */
+	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, NULL);
 	/* Start sending objects */
 	g_atomic_int_set(&send_objects, 1);
 }
 
 static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for subscription %"SCNu64"\n", imquic_get_connection_name(conn), request_id);
-	/* TODO Stop sending objects */
+	/* Stop sending objects */
 	g_atomic_int_set(&send_objects, 0);
 }
 

@@ -182,11 +182,21 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, uint64_t anno
 		.length = strlen(track_name)
 	};
 	g_mutex_unlock(&mutex);
+	/* Check if we need to prepare an auth token */
+	uint8_t auth[256];
+	size_t authlen = 0;
+	if(options.auth_info && strlen(options.auth_info) > 0) {
+		authlen = sizeof(auth);
+		if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen) < 0) {
+			authlen = 0;
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
+				imquic_get_connection_name(conn));
+		}
+	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s'/'%s', using ID %"SCNu64"/%"SCNu64"\n",
 		imquic_get_connection_name(conn), ns, track_name, request_id, track_alias);
-	/* TODO Refactor how auth info is generated */
 	imquic_moq_subscribe(conn, request_id, track_alias, tns, &tn,
-		(uint8_t *)options.auth_info, (options.auth_info ? strlen(options.auth_info) : 0), TRUE);
+		0, FALSE, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
 }
 
 static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
@@ -206,7 +216,8 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
@@ -224,7 +235,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Accept the subscription */
 	moq_request_id = request_id;
 	moq_track_alias = track_alias;
-	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE);
+	/* TODO Fill in the largest location before answering */
+	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, NULL);
 	/* Start sending objects */
 	g_atomic_int_set(&send_objects, 1);
 }
@@ -235,9 +247,13 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_atomic_int_set(&send_objects, 0);
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending) {
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), request_id, expires, descending ? "descending" : "ascending");
+	if(largest) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+			imquic_get_connection_name(conn), largest->group, largest->object);
+	}
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias) {

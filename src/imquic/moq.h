@@ -382,6 +382,18 @@ typedef struct imquic_moq_name {
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen);
 
+/*! \brief MoQ filter type, for subscriptions */
+typedef enum imquic_moq_filter_type {
+	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
+	IMQUIC_MOQ_FILTER_LATEST_OBJECT = 0x2,
+	IMQUIC_MOQ_FILTER_ABSOLUTE_START = 0x3,
+	IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE = 0x4,
+} imquic_moq_filter_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_filter_type value.
+ * @param type The imquic_moq_filter_type value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_filter_type_str(imquic_moq_filter_type type);
+
 /*! \brief MoQ Group/Object couple (for ranges) */
 typedef struct imquic_moq_location {
 	uint64_t group;
@@ -799,13 +811,14 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe Pointer to the function that will handle the incoming \c SUBSCRIBE */
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward));
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_accepted Pointer to the function that will fire when a \c SUBSCRIBE is accepted */
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending));
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1047,18 +1060,24 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param tn The imquic_moq_name track name to subscribe to
+ * @param priority The subscriber priority
+ * @param descending Whether objects should be fetched in descending order, per each group
+ * @param forward Whether objects should be forwarded, when this subscription is accepted (ignored before v11)
+ * @param start_location The group and object to start from (ignored if the filter is not AbsoluteStart or AbsoluteRange)
+ * @param end_location The group (and for v06/v07 the object) to end at (ignored if the filter is not AbsoluteRange)
  * @param auth The authentication info, if any
  * @param authlen The size of the authentication info, if any
- * @param forward Whether objects should be forwarded, when this subscription is accepted (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward);
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+	uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param expires Value of \c expires to send back
  * @param descending Whether objects will be delivered in descending group order
+ * @param largest The largest group/object IDs, in case content exists
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending);
+int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest);
 /*! \brief Function to reject an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject

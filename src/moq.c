@@ -1353,6 +1353,11 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* Make sure this is in line with the expected request ID */
+		IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
+		uint64_t request_id_increment = (imquic_moq_get_version(moq->conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
+		moq->expected_request_id = request_id + request_id_increment;
+		IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	}
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
@@ -1385,7 +1390,6 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_subscribe_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken ANNOUNCE");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken ANNOUNCE");
@@ -1429,6 +1433,7 @@ size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, siz
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
 		/* Potentially multiple namespaces (tuple) */
 		uint64_t tns_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1493,6 +1498,7 @@ size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, 
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
 		/* Potentially multiple namespaces (tuple) */
 		uint64_t tns_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1694,6 +1700,12 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* Make sure this is in line with the expected request ID */
+	IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
+	uint64_t request_id_increment = (imquic_moq_get_version(moq->conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
+	moq->expected_request_id = request_id + request_id_increment;
+	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
+	/* Move on */
 	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
 	offset += length;
@@ -1763,30 +1775,32 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Filter type: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_filter_type_str(filter), filter);
+	imquic_moq_location start = { 0 };
 	if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_START || filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		uint64_t start_group = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		start.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Group: %"SCNu64")\n",
-			imquic_get_connection_name(moq->conn), start_group);
-		uint64_t start_object = imquic_read_varint(&bytes[offset], blen-offset, &length);
+			imquic_get_connection_name(moq->conn), start.group);
+		start.object = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Object: %"SCNu64")\n",
-			imquic_get_connection_name(moq->conn), start_object);
+			imquic_get_connection_name(moq->conn), start.object);
 	}
+	imquic_moq_location end = { 0 };
 	if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		uint64_t end_group = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		end.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Group: %"SCNu64")\n",
-			imquic_get_connection_name(moq->conn), end_group);
+			imquic_get_connection_name(moq->conn), end.group);
 		if(moq->version < IMQUIC_MOQ_VERSION_08) {
-			uint64_t end_object = imquic_read_varint(&bytes[offset], blen-offset, &length);
+			end.object = imquic_read_varint(&bytes[offset], blen-offset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
 			offset += length;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Object: %"SCNu64")\n",
-				imquic_get_connection_name(moq->conn), end_object);
+				imquic_get_connection_name(moq->conn), end.object);
 		}
 	}
 	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1796,7 +1810,6 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_subscribe_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
@@ -1816,52 +1829,23 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
-	/* Make sure this is in line with the expected request ID */
-	if(request_id < moq->expected_request_id) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Request ID lower than the last we expected (%"SCNu64" < %"SCNu64")\n",
-			imquic_get_connection_name(moq->conn), request_id, moq->expected_request_id);
-		uint8_t buffer[200];
-		size_t blen = sizeof(buffer), poffset = 5, start = 0;
-		size_t sb_len = imquic_moq_add_subscribe_error(moq, &buffer[poffset], blen-poffset, request_id, 400, "Request ID lower than expected", track_alias);
-		sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_ERROR, buffer, blen, poffset, sb_len, &start);
-		imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
-			&buffer[start], moq->control_stream_offset, sb_len, FALSE);
-		moq->control_stream_offset += sb_len;
-		imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	/* Track this subscription */
+	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, track_alias);
+	imquic_mutex_lock(&moq->mutex);
+	g_hash_table_insert(moq->subscriptions_by_id, imquic_dup_uint64(request_id), moq_sub);
+	g_hash_table_insert(moq->subscriptions, imquic_dup_uint64(track_alias), moq_sub);
+	imquic_mutex_unlock(&moq->mutex);
+	/* Notify the application */
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe) {
+		moq->conn->socket->callbacks.moq.incoming_subscribe(moq->conn,
+			request_id, track_alias, &tns[0], &tn,
+			priority, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), forward,
+			filter, &start, &end,
+			(parameters.auth_info_set ? parameters.auth_info : NULL),
+			(parameters.auth_info_set ? parameters.auth_info_len : 0));
 	} else {
-		/* Check if this is allowed */
-		uint64_t request_id_increment = (imquic_moq_get_version(moq->conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
-		moq->expected_request_id = request_id + request_id_increment;
-		if(request_id >= moq->local_max_request_id) {
-			/* TODO Limit exceeded, we should reject this subscription (but don't now) */
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] The subscriber reached our Maximum Request ID (%"SCNu64")\n",
-				imquic_get_connection_name(moq->conn), moq->local_max_request_id);
-			//~ uint8_t buffer[200];
-			//~ size_t blen = sizeof(buffer), poffset = 5, start = 0;
-			//~ size_t sb_len = imquic_moq_add_subscribe_error(moq, &buffer[poffset], blen-poffset, request_id, 400, "Maximum Request ID exceeded", track_alias);
-			//~ sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_ERROR, buffer, blen, poffset, sb_len, &start);
-			//~ imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
-				//~ &buffer[start], moq->control_stream_offset, sb_len, FALSE);
-			//~ moq->control_stream_offset += sb_len;
-			//~ imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
-		}
-		/* Track this subscription */
-		imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, track_alias);
-		imquic_mutex_lock(&moq->mutex);
-		g_hash_table_insert(moq->subscriptions_by_id, imquic_dup_uint64(request_id), moq_sub);
-		g_hash_table_insert(moq->subscriptions, imquic_dup_uint64(track_alias), moq_sub);
-		imquic_mutex_unlock(&moq->mutex);
-		/* Notify the application */
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe) {
-			moq->conn->socket->callbacks.moq.incoming_subscribe(moq->conn,
-				request_id, track_alias, &tns[0], &tn,
-				(parameters.auth_info_set ? parameters.auth_info : NULL),
-				(parameters.auth_info_set ? parameters.auth_info_len : 0),
-				forward);
-		} else {
-			/* FIXME No handler for this request, let's reject it ourselves */
-			imquic_moq_reject_subscribe(moq->conn, request_id, 500, "Not handled", track_alias);
-		}
+		/* FIXME No handler for this request, let's reject it ourselves */
+		imquic_moq_reject_subscribe(moq->conn, request_id, 500, "Not handled", track_alias);
 	}
 	if(error)
 		*error = 0;
@@ -1880,6 +1864,7 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	imquic_moq_location start = { 0 };
 	start.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_UPDATE");
@@ -1925,7 +1910,6 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 	uint64_t i = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
@@ -1965,6 +1949,7 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	uint64_t expires = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	offset += length;
@@ -1987,18 +1972,18 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 	IMQUIC_MOQ_CHECK_ERR(content_exists && blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Content Exists: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), content_exists);
-	uint64_t lg_id = 0, lo_id = 0;
+	imquic_moq_location largest = { 0 };
 	if(content_exists > 0) {
-		lg_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		largest.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Group ID: %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), lg_id);
-		lo_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+			imquic_get_connection_name(moq->conn), largest.group);
+		largest.object = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Object ID: %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), lo_id);
+			imquic_get_connection_name(moq->conn), largest.object);
 	}
 	uint64_t params_num = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
@@ -2010,7 +1995,6 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 		imquic_get_connection_name(moq->conn), params_num);
 	uint64_t i = 0;
 	for(i = 0; i<params_num; i++) {
-		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_OK");
@@ -2023,8 +2007,8 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "content_exists", json_integer(content_exists));
 		if(content_exists > 0) {
-			json_object_set_new(message, "largest_group_id", json_integer(lg_id));
-			json_object_set_new(message, "largest_object_id", json_integer(lo_id));
+			json_object_set_new(message, "largest_group_id", json_integer(largest.group));
+			json_object_set_new(message, "largest_object_id", json_integer(largest.object));
 		}
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
@@ -2033,7 +2017,8 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 #endif
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.subscribe_accepted)
-		moq->conn->socket->callbacks.moq.subscribe_accepted(moq->conn, request_id, expires, group_order == IMQUIC_MOQ_ORDERING_DESCENDING);
+		moq->conn->socket->callbacks.moq.subscribe_accepted(moq->conn, request_id,
+			expires, group_order == IMQUIC_MOQ_ORDERING_DESCENDING, content_exists ? &largest : NULL);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2051,6 +2036,7 @@ size_t imquic_moq_parse_subscribe_error(imquic_moq_context *moq, uint8_t *bytes,
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	uint64_t error_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
 	offset += length;
@@ -2109,6 +2095,7 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	/* Get rid of this subscription */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
@@ -2144,6 +2131,7 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	uint64_t status_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
 	offset += length;
@@ -2228,6 +2216,11 @@ size_t imquic_moq_parse_subscribe_announces(imquic_moq_context *moq, uint8_t *by
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* Make sure this is in line with the expected request ID */
+		IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
+		uint64_t request_id_increment = (imquic_moq_get_version(moq->conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
+		moq->expected_request_id = request_id + request_id_increment;
+		IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	}
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
@@ -2258,7 +2251,6 @@ size_t imquic_moq_parse_subscribe_announces(imquic_moq_context *moq, uint8_t *by
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_subscribe_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_ANNOUNCES");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_ANNOUNCES");
@@ -2304,6 +2296,7 @@ size_t imquic_moq_parse_subscribe_announces_ok(imquic_moq_context *moq, uint8_t 
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
 		uint64_t tns_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ANNOUNCES_OK");
@@ -2366,6 +2359,7 @@ size_t imquic_moq_parse_subscribe_announces_error(imquic_moq_context *moq, uint8
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
 		uint64_t tns_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ANNOUNCES_ERROR");
@@ -2494,6 +2488,12 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* Make sure this is in line with the expected request ID */
+	IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
+	uint64_t request_id_increment = (imquic_moq_get_version(moq->conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
+	moq->expected_request_id = request_id + request_id_increment;
+	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
+	/* Move on */
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
 	imquic_moq_name tn = { 0 };
@@ -2610,6 +2610,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 			joining_request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
 			offset += length;
+			/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 			joining_start = imquic_read_varint(&bytes[offset], blen-offset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
 			offset += length;
@@ -2648,7 +2649,6 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	imquic_moq_subscribe_parameters parameters = { 0 };
 	uint64_t i = 0;
 	for(i = 0; i<params_num; i++) {
-		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH");
@@ -2725,6 +2725,7 @@ size_t imquic_moq_parse_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, si
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	/* Get rid of this subscription */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
@@ -2765,6 +2766,7 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 	uint8_t group_order = bytes[offset];
 	offset++;
@@ -2795,7 +2797,6 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 	uint64_t i = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		/* TODO Take note of the parsed parameter */
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH_OK");
@@ -2835,6 +2836,7 @@ size_t imquic_moq_parse_fetch_error(imquic_moq_context *moq, uint8_t *bytes, siz
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	uint64_t error_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH_ERROR");
 	offset += length;
@@ -2888,6 +2890,11 @@ size_t imquic_moq_parse_track_status_request(imquic_moq_context *moq, uint8_t *b
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* Make sure this is in line with the expected request ID */
+		IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
+		uint64_t request_id_increment = (imquic_moq_get_version(moq->conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
+		moq->expected_request_id = request_id + request_id_increment;
+		IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	}
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
@@ -2941,7 +2948,6 @@ size_t imquic_moq_parse_track_status_request(imquic_moq_context *moq, uint8_t *b
 			imquic_get_connection_name(moq->conn), params_num);
 		uint64_t i = 0;
 		for(i = 0; i<params_num; i++) {
-			/* TODO Take note of the parsed parameter */
 			IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS_REQUEST");
 			offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 			IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken TRACK_STATUS_REQUEST");
@@ -2986,6 +2992,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
 		/* Potentially multiple namespaces (tuple) */
 		uint64_t tns_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -3048,7 +3055,6 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 			imquic_get_connection_name(moq->conn), params_num);
 		uint64_t i = 0;
 		for(i = 0; i<params_num; i++) {
-			/* TODO Take note of the parsed parameter */
 			IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS");
 			offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 			IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken TRACK_STATUS");
@@ -3099,6 +3105,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID:      %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	}
 	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
@@ -3317,6 +3324,7 @@ size_t imquic_moq_parse_stream_header_track(imquic_moq_context *moq, imquic_moq_
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID:      %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken STREAM_HEADER_TRACK");
 	offset += length;
@@ -3326,7 +3334,7 @@ size_t imquic_moq_parse_stream_header_track(imquic_moq_context *moq, imquic_moq_
 	offset++;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
-	/* FIXME Track these properties */
+	/* Track these properties */
 	if(moq_stream != NULL) {
 		moq_stream->request_id = request_id;
 		moq_stream->track_alias = track_alias;
@@ -3422,6 +3430,7 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID:      %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
+		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	}
 	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
@@ -3448,7 +3457,7 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 	offset++;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
-	/* FIXME Track these properties */
+	/* Track these properties */
 	if(moq_stream != NULL) {
 		moq_stream->request_id = request_id;
 		moq_stream->track_alias = track_alias;
@@ -3616,7 +3625,8 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID:      %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
-	/* FIXME Track these properties */
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
+	/* Track these properties */
 	if(moq_stream != NULL) {
 		moq_stream->request_id = request_id;
 		moq_stream->buffer = g_malloc0(sizeof(imquic_moq_buffer));
@@ -5772,11 +5782,10 @@ int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq
 			return -1;
 		}
 		if(request_id >= moq->max_request_id) {
-			/* TODO Whis should be a failure */
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
 				imquic_get_connection_name(conn), moq->max_request_id);
-			//~ imquic_refcount_decrease(&moq->ref);
-			//~ return -1;
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
 		}
 		moq->next_request_id = request_id + 2;
 	}
@@ -5867,8 +5876,9 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
 	return 0;
 }
 
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
-		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+		imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t priority, gboolean descending, gboolean forward,
+		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
@@ -5889,8 +5899,8 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 		/* TODO Whis should be a failure */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
 			imquic_get_connection_name(conn), moq->max_request_id);
-		//~ imquic_refcount_decrease(&moq->ref);
-		//~ return -1;
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
 	}
 	uint64_t request_id_increment = (imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
 	moq->next_request_id = request_id + request_id_increment;
@@ -5909,15 +5919,12 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 		memcpy(parameters.auth_info, auth, authlen);
 		parameters.auth_info_len = authlen;
 	}
-	/* FIXME Some properties are not exposed via API yet */
 	sb_len = imquic_moq_add_subscribe(moq, &buffer[poffset], blen-poffset,
 		request_id, track_alias, tns, tn,
-		0,	/* TODO Priority */
-		0,	/* TODO Group order */
-		forward,
+		priority, descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING, forward,
 		IMQUIC_MOQ_FILTER_LATEST_OBJECT,
-		0, 0,	/* TODO Start group/object */
-		0, 0,	/* TODO End group/object */
+			(start_location ? start_location->group : 0), (start_location ? start_location->object : 0),	/* FIXME Should we validate the location? */
+			(end_location ? end_location->group : 0), (end_location ? end_location->object : 0),			/* FIXME Should we validate the location? */
 		&parameters);
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
@@ -5929,7 +5936,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 	return 0;
 }
 
-int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending) {
+int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER) {
@@ -5945,9 +5952,7 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
 		request_id,
 		expires,
 		descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING,
-		FALSE,	/* FIXME Content exists */
-		0,		/* FIXME Largest group ID */
-		0,		/* FIXME Largest object ID */
+		(largest != NULL), (largest ? largest->group : 0), (largest ? largest->object : 0),	/* FIXME Should we validate the location? */
 		NULL);	/* FIXME Parameters */
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_OK, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
@@ -5994,7 +5999,7 @@ int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, im
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t su_len = imquic_moq_add_subscribe_update(moq, &buffer[poffset], blen-poffset, request_id,
 		start_location ? start_location->group : 0, start_location ? start_location->object : 0,	/* FIXME Should we validate the location? */
-		 end_group, 0, priority, forward,
+		end_group, 0, priority, forward,
 		NULL);	/* TODO Parameters */
 	su_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_UPDATE, buffer, blen, poffset, su_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
@@ -6050,8 +6055,8 @@ int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id,
 			/* TODO Whis should be a failure */
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
 				imquic_get_connection_name(conn), moq->max_request_id);
-			//~ imquic_refcount_decrease(&moq->ref);
-			//~ return -1;
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
 		}
 		moq->next_request_id = request_id + 2;
 	}

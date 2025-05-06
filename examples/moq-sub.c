@@ -126,9 +126,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		request_id = imquic_moq_get_next_request_id(conn);
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
-			/* TODO Refactor how auth info is generated */
 			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
-				auth, authlen, TRUE);
+				0, FALSE, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
 		} else {
 			/* Send a FETCH */
 			if(options.join_offset < 0) {
@@ -143,7 +142,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					!strcasecmp(options.fetch, "descending"), &range, auth, authlen);
 			} else {
 				/* Send a SUBSCRIBE first */
-				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, auth, authlen, TRUE);
+				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
+					0, FALSE, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
 				/* Now send a Joining Fetch referencing that subscription */
 				uint64_t fetch_request_id = imquic_moq_get_next_request_id(conn);
 				imquic_moq_joining_fetch(conn, fetch_request_id, request_id,
@@ -155,9 +155,13 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending) {
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), request_id, expires, descending ? "descending" : "ascending");
+	if(largest) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+			imquic_get_connection_name(conn), largest->group, largest->object);
+	}
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias) {
@@ -284,7 +288,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		size_t authlen = 0;
 		if(options.auth_info && strlen(options.auth_info) > 0)
 			imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen);
-		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, auth, authlen, TRUE);
+		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
+			0, FALSE, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",

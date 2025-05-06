@@ -486,7 +486,8 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t *auth, size_t authlen, gboolean forward) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -537,8 +538,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	track->subscriptions = g_list_append(track->subscriptions, s);
 	g_mutex_unlock(&track->mutex);
 	/* Only accept the subscribe right now if the track is already active */
-	if(!track->pending)
-		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE);
+	if(!track->pending) {
+		/* TODO Fill in the largest location before answering */
+		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, NULL);
+	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
 		track->request_id = imquic_moq_get_next_request_id(annc->pub->conn);
@@ -546,15 +549,20 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		annc->pub->relay_track_alias++;
 		g_hash_table_insert(subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 		g_hash_table_insert(subscriptions, imquic_uint64_dup(track->track_alias), track);
-		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn, auth, authlen, TRUE);
+		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn,
+			priority, descending, TRUE, filter_type, start_location, end_location, auth, authlen);
 	}
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending) {
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
 	/* Our subscription to a publisher was accepted */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), request_id, expires, descending ? "descending" : "ascending");
+	if(largest) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+			imquic_get_connection_name(conn), largest->group, largest->object);
+	}
 	/* Find the track associated to this subscription */
 	g_mutex_lock(&mutex);
 	imquic_demo_moq_track *track = g_hash_table_lookup(subscriptions_by_id, &request_id);
@@ -568,8 +576,10 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
-		if(s && s->sub && s->sub->conn)
-			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, 0, descending);
+		if(s && s->sub && s->sub->conn) {
+			/* TODO Fill in the largest location before answering */
+			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, 0, descending, NULL);
+		}
 		temp = temp->next;
 	}
 	g_mutex_unlock(&track->mutex);
