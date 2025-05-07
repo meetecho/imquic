@@ -734,12 +734,10 @@ void imquic_moq_buffer_destroy(imquic_moq_buffer *buffer) {
 }
 
 imquic_moq_subscription *imquic_moq_subscription_create(uint64_t request_id, uint64_t track_alias) {
-	imquic_moq_subscription *moq_sub = g_malloc(sizeof(imquic_moq_subscription));
+	imquic_moq_subscription *moq_sub = g_malloc0(sizeof(imquic_moq_subscription));
 	moq_sub->request_id = request_id;
 	moq_sub->track_alias = track_alias;
 	moq_sub->stream = NULL;
-	moq_sub->streams_by_group = g_hash_table_new_full(g_int64_hash, g_int64_equal,
-		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_stream_destroy);
 	moq_sub->streams_by_subgroup = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_stream_destroy);
 	return moq_sub;
@@ -749,7 +747,6 @@ void imquic_moq_subscription_destroy(imquic_moq_subscription *moq_sub) {
 	if(moq_sub != NULL) {
 		if(moq_sub->stream != NULL)
 			imquic_moq_stream_destroy(moq_sub->stream);
-		g_hash_table_unref(moq_sub->streams_by_group);
 		g_hash_table_unref(moq_sub->streams_by_subgroup);
 		g_free(moq_sub);
 	}
@@ -2095,7 +2092,6 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
-	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	/* Get rid of this subscription */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
@@ -2139,7 +2135,7 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 		imquic_get_connection_name(moq->conn), imquic_moq_sub_done_code_str(status_code), status_code);
 	uint64_t streams_count = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
-		uint64_t streams_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		streams_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Streams Count: %"SCNu64"\n",
@@ -2151,7 +2147,8 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 	offset += length;
 	char reason[1024], *reason_str = NULL;
 	if(rs_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(rs_len >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+		IMQUIC_MOQ_CHECK_ERR(((moq->version < IMQUIC_MOQ_VERSION_08 && rs_len >= blen-offset) ||
+			(moq->version >= IMQUIC_MOQ_VERSION_08 && rs_len > blen-offset)), NULL, 0, 0, "Broken SUBSCRIBE_DONE");
 		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
@@ -2725,7 +2722,6 @@ size_t imquic_moq_parse_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, si
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
-	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	/* Get rid of this subscription */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
@@ -5930,7 +5926,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 	sb_len = imquic_moq_add_subscribe(moq, &buffer[poffset], blen-poffset,
 		request_id, track_alias, tns, tn,
 		priority, descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING, forward,
-		IMQUIC_MOQ_FILTER_LATEST_OBJECT,
+		filter_type,
 			(start_location ? start_location->group : 0), (start_location ? start_location->object : 0),	/* FIXME Should we validate the location? */
 			(end_location ? end_location->group : 0), (end_location ? end_location->object : 0),			/* FIXME Should we validate the location? */
 		&parameters);
@@ -6036,6 +6032,41 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
 	moq->control_stream_offset += sb_len;
+	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
+int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL) {
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	/* Find the subscription to compute the streams count */
+	imquic_mutex_lock(&moq->mutex);
+	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
+	if(moq_sub == NULL) {
+		imquic_mutex_unlock(&moq->mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
+			imquic_get_connection_name(conn), request_id);
+		return -1;
+	}
+	uint64_t streams_count = moq_sub->streams_count;
+	imquic_mutex_unlock(&moq->mutex);
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer), poffset = 5, start = 0;
+	/* TODO Compute streams count */
+	size_t sd_len = imquic_moq_add_subscribe_done(moq, &buffer[poffset], blen-poffset,
+		request_id, status_code, streams_count, reason, FALSE, 0, 0);
+	sd_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_DONE, buffer, blen, poffset, sd_len, &start);
+	imquic_connection_send_on_stream(conn, moq->control_stream_id,
+		&buffer[start], moq->control_stream_offset, sd_len, FALSE);
+	moq->control_stream_offset += sd_len;
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -6507,6 +6538,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			}
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);
+			moq_sub->streams_count++;
 			imquic_mutex_unlock(&moq->mutex);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
@@ -6579,6 +6611,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->type = IMQUIC_MOQ_STREAM_HEADER_TRACK;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			moq_sub->stream = moq_stream;
+			moq_sub->streams_count++;
 			imquic_mutex_unlock(&moq->mutex);
 			/* Send a STREAM_HEADER_TRACK */
 			size_t sht_len = imquic_moq_add_stream_header_track(moq, buffer, bufsize,
@@ -6639,6 +6672,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->type = IMQUIC_MOQ_FETCH_HEADER;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			moq_sub->stream = moq_stream;
+			moq_sub->streams_count++;
 			imquic_mutex_unlock(&moq->mutex);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)

@@ -11,6 +11,8 @@
 #ifndef MOQ_SUB_OPTIONS
 #define MOQ_SUB_OPTIONS
 
+#include <stdint.h>
+
 #include <glib.h>
 
 /*! \brief Struct containing the parsed command line options */
@@ -19,10 +21,15 @@ typedef struct demo_options {
 	const char **track_namespace;
 	const char **track_name;
 	const char *auth_info;
+	const char *filter_type;
+	uint64_t start_group;
+	uint64_t start_object;
+	uint64_t end_group;
+	uint64_t end_object;
 	const char *fetch;
 	int join_offset;
 	const char *media_type;
-	const char *output_file;
+	const char *target_file;
 	const char *ip;
 	int port;
 	const char *remote_host;

@@ -1096,6 +1096,14 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
  * @param forward Whether objects should be forwarded, when this subscription is updated (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
+/*! \brief Function to send a \c SUBSCRIBE_DONE request
+ * @note The streams count is handled by the library internally
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the subscription that's now done
+ * @param status_code The status code
+ * @param reason A reason phrase, if needed
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason);
 /*! \brief Function to send a \c UNSUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to unsubscribe from

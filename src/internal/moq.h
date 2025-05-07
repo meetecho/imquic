@@ -322,10 +322,10 @@ typedef struct imquic_moq_subscription {
 	gboolean fetch;
 	/*! \brief Stream for this subscription, in case it's a single one */
 	imquic_moq_stream *stream;
-	/*! \brief Streams for this subscription, indexed by group */
-	GHashTable *streams_by_group;
 	/*! \brief Streams for this subscription, indexed by subgroup */
 	GHashTable *streams_by_subgroup;
+	/*! \brief Count of how many streams were used for this subscription */
+	size_t streams_count;
 } imquic_moq_subscription;
 /*! \brief Helper to create a new subscription instance
  * @param request_id The request ID

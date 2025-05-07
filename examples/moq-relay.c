@@ -92,8 +92,8 @@ typedef struct imquic_demo_moq_subscription {
 	imquic_demo_moq_track *track;
 	uint64_t request_id;
 	uint64_t track_alias;
-	uint64_t last_group_id;
-	uint64_t last_subgroup_id;
+	imquic_moq_location sub_start, sub_end;
+	uint64_t last_group_id, last_subgroup_id;
 	gboolean fetch;
 	GList *objects;
 	GMutex mutex;
@@ -536,17 +536,35 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
 	g_mutex_lock(&track->mutex);
 	track->subscriptions = g_list_append(track->subscriptions, s);
+	/* Check the filter */
+	imquic_moq_object *latest = NULL;
+	if(!track->pending && track->objects != NULL)
+		latest = (imquic_moq_object *)(track->objects ? track->objects->data : NULL);
+	s->sub_end.group = UINT64_MAX;
+	s->sub_end.object = UINT64_MAX;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
+		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
+	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
+		s->sub_start.group = latest ? latest->group_id : 0;
+		s->sub_start.object = latest ? latest->object_id : 0;
+	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
+		s->sub_start.group = latest ? (latest->group_id + 1) : 0;
+		s->sub_start.object = 0;
+	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
+		s->sub_start = *start_location;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
+			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object);
+	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		s->sub_start = *start_location;
+		s->sub_end.group = end_location->group;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
+			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
+	}
 	g_mutex_unlock(&track->mutex);
 	/* Only accept the subscribe right now if the track is already active */
 	if(!track->pending) {
 		/* Fill in the largest location before answering */
-		imquic_moq_location largest = { 0 };
-		imquic_moq_object *latest = (imquic_moq_object *)(track->objects ? track->objects->data : NULL);
-		if(latest != NULL) {
-			largest.group = latest->group_id;
-			largest.object = latest->object_id;
-		}
-		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, latest ? &largest : NULL);
+		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, latest ? &s->sub_start : NULL);
 	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
@@ -555,8 +573,9 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		annc->pub->relay_track_alias++;
 		g_hash_table_insert(subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 		g_hash_table_insert(subscriptions, imquic_uint64_dup(track->track_alias), track);
+		/* We send a 'Latest Object' filter to the subscriber, we'll filter ourselves in case */
 		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn,
-			priority, descending, TRUE, filter_type, start_location, end_location, auth, authlen);
+			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
 	}
 	g_mutex_unlock(&mutex);
 }
@@ -630,9 +649,30 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 
 static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done: status %d (%s)\n",
-		imquic_get_connection_name(conn), request_id, status_code, reason);
-	/* TODO */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
+	/* Find the track associated to this subscription */
+	g_mutex_lock(&mutex);
+	imquic_demo_moq_track *track = g_hash_table_lookup(subscriptions_by_id, &request_id);
+	if(track == NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
+		return;
+	}
+	/* Send a SUBSCRIBE_DONE to all subscribers */
+	g_mutex_lock(&track->mutex);
+	GList *temp = track->subscriptions;
+	while(temp) {
+		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
+		if(s && s->sub && s->sub->conn)
+			imquic_moq_subscribe_done(s->sub->conn, s->request_id, status_code, reason);
+		temp = temp->next;
+	}
+	g_mutex_unlock(&track->mutex);
+	/* Destroy the track */
+	if(track->annc && track->annc->tracks)
+		g_hash_table_remove(track->annc->tracks, track->track_name);
+	g_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id) {
@@ -650,8 +690,8 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	/* Get rid of the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(subscriptions_by_id, &request_id);
 	if(s) {
-		g_hash_table_remove(subscriptions_by_id, &request_id);
-		g_hash_table_remove(subscriptions, &s->track_alias);
+		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
+		g_hash_table_remove(sub->subscriptions, &s->track_alias);
 	}
 	g_mutex_unlock(&mutex);
 }
@@ -886,9 +926,27 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			imquic_get_connection_name(conn), g_list_length(track->subscriptions));
 	}
 	GList *temp = track->subscriptions;
+	GList *done = NULL;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && !s->fetch && s->sub && s->sub->conn) {
+			/* Check if it matches the filter */
+			if(object->group_id < s->sub_start.group || (object->group_id == s->sub_start.group && object->object_id < s->sub_start.object)) {
+				/* Not the time to send the object yet */
+				temp = temp->next;
+				continue;
+			}
+			if(object->group_id > s->sub_end.group || (object->group_id == s->sub_end.group && object->object_id > s->sub_end.object)) {
+				/* We've sent all that we were asked about for this subscription */
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
+					imquic_get_connection_name(s->sub->conn));
+				/* Send a SUBSCRIBE_DONE */
+				imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				/* Get rid of this subscription */
+				done = g_list_prepend(done, s);
+				temp = temp->next;
+				continue;
+			}
 			object->request_id = s->request_id;
 			object->track_alias = s->track_alias;
 			imquic_moq_send_object(s->sub->conn, object);
@@ -897,6 +955,17 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	}
 	/* Done */
 	g_mutex_unlock(&track->mutex);
+	/* Any subscription we should get rid of? */
+	temp = done;
+	while(temp) {
+		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
+		if(s && s->sub) {
+			g_hash_table_remove(s->sub->subscriptions_by_id, &s->request_id);
+			g_hash_table_remove(s->sub->subscriptions, &s->track_alias);
+		}
+		temp = temp->next;
+	}
+	g_list_free(done);
 	g_mutex_unlock(&mutex);
 }
 
@@ -929,7 +998,7 @@ int main(int argc, char *argv[]) {
 
 	IMQUIC_PRINT("imquic version %s\n", imquic_get_version_string_full());
 	IMQUIC_PRINT("  -- %s (commit hash)\n", imquic_get_build_sha());
-	IMQUIC_PRINT("  -- %s (build time)\n", imquic_get_build_time());
+	IMQUIC_PRINT("  -- %s (build time)\n\n", imquic_get_build_time());
 
 	/* Initialize some command line options defaults */
 	options.debug_level = IMQUIC_LOG_INFO;
@@ -1007,6 +1076,7 @@ int main(int argc, char *argv[]) {
 	}
 	if(options.quiet)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Quiet mode (won't print incoming objects)\n");
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
 	/* Initialize the library and create a server */
 	if(imquic_init(options.secrets_log) < 0) {

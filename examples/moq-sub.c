@@ -41,6 +41,8 @@ static void imquic_demo_handle_signal(int signum) {
 /* Subscriber state */
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
+static imquic_moq_filter_type filter_type = IMQUIC_MOQ_FILTER_LATEST_OBJECT;
+static imquic_moq_location start_location = { 0 }, end_location = { 0 };
 
 /* Object processing type */
 typedef enum imquic_demo_media_type {
@@ -127,23 +129,21 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
 			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
-				0, FALSE, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
+				0, FALSE, TRUE, filter_type, &start_location, &end_location, auth, authlen);
 		} else {
 			/* Send a FETCH */
 			if(options.join_offset < 0) {
 				/* Standalone Fetch */
-				imquic_moq_fetch_range range = { 0 };
-				/* FIXME We should make this range configurable via command line */
-				range.start.group = 0;
-				range.start.object = 0;
-				range.end.group = 1000;
-				range.end.object = 0;
+				imquic_moq_fetch_range range = {
+					.start = start_location,
+					.end = end_location
+				};
 				imquic_moq_standalone_fetch(conn, request_id, &tns[0], &tn,
 					!strcasecmp(options.fetch, "descending"), &range, auth, authlen);
 			} else {
 				/* Send a SUBSCRIBE first */
 				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
-					0, FALSE, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
+					0, FALSE, TRUE, filter_type, &start_location, &end_location, auth, authlen);
 				/* Now send a Joining Fetch referencing that subscription */
 				uint64_t fetch_request_id = imquic_moq_get_next_request_id(conn);
 				imquic_moq_joining_fetch(conn, fetch_request_id, request_id,
@@ -173,8 +173,8 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 
 static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done: status %d (%s)\n",
-		imquic_get_connection_name(conn), request_id, status_code, reason);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
 	/* TODO */
 }
 
@@ -289,7 +289,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		if(options.auth_info && strlen(options.auth_info) > 0)
 			imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen);
 		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
-			0, FALSE, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
+			0, FALSE, TRUE, filter_type, &start_location, &end_location, auth, authlen);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
@@ -324,11 +324,13 @@ int main(int argc, char *argv[]) {
 
 	IMQUIC_PRINT("imquic version %s\n", imquic_get_version_string_full());
 	IMQUIC_PRINT("  -- %s (commit hash)\n", imquic_get_build_sha());
-	IMQUIC_PRINT("  -- %s (build time)\n", imquic_get_build_time());
+	IMQUIC_PRINT("  -- %s (build time)\n\n", imquic_get_build_time());
 
 	/* Initialize some command line options defaults */
 	options.debug_level = IMQUIC_LOG_INFO;
 	options.join_offset = -1;
+	options.end_group = UINT64_MAX;
+	options.end_object = UINT64_MAX;
 	/* Let's call our cmdline parser */
 	if(!demo_options_parse(&options, argc, argv)) {
 		demo_options_show_usage();
@@ -378,10 +380,17 @@ int main(int argc, char *argv[]) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %d\n", moq_version - IMQUIC_MOQ_VERSION_BASE);
 		}
 	}
-	if(options.fetch != NULL && strcasecmp(options.fetch, "ascending") && strcasecmp(options.fetch, "descending")) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid fetch ordering\n");
-		ret = 1;
-		goto done;
+	if(options.fetch) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a %s FETCH for the subscription\n", (options.join_offset < 0 ? "Standalone" : "Joining"));
+		if(options.join_offset >= 0)
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Joining FETCH with a %d group offset\n", options.join_offset);
+		if(strcasecmp(options.fetch, "ascending") && strcasecmp(options.fetch, "descending")) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid fetch ordering\n");
+			ret = 1;
+			goto done;
+		}
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE for the subscription\n");
 	}
 	if(options.track_namespace == NULL || options.track_namespace[0] == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track namespace (s)\n");
@@ -393,6 +402,48 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
+	if(options.filter_type != NULL) {
+		if(options.fetch != NULL && options.join_offset < 0) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring filter type (unused for Standalone FETCH)\n");
+		} else {
+			if(!strcasecmp(options.filter_type, "LatestObject")) {
+				filter_type = IMQUIC_MOQ_FILTER_LATEST_OBJECT;
+			} else if(!strcasecmp(options.filter_type, "NextGroupStart")) {
+				filter_type = IMQUIC_MOQ_FILTER_NEXT_GROUP_START;
+			} else if(!strcasecmp(options.filter_type, "AbsoluteStart")) {
+				filter_type = IMQUIC_MOQ_FILTER_ABSOLUTE_START;
+			} else if(!strcasecmp(options.filter_type, "AbsoluteRange")) {
+				filter_type = IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE;
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid filter '%s'\n", options.filter_type);
+				ret = 1;
+				goto done;
+			}
+		}
+	}
+	if(options.fetch != NULL && options.join_offset < 0) {
+		start_location.group = options.start_group;
+		start_location.object = options.start_object;
+		end_location.group = options.end_group;
+		end_location.object = options.end_object;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "FETCH range: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+			start_location.group, start_location.object, end_location.group, end_location.object);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using '%s' as the SUBSCRIBE filter type\n", imquic_moq_filter_type_str(filter_type));
+		if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
+			start_location.group = options.start_group;
+			start_location.object = options.start_object;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "SUBSCRIBE start location: [%"SCNu64"/%"SCNu64"]\n",
+				start_location.group, start_location.object);
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			start_location.group = options.start_group;
+			start_location.object = options.start_object;
+			end_location.group = options.end_group;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "SUBSCRIBE start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
+				start_location.group, start_location.object, end_location.group);
+		}
+	}
+
 	if(options.media_type != NULL) {
 		if(!strcasecmp(options.media_type, "none")) {
 			media_type = DEMO_TYPE_NONE;
@@ -408,11 +459,11 @@ int main(int argc, char *argv[]) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Unsupported media type '%s', falling back to 'none'", options.media_type);
 		}
 	}
-	if(options.output_file != NULL) {
-		file = fopen(options.output_file, "wb");
+	if(options.target_file != NULL) {
+		file = fopen(options.target_file, "wb");
 		if(file == NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error creating file '%s': %s\n",
-				options.output_file, g_strerror(errno));
+				options.target_file, g_strerror(errno));
 			ret = 1;
 			goto done;
 		}
@@ -439,6 +490,7 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
 	/* Initialize the library and create a client */
 	if(imquic_init(options.secrets_log) < 0) {
