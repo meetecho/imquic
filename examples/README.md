@@ -65,7 +65,6 @@ To build the Media Over QUIC (MoQ) examples, pass `--enable-moq-examples` to the
 
 * `imquic-moq-pob`, a basic MoQ publisher (basically a clone on `moq-clock` in [moq-rs](https://github.com/kixelated/moq-rs));
 * `imquic-moq-sub`, a basic MoQ subscriber (with support for a few different kinds of media);
-* `imquic-moq-chat`, a basic MoQ publisher/subscriber that implements the [moq-chat](https://datatracker.ietf.org/doc/draft-frindell-moq-chat/) draft (still WIP);
 * `imquic-moq-test`, a basic MoQ publisher/subscriber that implements the [testing protocol](https://afrind.github.io/moq-test/draft-afrind-moq-test.html) draft (still WIP);
 * `imquic-moq-relay`, a basic MoQ relay.
 

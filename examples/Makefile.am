@@ -38,7 +38,7 @@ endif
 
 if ENABLE_MOQ_EXAMPLES
 
-bin_PROGRAMS += imquic-moq-relay imquic-moq-pub imquic-moq-sub imquic-moq-chat imquic-moq-test
+bin_PROGRAMS += imquic-moq-relay imquic-moq-pub imquic-moq-sub imquic-moq-test
 
 imquic_moq_relay_SOURCES = \
 	moq-relay.c \
@@ -86,23 +86,6 @@ imquic_moq_sub_CFLAGS = \
 	-I ../src \
 	$(NULL)
 imquic_moq_sub_LDADD = \
-	$(IMQUIC_LIBS) \
-	$(IMQUIC_MANUAL_LIBS) \
-	-L../src/.libs -limquic \
-	$(NULL)
-
-imquic_moq_chat_SOURCES = \
-	moq-chat.c \
-	moq-chat-options.c \
-	moq-chat-options.h \
-	moq-utils.c \
-	moq-utils.h
-imquic_moq_chat_CFLAGS = \
-	$(AM_CFLAGS) \
-	$(IMQUIC_CFLAGS) \
-	-I ../src \
-	$(NULL)
-imquic_moq_chat_LDADD = \
 	$(IMQUIC_LIBS) \
 	$(IMQUIC_MANUAL_LIBS) \
 	-L../src/.libs -limquic \
