@@ -5386,6 +5386,14 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 			imquic_get_connection_name(moq->conn), params->max_request_id);
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			len = length;
+	} else if(type == IMQUIC_MOQ_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE && (moq->version >= IMQUIC_MOQ_VERSION_11 || len > 0)) {
+		params->max_auth_token_cache_size = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		params->max_auth_token_cache_size_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_request_id);
+		if(moq->version >= IMQUIC_MOQ_VERSION_11)
+			len = length;
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter '%"SCNu64"'\n",
 			imquic_get_connection_name(moq->conn), type);
