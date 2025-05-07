@@ -539,8 +539,14 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	g_mutex_unlock(&track->mutex);
 	/* Only accept the subscribe right now if the track is already active */
 	if(!track->pending) {
-		/* TODO Fill in the largest location before answering */
-		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, NULL);
+		/* Fill in the largest location before answering */
+		imquic_moq_location largest = { 0 };
+		imquic_moq_object *latest = (imquic_moq_object *)(track->objects ? track->objects->data : NULL);
+		if(latest != NULL) {
+			largest.group = latest->group_id;
+			largest.object = latest->object_id;
+		}
+		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, latest ? &largest : NULL);
 	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
@@ -576,10 +582,8 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
-		if(s && s->sub && s->sub->conn) {
-			/* TODO Fill in the largest location before answering */
-			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, 0, descending, NULL);
-		}
+		if(s && s->sub && s->sub->conn)
+			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, 0, descending, largest);
 		temp = temp->next;
 	}
 	g_mutex_unlock(&track->mutex);

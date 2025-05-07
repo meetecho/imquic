@@ -43,8 +43,9 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
-static volatile int send_objects = 0;
+static volatile int started = 0, send_objects = 0;
 static uint64_t max_request_id = 20;
+static uint64_t group_id = 0, object_id = 0;
 
 /* Callbacks */
 static void imquic_demo_new_connection(imquic_connection *conn, void *user_data) {
@@ -122,8 +123,13 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Accept the subscription */
 	moq_request_id = request_id;
 	moq_track_alias = track_alias;
-	/* TODO Fill in the largest location before answering */
-	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, NULL);
+	imquic_moq_location largest = { 0 };
+	gboolean pub_started = g_atomic_int_get(&started);
+	if(pub_started) {
+		largest.group = group_id;
+		largest.object = object_id;
+	}
+	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, pub_started ? &largest : NULL);
 	/* Start sending objects */
 	g_atomic_int_set(&send_objects, 1);
 }
@@ -150,10 +156,11 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object_id, gboolean first, gboolean last) {
+static void imquic_demo_send_data(char *text, gboolean last) {
 	uint8_t extensions[256];
 	size_t extensions_len = 0;
 	size_t extensions_count = 0;
+	gboolean first = g_atomic_int_compare_and_exchange(&started, 0, 1);
 	if((first && options.first_group > 0 && group_id == (uint64_t)options.first_group) || options.extensions) {
 		/* We have extensions to add to the object */
 		GList *exts = NULL;
@@ -377,9 +384,9 @@ int main(int argc, char *argv[]) {
 	time_t imquicltime;
 	int64_t now = g_get_monotonic_time(), before = now;
 	GList *objects = NULL;
-	uint64_t group_id = options.first_group, object_id = 0;
+	group_id = options.first_group;
 	char *seconds = NULL;
-	gboolean first = TRUE, last = FALSE;
+	gboolean last = FALSE;
 	while(!stop) {
 		if(!g_atomic_int_get(&connected)) {
 			before = g_get_monotonic_time();
@@ -413,31 +420,22 @@ int main(int argc, char *argv[]) {
 			object_id = 0;
 			*seconds = '\0';
 			objects = g_list_append(objects, g_strdup(buffer));
-			if(g_atomic_int_get(&send_objects) == 2) {
-				imquic_demo_send_data(buffer, group_id, object_id, first, FALSE);
-				if(first)
-					first = FALSE;
-			}
+			if(g_atomic_int_get(&send_objects) == 2)
+				imquic_demo_send_data(buffer, FALSE);
 			*seconds = '0';
 		}
 		/* Add to the group */
 		if(objects == NULL) {
 			*seconds = '\0';
 			objects = g_list_append(objects, g_strdup(buffer));
-			if(g_atomic_int_get(&send_objects) == 2) {
-				imquic_demo_send_data(buffer, group_id, object_id, first, last);
-				if(first)
-					first = FALSE;
-			}
+			if(g_atomic_int_get(&send_objects) == 2)
+				imquic_demo_send_data(buffer, last);
 			*seconds = '0';
 		} else {
 			object_id++;
 			objects = g_list_append(objects, g_strdup(seconds));
-			if(g_atomic_int_get(&send_objects) == 2) {
-				imquic_demo_send_data(seconds, group_id, object_id, first, last);
-				if(first)
-					first = FALSE;
-			}
+			if(g_atomic_int_get(&send_objects) == 2)
+				imquic_demo_send_data(seconds, last);
 		}
 	}
 	g_list_free_full(objects, (GDestroyNotify)g_free);
