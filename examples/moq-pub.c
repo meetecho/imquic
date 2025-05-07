@@ -154,13 +154,13 @@ static void imquic_demo_send_data(char *text, uint64_t group_id, uint64_t object
 	uint8_t extensions[256];
 	size_t extensions_len = 0;
 	size_t extensions_count = 0;
-	if((first && options.first_group > 0) || options.extensions) {
+	if((first && options.first_group > 0 && group_id == (uint64_t)options.first_group) || options.extensions) {
 		/* We have extensions to add to the object */
 		GList *exts = NULL;
 		imquic_moq_object_extension pgidext = { 0 };
 		imquic_moq_object_extension numext = { 0 };
 		imquic_moq_object_extension dataext = { 0 };
-		if(first && options.first_group > 0) {
+		if(first && options.first_group > 0 && group_id == (uint64_t)options.first_group) {
 			/* Add the Prior Group ID Gap extension */
 			pgidext.id = 0x40;
 			pgidext.value.number = options.first_group;
