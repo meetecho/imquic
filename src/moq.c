@@ -1407,7 +1407,7 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		moq->conn->socket->callbacks.moq.incoming_announce(moq->conn, request_id, &tns[0]);
 	} else {
 		/* FIXME No handler for this request, let's reject it ourselves */
-		imquic_moq_reject_announce(moq->conn, request_id, &tns[0], 500, "Not handled");
+		imquic_moq_reject_announce(moq->conn, request_id, &tns[0], IMQUIC_MOQ_ANNCERR_NOT_SUPPORTED, "Not handled");
 	}
 	if(error)
 		*error = 0;
@@ -1842,7 +1842,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 			(parameters.auth_info_set ? parameters.auth_info_len : 0));
 	} else {
 		/* FIXME No handler for this request, let's reject it ourselves */
-		imquic_moq_reject_subscribe(moq->conn, request_id, 500, "Not handled", track_alias);
+		imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_SUBERR_NOT_SUPPORTED, "Not handled", track_alias);
 	}
 	if(error)
 		*error = 0;
@@ -2270,7 +2270,7 @@ size_t imquic_moq_parse_subscribe_announces(imquic_moq_context *moq, uint8_t *by
 			(parameters.auth_info_set ? parameters.auth_info_len : 0));
 	} else {
 		/* FIXME No handler for this request, let's reject it ourselves */
-		imquic_moq_reject_subscribe_announces(moq->conn, request_id, &tns[0], 500, "Not handled");
+		imquic_moq_reject_subscribe_announces(moq->conn, request_id, &tns[0], IMQUIC_MOQ_SUBANNCERR_NOT_SUPPORTED, "Not handled");
 	}
 	if(error)
 		*error = 0;
@@ -2688,7 +2688,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 				(parameters.auth_info_set ? parameters.auth_info_len : 0));
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
-			imquic_moq_reject_fetch(moq->conn, request_id, 500, "Not handled");
+			imquic_moq_reject_fetch(moq->conn, request_id, IMQUIC_MOQ_FETCHERR_NOT_SUPPORTED, "Not handled");
 		}
 	} else {
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_joining_fetch) {
@@ -2700,7 +2700,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 				(parameters.auth_info_set ? parameters.auth_info_len : 0));
 		} else {
 			/* FIXME No handler for this request, let's reject it ourselves */
-			imquic_moq_reject_fetch(moq->conn, request_id, 500, "Not handled");
+			imquic_moq_reject_fetch(moq->conn, request_id, IMQUIC_MOQ_FETCHERR_NOT_SUPPORTED, "Not handled");
 		}
 	}
 	if(error)
@@ -5771,7 +5771,7 @@ size_t imquic_moq_build_auth_token(imquic_moq_auth_token *token, uint8_t *bytes,
 int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER) {
+	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -5812,8 +5812,7 @@ int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq
 int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER ||
-			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
+	if(moq == NULL || (moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -5839,7 +5838,7 @@ int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imq
 int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER || (reason && strlen(reason) > 1024) ||
+	if(moq == NULL || (reason && strlen(reason) > 1024) ||
 			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
@@ -5866,7 +5865,7 @@ int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imq
 int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER) {
+	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -5894,7 +5893,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
-			tn == NULL || (tn->buffer == NULL && tn->length > 0) || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
+			tn == NULL || (tn->buffer == NULL && tn->length > 0)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -5959,7 +5958,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER) {
+	if(moq == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -5989,7 +5988,7 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || (reason && strlen(reason) > 1024)) {
+	if(moq == NULL || (reason && strlen(reason) > 1024)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6014,7 +6013,7 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
 int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER || start_location == NULL) {
+	if(moq == NULL || start_location == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6164,8 +6163,7 @@ int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id,
 int imquic_moq_accept_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER ||
-			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
+	if(moq == NULL || (moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6191,7 +6189,7 @@ int imquic_moq_accept_subscribe_announces(imquic_connection *conn, uint64_t requ
 int imquic_moq_reject_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || (reason && strlen(reason) > 1024) ||
+	if(moq == NULL || (reason && strlen(reason) > 1024) ||
 			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
@@ -6244,8 +6242,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tn == NULL ||
-			range == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
+	if(moq == NULL || tns == NULL || tn == NULL || range == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6294,7 +6291,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 		gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
+	if(moq == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6345,7 +6342,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_location *largest) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || largest == NULL) {
+	if(moq == NULL || largest == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6377,7 +6374,7 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboole
 int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || (reason && strlen(reason) > 1024)) {
+	if(moq == NULL || (reason && strlen(reason) > 1024)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
