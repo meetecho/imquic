@@ -41,8 +41,10 @@ static void imquic_demo_handle_signal(int signum) {
 /* Subscriber state */
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
+static GList *request_ids = NULL;
 static imquic_moq_filter_type filter_type = IMQUIC_MOQ_FILTER_LATEST_OBJECT;
-static imquic_moq_location start_location = { 0 }, end_location = { 0 };
+static imquic_moq_location start_location = { 0 }, end_location = { 0 }, end_location_sub = { 0 };
+static int64_t update_time = 0;
 
 /* Object processing type */
 typedef enum imquic_demo_media_type {
@@ -115,6 +117,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				imquic_get_connection_name(conn));
 		}
 	}
+	/* Check if we need to request forwarding right away, or if we'll ask send an update later */
+	gboolean forward = TRUE;
+	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0))
+		forward = FALSE;
 	/* Iterate on all track names */
 	while(options.track_name[i] != NULL) {
 		const char *track_name = options.track_name[i];
@@ -129,7 +135,9 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		if(options.fetch == NULL) {
 			/* Send a SUBSCRIBE */
 			imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
-				0, FALSE, TRUE, filter_type, &start_location, &end_location, auth, authlen);
+				0, FALSE, forward, filter_type, &start_location, &end_location_sub, auth, authlen);
+			if(!forward)
+				request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 		} else {
 			/* Send a FETCH */
 			if(options.join_offset < 0) {
@@ -143,7 +151,9 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			} else {
 				/* Send a SUBSCRIBE first */
 				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
-					0, FALSE, TRUE, filter_type, &start_location, &end_location, auth, authlen);
+					0, FALSE, forward, filter_type, &start_location, &end_location_sub, auth, authlen);
+				if(!forward)
+					request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 				/* Now send a Joining Fetch referencing that subscription */
 				uint64_t fetch_request_id = imquic_moq_get_next_request_id(conn);
 				imquic_moq_joining_fetch(conn, fetch_request_id, request_id,
@@ -152,6 +162,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		}
 		i++;
 		track_alias++;
+	}
+	if(!forward) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a SUBSCRIBE_UPDATE in %d seconds\n",
+			imquic_get_connection_name(conn), options.update_subscribe);
+		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
 	}
 }
 
@@ -289,7 +304,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		if(options.auth_info && strlen(options.auth_info) > 0)
 			imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen);
 		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn,
-			0, FALSE, TRUE, filter_type, &start_location, &end_location, auth, authlen);
+			0, FALSE, TRUE, filter_type, &start_location, &end_location_sub, auth, authlen);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
@@ -313,6 +328,7 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
 	if(conn == moq_conn)
 		imquic_connection_unref(conn);
+	moq_conn = NULL;
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -439,9 +455,14 @@ int main(int argc, char *argv[]) {
 			start_location.group = options.start_group;
 			start_location.object = options.start_object;
 			end_location.group = options.end_group;
+			end_location_sub.group = (options.end_group == UINT64_MAX) ? 0 : (options.end_group + 1);
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "SUBSCRIBE start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 				start_location.group, start_location.object, end_location.group);
 		}
+	}
+	if(options.update_subscribe) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send a SUBSCRIBE_UPDATE to actually start streaming after %d seconds (note: ignored for versions earlier than 11)\n",
+			options.update_subscribe);
 	}
 
 	if(options.media_type != NULL) {
@@ -538,8 +559,23 @@ int main(int argc, char *argv[]) {
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);
 
-	while(!stop)
+	while(!stop) {
+		if(update_time > 0 && g_get_monotonic_time() >= update_time) {
+			/* Send a SUBSCRIBE_UPDATE with forward=true */
+			update_time = 0;
+			/* TODO This should be done for all subscriptions */
+			GList *temp = request_ids;
+			while(temp) {
+				uint64_t *request_id = (uint64_t *)temp->data;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a SUBSCRIBE_UPDATE for ID %"SCNu64"\n",
+					imquic_get_connection_name(moq_conn), *request_id);
+				imquic_moq_location start_location = { 0 };
+				imquic_moq_update_subscribe(moq_conn, *request_id, &start_location, end_location_sub.group, 0, TRUE);
+				temp = temp->next;
+			}
+		}
 		g_usleep(100000);
+	}
 
 	/* Shutdown the client */
 	imquic_shutdown_endpoint(client);
@@ -551,6 +587,7 @@ done:
 	demo_options_destroy();
 	if(file != NULL)
 		fclose(file);
+	g_list_free_full(request_ids, (GDestroyNotify)g_free);
 
 	/* Done */
 	IMQUIC_PRINT("Bye!\n");

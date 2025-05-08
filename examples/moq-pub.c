@@ -152,7 +152,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object);
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 		sub_start = *start_location;
-		sub_end.group = end_location->group;
+		if(end_location->group == 0)
+			sub_end.group = UINT64_MAX;
+		else
+			sub_end.group = end_location->group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group);
 	}
@@ -184,6 +187,7 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
 	if(conn == moq_conn)
 		imquic_connection_unref(conn);
+	moq_conn = NULL;
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }

@@ -5772,6 +5772,8 @@ int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -5780,13 +5782,13 @@ int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		/* Make sure we can send this */
 		if(request_id < moq->next_request_id) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Request ID lower than the next we expected (%"SCNu64" < %"SCNu64")\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Request ID lower than the next we expected (%"SCNu64" < %"SCNu64")\n",
 				imquic_get_connection_name(conn), request_id, moq->next_request_id);
 			imquic_refcount_decrease(&moq->ref);
 			return -1;
 		}
 		if(request_id >= moq->max_request_id) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
 				imquic_get_connection_name(conn), moq->max_request_id);
 			imquic_refcount_decrease(&moq->ref);
 			return -1;
@@ -5812,6 +5814,8 @@ int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imq
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER ||
 			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -5837,6 +5841,8 @@ int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imq
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER || (reason && strlen(reason) > 1024) ||
 			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -5861,6 +5867,8 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -5887,21 +5895,29 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
 			tn == NULL || (tn->buffer == NULL && tn->length > 0) || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
+	gboolean content_exists = (start_location && end_location);
+	if(content_exists && end_location->group > 0 && start_location->group > end_location->group) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
+			imquic_get_connection_name(conn), end_location->group, start_location->group);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
 	/* Make sure we can send this */
 	if(request_id < moq->next_request_id) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Request ID lower than the next we expected (%"SCNu64" < %"SCNu64")\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Request ID lower than the next we expected (%"SCNu64" < %"SCNu64")\n",
 			imquic_get_connection_name(conn), request_id, moq->next_request_id);
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
 	if(request_id >= moq->max_request_id) {
-		/* TODO Whis should be a failure */
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
 			imquic_get_connection_name(conn), moq->max_request_id);
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
@@ -5927,8 +5943,8 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 		request_id, track_alias, tns, tn,
 		priority, descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING, forward,
 		filter_type,
-			(start_location ? start_location->group : 0), (start_location ? start_location->object : 0),	/* FIXME Should we validate the location? */
-			(end_location ? end_location->group : 0), (end_location ? end_location->object : 0),			/* FIXME Should we validate the location? */
+			(content_exists ? start_location->group : 0), (content_exists ? start_location->object : 0),
+			(content_exists ? end_location->group : 0), (content_exists ? end_location->object : 0),
 		&parameters);
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
@@ -5944,6 +5960,8 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -5972,6 +5990,8 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || (reason && strlen(reason) > 1024)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -5994,16 +6014,26 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
 int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
+	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER || start_location == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	/* TODO We should also ensure that we're not widening a subscription here */
+	if(end_group > 0 && start_location->group > end_group) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
+			imquic_get_connection_name(conn), end_group, start_location->group);
+		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
 	/* TODO Check if we were subscribed */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t su_len = imquic_moq_add_subscribe_update(moq, &buffer[poffset], blen-poffset, request_id,
-		start_location ? start_location->group : 0, start_location ? start_location->object : 0,	/* FIXME Should we validate the location? */
-		end_group, 0, priority, forward,
+		start_location->group, start_location->object, end_group, 0, priority, forward,
 		NULL);	/* TODO Parameters */
 	su_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_UPDATE, buffer, blen, poffset, su_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
@@ -6019,6 +6049,8 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6042,6 +6074,8 @@ int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imqu
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6052,7 +6086,7 @@ int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imqu
 	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
 	if(moq_sub == NULL) {
 		imquic_mutex_unlock(&moq->mutex);
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
 			imquic_get_connection_name(conn), request_id);
 		return -1;
 	}
@@ -6077,6 +6111,8 @@ int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id,
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6085,14 +6121,14 @@ int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id,
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		/* Make sure we can send this */
 		if(request_id < moq->next_request_id) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Request ID lower than the next we expected (%"SCNu64" < %"SCNu64")\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Request ID lower than the next we expected (%"SCNu64" < %"SCNu64")\n",
 				imquic_get_connection_name(conn), request_id, moq->next_request_id);
 			imquic_refcount_decrease(&moq->ref);
 			return -1;
 		}
 		if(request_id >= moq->max_request_id) {
 			/* TODO Whis should be a failure */
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
 				imquic_get_connection_name(conn), moq->max_request_id);
 			imquic_refcount_decrease(&moq->ref);
 			return -1;
@@ -6130,6 +6166,8 @@ int imquic_moq_accept_subscribe_announces(imquic_connection *conn, uint64_t requ
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER ||
 			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6155,6 +6193,8 @@ int imquic_moq_reject_subscribe_announces(imquic_connection *conn, uint64_t requ
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || (reason && strlen(reason) > 1024) ||
 			(moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6179,6 +6219,8 @@ int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespa
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6204,6 +6246,8 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tn == NULL ||
 			range == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6251,13 +6295,15 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_PUBLISHER) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	if(absolute && moq->version < IMQUIC_MOQ_VERSION_11) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Absolute Joining Fetch not supported on a connection using %s\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Absolute Joining Fetch not supported on a connection using %s\n",
 			imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
@@ -6300,6 +6346,8 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, gboole
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || largest == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6330,6 +6378,8 @@ int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id, imquic
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->type == IMQUIC_MOQ_ROLE_SUBSCRIBER || (reason && strlen(reason) > 1024)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6353,6 +6403,8 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6376,6 +6428,8 @@ int imquic_moq_track_status_request(imquic_connection *conn, uint64_t request_id
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tn == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6399,6 +6453,8 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || (moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tn == NULL))) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6423,6 +6479,8 @@ int imquic_moq_requests_blocked(imquic_connection *conn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6445,6 +6503,8 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6465,11 +6525,16 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri) {
 
 int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	if(object == NULL || object->object_status > IMQUIC_MOQ_END_OF_TRACK ||
-			(object->object_status == IMQUIC_MOQ_OBJECT_DOESNT_EXIST && object->extensions_len > 0))
+			(object->object_status == IMQUIC_MOQ_OBJECT_DOESNT_EXIST && object->extensions_len > 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		return -1;
+	}
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6509,7 +6574,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions, &object->track_alias);
 		if(moq_sub == NULL) {
 			imquic_mutex_unlock(&moq->mutex);
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription with track alias '%"SCNu64"' served by this connection\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] No such subscription with track alias '%"SCNu64"' served by this connection\n",
 				imquic_get_connection_name(conn), object->track_alias);
 			imquic_refcount_decrease(&moq->ref);
 			g_free(buffer);
@@ -6581,7 +6646,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	} else if(object->delivery == IMQUIC_MOQ_USE_TRACK && (valid_pkt || object->end_of_stream)) {
 		/* Use STREAM_HEADER_TRACK */
 		if(moq->version >= IMQUIC_MOQ_VERSION_07) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send STREAM_HEADER_TRACK on a connection using %s\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't send STREAM_HEADER_TRACK on a connection using %s\n",
 				imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 			imquic_refcount_decrease(&moq->ref);
 			g_free(buffer);
@@ -6591,7 +6656,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &object->request_id);
 		if(moq_sub == NULL) {
 			imquic_mutex_unlock(&moq->mutex);
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
 				imquic_get_connection_name(conn), object->request_id);
 			imquic_refcount_decrease(&moq->ref);
 			g_free(buffer);
@@ -6642,7 +6707,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	} else if(object->delivery == IMQUIC_MOQ_USE_FETCH && (valid_pkt || object->end_of_stream)) {
 		/* Use FETCH_HEADER */
 		if(moq->version < IMQUIC_MOQ_VERSION_07) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send FETCH_HEADER on a connection using %s\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't send FETCH_HEADER on a connection using %s\n",
 				imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
 			imquic_refcount_decrease(&moq->ref);
 			g_free(buffer);
@@ -6652,7 +6717,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &object->request_id);
 		if(moq_sub == NULL) {
 			imquic_mutex_unlock(&moq->mutex);
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
 				imquic_get_connection_name(conn), object->request_id);
 			imquic_refcount_decrease(&moq->ref);
 			g_free(buffer);

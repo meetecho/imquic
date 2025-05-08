@@ -26,6 +26,7 @@ typedef struct demo_options {
 	uint64_t start_object;
 	uint64_t end_group;
 	uint64_t end_object;
+	int update_subscribe;
 	const char *fetch;
 	int join_offset;
 	const char *media_type;

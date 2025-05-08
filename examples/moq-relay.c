@@ -95,6 +95,7 @@ typedef struct imquic_demo_moq_subscription {
 	imquic_moq_location sub_start, sub_end;
 	uint64_t last_group_id, last_subgroup_id;
 	gboolean fetch;
+	gboolean forward;
 	GList *objects;
 	GMutex mutex;
 } imquic_demo_moq_subscription;
@@ -240,6 +241,7 @@ static imquic_demo_moq_subscription *imquic_demo_moq_subscription_create(imquic_
 	s->track = track;
 	s->request_id = request_id;
 	s->track_alias = track_alias;
+	s->forward = TRUE;
 	g_mutex_init(&s->mutex);
 	return s;
 }
@@ -536,6 +538,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
 	g_mutex_lock(&track->mutex);
 	track->subscriptions = g_list_append(track->subscriptions, s);
+	s->forward = forward;
 	/* Check the filter */
 	imquic_moq_object *latest = NULL;
 	if(!track->pending && track->objects != NULL)
@@ -556,7 +559,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object);
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 		s->sub_start = *start_location;
-		s->sub_end.group = end_location->group;
+		if(end_location->group == 0)
+			s->sub_end.group = UINT64_MAX;
+		else
+			s->sub_end.group = end_location->group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
 	}
@@ -642,9 +648,22 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
-	/* TODO */
-	IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s]   -- SUBSCRIBE_UPDATE not supported in this relay yet\n",
-		imquic_get_connection_name(conn));
+	/* Find the subscriber */
+	g_mutex_lock(&mutex);
+	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
+	if(sub == NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
+			imquic_get_connection_name(conn));
+		return;
+	}
+	/* Update the subscription */
+	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &request_id);
+	if(s) {
+		/* TODO Update start location and end group too */
+		s->forward = forward;
+	}
+	g_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
@@ -688,7 +707,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 		return;
 	}
 	/* Get rid of the subscription */
-	imquic_demo_moq_subscription *s = g_hash_table_lookup(subscriptions_by_id, &request_id);
+	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &request_id);
 	if(s) {
 		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
 		g_hash_table_remove(sub->subscriptions, &s->track_alias);
@@ -944,6 +963,11 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 				/* Get rid of this subscription */
 				done = g_list_prepend(done, s);
+				temp = temp->next;
+				continue;
+			}
+			if(!s->forward) {
+				/* Subscriber doesn't want objects, for now */
 				temp = temp->next;
 				continue;
 			}
