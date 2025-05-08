@@ -136,8 +136,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Check the filter */
 	gboolean pub_started = g_atomic_int_get(&started);
-	sub_end.group = UINT64_MAX;
-	sub_end.object = UINT64_MAX;
+	sub_end.group = IMQUIC_MAX_VARINT;
+	sub_end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
 		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
 	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
@@ -153,7 +153,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 		sub_start = *start_location;
 		if(end_location->group == 0)
-			sub_end.group = UINT64_MAX;
+			sub_end.group = IMQUIC_MAX_VARINT;
 		else
 			sub_end.group = end_location->group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",

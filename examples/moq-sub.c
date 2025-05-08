@@ -345,8 +345,8 @@ int main(int argc, char *argv[]) {
 	/* Initialize some command line options defaults */
 	options.debug_level = IMQUIC_LOG_INFO;
 	options.join_offset = -1;
-	options.end_group = UINT64_MAX;
-	options.end_object = UINT64_MAX;
+	options.end_group = IMQUIC_MAX_VARINT;
+	options.end_object = IMQUIC_MAX_VARINT;
 	/* Let's call our cmdline parser */
 	if(!demo_options_parse(&options, argc, argv)) {
 		demo_options_show_usage();
@@ -441,7 +441,7 @@ int main(int argc, char *argv[]) {
 		start_location.group = options.start_group;
 		start_location.object = options.start_object;
 		end_location.group = options.end_group;
-		end_location.object = options.end_object;
+		end_location.object = (options.end_object == IMQUIC_MAX_VARINT) ? 0 : (options.end_object + 1);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "FETCH range: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			start_location.group, start_location.object, end_location.group, end_location.object);
 	} else {
@@ -455,7 +455,7 @@ int main(int argc, char *argv[]) {
 			start_location.group = options.start_group;
 			start_location.object = options.start_object;
 			end_location.group = options.end_group;
-			end_location_sub.group = (options.end_group == UINT64_MAX) ? 0 : (options.end_group + 1);
+			end_location_sub.group = (options.end_group == IMQUIC_MAX_VARINT) ? 0 : (options.end_group + 1);
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "SUBSCRIBE start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 				start_location.group, start_location.object, end_location.group);
 		}

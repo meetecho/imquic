@@ -340,8 +340,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
 	g_mutex_unlock(&mutex);
 	/* Check the filter */
-	s->range.end.group = UINT64_MAX;
-	s->range.end.object = UINT64_MAX;
+	s->range.end.group = IMQUIC_MAX_VARINT;
+	s->range.end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
 		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
 	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
@@ -357,7 +357,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 		s->range.start = *start_location;
 		if(end_location->group == 0)
-			s->range.end.group = UINT64_MAX;
+			s->range.end.group = IMQUIC_MAX_VARINT;
 		else
 			s->range.end.group = end_location->group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
@@ -425,6 +425,10 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
+	if(range->end.object == 0)
+		range->end.object = IMQUIC_MAX_VARINT;
+	else
+		range->end.object--;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s'/'%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id, descending ? "descending" : "ascending",
 		range->start.group, range->start.object, range->end.group, range->end.object);
@@ -567,7 +571,7 @@ static void *imquic_demo_tester_thread(void *data) {
 	int64_t num_objects = 0;
 	gboolean send_object = TRUE, next_group = FALSE, last_object = FALSE;
 	uint64_t last_group_id = 0, last_subgroup_id = 0, last_object_id = 0;
-	gboolean send_done = TRUE;
+	gboolean send_done = !s->fetch;
 	/* Buffers */
 	uint8_t *obj0_p = s->test[TUPLE_FIELD_OBJ0_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJ0_SIZE]) : NULL;
 	if(obj0_p)

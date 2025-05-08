@@ -543,8 +543,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	imquic_moq_object *latest = NULL;
 	if(!track->pending && track->objects != NULL)
 		latest = (imquic_moq_object *)(track->objects ? track->objects->data : NULL);
-	s->sub_end.group = UINT64_MAX;
-	s->sub_end.object = UINT64_MAX;
+	s->sub_end.group = IMQUIC_MAX_VARINT;
+	s->sub_end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
 		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
 	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
@@ -560,7 +560,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 		s->sub_start = *start_location;
 		if(end_location->group == 0)
-			s->sub_end.group = UINT64_MAX;
+			s->sub_end.group = IMQUIC_MAX_VARINT;
 		else
 			s->sub_end.group = end_location->group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
@@ -759,6 +759,10 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
+	if(range->end.object == 0)
+		range->end.object = IMQUIC_MAX_VARINT;
+	else
+		range->end.object--;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s'/'%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id, descending ? "descending" : "ascending",
 		range->start.group, range->start.object, range->end.group, range->end.object);
