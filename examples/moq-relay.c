@@ -432,7 +432,7 @@ static void imquic_demo_incoming_announce_cancel(imquic_connection *conn, imquic
 			imquic_get_connection_name(conn));
 		return;
 	}
-	if(annc->pub->conn != conn) {
+	if(annc->pub == NULL || annc->pub->conn != conn) {
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got ANNOUNCE_CANCEL from a different connection, ignoring\n",
 			imquic_get_connection_name(conn));
@@ -440,7 +440,7 @@ static void imquic_demo_incoming_announce_cancel(imquic_connection *conn, imquic
 	}
 	/* Get rid of it */
 	g_hash_table_remove(namespaces, ns);
-	if(annc->pub && annc->pub->namespaces)
+	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
 	g_mutex_unlock(&mutex);
 }
@@ -460,7 +460,7 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 			imquic_get_connection_name(conn));
 		return;
 	}
-	if(annc->pub->conn != conn) {
+	if(annc->pub == NULL || annc->pub->conn != conn) {
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got UNANNOUNCE from a different connection, ignoring\n",
 			imquic_get_connection_name(conn));
@@ -468,7 +468,7 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	}
 	/* Get rid of it */
 	g_hash_table_remove(namespaces, ns);
-	if(annc->pub && annc->pub->namespaces)
+	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
 	/* Check if there's monitors interested in this */
 	GList *list = imquic_demo_match_monitors(conn, tns);

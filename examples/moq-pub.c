@@ -214,7 +214,7 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 			/* Just for fun, we add a couple of fake extensions to the object: a numeric
 			 * extension set to the length of the text, and a data extension with a string */
 			numext.id = 0x6;	/* FIXME */
-			numext.value.number = text ? strlen(text) : 0;
+			numext.value.number = strlen(text);
 			exts = g_list_append(exts, &numext);
 			dataext.id = 0x7;	/* FIXME */
 			dataext.value.data.buffer = (uint8_t *)"lminiero";

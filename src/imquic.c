@@ -118,13 +118,10 @@ const char *imquic_get_build_sha(void) {
 
 /* Logging */
 void imquic_set_log_level(int level) {
-	if(level > -1) {
-		if(level < IMQUIC_LOG_NONE)
-			level = 0;
-		else if(level > IMQUIC_LOG_MAX)
-			level = IMQUIC_LOG_MAX;
-		imquic_log_level = level;
-	}
+	if(level < IMQUIC_LOG_NONE)
+		level = IMQUIC_LOG_NONE;
+	else if(level > IMQUIC_LOG_MAX)
+		level = IMQUIC_LOG_MAX;
 	imquic_log_level = level;
 }
 
@@ -195,6 +192,7 @@ imquic_server *imquic_create_server(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -250,10 +248,9 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);
@@ -280,6 +277,7 @@ imquic_client *imquic_create_client(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -330,10 +328,9 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);
