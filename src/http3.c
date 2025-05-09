@@ -543,7 +543,7 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 	headers = g_list_append(headers, imquic_qpack_entry_create(":protocol", "webtransport"));
 	headers = g_list_append(headers, imquic_qpack_entry_create("user-agent", "imquic/0.0.1alpha"));
 	headers = g_list_append(headers, imquic_qpack_entry_create("sec-fetch-dest", "webtransport"));
-	headers = g_list_append(headers, imquic_qpack_entry_create("sec-webtransport-http3-draft", "draft02"));
+	headers = g_list_append(headers, imquic_qpack_entry_create("sec-webtransport-http3-draft02", "1"));
 	/* FIXME Is the stream supposed to be the right bidirectional stream? */
 	uint8_t rbuf[1024], ebuf[1024];
 	size_t r_len = sizeof(rbuf), e_len = sizeof(ebuf);
@@ -566,7 +566,7 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 		imquic_qlog_http3_append_object(headers, ":protocol", "webtransport");
 		imquic_qlog_http3_append_object(headers, "user-agent", "imquic/0.0.1alpha");
 		imquic_qlog_http3_append_object(headers, "sec-fetch-dest", "webtransport");
-		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
+		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft02", "1");
 		imquic_qlog_event_add_raw(frame, "raw", NULL, r_len);
 		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->request_stream, r_len, frame);
 	}

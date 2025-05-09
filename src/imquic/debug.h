@@ -19,6 +19,8 @@ extern int imquic_log_level;
 extern gboolean imquic_log_timestamps;
 extern gboolean imquic_log_colors;
 
+#define IMQUIC_MAX_VARINT (((uint64_t)1 << 62) - 1)
+
 /** @name imquic log colors
  */
 ///@{
