@@ -383,7 +383,7 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, uint64_t requ
 		/* Already announced, reject */
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Already announced\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_announce(conn, request_id, tns, 400, "Already announced");
+		imquic_moq_reject_announce(conn, request_id, tns, IMQUIC_MOQ_ANNCERR_INTERNAL_ERROR, "Already announced");
 		return;
 	}
 	/* Find the publisher from this connection */
@@ -507,7 +507,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, 404, "Namespace not found", track_alias);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST, "Namespace not found", track_alias);
 		return;
 	}
 	/* Do we know this track already? */
@@ -775,7 +775,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, 404, "Namespace not found");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_TRACK_DOES_NOT_EXIST, "Namespace not found");
 		return;
 	}
 	/* Do we know this track? */
@@ -785,7 +785,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Track not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, 404, "Track not found");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_TRACK_DOES_NOT_EXIST, "Track not found");
 		return;
 	}
 	/* Create a subscriber, if needed */
@@ -858,7 +858,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No subscription with ID ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), joining_request_id);
-		imquic_moq_reject_fetch(conn, request_id, 404, "Subscription not found");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_INVALID_JOINING_SUBSCRIBE_ID, "Subscription not found");
 		return;
 	}
 	/* Make sure we don't know this subscription already */

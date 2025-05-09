@@ -462,7 +462,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 			(range->start.group == largest.group && range->start.object > largest.object) ||
 			(range->end.group == (uint64_t)test[TUPLE_FIELD_START_GROUP] && range->end.object < (uint64_t)test[TUPLE_FIELD_START_OBJECT])) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] FETCH range outside of test range\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, 400, "FETCH range outside of test range");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_INVALID_RANGE, "FETCH range outside of test range");
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -509,7 +509,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	if(auth != NULL)
 		imquic_moq_print_auth_info(conn, auth, authlen);
 	/* TODO Add support for joining FETCH */
-	imquic_moq_reject_fetch(conn, request_id, 500, "Not implemented yet");
+	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_NOT_SUPPORTED, "Not implemented yet");
 }
 
 static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t request_id) {
