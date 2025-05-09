@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
 
 	IMQUIC_PRINT("imquic version %s\n", imquic_get_version_string_full());
 	IMQUIC_PRINT("  -- %s (commit hash)\n", imquic_get_build_sha());
-	IMQUIC_PRINT("  -- %s (build time)\n", imquic_get_build_time());
+	IMQUIC_PRINT("  -- %s (build time)\n\n", imquic_get_build_time());
 
 	/* Initialize some command line options defaults */
 	options.debug_level = IMQUIC_LOG_INFO;
@@ -239,6 +239,7 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
 	/* Initialize the library and create a server */
 	if(imquic_init(options.secrets_log) < 0) {

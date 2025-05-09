@@ -139,9 +139,9 @@ void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event);
 /*! \brief Add a \c connection_started event
  * @param qlog The imquic_qlog instance to add the event to
  * @param local_ip The local address the connection
- * @param src_port The local port the connection
- * @param dst_ip The remote address the connection
- * @param dst_port The remote port the connection */
+ * @param local_port The local port the connection
+ * @param remote_ip The remote address the connection
+ * @param remote_port The remote port the connection */
 void imquic_qlog_connection_started(imquic_qlog *qlog, const char *local_ip, uint16_t local_port, const char *remote_ip, uint16_t remote_port);
 /*! \brief Add a \c connection_closed event
  * @param qlog The imquic_qlog instance to add the event to
