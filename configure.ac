@@ -7,7 +7,7 @@ AC_ENABLE_SHARED(yes)
 AC_ENABLE_STATIC(no)
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
-AM_SILENT_RULES([yes])
+#~ AM_SILENT_RULES([yes])
 
 AC_USE_SYSTEM_EXTENSIONS
 
@@ -99,6 +99,9 @@ PKG_CHECK_MODULES([IMQUIC],[
 	glib-2.0 >= $glib_version
 ])
 
+IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version"
+IMQUIC_PACKAGES_PRIVATE=""
+
 IMQUIC_MANUAL_LIBS="${IMQUIC_MANUAL_LIBS} -lm"
 AC_SUBST(IMQUIC_MANUAL_LIBS)
 
@@ -132,10 +135,14 @@ AS_IF([test "x$enable_qlog" != "xno"],
                           AC_DEFINE(HAVE_QLOG)
                           enable_qlog=yes
                           AM_CONDITIONAL([ENABLE_QLOG], true)
+                          IMQUIC_PACKAGES_PRIVATE="jansson >= 2.5.0"
                          ],
                          [
                           AC_MSG_ERROR([Jansson headers not found])])
                          ])
+
+AC_SUBST(IMQUIC_PACKAGES_PUBLIC)
+AC_SUBST(IMQUIC_PACKAGES_PRIVATE)
 
 ##
 # Examples
@@ -210,6 +217,7 @@ AC_CONFIG_FILES([
   src/Makefile
   examples/Makefile
   docs/Makefile
+  imquic.pc
 ])
 
 AC_OUTPUT
