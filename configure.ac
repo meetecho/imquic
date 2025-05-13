@@ -7,7 +7,7 @@ AC_ENABLE_SHARED(yes)
 AC_ENABLE_STATIC(no)
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])
-#~ AM_SILENT_RULES([yes])
+AM_SILENT_RULES([yes])
 
 AC_USE_SYSTEM_EXTENSIONS
 
