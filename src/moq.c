@@ -5470,13 +5470,17 @@ size_t imquic_moq_parse_subscribe_parameter(imquic_moq_context *moq, uint8_t *by
 int imquic_moq_set_role(imquic_connection *conn, imquic_moq_role role) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->role_set) {
+	if(moq == NULL) {
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	imquic_mutex_lock(&moq->mutex);
+	if(!moq->role_set) {
+		imquic_mutex_unlock(&moq->mutex);
+		return -1;
+	}
 	switch(role) {
 		case IMQUIC_MOQ_ENDPOINT:
 			moq->role_set = TRUE;
@@ -5507,14 +5511,18 @@ int imquic_moq_set_role(imquic_connection *conn, imquic_moq_role role) {
 imquic_moq_role imquic_moq_get_role(imquic_connection *conn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || !moq->role_set) {
+	if(moq == NULL) {
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
-	imquic_moq_role role = -1;
 	imquic_mutex_lock(&moq->mutex);
+	if(!moq->role_set) {
+		imquic_mutex_unlock(&moq->mutex);
+		return -1;
+	}
+	imquic_moq_role role = -1;
 	switch(moq->type) {
 		case IMQUIC_MOQ_ROLE_ENDPOINT:
 			role = IMQUIC_MOQ_ENDPOINT;
