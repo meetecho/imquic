@@ -1,0 +1,12 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: imquic
+Description: QUIC library with RTP Over QUIC (RoQ) and Media Over QUIC (MoQT) support
+Version: @IMQUIC_VERSION_STRING@
+Requires: @IMQUIC_PACKAGES_PUBLIC@
+Requires.private: @IMQUIC_PACKAGES_PRIVATE@
+Libs: -L${libdir} -limquic
+Cflags: -I${includedir}
