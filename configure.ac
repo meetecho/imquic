@@ -114,7 +114,7 @@ AS_IF([test "x${boringssl_dir}" != "x"],
 	   BORINGSSL_LIBS=" -L${boringssl_dir}/lib -lstdc++";
        AC_SUBST(BORINGSSL_LIBS)
 	   AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
-	                    [AC_DEFINE(HAVE_BORINGSSL)],
+	                    [AC_DEFINE(IMQUIC_BORINGSSL)],
 	                    [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}])])
       ],
       [
