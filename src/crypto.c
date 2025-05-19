@@ -229,14 +229,21 @@ imquic_tls *imquic_tls_create(gboolean is_server, const char *server_pem, const 
 	SSL_CTX_set_min_proto_version(tls->ssl_ctx, TLS1_3_VERSION);
 	SSL_CTX_set_max_proto_version(tls->ssl_ctx, TLS1_3_VERSION);
 	SSL_CTX_set_quic_method(tls->ssl_ctx, &imquic_quic_method);
+#ifndef IMQUIC_BORINGSSL
 	SSL_CTX_set_ciphersuites(tls->ssl_ctx, "TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256");
+#endif
 	if(is_server) {
 		SSL_CTX_set_options(tls->ssl_ctx,
-			(SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) |
-			SSL_OP_SINGLE_ECDH_USE |
-			SSL_OP_CIPHER_SERVER_PREFERENCE |
-			SSL_OP_NO_ANTI_REPLAY);
+			(SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS)
+				| SSL_OP_SINGLE_ECDH_USE
+				| SSL_OP_CIPHER_SERVER_PREFERENCE
+#ifndef IMQUIC_BORINGSSL
+				| SSL_OP_NO_ANTI_REPLAY
+#endif
+		);
+#ifndef IMQUIC_BORINGSSL
 		SSL_CTX_clear_options(tls->ssl_ctx, SSL_OP_ENABLE_MIDDLEBOX_COMPAT);
+#endif
 		SSL_CTX_set_mode(tls->ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
 		SSL_CTX_set_alpn_select_cb(tls->ssl_ctx, imquic_select_alpn, NULL);
 	}
@@ -277,16 +284,21 @@ SSL *imquic_tls_new_ssl(imquic_tls *tls) {
 	if(ssl == NULL)
 		return NULL;
 	SSL_clear_options(ssl, SSL_OP_NO_TLSv1_3);
+#ifndef IMQUIC_BORINGSSL
 	SSL_set_quic_transport_version(ssl, 1);
+#endif
 	if(tls->is_server) {
 		SSL_set_accept_state(ssl);
 		if(tls->early_data) {
+#ifndef IMQUIC_BORINGSSL
 			/* Enable early data */
 			SSL_set_quic_early_data_enabled(ssl, 1);
+#endif
 		}
 	} else {
 		SSL_set_connect_state(ssl);
 		if(tls->early_data) {
+#ifndef IMQUIC_BORINGSSL
 			/* Early data is enabled, try reading the ticket file */
 			BIO *f = BIO_new_file(tls->ticket_file, "r");
 			if(f == NULL) {
@@ -303,6 +315,7 @@ SSL *imquic_tls_new_ssl(imquic_tls *tls) {
 				}
 				SSL_SESSION_free(session);
 			}
+#endif
 		}
 	}
 	return ssl;
@@ -322,6 +335,7 @@ void imquic_tls_destroy(imquic_tls *tls) {
 }
 
 /* Early data management */
+#ifndef IMQUIC_BORINGSSL
 static int imquic_tls_new_session_cb(SSL *ssl, SSL_SESSION *session) {
 	imquic_connection *conn = SSL_get_app_data(ssl);
 	/* FIXME Should we give up is max_early_data_size is not what it should be? */
@@ -363,10 +377,15 @@ static SSL_TICKET_RETURN imquic_tls_decrypt_ticket_cb(SSL *ssl, SSL_SESSION *ses
 		return SSL_TICKET_RETURN_USE;
 	return SSL_TICKET_RETURN_USE_RENEW;
 }
+#endif
 
 int imquic_tls_enable_early_data(imquic_tls *tls, const char *ticket_file) {
 	if(tls == NULL || tls->early_data)
 		return -1;
+#ifdef IMQUIC_BORINGSSL
+	IMQUIC_LOG(IMQUIC_LOG_WARN, "Early data currently unsupported when using BoringSSL\n");
+	return -1;
+#else
 	tls->early_data = TRUE;
 	if(ticket_file != NULL)
 		tls->ticket_file = g_strdup(ticket_file);
@@ -382,6 +401,7 @@ int imquic_tls_enable_early_data(imquic_tls *tls, const char *ticket_file) {
 		SSL_CTX_sess_set_new_cb(tls->ssl_ctx, imquic_tls_new_session_cb);
 	}
 	return 0;
+#endif
 }
 
 /* HKDF utilities */

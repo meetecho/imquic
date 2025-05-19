@@ -109,9 +109,9 @@ AS_IF([test "x${boringssl_dir}" != "x"],
       [echo "Trying to use BoringSSL instead of quictls...";
        AC_MSG_NOTICE([BoringSSL directory is ${boringssl_dir}])
        CFLAGS="$CFLAGS -I${boringssl_dir}/include";
-       BORINGSSL_CFLAGS=" -I${boringssl_dir}/include";
+       BORINGSSL_CFLAGS="-I${boringssl_dir}/include";
        AC_SUBST(BORINGSSL_CFLAGS)
-       BORINGSSL_LIBS=" -L${boringssl_dir}/lib -lstdc++";
+       BORINGSSL_LIBS="-lstdc++ -L${boringssl_dir}/lib64 -lssl -lcrypto";
        AC_SUBST(BORINGSSL_LIBS)
        AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
                         [AC_DEFINE(IMQUIC_BORINGSSL)],

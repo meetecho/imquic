@@ -16,6 +16,7 @@ To compile imquic, you'll need to satisfy the following dependencies:
 * [quictls](https://quictls.github.io/) (QUIC TLS)
 * [Jansson](https://github.com/akheron/jansson) (optional; QLOG support)
 
+> **Note:** You can also use BoringSSL, instead of quictls, by passing `--enable-boringssl=</path/to/boringssl>`, albeit without early-data support. If BoringSSL is installed in `/opt/boringssl`, the configure script will expect header files in `/opt/boringssl/include` and shared (not static) objects in `/opt/boringssl/lib64`. You'll then need to manually export `LD_LIBRARY_PATH` to the path where BoringSSL shared objects are, when using an application that's linked to the library.
 
 Should you be interested in building the imquic documentation as well (public and internal), you'll need some additional tools too:
 
