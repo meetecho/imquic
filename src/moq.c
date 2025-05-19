@@ -1002,7 +1002,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		}
 	}
 	/* Check if we have a media stream to process */
-	if(moq_stream != NULL && blen-offset > 0) {
+	if(moq_stream != NULL && blen > offset) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] MoQ media stream %"SCNu64" (%zu bytes)\n",
 			imquic_get_connection_name(moq->conn), stream_id, blen - offset);
 		/* Copy the incoming data to the buffer, as we'll use that for parsing */

@@ -350,7 +350,7 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 		imquic_http3_parse_settings(h3c, stream, chunk->data + p_offset, chunk->length - p_offset);
 	} else if(!stream->bidirectional && stream->stream_id == h3c->remote_qpack_encoder_stream) {
 		/* QPACK encoder */
-		if(chunk->length - p_offset > 0) {
+		if(chunk->length > p_offset) {
 			ssize_t bread = imquic_qpack_decode(h3c->qpack, chunk->data + p_offset, chunk->length - p_offset);
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] QPACK decoded %zd/%zd bytes\n",
 				imquic_get_connection_name(conn), bread, chunk->length - p_offset);

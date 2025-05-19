@@ -3258,7 +3258,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 #endif
 				pkt->frames = g_list_prepend(pkt->frames, frame);
 				pkt->frames_size += frame->size;
-			} else if(max_len - pkt->frames_size > 0) {
+			} else if(max_len > pkt->frames_size) {
 				/* We can only add a portion of it */
 				size_t part_len = max_len - pkt->frames_size;
 				stream->out_size += part_len;
