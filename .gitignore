@@ -24,12 +24,15 @@ libtool
 depcomp
 compile
 install-sh
+install-sh~
 ltmain.sh
 
 config.log
 config.guess
 config.status
 config.sub
+
+imquic.pc
 
 *.o
 *.a
