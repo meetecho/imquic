@@ -15,6 +15,7 @@ static GOptionContext *opts = NULL;
 gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 	/* Supported command-line arguments */
 	GOptionEntry opt_entries[] = {
+		{ "text", 't', 0, G_OPTION_ARG_STRING, &options->text, "Text to send (default=ciao)", "string" },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },
 		{ "remote-host", 'r', 0, G_OPTION_ARG_STRING, &options->remote_host, "QUIC server to connect to (default=none)", "IP" },
