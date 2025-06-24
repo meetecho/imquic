@@ -172,7 +172,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), request_id, expires, descending ? "descending" : "ascending");
 	if(largest) {

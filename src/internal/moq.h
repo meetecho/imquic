@@ -743,6 +743,7 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
+ * @param track_alias The track alias to put in the message (ignored before v12)
  * @param expires The expires value to put in the message
  * @param group_order The group order to put in the message
  * @param content_exists Whether the following two properties should be added to the message
@@ -751,7 +752,7 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
  * @param parameters The parameters to add, if any (only after v06)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	uint64_t expires, imquic_moq_group_order group_order, gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id,
+	uint64_t track_alias, uint64_t expires, imquic_moq_group_order group_order, gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id,
 	imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
@@ -760,7 +761,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
  * @param request_id The request ID to put in the message
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
- * @param track_alias The track alias to put in the message
+ * @param track_alias The track alias to put in the message (ignored after v12)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_sub_error_code error, const char *reason, uint64_t track_alias);
@@ -1131,7 +1132,7 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest);
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */

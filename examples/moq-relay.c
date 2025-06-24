@@ -570,7 +570,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Only accept the subscribe right now if the track is already active */
 	if(!track->pending) {
 		/* Fill in the largest location before answering */
-		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, largest ? &s->sub_start : NULL);
+		imquic_moq_accept_subscribe(conn, request_id, track_alias, 0, FALSE, largest ? &s->sub_start : NULL);
 	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
@@ -586,7 +586,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
 	/* Our subscription to a publisher was accepted */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), request_id, expires, descending ? "descending" : "ascending");
@@ -608,7 +608,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && s->sub && s->sub->conn)
-			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, 0, descending, largest);
+			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, s->track_alias, 0, descending, largest);
 		temp = temp->next;
 	}
 	g_mutex_unlock(&track->mutex);
@@ -858,7 +858,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No subscription with ID ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), joining_request_id);
-		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_INVALID_JOINING_SUBSCRIBE_ID, "Subscription not found");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_INVALID_JOINING_REQUEST_ID, "Subscription not found");
 		return;
 	}
 	/* Make sure we don't know this subscription already */

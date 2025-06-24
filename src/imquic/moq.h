@@ -595,7 +595,7 @@ typedef enum imquic_moq_announce_error_code {
 	IMQUIC_MOQ_ANNCERR_NOT_SUPPORTED = 0x3,
 	IMQUIC_MOQ_ANNCERR_UNINTERESTED = 0x4,
 	IMQUIC_MOQ_ANNCERR_MALFORMED_AUTH_TOKEN = 0x10,
-	IMQUIC_MOQ_ANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_ANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
 	IMQUIC_MOQ_ANNCERR_EXPIRED_AUTH_TOKEN = 0x12,
 } imquic_moq_announce_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_announce_error_code value.
@@ -611,9 +611,9 @@ typedef enum imquic_moq_sub_error_code {
 	IMQUIC_MOQ_SUBERR_NOT_SUPPORTED = 0x3,
 	IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST = 0x4,
 	IMQUIC_MOQ_SUBERR_INVALID_RANGE = 0x5,
-	IMQUIC_MOQ_SUBERR_RETRY_TRACK_ALIAS = 0x6,
+	IMQUIC_MOQ_SUBERR_RETRY_TRACK_ALIAS = 0x6,	/* Deprecated in v12 */
 	IMQUIC_MOQ_SUBERR_MALFORMED_AUTH_TOKEN = 0x10,
-	IMQUIC_MOQ_SUBERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_SUBERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
 	IMQUIC_MOQ_SUBERR_EXPIRED_AUTH_TOKEN = 0x12,
 } imquic_moq_sub_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_sub_error_code value.
@@ -629,7 +629,7 @@ typedef enum imquic_moq_subannc_error_code {
 	IMQUIC_MOQ_SUBANNCERR_NOT_SUPPORTED = 0x3,
 	IMQUIC_MOQ_SUBANNCERR_NAMESPACE_PREFIX_UNKNOWN = 0x4,
 	IMQUIC_MOQ_SUBANNCERR_MALFORMED_AUTH_TOKEN = 0x10,
-	IMQUIC_MOQ_SUBANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_SUBANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
 	IMQUIC_MOQ_SUBANNCERR_EXPIRED_AUTH_TOKEN = 0x12,
 } imquic_moq_subannc_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_subannc_error_code value.
@@ -646,9 +646,11 @@ typedef enum imquic_moq_fetch_error_code {
 	IMQUIC_MOQ_FETCHERR_TRACK_DOES_NOT_EXIST = 0x4,
 	IMQUIC_MOQ_FETCHERR_INVALID_RANGE = 0x5,
 	IMQUIC_MOQ_FETCHERR_NO_OBJECTS = 0x6,
-	IMQUIC_MOQ_FETCHERR_INVALID_JOINING_SUBSCRIBE_ID = 0x7,
+	IMQUIC_MOQ_FETCHERR_INVALID_JOINING_REQUEST_ID = 0x7,
+	IMQUIC_MOQ_FETCHERR_UNKNOWN_STATUS_IN_RANGE = 0x8,
+	IMQUIC_MOQ_FETCHERR_MALFORMED_TRACK = 0x9,
 	IMQUIC_MOQ_FETCHERR_MALFORMED_AUTH_TOKEN = 0x10,
-	IMQUIC_MOQ_FETCHERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,
+	IMQUIC_MOQ_FETCHERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
 	IMQUIC_MOQ_FETCHERR_EXPIRED_AUTH_TOKEN = 0x12,
 } imquic_moq_fetch_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_fetch_error_code value.
@@ -664,7 +666,8 @@ typedef enum imquic_moq_sub_done_code {
 	IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED = 0x3,
 	IMQUIC_MOQ_SUBDONE_GOING_AWAY = 0x4,
 	IMQUIC_MOQ_SUBDONE_EXPIRED = 0x5,
-	IMQUIC_MOQ_SUBDONE_TOO_FAR_BEHIND = 0x6
+	IMQUIC_MOQ_SUBDONE_TOO_FAR_BEHIND = 0x6,
+	IMQUIC_MOQ_SUBDONE_MALFORMED_TRACK = 0x7
 } imquic_moq_sub_done_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_sub_done_code value.
  * @param code The imquic_moq_sub_done_code value
@@ -818,7 +821,7 @@ void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_accepted Pointer to the function that will fire when a \c SUBSCRIBE is accepted */
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest));
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1016,7 +1019,9 @@ imquic_moq_version imquic_moq_get_version(imquic_connection *conn);
 
 /*! \brief Helper function to set the Maximum Request ID a subscriber can send
  * \note If invoked before the MoQ connection setup, it will be put in the
- * setup parameter, otherwise it's sent in a \c MAX_REQUEST_ID request
+ * setup parameter, otherwise it's sent in a \c MAX_REQUEST_ID request.
+ * Notice that whatever is passed to the request will be decremented by
+ * 1, as per the specification, meaning you cannot pass \c 0 as a value here
  * @param conn The imquic_connection to update
  * @param max_request_id The Maximum Request ID to enforce
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1076,11 +1081,12 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
+ * @param track_alias The unique \c track_alias value associated to the subscription to accept (ignored before v12)
  * @param expires Value of \c expires to send back
  * @param descending Whether objects will be delivered in descending group order
  * @param largest The largest group/object IDs, in case content exists
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest);
+int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest);
 /*! \brief Function to reject an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject

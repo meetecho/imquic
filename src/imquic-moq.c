@@ -348,7 +348,7 @@ void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-		void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest)) {
+		void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

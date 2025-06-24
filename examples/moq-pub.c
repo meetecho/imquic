@@ -162,7 +162,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Accept the subscription */
 	moq_request_id = request_id;
 	moq_track_alias = track_alias;
-	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, pub_started ? &sub_start : NULL);
+	imquic_moq_accept_subscribe(conn, request_id, track_alias, 0, FALSE, pub_started ? &sub_start : NULL);
 	/* Start sending objects */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
