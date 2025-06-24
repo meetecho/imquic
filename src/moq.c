@@ -4680,8 +4680,8 @@ size_t imquic_moq_add_unsubscribe_announces(imquic_moq_context *moq, uint8_t *by
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 		uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, imquic_moq_group_order group_order,
-		uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters) {
-	if(bytes == NULL || blen < 1) {
+		imquic_moq_fetch_range *range, imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1 || (range == NULL && (moq->version < IMQUIC_MOQ_VERSION_08 || type == IMQUIC_MOQ_FETCH_STANDALONE))) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH));
 		return 0;
@@ -4764,19 +4764,19 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 				memcpy(&bytes[offset], track_name->buffer, track_name->length);
 				offset += track_name->length;
 			}
-			offset += imquic_write_varint(start_group, &bytes[offset], blen-offset);
-			offset += imquic_write_varint(start_object, &bytes[offset], blen-offset);
-			offset += imquic_write_varint(end_group, &bytes[offset], blen-offset);
-			offset += imquic_write_varint(end_object, &bytes[offset], blen-offset);
+			offset += imquic_write_varint(range->start.group, &bytes[offset], blen-offset);
+			offset += imquic_write_varint(range->start.object, &bytes[offset], blen-offset);
+			offset += imquic_write_varint(range->end.group, &bytes[offset], blen-offset);
+			offset += imquic_write_varint(range->end.object, &bytes[offset], blen-offset);
 		} else {
 			offset += imquic_write_varint(joining_request_id, &bytes[offset], blen-offset);
 			offset += imquic_write_varint(preceding_group_offset, &bytes[offset], blen-offset);
 		}
 	} else {
-		offset += imquic_write_varint(start_group, &bytes[offset], blen-offset);
-		offset += imquic_write_varint(start_object, &bytes[offset], blen-offset);
-		offset += imquic_write_varint(end_group, &bytes[offset], blen-offset);
-		offset += imquic_write_varint(end_object, &bytes[offset], blen-offset);
+		offset += imquic_write_varint(range->start.group, &bytes[offset], blen-offset);
+		offset += imquic_write_varint(range->start.object, &bytes[offset], blen-offset);
+		offset += imquic_write_varint(range->end.group, &bytes[offset], blen-offset);
+		offset += imquic_write_varint(range->end.object, &bytes[offset], blen-offset);
 	}
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
@@ -4790,10 +4790,10 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 		if(moq->version < IMQUIC_MOQ_VERSION_08 || type == IMQUIC_MOQ_FETCH_STANDALONE) {
 			imquic_qlog_moq_message_add_namespace(message, track_namespace);
 			imquic_qlog_moq_message_add_track(message, track_name);
-			json_object_set_new(message, "start_group", json_integer(start_group));
-			json_object_set_new(message, "start_object", json_integer(start_object));
-			json_object_set_new(message, "end_group", json_integer(end_group));
-			json_object_set_new(message, "end_object", json_integer(end_object));
+			json_object_set_new(message, "start_group", json_integer(range->start.group));
+			json_object_set_new(message, "start_object", json_integer(range->start.object));
+			json_object_set_new(message, "end_group", json_integer(range->end.group));
+			json_object_set_new(message, "end_object", json_integer(range->end.object));
 		} else {
 			json_object_set_new(message, "joining_request_id", json_integer(joining_request_id));
 			json_object_set_new(message, "preceding_group_offset", json_integer(preceding_group_offset));
@@ -6297,11 +6297,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		tns, tn,
 		0,	/* TODO Priority */
 		descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING,
-		range->start.group,		/* Start group */
-		range->start.object,	/* Start Object */
-		range->end.group,		/* End group */
-		range->end.object,		/* End Object */
-		&parameters);
+		range, &parameters);
 	f_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_FETCH, buffer, blen, poffset, f_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, f_len, FALSE);
@@ -6353,7 +6349,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 		NULL, NULL,	/* Ignored, as namespaces/track are only used for Standalone Fetch */
 		0,	/* TODO Priority */
 		descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING,
-		0, 0, 0, 0,	/* Ignored, as the fetch range is only used for Standalone Fetch */
+		NULL,	/* Ignored, as the fetch range is only used for Standalone Fetch */
 		&parameters);
 	f_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_FETCH, buffer, blen, poffset, f_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,

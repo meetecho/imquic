@@ -836,16 +836,13 @@ size_t imquic_moq_add_unsubscribe_announces(imquic_moq_context *moq, uint8_t *by
  * @param track_name The track name to put in the message
  * @param priority The fetchr priority to put in the message
  * @param group_order The group order to put in the message
- * @param start_group The start group ID to put in the message
- * @param start_object The start object ID to put in the message
- * @param end_group The end group ID to put in the message
- * @param end_object The end object ID to put in the message
+ * @param range The Start/End Locations to put in the message
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 	uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, imquic_moq_group_order group_order,
-	uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_fetch_range *range, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add an \c FETCH_CANCEL message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
