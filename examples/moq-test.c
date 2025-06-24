@@ -344,7 +344,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	s->range.end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
 		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
+	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 		s->range.start.group = test[TUPLE_FIELD_START_GROUP];
 		s->range.start.object = test[TUPLE_FIELD_START_OBJECT];
 	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {

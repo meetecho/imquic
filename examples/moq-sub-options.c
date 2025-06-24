@@ -19,7 +19,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to subscribe to (can be called multiple times to create a tuple; default=none)", "namespace" },
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_name, "MoQ track name to subscribe to (can be called multiple times to subscribe to multiple tracks; default=none)", "name" },
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to subscribe, if needed (default=none)", "string" },
-		{ "filter-type", 'F', 0, G_OPTION_ARG_STRING, &options->filter_type, "Filter type to use for SUBSCRIBE (default=LatestObject)", "LatestObject|NextGroupStart|AbsoluteStart|AbsoluteRange" },
+		{ "filter-type", 'F', 0, G_OPTION_ARG_STRING, &options->filter_type, "Filter type to use for SUBSCRIBE (default=LargestObject)", "LargestObject|NextGroupStart|AbsoluteStart|AbsoluteRange" },
 		{ "fetch", 'f', 0, G_OPTION_ARG_STRING, &options->fetch, "Use FETCH instead of SUBSCRIBE, in the specified order (ascending/descending)", "order" },
 		{ "join", 'j', 0, G_OPTION_ARG_INT, &options->join_offset, "When using FETCH, use a Joining Fetch and get the specified number of preceding groups (default=-1, no joining fetch)", "offset" },
 		{ "start-group", 'g', 0, G_OPTION_ARG_INT64, &options->start_group, "Group to start from, for Standalone FETCH or when using specific filters in SUBSCRIBE (default=0)", "id" },

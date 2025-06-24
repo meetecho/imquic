@@ -43,7 +43,7 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GList *request_ids = NULL;
 static uint64_t max_request_id = 20;
-static imquic_moq_filter_type filter_type = IMQUIC_MOQ_FILTER_LATEST_OBJECT;
+static imquic_moq_filter_type filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 static imquic_moq_location start_location = { 0 }, end_location = { 0 }, end_location_sub = { 0 };
 static int64_t update_time = 0;
 
@@ -424,8 +424,8 @@ int main(int argc, char *argv[]) {
 		if(options.fetch != NULL && options.join_offset < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring filter type (unused for Standalone FETCH)\n");
 		} else {
-			if(!strcasecmp(options.filter_type, "LatestObject")) {
-				filter_type = IMQUIC_MOQ_FILTER_LATEST_OBJECT;
+			if(!strcasecmp(options.filter_type, "LargestObject")) {
+				filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 			} else if(!strcasecmp(options.filter_type, "NextGroupStart")) {
 				filter_type = IMQUIC_MOQ_FILTER_NEXT_GROUP_START;
 			} else if(!strcasecmp(options.filter_type, "AbsoluteStart")) {

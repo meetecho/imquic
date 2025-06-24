@@ -385,7 +385,7 @@ const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen)
 /*! \brief MoQ filter type, for subscriptions */
 typedef enum imquic_moq_filter_type {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
-	IMQUIC_MOQ_FILTER_LATEST_OBJECT = 0x2,
+	IMQUIC_MOQ_FILTER_LARGEST_OBJECT = 0x2,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_START = 0x3,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE = 0x4,
 } imquic_moq_filter_type;

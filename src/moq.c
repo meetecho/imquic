@@ -559,8 +559,8 @@ const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
 	switch(type) {
 		case IMQUIC_MOQ_FILTER_NEXT_GROUP_START:
 			return "Next Group Start";
-		case IMQUIC_MOQ_FILTER_LATEST_OBJECT:
-			return "Latest Object";
+		case IMQUIC_MOQ_FILTER_LARGEST_OBJECT:
+			return "Largest Object";
 		case IMQUIC_MOQ_FILTER_ABSOLUTE_START:
 			return "AbsoluteStart";
 		case IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE:

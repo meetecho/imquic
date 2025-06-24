@@ -540,18 +540,18 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	track->subscriptions = g_list_append(track->subscriptions, s);
 	s->forward = forward;
 	/* Check the filter */
-	imquic_moq_object *latest = NULL;
+	imquic_moq_object *largest = NULL;
 	if(!track->pending && track->objects != NULL)
-		latest = (imquic_moq_object *)(track->objects ? track->objects->data : NULL);
+		largest = (imquic_moq_object *)(track->objects ? track->objects->data : NULL);
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
 		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
-		s->sub_start.group = latest ? latest->group_id : 0;
-		s->sub_start.object = latest ? latest->object_id : 0;
+	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
+		s->sub_start.group = largest ? largest->group_id : 0;
+		s->sub_start.object = largest ? largest->object_id : 0;
 	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
-		s->sub_start.group = latest ? (latest->group_id + 1) : 0;
+		s->sub_start.group = largest ? (largest->group_id + 1) : 0;
 		s->sub_start.object = 0;
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
 		s->sub_start = *start_location;
@@ -570,7 +570,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Only accept the subscribe right now if the track is already active */
 	if(!track->pending) {
 		/* Fill in the largest location before answering */
-		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, latest ? &s->sub_start : NULL);
+		imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, largest ? &s->sub_start : NULL);
 	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
@@ -579,9 +579,9 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		annc->pub->relay_track_alias++;
 		g_hash_table_insert(subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 		g_hash_table_insert(subscriptions, imquic_uint64_dup(track->track_alias), track);
-		/* We send a 'Latest Object' filter to the subscriber, we'll filter ourselves in case */
+		/* We send a 'Largest Object' filter to the subscriber, we'll filter ourselves in case */
 		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn,
-			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LATEST_OBJECT, NULL, NULL, auth, authlen);
+			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL, auth, authlen);
 	}
 	g_mutex_unlock(&mutex);
 }
