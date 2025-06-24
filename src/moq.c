@@ -258,6 +258,12 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 			return "Duplicate Auth Token Alias";
 		case IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED:
 			return "Version Negotiation Failed";
+		case IMQUIC_MOQ_MALFORMED_AUTH_TOKEN:
+			return "Malformed Auth Token";
+		case IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS:
+			return "Unknown Auth Token Alias";
+		case IMQUIC_MOQ_EXPIRED_AUTH_TOKEN:
+			return "Expired Auth Token";
 		case IMQUIC_MOQ_UNKNOWN_ERROR:
 			return "Unknown Error";
 		default: break;
