@@ -42,6 +42,7 @@ static void imquic_demo_handle_signal(int signum) {
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GList *request_ids = NULL;
+static uint64_t max_request_id = 20;
 static imquic_moq_filter_type filter_type = IMQUIC_MOQ_FILTER_LATEST_OBJECT;
 static imquic_moq_location start_location = { 0 }, end_location = { 0 }, end_location_sub = { 0 };
 static int64_t update_time = 0;
@@ -84,6 +85,7 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection (negotiating version)\n", imquic_get_connection_name(conn));
 	imquic_moq_set_role(conn, IMQUIC_MOQ_SUBSCRIBER);
 	imquic_moq_set_version(conn, moq_version);
+	imquic_moq_set_max_request_id(conn, max_request_id);
 }
 
 static void imquic_demo_ready(imquic_connection *conn) {
