@@ -102,10 +102,11 @@ imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_mes
 
 /*! \brief MoQ setup parameter types */
 typedef enum imquic_moq_setup_parameter_type {
-	IMQUIC_MOQ_PARAM_ROLE = 0x00,	/* Deprecated since v08 */
-	IMQUIC_MOQ_PARAM_PATH = 0x01,
-	IMQUIC_MOQ_PARAM_MAX_REQUEST_ID = 0x02,
-	IMQUIC_MOQ_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
+	IMQUIC_MOQ_SETUP_PARAM_ROLE = 0x00,	/* Deprecated since v08 */
+	IMQUIC_MOQ_SETUP_PARAM_PATH = 0x01,
+	IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID = 0x02,
+	IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN = 0x03,
+	IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
 } imquic_moq_setup_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_setup_parameter_type value.
  * @param type The imquic_moq_setup_parameter_type value
@@ -114,16 +115,18 @@ const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type 
 
 /*! \brief MoQ subscribe parameter types */
 typedef enum imquic_moq_subscribe_parameter_type {
-	IMQUIC_MOQ_PARAM_AUTHORIZATION_TOKEN = 0x01,
-		IMQUIC_MOQ_PARAM_AUTHORIZATION_INFO = 0x02,	/* Deprecated in v11 for the value above */
-	IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT = 0x02,
-		IMQUIC_MOQ_PARAM_DELIVERY_TIMEOUT_LEGACY = 0x03,	/* Deprecated in v11 for the value above */
-	IMQUIC_MOQ_PARAM_MAX_CACHE_DURATION = 0x04,
+	IMQUIC_MOQ_SUB_PARAM_AUTHORIZATION_TOKEN_v11 = 0x01,	/* Deprecated in v12 */
+		IMQUIC_MOQ_SUB_PARAM_AUTHORIZATION_INFO = 0x02,	/* Deprecated in v11 for the value above */
+	IMQUIC_MOQ_SUB_PARAM_DELIVERY_TIMEOUT = 0x02,
+		IMQUIC_MOQ_SUB_PARAM_DELIVERY_TIMEOUT_LEGACY = 0x03,	/* Deprecated in v11 for the value above */
+	IMQUIC_MOQ_SUB_PARAM_AUTHORIZATION_TOKEN = 0x03,
+	IMQUIC_MOQ_SUB_PARAM_MAX_CACHE_DURATION = 0x04,
 } imquic_moq_subscribe_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_subscribe_parameter_type value.
  * @param type The imquic_moq_subscribe_parameter_type value
+ * @param version The version of the connection
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_subscribe_parameter_type_str(imquic_moq_subscribe_parameter_type type);
+const char *imquic_moq_subscribe_parameter_type_str(imquic_moq_subscribe_parameter_type type, imquic_moq_version version);
 
 /*! \brief MoQ roles */
 typedef enum imquic_moq_role_type {
@@ -155,18 +158,24 @@ typedef struct imquic_moq_setup_parameters {
 	gboolean max_auth_token_cache_size_set;
 	/*! \brief Value of the MAX_AUTH_TOKEN_CACHE_SIZE parameter */
 	uint64_t max_auth_token_cache_size;
+	/*! \brief Whether the AUTHORIZATION_TOKEN parameter is set */
+	gboolean auth_token_set;
+	/*! \brief Value of the AUTHORIZATION_TOKEN parameter */
+	uint8_t auth_token[256];
+	/*! \brief Size of the AUTHORIZATION_TOKEN parameter */
+	size_t auth_token_len;
 	/*! \brief Whether there's unknown parameters */
 	gboolean unknown;
 } imquic_moq_setup_parameters;
 
 /*! \brief MoQ subscribe parameters */
 typedef struct imquic_moq_subscribe_parameters {
-	/*! \brief Whether the AUTHORIZATION_INFO parameter is set */
-	gboolean auth_info_set;
-	/*! \brief Value of the AUTHORIZATION_INFO parameter */
-	uint8_t auth_info[256];
-	/*! \brief Size of the AUTHORIZATION_INFO parameter */
-	size_t auth_info_len;
+	/*! \brief Whether the AUTHORIZATION_TOKEN parameter is set */
+	gboolean auth_token_set;
+	/*! \brief Value of the AUTHORIZATION_TOKEN parameter */
+	uint8_t auth_token[256];
+	/*! \brief Size of the AUTHORIZATION_TOKEN parameter */
+	size_t auth_token_len;
 	/*! \brief Whether the DELIVERY_TIMEOUT parameter is set */
 	gboolean delivery_timeout_set;
 	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
