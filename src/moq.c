@@ -4,7 +4,7 @@
  * \brief  Media Over QUIC (MoQ) stack
  * \details Implementation of the Media Over QUIC (MoQ) stack as part
  * of the library itself. At the time of writing, this implements (most
- * of) versions from -06 to to -11 of the protocol.
+ * of) versions from -06 to to -12 of the protocol.
  *
  * \note This is the internal implementation of MoQ in the library. You're
  * still free to only use imquic as the underlying QUIC/WebTransport library,
@@ -109,6 +109,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		GList *versions = NULL;
 		if(moq->version == IMQUIC_MOQ_VERSION_ANY) {
 			/* Offer all newer supported versions */
+			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_12));
 			versions = g_list_append(versions, GUINT_TO_POINTER(IMQUIC_MOQ_VERSION_11));
 		} else if(moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY) {
 			/* Offer all supported versions from -06 to -10 */
@@ -5553,6 +5554,7 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) 
 		case IMQUIC_MOQ_VERSION_09:
 		case IMQUIC_MOQ_VERSION_10:
 		case IMQUIC_MOQ_VERSION_11:
+		case IMQUIC_MOQ_VERSION_12:
 		case IMQUIC_MOQ_VERSION_ANY:
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
 			moq->version = version;
