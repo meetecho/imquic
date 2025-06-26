@@ -606,6 +606,19 @@ typedef enum imquic_moq_announce_error_code {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_announce_error_code_str(imquic_moq_announce_error_code code);
 
+/*! \brief Publish error codes */
+typedef enum imquic_moq_pub_error_code {
+	IMQUIC_MOQ_PUBERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_PUBERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_PUBERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_PUBERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_PUBERR_UNINTERESTED = 0x4,
+} imquic_moq_pub_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_pub_error_code value.
+ * @param code The imquic_moq_pub_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_pub_error_code_str(imquic_moq_pub_error_code code);
+
 /*! \brief Subscribe error codes */
 typedef enum imquic_moq_sub_error_code {
 	IMQUIC_MOQ_SUBERR_INTERNAL_ERROR = 0x0,
@@ -812,6 +825,26 @@ void imquic_set_announce_error_cb(imquic_endpoint *endpoint,
  * @param incoming_unannounce Pointer to the function that will handle the incoming \c UNANNOUNCE */
 void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
 	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c PUBLISH request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_publish Pointer to the function that will handle the incoming \c PUBLISH */
+void imquic_set_incoming_publish_cb(imquic_endpoint *endpoint,
+	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+		gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen));
+/*! \brief Configure the callback function to be notified when a
+ * \c PUBLISH we previously sent was accepted
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param publish_accepted Pointer to the function that will fire when a \c PUBLISH is accepted */
+void imquic_set_publish_accepted_cb(imquic_endpoint *endpoint,
+	void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
+		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen));
+/*! \brief Configure the callback function to be notified when a
+ * \c PUBLISH we previously sent was rejected with an error
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param publish_error Pointer to the function that will fire when a \c PUBLISH is rejected */
+void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
+	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1064,6 +1097,41 @@ int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imq
  * @param tns The imquic_moq_namespace namespace to unannounce
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
+/*! \brief Function to send a \c PUBLISH request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id A unique request ID to associate to this subscription
+ * @param tns The imquic_moq_namespace namespace the track to publish to belongs to
+ * @param tn The imquic_moq_name track name to publish to
+ * @param track_alias A unique numeric identifier to associate to the track in this subscription
+ * @param descending Whether objects should be fetched in descending order, per each group
+ * @param largest The largest group/object IDs, in case content exists
+ * @param forward Whether objects should be forwarded, when this subscription is accepted (ignored before v11)
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+	gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen);
+/*! \brief Function to accept an incoming \c PUBLISH request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the subscription to accept
+ * @param forward Whether objects should be forwarded, when this subscription is accepted (ignored before v11)
+ * @param priority The publishr priority
+ * @param descending Whether objects should be fetched in descending order, per each group
+ * @param filter_type The subscription filter type
+ * @param start_location The group and object to start from (ignored if the filter is not AbsoluteStart or AbsoluteRange)
+ * @param end_location The group (and for v06/v07 the object) to end at (ignored if the filter is not AbsoluteRange)
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
+	imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
+/*! \brief Function to reject an incoming \c PUBLISH request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the subscription to reject
+ * @param error_code The error code to send back
+ * @param reason A string representation of the error, if needed
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_code, const char *reason);
 /*! \brief Function to send a \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription

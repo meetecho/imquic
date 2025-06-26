@@ -64,6 +64,9 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_FETCH_ERROR = 0x19,
 	IMQUIC_MOQ_CLIENT_SETUP = 0x20,
 	IMQUIC_MOQ_SERVER_SETUP = 0x21,
+	IMQUIC_MOQ_PUBLISH = 0x1D,
+	IMQUIC_MOQ_PUBLISH_OK = 0x1E,
+	IMQUIC_MOQ_PUBLISH_ERROR = 0x1F,
 	IMQUIC_MOQ_CLIENT_SETUP_LEGACY = 0x40,
 	IMQUIC_MOQ_SERVER_SETUP_LEGACY = 0x41,
 } imquic_moq_message_type;
@@ -72,22 +75,77 @@ typedef enum imquic_moq_message_type {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_message_type_str(imquic_moq_message_type type);
 
-/*! \brief MoQ data messages */
-typedef enum imquic_moq_data_message_type {
+/*! \brief MoQ datagram messages */
+typedef enum imquic_moq_datagram_message_type {
 	IMQUIC_MOQ_OBJECT_DATAGRAM = 0x1,
 		IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT = 0x0,
-	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x3,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x2,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG = 0x3,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT = 0x2,
+	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x5,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x4,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11 = 0x3,		/* Deprecated in v12 */
+		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11 = 0x2,	/* Deprecated in v12 */
+} imquic_moq_datagram_message_type;
+/*! \brief Helper function to return the imquic_moq_datagram_message_type value for \c OBJECT_DATAGRAM out of the individual properties.
+ * @param version The version of the connection
+ * @param ext Whether there are extensions
+ * @param eog Whether there is an End of Group
+ * @returns The type name as a string, if valid, or NULL otherwise */
+imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog);
+/*! \brief Helper function to parse a imquic_moq_datagram_message_type value for \c OBJECT_DATAGRAM to the individual properties.
+ * @param[in] version The version of the connection
+ * @param[in] type The imquic_moq_datagram_message_type instance to parse
+ * @param[out] ext Output variable to write whether there are extensions
+ * @param[out] eog Output variable to write whether there is an End of Group */
+void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_moq_datagram_message_type type, gboolean *ext, gboolean *eog);
+/*! \brief Helper function to serialize to string the name of a imquic_moq_datagram_message_type value.
+ * @param type The imquic_data_moq_message_type value
+ * @param version The version of the connection
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_type type, imquic_moq_version version);
+
+/*! \brief MoQ \c STREAM data messages */
+typedef enum imquic_moq_data_message_type {
 	IMQUIC_MOQ_STREAM_HEADER_TRACK = 0x2,	/* Deprecated in v07 */
 	IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY = 0x4,	/* Deprecated in v11 for the values below */
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT = 0x8,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 = 0x9,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT = 0xA,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID = 0xB,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT = 0xC,
-		IMQUIC_MOQ_SUBGROUP_HEADER = 0xD,
+		/* v11 */
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 = 0x8,	/* Deprecated in v12 */
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11 = 0x9,		/* Deprecated in v12 */
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_v11 = 0xA,	/* Deprecated in v12 */
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11 = 0xB,		/* Deprecated in v12 */
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11 = 0xC,			/* Deprecated in v12 */
+		IMQUIC_MOQ_SUBGROUP_HEADER_v11 = 0xD,				/* Deprecated in v12 */
+		/* v12 */
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT = 0x10,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 = 0x11,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT = 0x12,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID = 0x13,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT = 0x14,
+		IMQUIC_MOQ_SUBGROUP_HEADER = 0x15,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG = 0x18,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG = 0x19,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG = 0x1A,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG = 0x1B,
+		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG = 0x1C,
+		IMQUIC_MOQ_SUBGROUP_HEADER_EOG = 0x1D,
 	IMQUIC_MOQ_FETCH_HEADER = 0x5,
 } imquic_moq_data_message_type;
+/*! \brief Helper function to return the imquic_moq_data_message_type value for \c SUBRGOUP_HEADER out of the individual properties.
+ * @param version The version of the connection
+ * @param subgroup Whether the Subgroup ID field is present
+ * @param sgid0 Whether the default value of Subgroup ID is 0, in case the field is missing
+ * @param ext Whether there are extensions
+ * @param eog Whether there is an End of Group
+ * @returns The type name as a string, if valid, or NULL otherwise */
+imquic_moq_data_message_type imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version, gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog);
+/*! \brief Helper function to parse a imquic_moq_data_message_type value for \c SUBRGOUP_HEADER to the individual properties.
+ * @param[in] version The version of the connection
+ * @param[in] type The imquic_moq_data_message_type instance to parse
+ * @param[out] subgroup Output variable to write whether the Subgroup ID field is present
+ * @param[out] sgid0 Output variable to write whether the default value of Subgroup ID is 0, in case the field is missing
+ * @param[out] ext Output variable to write whether there are extensions
+ * @param[out] eog Output variable to write whether there is an End of Group */
+void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, imquic_moq_data_message_type type, gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_data_message_type value.
  * @param type The imquic_data_moq_message_type value
  * @param version The version of the connection
@@ -426,6 +484,27 @@ size_t imquic_moq_parse_unannounce(imquic_moq_context *moq, uint8_t *bytes, size
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse an \c PUBLISH message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse an \c PUBLISH_OK message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse an \c PUBLISH_ERROR message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_publish_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c SUBSCRIBE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -545,7 +624,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
  * @param[in] dtype Type of \c OBJECT_DATAGRAM (only relevant starting from v11)
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error);
+size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_datagram_message_type dtype, uint8_t *error);
 /*! \brief Helper to parse an \c OBJECT_DATAGRAM_STATUS message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -553,7 +632,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
  * @param[in] dtype Type of \c OBJECT_DATAGRAM_STATUS (only relevant starting from v11)
  * @param[out] error In/out property, initialized to 0 and set to 1 in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error);
+size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_datagram_message_type dtype, uint8_t *error);
 /*! \brief Helper to parse a \c STREAM_HEADER_TRACK message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_context instance the object is from
@@ -710,6 +789,53 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
 	imquic_moq_announce_error_code error, const char *reason);
+/*! \brief Helper to add a \c PUBLISH message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message
+ * @param track_namespace The namespace to put in the message
+ * @param track_name The track name to put in the message
+ * @param track_alias The track alias to put in the message
+ * @param group_order The group order to put in the message
+ * @param content_exists Whether the following two properties should be added to the message
+ * @param largest_group_id Largest group ID to add to the message, if needed
+ * @param largest_object_id Largest object ID to add to the message, if needed
+ * @param forward The forward value to put in the message
+ * @param parameters The parameters to add, if any
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, uint8_t group_order,
+	gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id, gboolean forward, imquic_moq_subscribe_parameters *parameters);
+/*! \brief Helper method to add a \c PUBLISH_OK message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message
+ * @param forward The forward value to put in the message (only starting from v11)
+ * @param priority The subscriber priority to put in the message
+ * @param group_order The group order to put in the message
+ * @param filter The filter as a imquic_moq_filter_type value
+ * @param start_group The start group ID to put in the message
+ * @param start_object The start object ID to put in the message
+ * @param end_group The end group ID to put in the message
+ * @param end_object The end object ID to put in the message
+ * @param parameters The parameters to add, if any (only after v06)
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+	gboolean forward, uint8_t priority, uint8_t group_order,
+	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object,
+	imquic_moq_subscribe_parameters *parameters);
+/*! \brief Helper method to add a \c PUBLISH_ERRROR message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message
+ * @param error Error code associated to the message
+ * @param reason Verbose description of the error, if any
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_publish_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+	imquic_moq_pub_error_code error, const char *reason);
 /*! \brief Helper to add a \c SUBSCRIBE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1134,6 +1260,14 @@ typedef struct imquic_moq_callbacks {
 	void (* announce_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNANNOUNCE messages */
 	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH messages */
+	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+		gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_ACCEPTED messages */
+	void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
+		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_ERROR messages */
+	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);

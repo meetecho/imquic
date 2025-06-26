@@ -294,6 +294,23 @@ const char *imquic_moq_announce_error_code_str(imquic_moq_announce_error_code co
 	return NULL;
 }
 
+const char *imquic_moq_pub_error_code_str(imquic_moq_pub_error_code code) {
+	switch(code) {
+		case IMQUIC_MOQ_PUBERR_INTERNAL_ERROR:
+			return "Internal Error";
+		case IMQUIC_MOQ_PUBERR_UNAUTHORIZED:
+			return "Unauthorized";
+		case IMQUIC_MOQ_PUBERR_TIMEOUT:
+			return "Timeout";
+		case IMQUIC_MOQ_PUBERR_NOT_SUPPORTED:
+			return "Not Supported";
+		case IMQUIC_MOQ_PUBERR_UNINTERESTED:
+			return "Uninterested";
+		default: break;
+	}
+	return NULL;
+}
+
 const char *imquic_moq_sub_error_code_str(imquic_moq_sub_error_code code) {
 	switch(code) {
 		case IMQUIC_MOQ_SUBERR_INTERNAL_ERROR:
@@ -469,32 +486,205 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type) {
 		case IMQUIC_MOQ_SERVER_SETUP:
 		case IMQUIC_MOQ_SERVER_SETUP_LEGACY:
 			return "SERVER_SETUP";
+		case IMQUIC_MOQ_PUBLISH:
+			return "PUBLISH";
+		case IMQUIC_MOQ_PUBLISH_OK:
+			return "PUBLISH_OK";
+		case IMQUIC_MOQ_PUBLISH_ERROR:
+			return "PUBLISH_ERROR";
 		default: break;
 	}
 	return NULL;
 }
 
+imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog) {
+	if(version < IMQUIC_MOQ_VERSION_11)
+		return IMQUIC_MOQ_OBJECT_DATAGRAM;
+	if(version == IMQUIC_MOQ_VERSION_11) {
+		/* v11 */
+		return ext ? IMQUIC_MOQ_OBJECT_DATAGRAM : IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT;
+	}
+	/* If we're here, we're on v12 or later */
+	if(!ext && !eog)
+		return IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT;
+	else if(ext && !eog)
+		return IMQUIC_MOQ_OBJECT_DATAGRAM;
+	else if(!ext && eog)
+		return IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT;
+	return IMQUIC_MOQ_OBJECT_DATAGRAM_EOG;
+}
+
+void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_moq_datagram_message_type type, gboolean *ext, gboolean *eog) {
+	if(version < IMQUIC_MOQ_VERSION_11) {
+		return;
+	} else if(version == IMQUIC_MOQ_VERSION_11) {
+		/* v11 */
+		if(ext)
+			*ext = (type == IMQUIC_MOQ_OBJECT_DATAGRAM);
+	} else {
+		/* v12 and later */
+		if(ext)
+			*ext = (type == IMQUIC_MOQ_OBJECT_DATAGRAM || type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG);
+		if(eog)
+			*eog = (type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT || type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG);
+	}
+}
+
+const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_type type, imquic_moq_version version) {
+	if(version < IMQUIC_MOQ_VERSION_11) {
+		switch(type) {
+			case IMQUIC_MOQ_OBJECT_DATAGRAM:
+				return "OBJECT_DATAGRAM";
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11:
+				return "OBJECT_DATAGRAM_STATUS";
+			default: break;
+		}
+	} else if(version == IMQUIC_MOQ_VERSION_11) {
+		switch(type) {
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM:
+				return "OBJECT_DATAGRAM";
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11:
+				return "OBJECT_DATAGRAM_STATUS";
+			default: break;
+		}
+	} else {
+		switch(type) {
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG:
+				return "OBJECT_DATAGRAM";
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS:
+				return "OBJECT_DATAGRAM_STATUS";
+			default: break;
+		}
+	}
+	return NULL;
+}
+
+imquic_moq_data_message_type imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version, gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog) {
+	if(version == IMQUIC_MOQ_VERSION_11) {
+		/* v11 */
+		if(!subgroup && sgid0 && !ext)
+			return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11;
+		else if(!subgroup && sgid0 && ext)
+			return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11;
+		else if(!subgroup && !sgid0 && !ext)
+			return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_v11;
+		else if(!subgroup && !sgid0 && ext)
+			return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11;
+		else if(subgroup && !ext)
+			return IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11;
+		return IMQUIC_MOQ_SUBGROUP_HEADER_v11;
+	}
+	/* If we're here, we're on v12 or later */
+	if(!subgroup && sgid0 && !ext && !eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT;
+	else if(!subgroup && sgid0 && ext && !eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0;
+	else if(!subgroup && !sgid0 && !ext && !eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT;
+	else if(!subgroup && !sgid0 && ext && !eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID;
+	else if(subgroup && !ext && !eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT;
+	else if(subgroup && ext && !eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER;
+	else if(!subgroup && sgid0 && !ext && eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG;
+	else if(!subgroup && sgid0 && ext && eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG;
+	else if(!subgroup && !sgid0 && !ext && eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG;
+	else if(!subgroup && !sgid0 && ext && eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG;
+	else if(subgroup && !ext && eog)
+		return IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG;
+	return IMQUIC_MOQ_SUBGROUP_HEADER_EOG;
+}
+
+void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, imquic_moq_data_message_type type, gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog) {
+	if(version < IMQUIC_MOQ_VERSION_11) {
+		if(subgroup)
+			*subgroup = TRUE;
+		if(ext)
+			*ext = (version >= IMQUIC_MOQ_VERSION_08);
+		return;
+	} else if(version == IMQUIC_MOQ_VERSION_11) {
+		/* v11 */
+		if(subgroup)
+			*subgroup = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_v11);
+		if(sgid0)
+			*sgid0 = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11);
+		if(ext)
+			*ext = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_v11);
+	} else {
+		/* v12 and later */
+		if(subgroup) {
+			*subgroup = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT || type == IMQUIC_MOQ_SUBGROUP_HEADER ||
+				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
+		}
+		if(sgid0) {
+			*sgid0 = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 ||
+				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG);
+		}
+		if(ext) {
+			*ext = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID ||
+				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
+		}
+		if(eog) {
+			*eog = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG ||
+				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
+		}
+	}
+}
+
 const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, imquic_moq_version version) {
 	if(version == IMQUIC_MOQ_VERSION_06 && type == IMQUIC_MOQ_STREAM_HEADER_TRACK)
 		return "STREAM_HEADER_TRACK";
-	switch(type) {
-		case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT:
-		case IMQUIC_MOQ_OBJECT_DATAGRAM:
-			return "OBJECT_DATAGRAM";
-		case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT:
-		case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS:
-			return "OBJECT_DATAGRAM_STATUS";
-		case IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
-		case IMQUIC_MOQ_SUBGROUP_HEADER:
-			return "SUBGROUP_HEADER";
-		case IMQUIC_MOQ_FETCH_HEADER:
-			return "FETCH_HEADER";
-		default: break;
+	if(version < IMQUIC_MOQ_VERSION_11) {
+		switch(type) {
+			case IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY:
+				return "SUBGROUP_HEADER";
+			case IMQUIC_MOQ_FETCH_HEADER:
+				return "FETCH_HEADER";
+			default: break;
+		}
+	} else if(version == IMQUIC_MOQ_VERSION_11) {
+		switch(type) {
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_v11:
+				return "SUBGROUP_HEADER";
+			case IMQUIC_MOQ_FETCH_HEADER:
+				return "FETCH_HEADER";
+			default: break;
+		}
+	} else {
+		switch(type) {
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
+			case IMQUIC_MOQ_SUBGROUP_HEADER:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_EOG:
+				return "SUBGROUP_HEADER";
+			case IMQUIC_MOQ_FETCH_HEADER:
+				return "FETCH_HEADER";
+			default: break;
+		}
 	}
 	return NULL;
 }
@@ -502,21 +692,46 @@ const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, 
 imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_message_type type, imquic_moq_version version) {
 	if(version == IMQUIC_MOQ_VERSION_06 && type == IMQUIC_MOQ_STREAM_HEADER_TRACK)
 		return IMQUIC_MOQ_USE_TRACK;
-	switch(type) {
-		case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT:
-		case IMQUIC_MOQ_OBJECT_DATAGRAM:
-			return IMQUIC_MOQ_USE_DATAGRAM;
-		case IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
-		case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
-		case IMQUIC_MOQ_SUBGROUP_HEADER:
-			return IMQUIC_MOQ_USE_SUBGROUP;
-		case IMQUIC_MOQ_FETCH_HEADER:
-			return IMQUIC_MOQ_USE_FETCH;
-		default: break;
+	if(version < IMQUIC_MOQ_VERSION_11) {
+		switch(type) {
+			case IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY:
+				return IMQUIC_MOQ_USE_SUBGROUP;
+			case IMQUIC_MOQ_FETCH_HEADER:
+				return IMQUIC_MOQ_USE_FETCH;
+			default: break;
+		}
+	} else if(version == IMQUIC_MOQ_VERSION_11) {
+		switch(type) {
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_v11:
+				return IMQUIC_MOQ_USE_SUBGROUP;
+			case IMQUIC_MOQ_FETCH_HEADER:
+				return IMQUIC_MOQ_USE_FETCH;
+			default: break;
+		}
+	} else {
+		switch(type) {
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
+			case IMQUIC_MOQ_SUBGROUP_HEADER:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG:
+			case IMQUIC_MOQ_SUBGROUP_HEADER_EOG:
+				return IMQUIC_MOQ_USE_SUBGROUP;
+			case IMQUIC_MOQ_FETCH_HEADER:
+				return IMQUIC_MOQ_USE_FETCH;
+			default: break;
+		}
 	}
 	return -1;
 }
@@ -805,21 +1020,25 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 	uint8_t tlen = 0, error = 0;
 	/* If this is a datagram, it can only be OBJECT_DATAGRAM or OBJECT_DATAGRAM_STATUS */
 	if(datagram) {
-		imquic_moq_data_message_type dtype = imquic_read_varint(&bytes[offset], blen-offset, &tlen);
+		imquic_moq_datagram_message_type dtype = imquic_read_varint(&bytes[offset], blen-offset, &tlen);
 		offset += tlen;
-		if(dtype == IMQUIC_MOQ_OBJECT_DATAGRAM || (moq->version >= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT)) {
+		if(dtype == IMQUIC_MOQ_OBJECT_DATAGRAM || (moq->version >= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT) ||
+				(moq->version >= IMQUIC_MOQ_VERSION_12 && (dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG || dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT))) {
 			/* Parse this OBJECT_DATAGRAM message */
 			parsed = imquic_moq_parse_object_datagram(moq, &bytes[offset], blen-offset, dtype, &error);
 			IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
-		} else if(moq->version >= IMQUIC_MOQ_VERSION_08 && (dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS ||
-				(moq->version >= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT))) {
+		} else if(moq->version >= IMQUIC_MOQ_VERSION_08 &&
+				((moq->version <= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11) ||
+				(moq->version == IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11) ||
+				(moq->version >= IMQUIC_MOQ_VERSION_12 && (dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS ||
+					dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT)))) {
 			/* Parse this OBJECT_DATAGRAM_STATUS message */
 			parsed = imquic_moq_parse_object_datagram_status(moq, &bytes[offset], blen-offset, dtype, &error);
 			IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 		} else {
 			/* TODO Handle failure */
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] MoQ message '%s' (%02x) is not allowed on datagrams\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(dtype, moq->version), dtype);
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] MoQ message '%02x' is not allowed on datagrams\n",
+				imquic_get_connection_name(moq->conn), dtype);
 			return -1;
 		}
 		/* Done */
@@ -842,8 +1061,9 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			/* Not the control stream, make sure it's a supported message */
 			imquic_moq_data_message_type dtype = (imquic_moq_data_message_type)type;
 			if((moq->version == IMQUIC_MOQ_VERSION_06 && dtype == IMQUIC_MOQ_STREAM_HEADER_TRACK) ||
-					dtype == IMQUIC_MOQ_FETCH_HEADER || dtype == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
-					(dtype >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && dtype <= IMQUIC_MOQ_SUBGROUP_HEADER)) {
+					dtype == IMQUIC_MOQ_FETCH_HEADER || (moq->version < IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY) ||
+					(moq->version == IMQUIC_MOQ_VERSION_11 && (dtype >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && dtype <= IMQUIC_MOQ_SUBGROUP_HEADER_v11)) ||
+					(moq->version >= IMQUIC_MOQ_VERSION_12 && (dtype >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && dtype <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG))) {
 				/* Create a new MoQ stream and track it */
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Stream %"SCNu64" will be used for %s\n",
 					imquic_get_connection_name(moq->conn), stream_id, imquic_moq_data_message_type_str(dtype, moq->version));
@@ -929,6 +1149,15 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			} else if(type == IMQUIC_MOQ_ANNOUNCE_CANCEL) {
 				/* Parse this ANNOUNCE_CANCEL message */
 				parsed = imquic_moq_parse_announce_cancel(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH) {
+				/* Parse this PUBLISH message */
+				parsed = imquic_moq_parse_publish(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_OK) {
+				/* Parse this PUBLISH_OK message */
+				parsed = imquic_moq_parse_publish_ok(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_ERROR) {
+				/* Parse this PUBLISH_ERROR message */
+				parsed = imquic_moq_parse_publish_error(moq, &bytes[offset], plen, &error);
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE) {
 				/* Parse this SUBSCRIBE message */
 				parsed = imquic_moq_parse_subscribe(moq, &bytes[offset], plen, &error);
@@ -1009,9 +1238,11 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				parsed = imquic_moq_parse_stream_header_track(moq, moq_stream, &bytes[offset], blen-offset, &error);
 				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 				offset += parsed;
-			} else if((imquic_moq_data_message_type)type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
-					((imquic_moq_data_message_type)type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT &&
-						(imquic_moq_data_message_type)type <= IMQUIC_MOQ_SUBGROUP_HEADER)) {
+			} else if((moq->version < IMQUIC_MOQ_VERSION_11 && (imquic_moq_data_message_type)type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY) ||
+					(moq->version == IMQUIC_MOQ_VERSION_11 &&
+						(imquic_moq_data_message_type)type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && (imquic_moq_data_message_type)type <= IMQUIC_MOQ_SUBGROUP_HEADER_v11) ||
+					(moq->version >= IMQUIC_MOQ_VERSION_12 &&
+						((imquic_moq_data_message_type)type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && (imquic_moq_data_message_type)type <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG))) {
 				/* Parse this SUBGROUP_HEADER message */
 				parsed = imquic_moq_parse_subgroup_header(moq, moq_stream, &bytes[offset], blen-offset, (imquic_moq_data_message_type)type, &error);
 				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
@@ -1049,8 +1280,9 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 						imquic_get_connection_name(moq->conn));
 					break;
 				}
-			} else if(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
-					(moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER)) {
+			} else if((moq->version < IMQUIC_MOQ_VERSION_11 && moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY) ||
+					(moq->version == IMQUIC_MOQ_VERSION_11 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_v11)) ||
+					(moq->version >= IMQUIC_MOQ_VERSION_12 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG))) {
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ][%zu] >> %s object\n",
 					imquic_get_connection_name(moq->conn), offset, imquic_moq_data_message_type_str(moq_stream->type, moq->version));
 				if(imquic_moq_parse_subgroup_header_object(moq, moq_stream, complete) < 0) {
@@ -1078,16 +1310,18 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Media stream %"SCNu64" is complete\n",
 			imquic_get_connection_name(moq->conn), stream_id);
 		if(!moq_stream->closed && (moq_stream->type == IMQUIC_MOQ_FETCH_HEADER ||
-				moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
-					(moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER) ||
+				(moq->version < IMQUIC_MOQ_VERSION_11 && moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY) ||
+					(moq->version == IMQUIC_MOQ_VERSION_11 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_v11)) ||
+					(moq->version >= IMQUIC_MOQ_VERSION_12 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG)) ||
 				(moq->version == IMQUIC_MOQ_VERSION_06 && moq_stream->type == IMQUIC_MOQ_STREAM_HEADER_TRACK))) {
 			/* FIXME Notify an empty payload to signal the end of the stream */
 			imquic_moq_object object = {
 				.request_id = moq_stream->request_id,
-				.track_alias = 0,
+				.track_alias = moq_stream->track_alias,
 				.group_id = moq_stream->group_id,
 				.subgroup_id = moq_stream->subgroup_id,
-				.object_id = IMQUIC_MOQ_NORMAL_OBJECT,
+				.object_id = 0,	/* FIXME */
+				.object_status = IMQUIC_MOQ_NORMAL_OBJECT,
 				.priority = 0,
 				.payload = NULL,
 				.payload_len = 0,
@@ -1717,6 +1951,295 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 	return offset;
 }
 
+size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	if(bytes == NULL || blen < 1)
+		return 0;
+	size_t offset = 0;
+	uint8_t length = 0;
+	uint64_t request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), request_id);
+	imquic_moq_namespace tns[32];	/* FIXME */
+	memset(&tns, 0, sizeof(tns));
+	/* Potentially multiple namespaces (tuple) */
+	uint64_t tns_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	IMQUIC_MOQ_CHECK_ERR(tns_num == 0 || tns_num > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces");
+	offset += length;
+	/* Iterate on all namespaces */
+	uint64_t i = 0;
+	for(i = 0; i < tns_num; i++) {
+		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
+		uint64_t tns_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+		offset += length;
+		IMQUIC_MOQ_CHECK_ERR(tns_len >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Namespace (%"SCNu64" bytes)\n",
+			imquic_get_connection_name(moq->conn), tns_len);
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %.*s\n",
+			imquic_get_connection_name(moq->conn), (int)tns_len, &bytes[offset]);
+		tns[i].length = tns_len;
+		tns[i].buffer = tns_len ? &bytes[offset] : NULL;
+		tns[i].next = (i == tns_num - 1) ? NULL : (i < 31 ? &tns[i+1] : NULL);
+		offset += tns_len;
+	}
+	uint64_t tn_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	if(moq->version < IMQUIC_MOQ_VERSION_11) {
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	} else {
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	}
+	IMQUIC_MOQ_CHECK_ERR(tn_len > 4096, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid track name length");
+	offset += length;
+	IMQUIC_MOQ_CHECK_ERR(tn_len > blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Name (%"SCNu64" bytes)\n",
+		imquic_get_connection_name(moq->conn), tn_len);
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %.*s\n",
+		imquic_get_connection_name(moq->conn), (int)tn_len, &bytes[offset]);
+	imquic_moq_name tn = {
+		.length = tn_len,
+		.buffer = tn_len ? &bytes[offset] : NULL
+	};
+	offset += tn_len;
+	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias: %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), track_alias);
+	uint8_t group_order = bytes[offset];
+	offset++;
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8")\n",
+		imquic_get_connection_name(moq->conn), group_order);
+	if(group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING) {
+		IMQUIC_MOQ_CHECK_ERR(bytes[offset] > 1, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	}
+	IMQUIC_MOQ_CHECK_ERR(bytes[offset] > 1, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Content Exists value");
+	uint8_t content_exists = bytes[offset];
+	offset++;
+	IMQUIC_MOQ_CHECK_ERR(content_exists && blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Content Exists: %"SCNu8"\n",
+		imquic_get_connection_name(moq->conn), content_exists);
+	imquic_moq_location largest = { 0 };
+	if(content_exists > 0) {
+		largest.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Group ID: %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), largest.group);
+		largest.object = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Object ID: %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), largest.object);
+	}
+	gboolean forward = bytes[offset];
+	offset++;
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Forward: %"SCNu8")\n",
+		imquic_get_connection_name(moq->conn), forward);
+	uint64_t params_num = 0;
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
+	params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
+		imquic_get_connection_name(moq->conn), params_num);
+	for(i = 0; i<params_num; i++) {
+		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH");
+	}
+#ifdef HAVE_QLOG
+	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish");
+		json_object_set_new(message, "request_id", json_integer(request_id));
+		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
+		imquic_qlog_moq_message_add_track(message, &tn);
+		json_object_set_new(message, "track_alias", json_integer(track_alias));
+		json_object_set_new(message, "group_order", json_integer(group_order));
+		json_object_set_new(message, "content_exists", json_integer(content_exists));
+		if(content_exists > 0) {
+			json_object_set_new(message, "largest_group_id", json_integer(largest.group));
+			json_object_set_new(message, "largest_object_id", json_integer(largest.object));
+		}
+		json_object_set_new(message, "forward", json_integer(forward));
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "publish_parameters");
+		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
+	}
+#endif
+	/* Notify the application */
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish) {
+		moq->conn->socket->callbacks.moq.incoming_publish(moq->conn,
+			request_id, &tns[0], &tn, track_alias,
+			(group_order == IMQUIC_MOQ_ORDERING_DESCENDING),
+			&largest, forward,
+			(parameters.auth_token_set ? parameters.auth_token : NULL),
+			(parameters.auth_token_set ? parameters.auth_token_len : 0));
+	} else {
+		/* FIXME No handler for this request, let's reject it ourselves */
+		//~ imquic_moq_reject_publish(moq->conn, request_id, IMQUIC_MOQ_PUBERR_NOT_SUPPORTED, "Not handled");
+	}
+	if(error)
+		*error = 0;
+	return offset;
+}
+
+size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	if(bytes == NULL || blen < 1)
+		return 0;
+	size_t offset = 0;
+	uint8_t length = 0;
+	uint64_t request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), request_id);
+	gboolean forward = bytes[offset];
+	offset++;
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_OK");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Forward: %"SCNu8")\n",
+		imquic_get_connection_name(moq->conn), forward);
+	uint8_t priority = bytes[offset];
+	offset++;
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_OK");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Subscriber Priority: %"SCNu8")\n",
+		imquic_get_connection_name(moq->conn), priority);
+	uint8_t group_order = bytes[offset];
+	offset++;
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_OK");
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8")\n",
+		imquic_get_connection_name(moq->conn), group_order);
+	uint64_t filter = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Filter type: %s (%"SCNu64")\n",
+		imquic_get_connection_name(moq->conn), imquic_moq_filter_type_str(filter), filter);
+	imquic_moq_location start = { 0 };
+	if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_START || filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		start.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Group: %"SCNu64")\n",
+			imquic_get_connection_name(moq->conn), start.group);
+		start.object = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Object: %"SCNu64")\n",
+			imquic_get_connection_name(moq->conn), start.object);
+	}
+	imquic_moq_location end = { 0 };
+	if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		end.group = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Group: %"SCNu64")\n",
+			imquic_get_connection_name(moq->conn), end.group);
+		if(moq->version < IMQUIC_MOQ_VERSION_08) {
+			end.object = imquic_read_varint(&bytes[offset], blen-offset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
+			offset += length;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Object: %"SCNu64")\n",
+				imquic_get_connection_name(moq->conn), end.object);
+		}
+	}
+	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
+		imquic_get_connection_name(moq->conn), params_num);
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	uint64_t i = 0;
+	for(i = 0; i<params_num; i++) {
+		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
+		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
+	}
+#ifdef HAVE_QLOG
+	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish_ok");
+		json_object_set_new(message, "request_id", json_integer(request_id));
+		json_object_set_new(message, "forward", json_integer(forward));
+		json_object_set_new(message, "subscriber_priority", json_integer(priority));
+		json_object_set_new(message, "group_order", json_integer(group_order));
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
+		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
+	}
+#endif
+	/* Notify the application */
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_accepted) {
+		moq->conn->socket->callbacks.moq.publish_accepted(moq->conn,
+			request_id, forward, priority, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING),
+			filter, &start, &end,
+			(parameters.auth_token_set ? parameters.auth_token : NULL),
+			(parameters.auth_token_set ? parameters.auth_token_len : 0));
+	}
+	if(error)
+		*error = 0;
+	return offset;
+}
+
+size_t imquic_moq_parse_publish_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	if(bytes == NULL || blen < 1)
+		return 0;
+	size_t offset = 0;
+	uint8_t length = 0;
+	uint64_t request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_ERROR");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), request_id);
+	/* FIXME Should check if this request ID exists, or do we leave it to the application? */
+	uint64_t error_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_ERROR");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
+		imquic_get_connection_name(moq->conn), imquic_moq_sub_error_code_str(error_code), error_code);
+	uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_ERROR");
+	offset += length;
+	char reason[1024], *reason_str = NULL;
+	if(rs_len > 0) {
+		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken PUBLISH_ERROR");
+		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid reason length");
+		int reason_len = (int)rs_len;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
+			imquic_get_connection_name(moq->conn), reason_len, &bytes[offset]);
+		if(reason_len > 0) {
+			g_snprintf(reason, sizeof(reason), "%.*s", reason_len, &bytes[offset]);
+			reason_str = reason;
+		}
+		offset += reason_len;
+	}
+#ifdef HAVE_QLOG
+	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish_error");
+		json_object_set_new(message, "request_id", json_integer(request_id));
+		json_object_set_new(message, "error_code", json_integer(error_code));
+		if(reason_str != NULL)
+			json_object_set_new(message, "reason", json_string(reason_str));
+		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
+	}
+#endif
+	/* Notify the application */
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_error)
+		moq->conn->socket->callbacks.moq.publish_error(moq->conn, request_id, error_code, reason_str);
+	if(error)
+		*error = 0;
+	return offset;
+}
+
 size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
@@ -2082,11 +2605,11 @@ size_t imquic_moq_parse_subscribe_error(imquic_moq_context *moq, uint8_t *bytes,
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_sub_error_code_str(error_code), error_code);
 	uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
 	offset += length;
 	char reason[1024], *reason_str = NULL;
 	if(rs_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(rs_len >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
+		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
 		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
@@ -2097,17 +2620,21 @@ size_t imquic_moq_parse_subscribe_error(imquic_moq_context *moq, uint8_t *bytes,
 		}
 		offset += reason_len;
 	}
-	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
-	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias: %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), track_alias);
+	uint64_t track_alias = 0;
+	if(moq->version < IMQUIC_MOQ_VERSION_12) {
+		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
+		track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_ERROR");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias: %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), track_alias);
+	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		json_object_set_new(message, "track_alias", json_integer(track_alias));
+		if(moq->version < IMQUIC_MOQ_VERSION_12)
+			json_object_set_new(message, "track_alias", json_integer(track_alias));
 		json_object_set_new(message, "error_code", json_integer(error_code));
 		if(reason_str != NULL)
 			json_object_set_new(message, "reason", json_string(reason_str));
@@ -3129,7 +3656,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 	return offset;
 }
 
-size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error) {
+size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_datagram_message_type dtype, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 5)
@@ -3166,7 +3693,10 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		imquic_get_connection_name(moq->conn), priority);
 	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	if(dtype == IMQUIC_MOQ_OBJECT_DATAGRAM) {
+	/* TODO Check EOG too */
+	gboolean has_ext = FALSE;
+	imquic_moq_datagram_message_type_parse(moq->version, dtype, &has_ext, NULL);
+	if(has_ext) {
 		/* The object contains extensions */
 		if(moq->version > IMQUIC_MOQ_VERSION_08) {
 			ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -3268,7 +3798,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	return offset;
 }
 
-size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error) {
+size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_datagram_message_type dtype, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(moq->version < IMQUIC_MOQ_VERSION_08)
@@ -3298,19 +3828,19 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 		imquic_get_connection_name(moq->conn), priority);
 	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	if(dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS && moq->version > IMQUIC_MOQ_VERSION_08) {
+	if(moq->version > IMQUIC_MOQ_VERSION_08 &&
+			((moq->version <= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11) ||
+			(moq->version >= IMQUIC_MOQ_VERSION_12 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS))) {
 		/* The object contains extensions */
-		if(moq->version > IMQUIC_MOQ_VERSION_08) {
-			ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
-			IMQUIC_MOQ_CHECK_ERR(moq->version >= IMQUIC_MOQ_VERSION_11 && ext_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Extensions length is 0 but type is OBJECT_DATAGRAM_STATUS");
-			offset += length;
-			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
-				imquic_get_connection_name(moq->conn), ext_len);
-			ext_offset = offset;
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || ext_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
-			offset += ext_len;
-		}
+		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+		IMQUIC_MOQ_CHECK_ERR(moq->version >= IMQUIC_MOQ_VERSION_11 && ext_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Extensions length is 0 but type is OBJECT_DATAGRAM_STATUS");
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), ext_len);
+		ext_offset = offset;
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || ext_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+		offset += ext_len;
 	}
 	uint64_t object_status = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
@@ -3481,13 +4011,17 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:          %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
 	uint64_t subgroup_id = 0;
-	if(dtype == IMQUIC_MOQ_SUBGROUP_HEADER || dtype == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT || dtype == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY) {
-		/* Starting from v11, the subgroup ID property is optional */
+	/* Starting from v11, the subgroup ID property is optional */
+	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE, is_eog = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, dtype, &has_subgroup, &is_sgid0, &has_ext, &is_eog);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, ext=%d, eog=%d\n",
+		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_ext, is_eog);
+	if(has_subgroup) {
 		subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
 		offset += length;
 	} else {
-		/* TODO The subgroup ID may beed to be set to the first object ID, in some cases */
+		/* TODO The subgroup ID may need to be set to the first object ID, in some cases */
 	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subgroup ID:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), subgroup_id);
@@ -3528,9 +4062,11 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	offset += length;
 	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_08 &&
-			(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
-			moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0)) {
+	/* TODO We can optimize this by only doing it once, when we parse the header */
+	/* TODO Check EOG too */
+	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_subgroup, &is_sgid0, &has_ext, NULL);
+	if(has_ext) {
 		/* The object contains extensions */
 		if(moq->version > IMQUIC_MOQ_VERSION_08) {
 			ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -3609,8 +4145,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object Status:  %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), object_status);
 	}
-	if(moq->version >= IMQUIC_MOQ_VERSION_11 && !moq_stream->got_objects &&
-			(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT)) {
+	if(moq->version >= IMQUIC_MOQ_VERSION_11 && !moq_stream->got_objects && !has_subgroup && !is_sgid0) {
 		/* Starting from v11, there are cases where the subgroup ID
 		 * is set to the first object we receive in the sequence */
 		moq_stream->subgroup_id = object_id;
@@ -4246,6 +4781,160 @@ size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, s
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_cancel");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
+		json_object_set_new(message, "error_code", json_integer(error));
+		if(reason != NULL)
+			json_object_set_new(message, "reason", json_string(reason));
+		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
+	}
+#endif
+	return offset;
+}
+
+size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, uint8_t group_order,
+		gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id, gboolean forward, imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
+			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH));
+		return 0;
+	}
+	size_t offset = imquic_write_varint(request_id, bytes, blen);
+	/* Potentially multiple namespaces (tuple) */
+	uint64_t tns_num = 0;
+	imquic_moq_namespace *temp = track_namespace;
+	while(temp) {
+		if(temp->length > 0 && temp->buffer == NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
+				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
+			return 0;
+		}
+		tns_num++;
+		temp = temp->next;
+	}
+	if(tns_num == 0 || tns_num > 32) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
+		return 0;
+	}
+	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
+	temp = track_namespace;
+	while(temp) {
+		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
+		if(temp->length > 0) {
+			memcpy(&bytes[offset], temp->buffer, temp->length);
+			offset += temp->length;
+		}
+		temp = temp->next;
+	}
+	if(track_name->length > 4096) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
+		return 0;
+	}
+	offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset);
+	if(track_name->length > 0) {
+		memcpy(&bytes[offset], track_name->buffer, track_name->length);
+		offset += track_name->length;
+	}
+	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
+	bytes[offset] = group_order;
+	offset++;
+	bytes[offset] = content_exists;
+	offset++;
+	if(content_exists) {
+		offset += imquic_write_varint(largest_group_id, &bytes[offset], blen-offset);
+		offset += imquic_write_varint(largest_object_id, &bytes[offset], blen-offset);
+	}
+	bytes[offset] = forward;
+	offset++;
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+#ifdef HAVE_QLOG
+	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish");
+		json_object_set_new(message, "request_id", json_integer(request_id));
+		imquic_qlog_moq_message_add_namespace(message, track_namespace);
+		imquic_qlog_moq_message_add_track(message, track_name);
+		json_object_set_new(message, "track_alias", json_integer(track_alias));
+		json_object_set_new(message, "group_order", json_integer(group_order));
+		json_object_set_new(message, "content_exists", json_integer(content_exists));
+		if(content_exists > 0) {
+			json_object_set_new(message, "largest_group_id", json_integer(largest_group_id));
+			json_object_set_new(message, "largest_object_id", json_integer(largest_object_id));
+		}
+		json_object_set_new(message, "forward", json_integer(forward));
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
+	}
+#endif
+	return offset;
+}
+
+size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+		gboolean forward, uint8_t priority, uint8_t group_order,
+		imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object,
+		imquic_moq_subscribe_parameters *parameters) {
+	if(bytes == NULL || blen < 1) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH));
+		return 0;
+	}
+	size_t offset = imquic_write_varint(request_id, bytes, blen);
+	bytes[offset] = forward;
+	offset++;
+	bytes[offset] = priority;
+	offset++;
+	bytes[offset] = group_order;
+	offset++;
+	offset += imquic_write_varint(filter, &bytes[offset], blen-offset);
+	if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_START || filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		offset += imquic_write_varint(start_group, &bytes[offset], blen-offset);
+		offset += imquic_write_varint(start_object, &bytes[offset], blen-offset);
+	}
+	if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		offset += imquic_write_varint(end_group, &bytes[offset], blen-offset);
+		if(moq->version < IMQUIC_MOQ_VERSION_08)
+			offset += imquic_write_varint(end_object, &bytes[offset], blen-offset);
+	}
+	uint8_t params_num = 0;
+	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+#ifdef HAVE_QLOG
+	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish_ok");
+		json_object_set_new(message, "request_id", json_integer(request_id));
+		json_object_set_new(message, "forward", json_integer(forward));
+		json_object_set_new(message, "subscriber_priority", json_integer(priority));
+		json_object_set_new(message, "group_order", json_integer(group_order));
+		json_object_set_new(message, "filter_type", json_integer(filter));
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
+	}
+#endif
+	return offset;
+}
+
+size_t imquic_moq_add_publish_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+		imquic_moq_pub_error_code error, const char *reason) {
+	if(bytes == NULL || blen < 1 || (reason && strlen(reason) > 1024)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_ERROR));
+		return 0;
+	}
+	size_t offset = imquic_write_varint(request_id, bytes, blen);
+	offset += imquic_write_varint(error, &bytes[offset], blen-offset);
+	size_t reason_len = reason ? strlen(reason) : 0;
+	offset += imquic_write_varint(reason_len, &bytes[offset], blen-offset);
+	if(reason_len > 0) {
+		memcpy(&bytes[offset], reason, reason_len);
+		offset += reason_len;
+	}
+#ifdef HAVE_QLOG
+	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("subscribe_error");
+		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error));
 		if(reason != NULL)
 			json_object_set_new(message, "reason", json_string(reason));
@@ -5078,12 +5767,13 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 		uint8_t *payload, size_t plen, size_t extensions_count, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM, moq->version));
+			imquic_get_connection_name(moq->conn), imquic_moq_datagram_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM, moq->version));
 		return 0;
 	}
-	imquic_moq_data_message_type dtype = IMQUIC_MOQ_OBJECT_DATAGRAM;
-	if(moq->version >= IMQUIC_MOQ_VERSION_11 && (extensions == NULL || elen == 0))
-		dtype = IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT;
+	imquic_moq_datagram_message_type dtype = IMQUIC_MOQ_OBJECT_DATAGRAM;
+	/* TODO Involve EOG */
+	gboolean has_ext = (extensions != NULL && elen > 0), is_eog = FALSE;
+	dtype = imquic_moq_datagram_message_type_return(moq->version, has_ext, is_eog);
 	size_t offset = imquic_write_varint(dtype, bytes, blen);
 	if(moq->version < IMQUIC_MOQ_VERSION_07)
 		offset += imquic_write_varint(request_id, &bytes[offset], blen-offset);
@@ -5092,7 +5782,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
 	bytes[offset] = priority;
 	offset++;
-	if(moq->version >= IMQUIC_MOQ_VERSION_08 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM)
+	if(moq->version >= IMQUIC_MOQ_VERSION_08 && has_ext)
 		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions_count, extensions, elen);
 	if(moq->version < IMQUIC_MOQ_VERSION_08)
 		offset += imquic_write_varint(object_status, &bytes[offset], blen-offset);
@@ -5108,25 +5798,26 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
 		uint64_t object_status, uint8_t *extensions, size_t elen) {
 	if(moq->version < IMQUIC_MOQ_VERSION_08) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send %s on a connection using %s\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS, moq->version),
+			imquic_get_connection_name(moq->conn), imquic_moq_datagram_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS, moq->version),
 			imquic_moq_version_str(moq->version));
 		return 0;
 	}
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS, moq->version));
+			imquic_get_connection_name(moq->conn), imquic_moq_datagram_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS, moq->version));
 		return 0;
 	}
-	imquic_moq_data_message_type dtype = IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS;
-	if(moq->version >= IMQUIC_MOQ_VERSION_11 && (extensions == NULL || elen == 0))
-		dtype = IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT;
+	imquic_moq_datagram_message_type dtype = (moq->version >= IMQUIC_MOQ_VERSION_12 ? IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS : IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11);
+	gboolean has_ext = (extensions != NULL && elen > 0);
+	if(moq->version >= IMQUIC_MOQ_VERSION_11 && has_ext)
+		dtype = (moq->version >= IMQUIC_MOQ_VERSION_12 ? IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT : IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11);
 	size_t offset = imquic_write_varint(dtype, bytes, blen);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
 	bytes[offset] = priority;
 	offset++;
-	if(moq->version >= IMQUIC_MOQ_VERSION_08 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS)
+	if(moq->version >= IMQUIC_MOQ_VERSION_08 && has_ext)
 		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, 0, extensions, elen);
 	offset += imquic_write_varint(object_status, &bytes[offset], blen-offset);
 	return offset;
@@ -5214,9 +5905,11 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq
 	}
 	size_t offset = 0;
 	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
-	if(moq->version >= IMQUIC_MOQ_VERSION_08 &&
-			(moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY ||
-			moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || moq_stream->type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0))
+	/* TODO We can optimize this by only doing it once, when we parse the header */
+	/* TODO Involve EOG too */
+	gboolean has_ext = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_ext, NULL);
+	if(has_ext)
 		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions_count, extensions, elen);
 	if(payload == NULL)
 		plen = 0;
@@ -5951,6 +6644,157 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
 	return 0;
 }
 
+int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+		gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
+			tn == NULL || (tn->buffer == NULL && tn->length > 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	if(moq->version < IMQUIC_MOQ_VERSION_12) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Publishing not supported on a connection using %s\n",
+			imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	/* Make sure we can send this */
+	if(request_id < moq->next_request_id) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Request ID lower than the next we expected (%"SCNu64" < %"SCNu64")\n",
+			imquic_get_connection_name(conn), request_id, moq->next_request_id);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	if(request_id >= moq->max_request_id) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Reached the Maximum Request ID (%"SCNu64")\n",
+			imquic_get_connection_name(conn), moq->max_request_id);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	uint64_t request_id_increment = (imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
+	moq->next_request_id = request_id + request_id_increment;
+	/* Send the request */
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer), poffset = 5, start = 0;
+	size_t sb_len = 0;
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	if(auth && authlen > 0) {
+		parameters.auth_token_set = TRUE;
+		if(authlen > sizeof(parameters.auth_token)) {
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+				imquic_get_connection_name(moq->conn), authlen, sizeof(parameters.auth_token));
+			authlen = sizeof(parameters.auth_token);
+		}
+		memcpy(parameters.auth_token, auth, authlen);
+		parameters.auth_token_len = authlen;
+	}
+	sb_len = imquic_moq_add_publish(moq, &buffer[poffset], blen-poffset,
+		request_id, tns, tn, track_alias,
+		descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING,
+		(largest != NULL), (largest ? largest->group : 0), (largest ? largest->object : 0),	/* FIXME Should we validate the location? */
+		forward, &parameters);
+	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH, buffer, blen, poffset, sb_len, &start);
+	imquic_connection_send_on_stream(conn, moq->control_stream_id,
+		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
+	moq->control_stream_offset += sb_len;
+	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
+int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
+		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	if(moq->version < IMQUIC_MOQ_VERSION_12) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Publishing not supported on a connection using %s\n",
+			imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	gboolean content_exists = (start_location && end_location);
+	if(content_exists && end_location->group > 0 && start_location->group > end_location->group) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
+			imquic_get_connection_name(conn), end_location->group, start_location->group);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	/* TODO Check if we were subscribed */
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer), poffset = 5, start = 0;
+	size_t sb_len = 0;
+	imquic_moq_subscribe_parameters parameters = { 0 };
+	if(auth && authlen > 0) {
+		parameters.auth_token_set = TRUE;
+		if(authlen > sizeof(parameters.auth_token)) {
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+				imquic_get_connection_name(moq->conn), authlen, sizeof(parameters.auth_token));
+			authlen = sizeof(parameters.auth_token);
+		}
+		memcpy(parameters.auth_token, auth, authlen);
+		parameters.auth_token_len = authlen;
+	}
+	sb_len = imquic_moq_add_publish_ok(moq, &buffer[poffset], blen-poffset,
+		request_id, forward, priority, descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING,
+		filter_type,
+			(content_exists ? start_location->group : 0), (content_exists ? start_location->object : 0),
+			(content_exists ? end_location->group : 0), (content_exists ? end_location->object : 0),
+		&parameters);
+	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_OK, buffer, blen, poffset, sb_len, &start);
+	imquic_connection_send_on_stream(conn, moq->control_stream_id,
+		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
+	moq->control_stream_offset += sb_len;
+	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
+int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_code, const char *reason) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || (reason && strlen(reason) > 1024)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	if(moq->version < IMQUIC_MOQ_VERSION_12) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Publishing not supported on a connection using %s\n",
+			imquic_get_connection_name(conn), imquic_moq_version_str(moq->version));
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	/* TODO Check if we were subscribed */
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer), poffset = 5, start = 0;
+	size_t sb_len = imquic_moq_add_publish_error(moq, &buffer[poffset], blen-poffset, request_id, error_code, reason);
+	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_ERROR, buffer, blen, poffset, sb_len, &start);
+	imquic_connection_send_on_stream(conn, moq->control_stream_id,
+		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
+	moq->control_stream_offset += sb_len;
+	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
 int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t priority, gboolean descending, gboolean forward,
 		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
@@ -6658,8 +7502,9 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			} else {
 				/* TODO Change the type depending on whether extensions/subgroup will be set:
 				 * since we don't have an API for that, for now we always set the type
-				 * that will allow us to dynamically use them all */
-				moq_stream->type = IMQUIC_MOQ_SUBGROUP_HEADER;
+				 * that will allow us to dynamically use them all. This also means we
+				 * currently don't have a way to specify an End-of-Group flag */
+				moq_stream->type = (moq->version == IMQUIC_MOQ_VERSION_11 ? IMQUIC_MOQ_SUBGROUP_HEADER_v11 : IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
 			}
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);

@@ -335,6 +335,41 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_incoming_publish_cb(imquic_endpoint *endpoint,
+		void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+			gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_publish = incoming_publish;
+	}
+}
+
+void imquic_set_publish_accepted_cb(imquic_endpoint *endpoint,
+		void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
+			imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.publish_accepted = publish_accepted;
+	}
+}
+
+void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
+		void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_codes, const char *reason)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.publish_error = publish_error;
+	}
+}
+
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
 		void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
 			uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen)) {
