@@ -844,7 +844,7 @@ void imquic_set_publish_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_error Pointer to the function that will fire when a \c PUBLISH is rejected */
 void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
-	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason));
+	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure

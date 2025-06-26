@@ -360,7 +360,7 @@ void imquic_set_publish_accepted_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
-		void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_codes, const char *reason)) {
+		void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_codes, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
