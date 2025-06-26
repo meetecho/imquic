@@ -6678,6 +6678,12 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 	}
 	uint64_t request_id_increment = (imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
 	moq->next_request_id = request_id + request_id_increment;
+	/* Track this subscription */
+	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, track_alias);
+	imquic_mutex_lock(&moq->mutex);
+	g_hash_table_insert(moq->subscriptions_by_id, imquic_dup_uint64(request_id), moq_sub);
+	g_hash_table_insert(moq->subscriptions, imquic_dup_uint64(track_alias), moq_sub);
+	imquic_mutex_unlock(&moq->mutex);
 	/* Send the request */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;

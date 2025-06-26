@@ -23,6 +23,7 @@ typedef struct demo_options {
 	uint64_t first_group;
 	const char *auth_info;
 	const char *delivery;
+	gboolean publish;
 	gboolean extensions;
 	const char *ip;
 	int port;

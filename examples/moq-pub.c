@@ -46,7 +46,7 @@ static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
 static char pub_tns_buffer[256];
 static const char *pub_tns = NULL;
 
-static volatile int started = 0, send_objects = 0;
+static volatile int started = 0, send_objects = 0, done_sent = 0;
 static uint64_t max_request_id = 20;
 static imquic_moq_location sub_start = { 0 }, sub_end = { 0 };
 static uint64_t group_id = 0, object_id = 0;
@@ -68,7 +68,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_get_connection_name(conn), imquic_moq_version_str(imquic_moq_get_version(conn)));
 	moq_version = imquic_moq_get_version(conn);
 	g_atomic_int_set(&connected, 1);
-	/* Let's announce our namespace */
+	/* Let's announce our namespace or publish right away */
 	imquic_moq_namespace tns[32];	/* FIXME */
 	int i = 0;
 	while(options.track_namespace[i] != NULL) {
@@ -79,9 +79,30 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		i++;
 	}
 	pub_tns = imquic_moq_namespace_str(tns, pub_tns_buffer, sizeof(pub_tns_buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), options.track_name);
-	imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &tns[0]);
+	if(!options.publish) {
+		/* We use ANNOUNCE + SUBSCRIBE */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), options.track_name);
+		imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &tns[0]);
+	} else {
+		/* We use PUBLISH */
+		if(moq_version < IMQUIC_MOQ_VERSION_12) {
+			/* Version is too old, we can't: stop here */
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
+			g_atomic_int_inc(&stop);
+			return;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s'/'%s'\n", imquic_get_connection_name(conn), pub_tns, options.track_name);
+		imquic_moq_name tn = {
+			.buffer = (uint8_t *)options.track_name,
+			.length = strlen(options.track_name)
+		};
+		moq_request_id = imquic_moq_get_next_request_id(conn);
+		moq_track_alias = 0;
+		gboolean forward = FALSE;
+		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias,
+			FALSE, NULL, forward, NULL, 0);
+	}
 }
 
 static void imquic_demo_announce_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
@@ -100,6 +121,25 @@ static void imquic_demo_announce_error(imquic_connection *conn, uint64_t request
 	g_atomic_int_inc(&stop);
 }
 
+static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
+		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish '%"SCNu64"' accepted\n",
+		imquic_get_connection_name(conn), request_id);
+	/* Start sending objects */
+	sub_end.group = IMQUIC_MAX_VARINT;
+	sub_end.object = IMQUIC_MAX_VARINT;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
+	g_atomic_int_set(&send_objects, 1);
+}
+
+static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_code, const char *reason) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, error_code, reason);
+	/* Stop here */
+	g_atomic_int_inc(&stop);
+}
+
 static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
 	char tns_buffer[256], tn_buffer[256];
@@ -112,7 +152,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST, "Unknown namespace or track", track_alias);
 		return;
 	}
-	if(g_atomic_int_get(&send_objects)) {
+	if(options.publish || g_atomic_int_get(&send_objects)) {
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] We already have a subscriber\n", imquic_get_connection_name(conn));
@@ -236,6 +276,7 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 			imquic_get_connection_name(moq_conn));
 		/* Send a SUBSCRIBE_DONE */
 		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		moq_track_alias = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -278,6 +319,7 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 			imquic_get_connection_name(moq_conn));
 		/* Send a SUBSCRIBE_DONE */
 		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		moq_track_alias = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -369,6 +411,14 @@ int main(int argc, char *argv[]) {
 	}
 	if(options.first_group > 0)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %"SCNu64" (will send the 'Prior Group ID Gap' extension)\n", options.first_group);
+	if(options.publish) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of ANNOUNCE + SUBSCRIBE\n");
+		if(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12)) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
+			ret = 1;
+			goto done;
+		}
+	}
 
 	/* Check if we need to create a QLOG file, and which we should save */
 	gboolean qlog_quic = FALSE, qlog_http3 = FALSE, qlog_moq = FALSE;
@@ -432,6 +482,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_moq_ready_cb(client, imquic_demo_ready);
 	imquic_set_announce_accepted_cb(client, imquic_demo_announce_accepted);
 	imquic_set_announce_error_cb(client, imquic_demo_announce_error);
+	imquic_set_publish_accepted_cb(client, imquic_demo_publish_accepted);
+	imquic_set_publish_error_cb(client, imquic_demo_publish_error);
 	imquic_set_incoming_subscribe_cb(client, imquic_demo_incoming_subscribe);
 	imquic_set_incoming_unsubscribe_cb(client, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
@@ -499,17 +551,21 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	g_list_free_full(objects, (GDestroyNotify)g_free);
-	/* We're done, unannounce */
-	imquic_moq_namespace tns[32];	/* FIXME */
-	int i = 0;
-	while(options.track_namespace[i] != NULL) {
-		const char *track_namespace = options.track_namespace[i];
-		tns[i].buffer = (uint8_t *)track_namespace;
-		tns[i].length = strlen(track_namespace);
-		tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
-		i++;
+	/* We're done, check if we need to send a SUBSCRIBE_DONE and/or an UNANNOUNCE */
+	if(g_atomic_int_get(&started) && !g_atomic_int_get(&done_sent))
+		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
+	if(!options.publish) {
+		imquic_moq_namespace tns[32];	/* FIXME */
+		int i = 0;
+		while(options.track_namespace[i] != NULL) {
+			const char *track_namespace = options.track_namespace[i];
+			tns[i].buffer = (uint8_t *)track_namespace;
+			tns[i].length = strlen(track_namespace);
+			tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
+			i++;
+		}
+		imquic_moq_unannounce(moq_conn, &tns[0]);
 	}
-	imquic_moq_unannounce(moq_conn, &tns[0]);
 	/* Shutdown the client */
 	imquic_shutdown_endpoint(client);
 

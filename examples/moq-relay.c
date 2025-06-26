@@ -41,8 +41,7 @@ static void imquic_demo_handle_signal(int signum) {
 /* Relay state */
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GMutex mutex;
-static GHashTable *connections = NULL, *publishers = NULL, *subscribers = NULL,
-	*namespaces = NULL, *subscriptions = NULL, *subscriptions_by_id = NULL;
+static GHashTable *connections = NULL, *publishers = NULL, *subscribers = NULL, *namespaces = NULL;
 static GList *monitors = NULL;
 static GList *fetches = NULL;
 
@@ -50,6 +49,8 @@ static GList *fetches = NULL;
 typedef struct imquic_demo_moq_publisher {
 	imquic_connection *conn;
 	GHashTable *namespaces;
+	GHashTable *subscriptions;
+	GHashTable *subscriptions_by_id;
 	uint64_t relay_track_alias;
 	GMutex mutex;
 } imquic_demo_moq_publisher;
@@ -70,6 +71,7 @@ typedef struct imquic_demo_moq_track {
 	char *track_name;
 	uint64_t request_id;
 	uint64_t track_alias;
+	gboolean published;
 	gboolean pending;
 	GList *subscriptions;
 	GList *objects;
@@ -117,6 +119,9 @@ static imquic_demo_moq_publisher *imquic_demo_moq_publisher_create(imquic_connec
 	pub->conn = conn;
 	pub->namespaces = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_announcement_destroy);
+	pub->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+	pub->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
+
 	g_mutex_init(&pub->mutex);
 	return pub;
 }
@@ -134,6 +139,10 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
 			}
 			g_hash_table_unref(pub->namespaces);
 		}
+		if(pub->subscriptions != NULL)
+			g_hash_table_unref(pub->subscriptions);
+		if(pub->subscriptions_by_id != NULL)
+			g_hash_table_unref(pub->subscriptions_by_id);
 		g_mutex_clear(&pub->mutex);
 		g_free(pub);
 	}
@@ -180,8 +189,10 @@ static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 	if(t) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Removing track %s\n", t->track_name);
 		g_free(t->track_name);
-		g_hash_table_remove(subscriptions_by_id, &t->request_id);
-		g_hash_table_remove(subscriptions, &t->track_alias);
+		if(t->annc && t->annc->pub) {
+			g_hash_table_remove(t->annc->pub->subscriptions_by_id, &t->request_id);
+			g_hash_table_remove(t->annc->pub->subscriptions, &t->track_alias);
+		}
 		g_mutex_lock(&t->mutex);
 		GList *temp = t->subscriptions;
 		while(temp) {
@@ -488,6 +499,70 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	g_mutex_unlock(&mutex);
 }
 
+static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+		gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen) {
+	/* We received a publish */
+	char tns_buffer[256], tn_buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(name == NULL || strlen(name) == 0)
+		name = "temp";
+	/* We also treat an incoming PUBLISH as an ANNOUNCE for that namespace */
+	g_mutex_lock(&mutex);
+	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
+	if(annc == NULL) {
+		/* Find the publisher from this connection */
+		imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+		if(pub == NULL) {
+			/* Create a new one */
+			pub = imquic_demo_moq_publisher_create(conn);
+			g_hash_table_insert(publishers, conn, pub);
+		}
+		/* Let's keep track of it */
+		annc = imquic_demo_moq_announcement_create(pub, ns);
+		g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
+		g_hash_table_insert(namespaces, g_strdup(ns), annc);
+		//~ /* Check if there's monitors interested in this */
+		//~ GList *list = imquic_demo_match_monitors(conn, tns);
+		//~ if(list) {
+			//~ IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcement matches %d monitors\n",
+				//~ imquic_get_connection_name(conn), g_list_length(list));
+			//~ GList *temp = list;
+			//~ imquic_demo_moq_monitor *mon = NULL;
+			//~ while(temp) {
+				//~ mon = (imquic_demo_moq_monitor *)temp->data;
+				//~ if(mon->conn)
+					//~ imquic_moq_announce(mon->conn, imquic_moq_get_next_request_id(conn), tns);
+				//~ temp = temp->next;
+			//~ }
+			//~ g_list_free(list);
+		//~ }
+	}
+	/* We also treat it as if we sent a SUBSCRIBE that got accepted */
+	if(g_hash_table_lookup(annc->tracks, name) != NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "Track '%s' already published\n", name);
+		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_PUBERR_UNAUTHORIZED, "Track already published");
+		return;
+	}
+	imquic_demo_moq_track *track = imquic_demo_moq_track_create(annc, name);
+	track->request_id = request_id;
+	track->track_alias = track_alias;
+	track->published = TRUE;
+	annc->pub->relay_track_alias = track_alias + 1;
+	g_hash_table_insert(annc->tracks, g_strdup(name), track);
+	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
+	g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
+	g_mutex_unlock(&mutex);
+	/* Done */
+	imquic_moq_accept_publish(conn, request_id, forward, 0, FALSE,
+		IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL, NULL, 0);
+}
+
 static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
 	/* We received a subscribe */
@@ -528,6 +603,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Make sure we don't know this subscription already */
 	if(g_hash_table_lookup(sub->subscriptions_by_id, &request_id) != NULL) {
+		/* FIXME Should we return an error? */
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Already subscribed with ID %"SCNu64"\n", request_id);
 		return;
@@ -577,8 +653,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		track->request_id = imquic_moq_get_next_request_id(annc->pub->conn);
 		track->track_alias = annc->pub->relay_track_alias;
 		annc->pub->relay_track_alias++;
-		g_hash_table_insert(subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
-		g_hash_table_insert(subscriptions, imquic_uint64_dup(track->track_alias), track);
+		g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
+		g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
 		/* We send a 'Largest Object' filter to the subscriber, we'll filter ourselves in case */
 		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn,
 			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL, auth, authlen);
@@ -596,7 +672,13 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	}
 	/* Find the track associated to this subscription */
 	g_mutex_lock(&mutex);
-	imquic_demo_moq_track *track = g_hash_table_lookup(subscriptions_by_id, &request_id);
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub == NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "No publisher found for that subscription\n");
+		return;
+	}
+	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions_by_id, &request_id);
 	if(track == NULL) {
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
@@ -623,7 +705,13 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 		imquic_get_connection_name(conn), request_id, track_alias, error_code, reason);
 	/* Find the track associated to this subscription */
 	g_mutex_lock(&mutex);
-	imquic_demo_moq_track *track = g_hash_table_lookup(subscriptions_by_id, &request_id);
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub == NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "No publisher found for that subscription\n");
+		return;
+	}
+	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions_by_id, &request_id);
 	if(track == NULL) {
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
@@ -672,7 +760,13 @@ static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request
 		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
 	/* Find the track associated to this subscription */
 	g_mutex_lock(&mutex);
-	imquic_demo_moq_track *track = g_hash_table_lookup(subscriptions_by_id, &request_id);
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub == NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "No publisher found for that subscription\n");
+		return;
+	}
+	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions_by_id, &request_id);
 	if(track == NULL) {
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
@@ -933,7 +1027,14 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	}
 	/* Find the track associated to this subscription */
 	g_mutex_lock(&mutex);
-	imquic_demo_moq_track *track = g_hash_table_lookup(subscriptions, &object->track_alias);
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub == NULL) {
+		g_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No publisher found for that subscription\n",
+			imquic_get_connection_name(conn));
+		return;
+	}
+	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions, &object->track_alias);
 	if(track == NULL) {
 		g_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No track found for that subscription\n",
@@ -1140,6 +1241,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_announce_cb(server, imquic_demo_incoming_announce);
 	imquic_set_incoming_announce_cancel_cb(server, imquic_demo_incoming_announce_cancel);
 	imquic_set_incoming_unannounce_cb(server, imquic_demo_incoming_unannounce);
+	imquic_set_incoming_publish_cb(server, imquic_demo_incoming_publish);
 	imquic_set_incoming_subscribe_cb(server, imquic_demo_incoming_subscribe);
 	imquic_set_subscribe_accepted_cb(server, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(server, imquic_demo_subscribe_error);
@@ -1159,8 +1261,6 @@ int main(int argc, char *argv[]) {
 	publishers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)imquic_demo_moq_publisher_destroy);
 	subscribers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)imquic_demo_moq_subscriber_destroy);
 	namespaces = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
-	subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
-	subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 
 	/* Start the server */
 	imquic_start_endpoint(server);
@@ -1211,10 +1311,6 @@ done:
 		g_hash_table_unref(subscribers);
 	if(namespaces != NULL)
 		g_hash_table_unref(namespaces);
-	if(subscriptions != NULL)
-		g_hash_table_unref(subscriptions);
-	if(subscriptions_by_id != NULL)
-		g_hash_table_unref(subscriptions_by_id);
 	g_list_free_full(monitors, (GDestroyNotify)imquic_demo_moq_monitor_destroy);
 	if(ret == 1)
 		demo_options_show_usage();
