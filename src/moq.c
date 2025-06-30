@@ -106,6 +106,16 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 			parameters.max_auth_token_cache_size_set = TRUE;
 			parameters.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
 		}
+		if(moq->auth != NULL && moq->authlen > 0) {
+			parameters.auth_token_set = TRUE;
+			if(moq->authlen > sizeof(parameters.auth_token)) {
+				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
+					imquic_get_connection_name(moq->conn), moq->authlen, sizeof(parameters.auth_token));
+				moq->authlen = sizeof(parameters.auth_token);
+			}
+			memcpy(parameters.auth_token, moq->auth, moq->authlen);
+			parameters.auth_token_len = moq->authlen;
+		}
 		GList *versions = NULL;
 		if(moq->version == IMQUIC_MOQ_VERSION_ANY) {
 			/* Offer all newer supported versions */
@@ -1429,38 +1439,45 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
-	/* Generate a SERVER_SETUP to send back */
-	if(moq) {
-		imquic_moq_setup_parameters s_parameters = { 0 };
-		if(moq->version < IMQUIC_MOQ_VERSION_08) {
-			s_parameters.role_set = TRUE;
-			s_parameters.role = moq->type;
-		}
-		if(moq->local_max_request_id > 0) {
-			s_parameters.max_request_id_set = TRUE;
-			s_parameters.max_request_id = moq->local_max_request_id;
-		}
-		if(moq->version >= IMQUIC_MOQ_VERSION_11 && moq->local_max_auth_token_cache_size > 0) {
-			s_parameters.max_auth_token_cache_size_set = TRUE;
-			s_parameters.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
-		}
-		uint8_t buffer[200];
-		size_t blen = sizeof(buffer), poffset = 5, start = 0;
-		size_t ss_len = imquic_moq_add_server_setup(moq, &buffer[poffset], blen-offset, moq->version, &s_parameters);
-		if(moq->version >= IMQUIC_MOQ_VERSION_11 && moq->version <= IMQUIC_MOQ_VERSION_MAX) {
-			ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP, buffer, blen, poffset, ss_len, &start);
-		} else {
-			ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP_LEGACY, buffer, blen, poffset, ss_len, &start);
-		}
-		imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
-			&buffer[start], moq->control_stream_offset, ss_len, FALSE);
-		moq->control_stream_offset += ss_len;
-		imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
-		g_atomic_int_set(&moq->connected, 1);
-		/* Notify the application the session is ready */
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.moq_ready)
-			moq->conn->socket->callbacks.moq.moq_ready(moq->conn);
+	/* Notify the application, if we have a callback */
+	uint64_t error_code = 0;
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_moq_connection) {
+		error_code = moq->conn->socket->callbacks.moq.incoming_moq_connection(moq->conn,
+			(parameters.auth_token_set ? parameters.auth_token : NULL),
+			(parameters.auth_token_set ? parameters.auth_token_len : 0));
 	}
+	IMQUIC_MOQ_CHECK_ERR(error_code > 0, error, error_code, 0, "CLIENT_SETUP rejected by application");
+	/* If we got here, generate a SERVER_SETUP to send back */
+	imquic_moq_setup_parameters s_parameters = { 0 };
+	if(moq->version < IMQUIC_MOQ_VERSION_08) {
+		s_parameters.role_set = TRUE;
+		s_parameters.role = moq->type;
+	}
+	if(moq->local_max_request_id > 0) {
+		s_parameters.max_request_id_set = TRUE;
+		s_parameters.max_request_id = moq->local_max_request_id;
+	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_11 && moq->local_max_auth_token_cache_size > 0) {
+		s_parameters.max_auth_token_cache_size_set = TRUE;
+		s_parameters.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
+	}
+	uint8_t buffer[200];
+	blen = sizeof(buffer);
+	size_t poffset = 5, start = 0;
+	size_t ss_len = imquic_moq_add_server_setup(moq, &buffer[poffset], blen-offset, moq->version, &s_parameters);
+	if(moq->version >= IMQUIC_MOQ_VERSION_11 && moq->version <= IMQUIC_MOQ_VERSION_MAX) {
+		ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP, buffer, blen, poffset, ss_len, &start);
+	} else {
+		ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP_LEGACY, buffer, blen, poffset, ss_len, &start);
+	}
+	imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
+		&buffer[start], moq->control_stream_offset, ss_len, FALSE);
+	moq->control_stream_offset += ss_len;
+	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	g_atomic_int_set(&moq->connected, 1);
+	/* Notify the application the session is ready */
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.moq_ready)
+		moq->conn->socket->callbacks.moq.moq_ready(moq->conn);
 	/* Done */
 	if(error)
 		*error = 0;
@@ -6340,6 +6357,29 @@ imquic_moq_version imquic_moq_get_version(imquic_connection *conn) {
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
 	return version;
+}
+
+/* Connection auth configuration */
+int imquic_moq_set_connection_auth(imquic_connection *conn, uint8_t *auth, size_t authlen) {
+	if(auth == NULL || authlen == 0) {
+		auth = NULL;
+		authlen = 0;
+	}
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(conn->is_server || moq == NULL || moq->auth_set) {
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	if(!moq->auth_set) {
+		moq->auth = auth;
+		moq->authlen = authlen;
+	}
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
 }
 
 /* Maximum Request ID management */

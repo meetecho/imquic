@@ -20,6 +20,7 @@ typedef struct demo_options {
 	char *moq_version;
 	const char **track_namespace;
 	const char **track_name;
+	const char *relay_auth_info;
 	const char *auth_info;
 	const char *filter_type;
 	uint64_t start_group;

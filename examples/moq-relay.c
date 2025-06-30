@@ -376,6 +376,20 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	imquic_moq_set_max_request_id(conn, 20);
 }
 
+static uint64_t imquic_demo_incoming_moq_connection(imquic_connection *conn, uint8_t *auth, size_t authlen) {
+	/* We got a CLIENT_SETUP */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a new MoQ connection attempt\n",
+		imquic_get_connection_name(conn));
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(!imquic_moq_check_auth_info(conn, options.auth_info, auth, authlen)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
+		return IMQUIC_MOQ_UNAUTHORIZED;
+	}
+	/* Accept the connection */
+	return 0;
+}
+
 static void imquic_demo_ready(imquic_connection *conn) {
 	/* Negotiation was done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection ready (%s)\n",
@@ -1237,6 +1251,7 @@ int main(int argc, char *argv[]) {
 	if(options.webtransport && imquic_get_endpoint_subprotocol(server) != NULL)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Subprotocol: %s\n", imquic_get_endpoint_subprotocol(server));
 	imquic_set_new_moq_connection_cb(server, imquic_demo_new_connection);
+	imquic_set_incoming_moq_connection_cb(server, imquic_demo_incoming_moq_connection);
 	imquic_set_moq_ready_cb(server, imquic_demo_ready);
 	imquic_set_incoming_announce_cb(server, imquic_demo_incoming_announce);
 	imquic_set_incoming_announce_cancel_cb(server, imquic_demo_incoming_announce_cancel);

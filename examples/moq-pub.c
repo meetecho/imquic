@@ -45,6 +45,8 @@ static uint64_t moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
 static char pub_tns_buffer[256];
 static const char *pub_tns = NULL;
+static uint8_t relay_auth[256];
+static size_t relay_authlen = 0;
 
 static volatile int started = 0, send_objects = 0, done_sent = 0;
 static uint64_t max_request_id = 20;
@@ -60,6 +62,16 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBLISHER);
 	imquic_moq_set_version(conn, moq_version);
 	imquic_moq_set_max_request_id(conn, max_request_id);
+	/* Check if we need to prepare an auth token to connect to the relay */
+	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
+		relay_authlen = sizeof(relay_auth);
+		if(imquic_moq_auth_info_to_bytes(conn, options.relay_auth_info, relay_auth, &relay_authlen) < 0) {
+			relay_authlen = 0;
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
+				imquic_get_connection_name(conn));
+		}
+		imquic_moq_set_connection_auth(conn, relay_auth, relay_authlen);
+	}
 }
 
 static void imquic_demo_ready(imquic_connection *conn) {

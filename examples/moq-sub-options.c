@@ -18,6 +18,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any|legacy" },
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to subscribe to (can be called multiple times to create a tuple; default=none)", "namespace" },
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_name, "MoQ track name to subscribe to (can be called multiple times to subscribe to multiple tracks; default=none)", "name" },
+		{ "relay-auth-info", 'A', 0, G_OPTION_ARG_STRING, &options->relay_auth_info, "Auth info required to connect to the relay, if any (default=none)", "string" },
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to subscribe, if needed (default=none)", "string" },
 		{ "filter-type", 'F', 0, G_OPTION_ARG_STRING, &options->filter_type, "Filter type to use for SUBSCRIBE (default=LargestObject)", "LargestObject|NextGroupStart|AbsoluteStart|AbsoluteRange" },
 		{ "fetch", 'f', 0, G_OPTION_ARG_STRING, &options->fetch, "Use FETCH instead of SUBSCRIBE, in the specified order (ascending/descending)", "order" },

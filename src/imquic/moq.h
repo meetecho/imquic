@@ -775,7 +775,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...);
  * @returns A pointer to a imquic_client object, if successful, NULL otherwise */
 imquic_client *imquic_create_moq_client(const char *name, ...);
 
-/*! \brief Configure the callback function to be notified about new MoQ connections
+/*! \brief Configure the callback function to be notified about new QUIC connections
  * on the configured endpoint. For a server, it will be triggered any time
  * a client successfully connects to the server; for a client, it will
  * be triggered when the client successfully connects to the server. Notice
@@ -788,6 +788,16 @@ imquic_client *imquic_create_moq_client(const char *name, ...);
  * @param new_moq_connection Pointer to the function that will be invoked on the new MoQ connection */
 void imquic_set_new_moq_connection_cb(imquic_endpoint *endpoint,
 	void (* new_moq_connection)(imquic_connection *conn, void *user_data));
+/*! \brief Configure the callback function to be notified, as a server, when
+ * a \c CLIENT_SETUP is received. This is a chance, for instance, to evaluate
+ * the credentials that were provided. It's the application responsibility
+ * to accept or reject the connection at this point: returning 0 will accept
+ * the connection, while returning an error code will reject and close it.
+ * Connections are automatically accepted if this callback is not configured.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_moq_connection Pointer to the function that will be invoked when MoQ is ready to be used */
+void imquic_set_incoming_moq_connection_cb(imquic_endpoint *endpoint,
+	uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when a MoQ connection
  * has been successfully established. After this, the MoQ APIs can be used
  * to start exchanging MoQ messages.
@@ -1052,6 +1062,19 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version);
  * @param conn The imquic_connection to query
  * @returns The imquic_moq_version value */
 imquic_moq_version imquic_moq_get_version(imquic_connection *conn);
+
+/*! \brief Method to provide credentials, as a client, on a new connection.
+ * If credentials need to provided, this must be done as soon as the
+ * connection is established, and before sending any MoQ message.
+ * A good place to do that is the callback fired when a new connection is available.
+ * @note The method only copies the pointer and not the data, so it's the
+ * 'sapplication responsibility to ensure the data addressed by the pointer
+ * will be valid when accessed.
+ * @param conn The imquic_connection to set the version on
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_set_connection_auth(imquic_connection *conn, uint8_t *auth, size_t authlen);
 
 /*! \brief Helper function to set the Maximum Request ID a subscriber can send
  * \note If invoked before the MoQ connection setup, it will be put in the

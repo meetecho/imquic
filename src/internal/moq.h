@@ -314,6 +314,12 @@ typedef struct imquic_moq_context {
 	imquic_moq_role_type type;
 	/*! \brief Whether a role has been set */
 	gboolean role_set;
+	/*! \brief Auth data to use when connecting (clients only) */
+	uint8_t *auth;
+	/*! \brief Size of the auth data to use when connecting (clients only) */
+	size_t authlen;
+	/*! \brief Whether the auth data has been set */
+	gboolean auth_set;
 	/*! \brief Whether this is a QUIC server or client */
 	gboolean is_server;
 	/*! \brief Whether a MoQ control stream has been established */
@@ -1246,8 +1252,14 @@ size_t imquic_moq_subscribe_parameters_serialize(imquic_moq_context *moq,
 
 /*! \brief MoQ public callbacks */
 typedef struct imquic_moq_callbacks {
-	/*! \brief Callback function to be notified about new moQ connections */
+	/*! \brief Callback function to be notified about new QUIC connections, before MoQ has been involved */
 	void (* new_connection)(imquic_connection *conn, void *user_data);
+	/*! \brief Callback function to be notified about incoming \c CLIENT_SETUP messages
+	 * \note This only makes sense for servers: to accept a connection, servers
+	 * should use \ref imquic_moq_accept_connection; to reject a connection,
+	 * you can use \ref imquic_close_connection instead.. If a callback is not
+	 * configured, a \c SERVER_SETUP is sent automatically. */
+	uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified when a MoQ connection is ready (setup performed on both ends) */
 	void (* moq_ready)(imquic_connection *conn);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE messages */
