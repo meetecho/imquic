@@ -6755,7 +6755,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 }
 
 int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
-		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
+		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
@@ -6783,23 +6783,12 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, gboo
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t sb_len = 0;
-	imquic_moq_subscribe_parameters parameters = { 0 };
-	if(auth && authlen > 0) {
-		parameters.auth_token_set = TRUE;
-		if(authlen > sizeof(parameters.auth_token)) {
-			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Auth token too large (%zu > %zu), it will be truncated\n",
-				imquic_get_connection_name(moq->conn), authlen, sizeof(parameters.auth_token));
-			authlen = sizeof(parameters.auth_token);
-		}
-		memcpy(parameters.auth_token, auth, authlen);
-		parameters.auth_token_len = authlen;
-	}
 	sb_len = imquic_moq_add_publish_ok(moq, &buffer[poffset], blen-poffset,
 		request_id, forward, priority, descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING,
 		filter_type,
 			(content_exists ? start_location->group : 0), (content_exists ? start_location->object : 0),
 			(content_exists ? end_location->group : 0), (content_exists ? end_location->object : 0),
-		&parameters);
+		NULL);
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_OK, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, sb_len, FALSE);

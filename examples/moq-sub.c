@@ -135,7 +135,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	gboolean forward = TRUE;
 	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0))
 		forward = FALSE;
-	/* Iterate on all track names */
+	if(options.subscribe_announces) {
+		/* Only send a SUBSCRIBE_ANNOUNCES: the relay will send us a
+		 * PUBLISH request when there's something we can subscribe to */
+		imquic_moq_subscribe_announces(conn, imquic_moq_get_next_request_id(conn), tns, auth, authlen);
+		return;
+	}
+	/* If we got here, we're subscribing manually to the specified tracks,
+	 * either via SUBSCRIBE or FETCH, so iterate on all track names */
 	while(options.track_name[i] != NULL) {
 		const char *track_name = options.track_name[i];
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s'/'%s' (%s), using ID %"SCNu64"/%"SCNu64"\n",
@@ -200,6 +207,31 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	g_atomic_int_inc(&stop);
 }
 
+static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+		gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen) {
+	/* We received a publish */
+	char tns_buffer[256], tn_buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(name == NULL || strlen(name) == 0)
+		name = "temp";
+	/* Done */
+	forward = TRUE;
+	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0)) {
+		forward = FALSE;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a SUBSCRIBE_UPDATE in %d seconds\n",
+			imquic_get_connection_name(conn), options.update_subscribe);
+		request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
+		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
+	}
+	imquic_moq_accept_publish(conn, request_id, forward, 0, FALSE,
+		filter_type, &start_location, &end_location_sub);
+}
+
 static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
@@ -218,6 +250,18 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id
 	/* Stop here, unless it was a joining FETCH */
 	if(options.join_offset < 0)
 		g_atomic_int_inc(&stop);
+}
+
+static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to announcements '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
+		imquic_get_connection_name(conn), request_id);
+}
+
+static void imquic_demo_subscribe_announces_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to announcements in request '%"SCNu64"': error %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, error_code, reason);
+	/* Stop here */
+	g_atomic_int_inc(&stop);
 }
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
@@ -427,8 +471,13 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	if(options.track_name == NULL || options.track_name[0] == NULL) {
+	if(!options.subscribe_announces && (options.track_name == NULL || options.track_name[0] == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
+		ret = 1;
+		goto done;
+	}
+	if(options.subscribe_announces && options.fetch != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Can't enable SUBSCRIBE_ANNOUNCES and FETCH at the same time\n");
 		ret = 1;
 		goto done;
 	}
@@ -458,7 +507,7 @@ int main(int argc, char *argv[]) {
 		end_location.object = (options.end_object == IMQUIC_MAX_VARINT) ? 0 : (options.end_object + 1);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "FETCH range: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			start_location.group, start_location.object, end_location.group, end_location.object);
-	} else {
+	} else if(!options.subscribe_announces) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using '%s' as the SUBSCRIBE filter type\n", imquic_moq_filter_type_str(filter_type));
 		if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
 			start_location.group = options.start_group;
@@ -474,7 +523,7 @@ int main(int argc, char *argv[]) {
 				start_location.group, start_location.object, end_location.group);
 		}
 	}
-	if(options.update_subscribe) {
+	if(options.fetch == NULL && options.update_subscribe) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send a SUBSCRIBE_UPDATE to actually start streaming after %d seconds (note: ignored for versions earlier than 11)\n",
 			options.update_subscribe);
 	}
@@ -565,9 +614,12 @@ int main(int argc, char *argv[]) {
 	imquic_set_moq_ready_cb(client, imquic_demo_ready);
 	imquic_set_subscribe_accepted_cb(client, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(client, imquic_demo_subscribe_error);
+	imquic_set_incoming_publish_cb(client, imquic_demo_incoming_publish);
 	imquic_set_subscribe_done_cb(client, imquic_demo_subscribe_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
 	imquic_set_fetch_error_cb(client, imquic_demo_fetch_error);
+	imquic_set_subscribe_announces_accepted_cb(client, imquic_demo_subscribe_announces_accepted);
+	imquic_set_subscribe_announces_error_cb(client, imquic_demo_subscribe_announces_error);
 	imquic_set_incoming_object_cb(client, imquic_demo_incoming_object);
 	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);

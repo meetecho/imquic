@@ -1143,11 +1143,9 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
  * @param filter_type The subscription filter type
  * @param start_location The group and object to start from (ignored if the filter is not AbsoluteStart or AbsoluteRange)
  * @param end_location The group (and for v06/v07 the object) to end at (ignored if the filter is not AbsoluteRange)
- * @param auth The authentication info, if any
- * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
-	imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
+	imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location);
 /*! \brief Function to reject an incoming \c PUBLISH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject

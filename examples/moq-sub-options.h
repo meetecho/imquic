@@ -22,6 +22,7 @@ typedef struct demo_options {
 	const char **track_name;
 	const char *relay_auth_info;
 	const char *auth_info;
+	gboolean subscribe_announces;
 	const char *filter_type;
 	uint64_t start_group;
 	uint64_t start_object;
