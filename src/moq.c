@@ -1042,7 +1042,6 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 			} else { \
 				IMQUIC_MOQ_CHECK_ERR(tns_len >= blen-offset, NULL, 0, 0, error_message); \
 			} \
-			IMQUIC_MOQ_CHECK_ERR(tns_len >= blen-offset, NULL, 0, 0, error_message); \
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Namespace (%"SCNu64" bytes)\n", \
 				imquic_get_connection_name(moq->conn), tns_len); \
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %.*s\n", \
