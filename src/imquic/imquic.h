@@ -161,7 +161,9 @@ typedef struct imquic_network_endpoint imquic_endpoint;
  * @param secrets_log File to use to store QUIC secret, e.g., for Wireshark debugging (see SSLKEYLOGFILE)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_init(const char *secrets_log);
-/*! \brief Uninitialize the imquic library. */
+/*! \brief Check if the imquic library has already been initialized */
+gboolean imquic_is_inited(void);
+/*! \brief Uninitialize the imquic library */
 void imquic_deinit(void);
 ///@}
 

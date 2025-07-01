@@ -15,6 +15,7 @@
 
 /*! \brief Struct containing the parsed command line options */
 typedef struct demo_options {
+	const char *text;
 	const char *ip;
 	int port;
 	const char *remote_host;

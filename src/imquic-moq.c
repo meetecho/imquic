@@ -269,6 +269,21 @@ void imquic_set_new_moq_connection_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_incoming_moq_connection_cb(imquic_endpoint *endpoint,
+		uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		if(!endpoint->is_server) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set this MoQ callback on clients\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_moq_connection = incoming_moq_connection;
+	}
+}
+
 void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
 		void (* moq_ready)(imquic_connection *conn)) {
 	if(endpoint != NULL) {
@@ -335,6 +350,41 @@ void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_incoming_publish_cb(imquic_endpoint *endpoint,
+		void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
+			gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_publish = incoming_publish;
+	}
+}
+
+void imquic_set_publish_accepted_cb(imquic_endpoint *endpoint,
+		void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
+			imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.publish_accepted = publish_accepted;
+	}
+}
+
+void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
+		void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_codes, const char *reason)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.publish_error = publish_error;
+	}
+}
+
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
 		void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
 			uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen)) {
@@ -348,7 +398,7 @@ void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-		void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t expires, gboolean descending, imquic_moq_location *largest)) {
+		void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -598,6 +648,8 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-10";
 		case IMQUIC_MOQ_VERSION_11:
 			return "draft-ietf-moq-transport-11";
+		case IMQUIC_MOQ_VERSION_12:
+			return "draft-ietf-moq-transport-12";
 		case IMQUIC_MOQ_VERSION_ANY:
 			return "draft-ietf-moq-transport-XX(-from-11)";
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:

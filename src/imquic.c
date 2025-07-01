@@ -60,6 +60,10 @@ int imquic_init(const char *secrets_log) {
 	return 0;
 }
 
+gboolean imquic_is_inited(void) {
+	return g_atomic_int_get(&initialized) == IMQUIC_INITIALIZED;
+}
+
 void imquic_deinit(void) {
 	g_atomic_int_set(&initialized, IMQUIC_UNINITIALIZED);
 	imquic_quic_deinit();
