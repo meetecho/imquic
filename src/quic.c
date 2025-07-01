@@ -1081,7 +1081,8 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uin
 				new_largest = sent_pkt;
 				ack_eliciting = sent_pkt->ack_eliciting;
 			}
-			pkt_num--;
+			if(pkt_num > 0)
+				pkt_num--;
 		}
 	}
 	/* Traverse all ACK ranges in the frame, if there's any */
@@ -1094,7 +1095,8 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uin
 			if(pkt_num >= gap) {
 				for(j = 0; j<= gap; j++) {
 					/* This is a packet numbers that we did NOT get an ACK for */
-					pkt_num--;
+					if(pkt_num > 0)
+						pkt_num--;
 				}
 			}
 			arl = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1109,7 +1111,8 @@ size_t imquic_payload_parse_ack(imquic_connection *conn, imquic_packet *pkt, uin
 						new_largest = sent_pkt;
 						ack_eliciting = sent_pkt->ack_eliciting;
 					}
-					pkt_num--;
+					if(pkt_num > 0)
+						pkt_num--;
 				}
 			}
 #ifdef HAVE_QLOG

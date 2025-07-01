@@ -2070,7 +2070,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("publish");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
@@ -2098,7 +2098,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 			(parameters.auth_token_set ? parameters.auth_token_len : 0));
 	} else {
 		/* FIXME No handler for this request, let's reject it ourselves */
-		//~ imquic_moq_reject_publish(moq->conn, request_id, IMQUIC_MOQ_PUBERR_NOT_SUPPORTED, "Not handled");
+		imquic_moq_reject_publish(moq->conn, request_id, IMQUIC_MOQ_PUBERR_NOT_SUPPORTED, "Not handled");
 	}
 	if(error)
 		*error = 0;
@@ -2178,7 +2178,7 @@ size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("publish_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "forward", json_integer(forward));
@@ -2237,7 +2237,7 @@ size_t imquic_moq_parse_publish_error(imquic_moq_context *moq, uint8_t *bytes, s
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("publish_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error_code));
