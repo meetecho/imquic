@@ -344,7 +344,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	s->range.end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
 		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
+	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 		s->range.start.group = test[TUPLE_FIELD_START_GROUP];
 		s->range.start.object = test[TUPLE_FIELD_START_OBJECT];
 	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
@@ -366,7 +366,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Accept and serve the test subscription */
 	/* FIXME Each subscriber gets its own objects, so it's always a fresh start,
 	 * which means we don't provide any largest location before answering */
-	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, NULL);
+	imquic_moq_accept_subscribe(conn, request_id, track_alias, 0, FALSE, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
