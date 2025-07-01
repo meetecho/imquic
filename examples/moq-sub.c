@@ -138,6 +138,12 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	if(options.subscribe_announces) {
 		/* Only send a SUBSCRIBE_ANNOUNCES: the relay will send us a
 		 * PUBLISH request when there's something we can subscribe to */
+		if(moq_version < IMQUIC_MOQ_VERSION_12) {
+			/* Version is too old, we can't: stop here */
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
+			g_atomic_int_inc(&stop);
+			return;
+		}
 		imquic_moq_subscribe_announces(conn, imquic_moq_get_next_request_id(conn), tns, auth, authlen);
 		return;
 	}
@@ -481,6 +487,14 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
+	if(options.subscribe_announces &&
+			(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12))) {
+		/* Version is too old, we can't: stop here */
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
+		ret = 1;
+		goto done;
+	}
+
 	if(options.filter_type != NULL) {
 		if(options.fetch != NULL && options.join_offset < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring filter type (unused for Standalone FETCH)\n");
