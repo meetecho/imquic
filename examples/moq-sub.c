@@ -460,6 +460,11 @@ int main(int argc, char *argv[]) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %d\n", moq_version - IMQUIC_MOQ_VERSION_BASE);
 		}
 	}
+	if(options.subscribe_announces && options.fetch != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Can't enable SUBSCRIBE_ANNOUNCES and FETCH at the same time\n");
+		ret = 1;
+		goto done;
+	}
 	if(options.fetch) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a %s FETCH for the subscription\n", (options.join_offset < 0 ? "Standalone" : "Joining"));
 		if(options.join_offset >= 0)
@@ -469,6 +474,14 @@ int main(int argc, char *argv[]) {
 			ret = 1;
 			goto done;
 		}
+	} else if(options.subscribe_announces) {
+		if(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12)) {
+			/* Version is too old, we can't: stop here */
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
+			ret = 1;
+			goto done;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE_ANNOUNCES and incoming PUBLISH for the subscription\n");
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE for the subscription\n");
 	}
@@ -479,18 +492,6 @@ int main(int argc, char *argv[]) {
 	}
 	if(!options.subscribe_announces && (options.track_name == NULL || options.track_name[0] == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
-		ret = 1;
-		goto done;
-	}
-	if(options.subscribe_announces && options.fetch != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Can't enable SUBSCRIBE_ANNOUNCES and FETCH at the same time\n");
-		ret = 1;
-		goto done;
-	}
-	if(options.subscribe_announces &&
-			(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12))) {
-		/* Version is too old, we can't: stop here */
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
 		ret = 1;
 		goto done;
 	}
