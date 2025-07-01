@@ -737,7 +737,6 @@ static void *imquic_demo_tester_thread(void *data) {
 				g_mutex_unlock(&mutex);
 				break;
 			}
-			next_group = FALSE;
 		}
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping delivery thread\n", imquic_get_connection_name(conn));

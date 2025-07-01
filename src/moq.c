@@ -1275,7 +1275,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		}
 	}
 	/* Check if we have a media stream to process */
-	if(moq_stream != NULL && blen-offset > 0) {
+	if(moq_stream != NULL && blen > offset) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] MoQ media stream %"SCNu64" (%zu bytes)\n",
 			imquic_get_connection_name(moq->conn), stream_id, blen - offset);
 		/* Copy the incoming data to the buffer, as we'll use that for parsing */
@@ -1424,7 +1424,7 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("client_setup");
 		json_object_set_new(message, "number_of_supported_versions", json_integer(supported_vers));
 		json_t *versions = json_array();
@@ -1462,13 +1462,12 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		s_parameters.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
 	}
 	uint8_t buffer[200];
-	blen = sizeof(buffer);
-	size_t poffset = 5, start = 0;
-	size_t ss_len = imquic_moq_add_server_setup(moq, &buffer[poffset], blen-offset, moq->version, &s_parameters);
+	size_t buflen = sizeof(buffer), poffset = 5, start = 0;
+	size_t ss_len = imquic_moq_add_server_setup(moq, &buffer[poffset], buflen-offset, moq->version, &s_parameters);
 	if(moq->version >= IMQUIC_MOQ_VERSION_11 && moq->version <= IMQUIC_MOQ_VERSION_MAX) {
-		ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP, buffer, blen, poffset, ss_len, &start);
+		ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP, buffer, buflen, poffset, ss_len, &start);
 	} else {
-		ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP_LEGACY, buffer, blen, poffset, ss_len, &start);
+		ss_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SERVER_SETUP_LEGACY, buffer, buflen, poffset, ss_len, &start);
 	}
 	imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, ss_len, FALSE);
@@ -1544,7 +1543,7 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		moq->max_request_id = 1;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
 		json_object_set_new(message, "selected_version", json_integer(version));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
@@ -1553,11 +1552,9 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	}
 #endif
 	/* Notify the application the session is ready */
-	if(moq) {
-		g_atomic_int_set(&moq->connected, 1);
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.moq_ready)
-			moq->conn->socket->callbacks.moq.moq_ready(moq->conn);
-	}
+	g_atomic_int_set(&moq->connected, 1);
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.moq_ready)
+		moq->conn->socket->callbacks.moq.moq_ready(moq->conn);
 	if(error)
 		*error = 0;
 	return offset;
@@ -1579,7 +1576,7 @@ size_t imquic_moq_parse_max_request_id(imquic_moq_context *moq, uint8_t *bytes, 
 	/* Update the value we have */
 	moq->max_request_id = max;
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("max_request_id");
 		json_object_set_new(message, "request_id", json_integer(max));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -1605,7 +1602,7 @@ size_t imquic_moq_parse_requests_blocked(imquic_moq_context *moq, uint8_t *bytes
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Maximum Request ID %"SCNu64":\n",
 		imquic_get_connection_name(moq->conn), max);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("requests_blocked");
 		json_object_set_new(message, "maximum_request_id", json_integer(max));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -1675,7 +1672,7 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken ANNOUNCE");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -1743,7 +1740,7 @@ size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, siz
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_ok");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -1825,7 +1822,7 @@ size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, 
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_error");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -1883,7 +1880,7 @@ size_t imquic_moq_parse_unannounce(imquic_moq_context *moq, uint8_t *bytes, size
 		offset += tns_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unannounce");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -1951,7 +1948,7 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_cancel");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
 		json_object_set_new(message, "error_code", json_integer(error_code));
@@ -2073,7 +2070,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("publish");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
@@ -2101,7 +2098,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 			(parameters.auth_token_set ? parameters.auth_token_len : 0));
 	} else {
 		/* FIXME No handler for this request, let's reject it ourselves */
-		//~ imquic_moq_reject_publish(moq->conn, request_id, IMQUIC_MOQ_PUBERR_NOT_SUPPORTED, "Not handled");
+		imquic_moq_reject_publish(moq->conn, request_id, IMQUIC_MOQ_PUBERR_NOT_SUPPORTED, "Not handled");
 	}
 	if(error)
 		*error = 0;
@@ -2181,7 +2178,7 @@ size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("publish_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "forward", json_integer(forward));
@@ -2240,7 +2237,7 @@ size_t imquic_moq_parse_publish_error(imquic_moq_context *moq, uint8_t *bytes, s
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("publish_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error_code));
@@ -2384,7 +2381,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "track_alias", json_integer(track_alias));
@@ -2484,7 +2481,7 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_update");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "start_group", json_integer(start.group));
@@ -2577,7 +2574,7 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version >= IMQUIC_MOQ_VERSION_12)
@@ -2647,7 +2644,7 @@ size_t imquic_moq_parse_subscribe_error(imquic_moq_context *moq, uint8_t *bytes,
 			imquic_get_connection_name(moq->conn), track_alias);
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version < IMQUIC_MOQ_VERSION_12)
@@ -2687,7 +2684,7 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 	}
 	imquic_mutex_unlock(&moq->mutex);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unsubscribe");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -2767,7 +2764,7 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_done");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "status_code", json_integer(status_code));
@@ -2839,7 +2836,7 @@ size_t imquic_moq_parse_subscribe_announces(imquic_moq_context *moq, uint8_t *by
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_ANNOUNCES");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -2907,7 +2904,7 @@ size_t imquic_moq_parse_subscribe_announces_ok(imquic_moq_context *moq, uint8_t 
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces_ok");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -2987,7 +2984,7 @@ size_t imquic_moq_parse_subscribe_announces_error(imquic_moq_context *moq, uint8
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces_error");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -3043,7 +3040,7 @@ size_t imquic_moq_parse_unsubscribe_announces(imquic_moq_context *moq, uint8_t *
 		offset += tns_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unsubscribe_announces");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -3243,7 +3240,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	g_hash_table_insert(moq->subscriptions_by_id, imquic_dup_uint64(request_id), moq_sub);
 	imquic_mutex_unlock(&moq->mutex);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
@@ -3320,7 +3317,7 @@ size_t imquic_moq_parse_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, si
 	}
 	imquic_mutex_unlock(&moq->mutex);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch_cancel");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -3384,7 +3381,7 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH_OK");
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "group_order", json_integer(group_order));
@@ -3441,7 +3438,7 @@ size_t imquic_moq_parse_fetch_error(imquic_moq_context *moq, uint8_t *bytes, siz
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error_code));
@@ -3536,7 +3533,7 @@ size_t imquic_moq_parse_track_status_request(imquic_moq_context *moq, uint8_t *b
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("track_status_request");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -3643,7 +3640,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("track_status");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -3704,7 +3701,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object ID:         %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), object_id);
-	uint8_t priority = priority = bytes[offset];
+	uint8_t priority = bytes[offset];
 	offset++;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
@@ -3804,7 +3801,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		.end_of_stream = FALSE	/* No stream is involved here */
 	};
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		imquic_moq_qlog_object_datagram_parsed(moq->conn->qlog, &object);
 	}
 #endif
@@ -3839,7 +3836,7 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object ID:         %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), object_id);
-	uint8_t priority = priority = bytes[offset];
+	uint8_t priority = bytes[offset];
 	offset++;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
@@ -3884,7 +3881,7 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 		.end_of_stream = FALSE	/* No stream is involved here */
 	};
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		imquic_moq_qlog_object_datagram_status_parsed(moq->conn->qlog, &object);
 	}
 #endif
@@ -3915,7 +3912,7 @@ size_t imquic_moq_parse_stream_header_track(imquic_moq_context *moq, imquic_moq_
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track alias:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), track_alias);
-	uint8_t priority = priority = bytes[offset];
+	uint8_t priority = bytes[offset];
 	offset++;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
@@ -4055,7 +4052,7 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 		moq_stream->priority = priority;
 		moq_stream->buffer = g_malloc0(sizeof(imquic_moq_buffer));
 #ifdef HAVE_QLOG
-		if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subgroup_header");
 			imquic_moq_qlog_subgroup_header_parsed(moq->conn->qlog, moq_stream);
 		}
@@ -4187,7 +4184,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		.end_of_stream = complete
 	};
 #ifdef HAVE_QLOG
-	if(moq_stream != NULL && moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
+	if(moq_stream != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
 		imquic_moq_qlog_subgroup_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
@@ -4221,7 +4218,7 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 		moq_stream->request_id = request_id;
 		moq_stream->buffer = g_malloc0(sizeof(imquic_moq_buffer));
 #ifdef HAVE_QLOG
-		if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "fetch_header");
 			imquic_moq_qlog_fetch_header_parsed(moq->conn->qlog, moq_stream);
 		}
@@ -4355,7 +4352,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		.end_of_stream = complete
 	};
 #ifdef HAVE_QLOG
-	if(moq_stream != NULL && moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
+	if(moq_stream != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
 		imquic_moq_qlog_fetch_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
@@ -4395,7 +4392,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
 	}
 	offset += uri_len;
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("goaway");
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)uri_str, uri_len);
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -4461,7 +4458,7 @@ size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size
 	uint8_t params_num = 0;
 	offset += imquic_moq_setup_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("client_setup");
 		json_object_set_new(message, "number_of_supported_versions", json_integer(g_list_length(supported_versions)));
 		json_t *versions = json_array();
@@ -4491,7 +4488,7 @@ size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size
 	uint8_t params_num = 0;
 	offset += imquic_moq_setup_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
 		json_object_set_new(message, "selected_version", json_integer(version));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
@@ -4510,7 +4507,7 @@ size_t imquic_moq_add_max_request_id(imquic_moq_context *moq, uint8_t *bytes, si
 	}
 	size_t offset = imquic_write_varint(max_request_id, bytes, blen);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("max_request_id");
 		json_object_set_new(message, "request_id", json_integer(max_request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -4533,7 +4530,7 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 	size_t offset = imquic_write_varint(max_request_id, bytes, blen);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("requests_blocked");
 		json_object_set_new(message, "maximum_request_id", json_integer(max_request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -4582,7 +4579,7 @@ size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t b
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -4634,7 +4631,7 @@ size_t imquic_moq_add_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_ok");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -4693,7 +4690,7 @@ size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, si
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_error");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -4743,7 +4740,7 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		temp = temp->next;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unannounce");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -4795,7 +4792,7 @@ size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, s
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("announce_cancel");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		json_object_set_new(message, "error_code", json_integer(error));
@@ -5034,7 +5031,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "track_alias", json_integer(track_alias));
@@ -5078,7 +5075,7 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_update");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "start_group", json_integer(start_group));
@@ -5116,7 +5113,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "expires", json_integer(expires));
@@ -5154,7 +5151,7 @@ size_t imquic_moq_add_subscribe_error(imquic_moq_context *moq, uint8_t *bytes, s
 	if(moq->version < IMQUIC_MOQ_VERSION_12)
 		offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version < IMQUIC_MOQ_VERSION_12)
@@ -5176,7 +5173,7 @@ size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 	}
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unsubscribe");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -5211,7 +5208,7 @@ size_t imquic_moq_add_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, si
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_done");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "status_code", json_integer(status));
@@ -5258,7 +5255,7 @@ size_t imquic_moq_add_subscribe_announces(imquic_moq_context *moq, uint8_t *byte
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -5304,7 +5301,7 @@ size_t imquic_moq_add_subscribe_announces_ok(imquic_moq_context *moq, uint8_t *b
 		}
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces_ok");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -5357,7 +5354,7 @@ size_t imquic_moq_add_subscribe_announces_error(imquic_moq_context *moq, uint8_t
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_announces_error");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -5401,7 +5398,7 @@ size_t imquic_moq_add_unsubscribe_announces(imquic_moq_context *moq, uint8_t *by
 		temp = temp->next;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unsubscribe_announces");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -5514,7 +5511,7 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
@@ -5553,7 +5550,7 @@ size_t imquic_moq_add_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, size
 	}
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch_cancel");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -5585,7 +5582,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "group_order", json_integer(group_order));
@@ -5622,7 +5619,7 @@ size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_
 		offset += reason_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("fetch_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error));
@@ -5685,7 +5682,7 @@ size_t imquic_moq_add_track_status_request(imquic_moq_context *moq, uint8_t *byt
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("track_status_request");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -5758,7 +5755,7 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("track_status");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 			json_object_set_new(message, "request_id", json_integer(request_id));
@@ -6010,7 +6007,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t ble
 		offset += uri_len;
 	}
 #ifdef HAVE_QLOG
-	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("goaway");
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)new_session_uri, uri_len);
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
@@ -6246,12 +6243,17 @@ size_t imquic_moq_parse_subscribe_parameter(imquic_moq_context *moq, uint8_t *by
 int imquic_moq_set_role(imquic_connection *conn, imquic_moq_role role) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->role_set) {
+	if(moq == NULL) {
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
+	imquic_mutex_lock(&moq->mutex);
+	if(!moq->role_set) {
+		imquic_mutex_unlock(&moq->mutex);
+		return -1;
+	}
 	switch(role) {
 		case IMQUIC_MOQ_ENDPOINT:
 			moq->role_set = TRUE;
@@ -6270,9 +6272,11 @@ int imquic_moq_set_role(imquic_connection *conn, imquic_moq_role role) {
 			moq->type = IMQUIC_MOQ_ROLE_PUBSUB;
 			break;
 		default:
+			imquic_mutex_unlock(&moq->mutex);
 			return -1;
 	}
 	/* Done */
+	imquic_mutex_unlock(&moq->mutex);
 	imquic_refcount_decrease(&moq->ref);
 	return 0;
 }
@@ -6280,12 +6284,17 @@ int imquic_moq_set_role(imquic_connection *conn, imquic_moq_role role) {
 imquic_moq_role imquic_moq_get_role(imquic_connection *conn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || !moq->role_set) {
+	if(moq == NULL) {
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
+	imquic_mutex_lock(&moq->mutex);
+	if(!moq->role_set) {
+		imquic_mutex_unlock(&moq->mutex);
+		return -1;
+	}
 	imquic_moq_role role = -1;
 	switch(moq->type) {
 		case IMQUIC_MOQ_ROLE_ENDPOINT:
@@ -6304,6 +6313,7 @@ imquic_moq_role imquic_moq_get_role(imquic_connection *conn) {
 			break;
 	}
 	/* Done */
+	imquic_mutex_unlock(&moq->mutex);
 	imquic_refcount_decrease(&moq->ref);
 	return role;
 }
@@ -6318,6 +6328,7 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) 
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
+	imquic_mutex_lock(&moq->mutex);
 	switch(version) {
 		case IMQUIC_MOQ_VERSION_06:
 		case IMQUIC_MOQ_VERSION_07:
@@ -6331,6 +6342,7 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) 
 			moq->version = version;
 			break;
 		default:
+			imquic_mutex_unlock(&moq->mutex);
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Unsupported version '%"SCNu32"'\n",
 				imquic_get_connection_name(conn), version);
 			return -1;
@@ -6340,6 +6352,7 @@ int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) 
 		moq->type = IMQUIC_MOQ_ROLE_ENDPOINT;
 	}
 	/* Done */
+	imquic_mutex_unlock(&moq->mutex);
 	imquic_refcount_decrease(&moq->ref);
 	return 0;
 }
@@ -6353,8 +6366,10 @@ imquic_moq_version imquic_moq_get_version(imquic_connection *conn) {
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
+	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_version version = moq->version;
 	/* Done */
+	imquic_mutex_unlock(&moq->mutex);
 	imquic_refcount_decrease(&moq->ref);
 	return version;
 }
@@ -6391,14 +6406,14 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
 		return -1;
 	}
 	imquic_refcount_increase(&moq->ref);
-	imquic_mutex_unlock(&moq_mutex);
 	moq->local_max_request_id = max_request_id;
+	imquic_mutex_unlock(&moq_mutex);
 	max_request_id--;
 	if(g_atomic_int_get(&moq->connected)) {
 		/* Already connected, send a MAX_REQUEST_ID */
 		uint8_t buffer[20];
 		size_t blen = sizeof(buffer), poffset = 5, start = 0;
-		size_t ms_len = imquic_moq_add_max_request_id(moq, &buffer[poffset], blen-poffset, moq->local_max_request_id);
+		size_t ms_len = imquic_moq_add_max_request_id(moq, &buffer[poffset], blen-poffset, max_request_id);
 		ms_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_MAX_REQUEST_ID, buffer, blen, poffset, ms_len, &start);
 		imquic_connection_send_on_stream(conn, moq->control_stream_id,
 			buffer, moq->control_stream_offset, ms_len, FALSE);

@@ -31,6 +31,7 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -82,10 +83,9 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);
@@ -128,6 +128,7 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -177,10 +178,9 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);

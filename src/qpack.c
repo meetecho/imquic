@@ -247,10 +247,10 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 				break;
 			}
 			/* TODO Handle the value */
-			//~ if(parsed > ctx->rtable->size) {
-				//~ IMQUIC_LOG(IMQUIC_LOG_ERR, "Received a 'Set Dynamic Table Capacity' with a larger size than the current one\n");
-				//~ break;
-			//~ }
+			if(parsed > ctx->rtable->size) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Received a 'Set Dynamic Table Capacity' with a larger size than the current one\n");
+				break;
+			}
 			offset += length;
 		} else if(b0) {
 			/* Insert with Name Reference */
@@ -474,14 +474,7 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 			}
 			offset += parsed;
 			/* Find the entry, clone it with the new value and add it to the headers list */
-			if(b1) {
-				/* Reference is to the static table */
-				ref = &imquic_qpack_static_table[index];
-			} else {
-				/* Reference is to the dynamic table */
-				uint32_t id = index;
-				ref = g_hash_table_lookup(ctx->rtable->table_byid, GUINT_TO_POINTER(id));
-			}
+			ref = &imquic_qpack_static_table[index];
 			if(ref == NULL) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Couldn't find reference '%"SCNu64"' in %s table\n", parsed, b1 ? "static" : "dynamic");
 			} else {

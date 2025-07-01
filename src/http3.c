@@ -350,7 +350,7 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 		imquic_http3_parse_settings(h3c, stream, chunk->data + p_offset, chunk->length - p_offset);
 	} else if(!stream->bidirectional && stream->stream_id == h3c->remote_qpack_encoder_stream) {
 		/* QPACK encoder */
-		if(chunk->length - p_offset > 0) {
+		if(chunk->length > p_offset) {
 			ssize_t bread = imquic_qpack_decode(h3c->qpack, chunk->data + p_offset, chunk->length - p_offset);
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] QPACK decoded %zd/%zd bytes\n",
 				imquic_get_connection_name(conn), bread, chunk->length - p_offset);
@@ -405,7 +405,7 @@ int imquic_http3_parse_request(imquic_http3_connection *h3c, imquic_stream *stre
 	size_t offset = 0, res = 0;
 	uint8_t length = 0;
 	uint64_t f_len = 0;
-	while(blen - offset > 0) {
+	while(blen > offset) {
 		imquic_http3_frame_type type = imquic_read_varint(bytes + offset, blen - offset, &length);
 		if(length == 0)
 			goto retry_later;
@@ -537,7 +537,7 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 	headers = g_list_append(headers, imquic_qpack_entry_create(":authority",
 		imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address), TRUE)));	/* FIXME */
 	const char *path = "/";
-	if(h3c->conn && h3c->conn->socket && h3c->conn->socket->h3_path)
+	if(h3c->conn->socket && h3c->conn->socket->h3_path)
 		path = (const char *)h3c->conn->socket->h3_path;
 	headers = g_list_append(headers, imquic_qpack_entry_create(":path", path));
 	headers = g_list_append(headers, imquic_qpack_entry_create(":protocol", "webtransport"));
