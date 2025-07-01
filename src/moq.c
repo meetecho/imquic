@@ -1016,7 +1016,7 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 	}
 }
 
-/* FIXME Message parsing */
+/* Parsing and building macros */
 #define IMQUIC_MOQ_CHECK_ERR(cond, error, code, res, reason) \
 	if(cond) { \
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "%s\n", reason); \
@@ -1074,6 +1074,51 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 		offset += tn_len; \
 	} while(0)
 
+#define IMQUIC_MOQ_ADD_NAMESPACES(request) \
+	do { \
+		uint64_t tns_num = 0; \
+		imquic_moq_namespace *temp = track_namespace; \
+		while(temp) { \
+			if(temp->length > 0 && temp->buffer == NULL) { \
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n", \
+					imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(request)); \
+				return 0; \
+			} \
+			tns_num++; \
+			temp = temp->next; \
+		} \
+		if(tns_num == 0 || tns_num > 32) { \
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n", \
+				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(request)); \
+			return 0; \
+		} \
+		offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset); \
+		temp = track_namespace; \
+		while(temp) { \
+			offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset); \
+			if(temp->length > 0) { \
+				memcpy(&bytes[offset], temp->buffer, temp->length); \
+				offset += temp->length; \
+			} \
+			temp = temp->next; \
+		} \
+	} while(0)
+
+#define IMQUIC_MOQ_ADD_TRACKNAME(request) \
+	do { \
+		if(track_name->length > 4096) { \
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n", \
+				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(request)); \
+			return 0; \
+		} \
+		offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset); \
+		if(track_name->length > 0) { \
+			memcpy(&bytes[offset], track_name->buffer, track_name->length); \
+			offset += track_name->length; \
+		} \
+	} while(0)
+
+/* Parse MoQ messages */
 int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_t *bytes, size_t blen, gboolean complete, gboolean datagram) {
 	size_t offset = 0, parsed = 0, parsed_prev = 0;
 	uint8_t tlen = 0, error = 0;
@@ -1687,7 +1732,6 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 	}
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
-	/* Potentially multiple namespaces (tuple) */
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE", FALSE);
 	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1742,7 +1786,6 @@ size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, siz
 			imquic_get_connection_name(moq->conn), request_id);
 		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
-		/* Potentially multiple namespaces (tuple) */
 		uint64_t tns_num = 0, i = 0;
 		IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE_OK", TRUE);
 	}
@@ -1784,7 +1827,6 @@ size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, 
 			imquic_get_connection_name(moq->conn), request_id);
 		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
-		/* Potentially multiple namespaces (tuple) */
 		uint64_t tns_num = 0, i = 0;
 		IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE_ERROR", FALSE);
 	}
@@ -1841,7 +1883,6 @@ size_t imquic_moq_parse_unannounce(imquic_moq_context *moq, uint8_t *bytes, size
 	uint8_t length = 0;
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
-	/* Potentially multiple namespaces (tuple) */
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken UNANNOUNCE", TRUE);
 #ifdef HAVE_QLOG
@@ -1870,7 +1911,6 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 	memset(&tns, 0, sizeof(tns));
 	uint64_t error_code = 0;
 	char reason[1024], *reason_str = NULL;
-	/* Potentially multiple namespaces (tuple) */
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE_CANCEL", FALSE);
 	error_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -1925,7 +1965,6 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		imquic_get_connection_name(moq->conn), request_id);
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
-	/* Potentially multiple namespaces (tuple) */
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken PUBLISH", FALSE);
 	imquic_moq_name tn = { 0 };
@@ -2190,7 +2229,6 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		imquic_get_connection_name(moq->conn), track_alias);
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
-	/* Potentially multiple namespaces (tuple) */
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken SUBSCRIBE", FALSE);
 	imquic_moq_name tn = { 0 };
@@ -3217,7 +3255,6 @@ size_t imquic_moq_parse_track_status_request(imquic_moq_context *moq, uint8_t *b
 	}
 	imquic_moq_namespace tns[32];	/* FIXME */
 	memset(&tns, 0, sizeof(tns));
-	/* Potentially multiple namespaces (tuple) */
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken TRACK_STATUS_REQUEST", FALSE);
 	imquic_moq_name tn = { 0 };
@@ -3278,7 +3315,6 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 			imquic_get_connection_name(moq->conn), request_id);
 		/* FIXME Should check if this request ID exists, or do we leave it to the application? */
 	} else {
-		/* Potentially multiple namespaces (tuple) */
 		uint64_t tns_num = 0, i = 0;
 		IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken TRACK_STATUS", FALSE);
 		IMQUIC_MOQ_PARSE_TRACKNAME("Broken TRACK_STATUS", FALSE);
@@ -4224,33 +4260,7 @@ size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t b
 	size_t offset = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_11)
 		offset += imquic_write_varint(request_id, bytes, blen);
-	/* Potentially multiple namespaces (tuple) */
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	if(tns_num == 0 || tns_num > 32) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE));
-		return 0;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE);
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
@@ -4277,33 +4287,7 @@ size_t imquic_moq_add_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		offset += imquic_write_varint(request_id, bytes, blen);
 	} else {
-		/* Potentially multiple namespaces (tuple) */
-		uint64_t tns_num = 0;
-		imquic_moq_namespace *temp = track_namespace;
-		while(temp) {
-			if(temp->length > 0 && temp->buffer == NULL) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-					imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_OK));
-				return 0;
-			}
-			tns_num++;
-			temp = temp->next;
-		}
-		if(tns_num == 0 || tns_num > 32) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_OK));
-			return 0;
-		}
-		offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-		temp = track_namespace;
-		while(temp) {
-			offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-			if(temp->length > 0) {
-				memcpy(&bytes[offset], temp->buffer, temp->length);
-				offset += temp->length;
-			}
-			temp = temp->next;
-		}
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE_OK);
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4329,33 +4313,7 @@ size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, si
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		offset += imquic_write_varint(request_id, bytes, blen);
 	} else {
-		/* Potentially multiple namespaces (tuple) */
-		uint64_t tns_num = 0;
-		imquic_moq_namespace *temp = track_namespace;
-		while(temp) {
-			if(temp->length > 0 && temp->buffer == NULL) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-					imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_ERROR));
-				return 0;
-			}
-			tns_num++;
-			temp = temp->next;
-		}
-		if(tns_num == 0 || tns_num > 32) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_ERROR));
-			return 0;
-		}
-		offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-		temp = track_namespace;
-		while(temp) {
-			offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-			if(temp->length > 0) {
-				memcpy(&bytes[offset], temp->buffer, temp->length);
-				offset += temp->length;
-			}
-			temp = temp->next;
-		}
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE_ERROR);
 	}
 	offset += imquic_write_varint(error, &bytes[offset], blen-offset);
 	size_t reason_len = reason ? strlen(reason) : 0;
@@ -4387,33 +4345,7 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
 		return 0;
 	}
 	size_t offset = 0;
-	/* Potentially multiple namespaces (tuple) */
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_UNANNOUNCE));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	if(tns_num == 0 || tns_num > 32) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_UNANNOUNCE));
-		return 0;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_UNANNOUNCE);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unannounce");
@@ -4432,33 +4364,7 @@ size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, s
 		return 0;
 	}
 	size_t offset = 0;
-	/* Potentially multiple namespaces (tuple) */
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_CANCEL));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	if(tns_num == 0 || tns_num > 32) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_CANCEL));
-		return 0;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE_CANCEL);
 	offset += imquic_write_varint(error, &bytes[offset], blen-offset);
 	size_t reason_len = reason ? strlen(reason) : 0;
 	offset += imquic_write_varint(reason_len, &bytes[offset], blen-offset);
@@ -4489,43 +4395,8 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		return 0;
 	}
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
-	/* Potentially multiple namespaces (tuple) */
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	if(tns_num == 0 || tns_num > 32) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
-		return 0;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
-	if(track_name->length > 4096) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
-		return 0;
-	}
-	offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset);
-	if(track_name->length > 0) {
-		memcpy(&bytes[offset], track_name->buffer, track_name->length);
-		offset += track_name->length;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH);
+	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_PUBLISH);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	bytes[offset] = group_order;
 	offset++;
@@ -4648,43 +4519,8 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
 	}
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
-	/* Potentially multiple namespaces (tuple) */
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	if(tns_num == 0 || tns_num > 32) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
-		return 0;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
-	if(track_name->length > 4096) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
-		return 0;
-	}
-	offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset);
-	if(track_name->length > 0) {
-		memcpy(&bytes[offset], track_name->buffer, track_name->length);
-		offset += track_name->length;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE);
+	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_SUBSCRIBE);
 	bytes[offset] = priority;
 	offset++;
 	bytes[offset] = group_order;
@@ -4906,27 +4742,7 @@ size_t imquic_moq_add_subscribe_announces(imquic_moq_context *moq, uint8_t *byte
 	size_t offset = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_11)
 		offset += imquic_write_varint(request_id, bytes, blen);
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES);
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
@@ -4953,27 +4769,7 @@ size_t imquic_moq_add_subscribe_announces_ok(imquic_moq_context *moq, uint8_t *b
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		offset += imquic_write_varint(request_id, bytes, blen);
 	} else {
-		uint64_t tns_num = 0;
-		imquic_moq_namespace *temp = track_namespace;
-		while(temp) {
-			if(temp->length > 0 && temp->buffer == NULL) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-					imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES_OK));
-				return 0;
-			}
-			tns_num++;
-			temp = temp->next;
-		}
-		offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-		temp = track_namespace;
-		while(temp) {
-			offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-			if(temp->length > 0) {
-				memcpy(&bytes[offset], temp->buffer, temp->length);
-				offset += temp->length;
-			}
-			temp = temp->next;
-		}
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES_OK);
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4999,27 +4795,7 @@ size_t imquic_moq_add_subscribe_announces_error(imquic_moq_context *moq, uint8_t
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		offset += imquic_write_varint(request_id, bytes, blen);
 	} else {
-		uint64_t tns_num = 0;
-		imquic_moq_namespace *temp = track_namespace;
-		while(temp) {
-			if(temp->length > 0 && temp->buffer == NULL) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-					imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES_ERROR));
-				return 0;
-			}
-			tns_num++;
-			temp = temp->next;
-		}
-		offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-		temp = track_namespace;
-		while(temp) {
-			offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-			if(temp->length > 0) {
-				memcpy(&bytes[offset], temp->buffer, temp->length);
-				offset += temp->length;
-			}
-			temp = temp->next;
-		}
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE_ANNOUNCES_ERROR);
 	}
 	offset += imquic_write_varint(error, &bytes[offset], blen-offset);
 	size_t reason_len = reason ? strlen(reason) : 0;
@@ -5051,27 +4827,7 @@ size_t imquic_moq_add_unsubscribe_announces(imquic_moq_context *moq, uint8_t *by
 		return 0;
 	}
 	size_t offset = 0;
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_UNSUBSCRIBE_ANNOUNCES));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_UNSUBSCRIBE_ANNOUNCES);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("unsubscribe_announces");
@@ -5114,38 +4870,9 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 		return 0;
 	}
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
 	if(moq->version < IMQUIC_MOQ_VERSION_08) {
-		offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-		temp = track_namespace;
-		while(temp) {
-			offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-			if(temp->length > 0) {
-				memcpy(&bytes[offset], temp->buffer, temp->length);
-				offset += temp->length;
-			}
-			temp = temp->next;
-		}
-		if(track_name->length > 4096) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH));
-			return 0;
-		}
-		offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset);
-		if(track_name->length > 0) {
-			memcpy(&bytes[offset], track_name->buffer, track_name->length);
-			offset += track_name->length;
-		}
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_FETCH);
+		IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_FETCH);
 	}
 	bytes[offset] = priority;
 	offset++;
@@ -5154,21 +4881,8 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
 		offset += imquic_write_varint(type, &bytes[offset], blen-offset);
 		if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
-			offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-			temp = track_namespace;
-			while(temp) {
-				offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-				if(temp->length > 0) {
-					memcpy(&bytes[offset], temp->buffer, temp->length);
-					offset += temp->length;
-				}
-				temp = temp->next;
-			}
-			offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset);
-			if(track_name->length > 0) {
-				memcpy(&bytes[offset], track_name->buffer, track_name->length);
-				offset += track_name->length;
-			}
+			IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_FETCH);
+			IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_FETCH);
 			offset += imquic_write_varint(range->start.group, &bytes[offset], blen-offset);
 			offset += imquic_write_varint(range->start.object, &bytes[offset], blen-offset);
 			offset += imquic_write_varint(range->end.group, &bytes[offset], blen-offset);
@@ -5317,43 +5031,8 @@ size_t imquic_moq_add_track_status_request(imquic_moq_context *moq, uint8_t *byt
 	size_t offset = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_11)
 		offset += imquic_write_varint(request_id, bytes, blen);
-	/* Potentially multiple namespaces (tuple) */
-	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = track_namespace;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_TRACK_STATUS_REQUEST));
-			return 0;
-		}
-		tns_num++;
-		temp = temp->next;
-	}
-	if(tns_num == 0 || tns_num > 32) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_TRACK_STATUS_REQUEST));
-		return 0;
-	}
-	offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-	temp = track_namespace;
-	while(temp) {
-		offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-		if(temp->length > 0) {
-			memcpy(&bytes[offset], temp->buffer, temp->length);
-			offset += temp->length;
-		}
-		temp = temp->next;
-	}
-	if(track_name->length > 4096) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_TRACK_STATUS_REQUEST));
-		return 0;
-	}
-	offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset);
-	if(track_name->length > 0) {
-		memcpy(&bytes[offset], track_name->buffer, track_name->length);
-		offset += track_name->length;
-	}
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_TRACK_STATUS_REQUEST);
+	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_TRACK_STATUS_REQUEST);
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
@@ -5386,43 +5065,8 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		offset += imquic_write_varint(request_id, bytes, blen);
 	} else {
-		/* Potentially multiple namespaces (tuple) */
-		uint64_t tns_num = 0;
-		imquic_moq_namespace *temp = track_namespace;
-		while(temp) {
-			if(temp->length > 0 && temp->buffer == NULL) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-					imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_TRACK_STATUS));
-				return 0;
-			}
-			tns_num++;
-			temp = temp->next;
-		}
-		if(tns_num == 0 || tns_num > 32) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_TRACK_STATUS));
-			return 0;
-		}
-		offset += imquic_write_varint(tns_num, &bytes[offset], blen-offset);
-		temp = track_namespace;
-		while(temp) {
-			offset += imquic_write_varint(temp->length, &bytes[offset], blen-offset);
-			if(temp->length > 0) {
-				memcpy(&bytes[offset], temp->buffer, temp->length);
-				offset += temp->length;
-			}
-			temp = temp->next;
-		}
-		if(track_name->length > 4096) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n",
-				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE));
-			return 0;
-		}
-		offset += imquic_write_varint(track_name->length, &bytes[offset], blen-offset);
-		if(track_name->length > 0) {
-			memcpy(&bytes[offset], track_name->buffer, track_name->length);
-			offset += track_name->length;
-		}
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_TRACK_STATUS);
+		IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_TRACK_STATUS);
 	}
 	offset += imquic_write_varint(status_code, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(last_group_id, &bytes[offset], blen-offset);
