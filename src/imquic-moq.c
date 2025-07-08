@@ -562,25 +562,37 @@ void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_track_status_request_cb(imquic_endpoint *endpoint,
-		void (* incoming_track_status_request)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn)) {
-	if(endpoint != NULL) {
-		if(endpoint->protocol != IMQUIC_MOQ) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
-			return;
-		}
-		endpoint->callbacks.moq.incoming_track_status_request = incoming_track_status_request;
-	}
-}
-
-void imquic_set_track_status_cb(imquic_endpoint *endpoint,
-		void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_location *largest)) {
+void imquic_set_incoming_track_status_cb(imquic_endpoint *endpoint,
+		void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+			uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
 		endpoint->callbacks.moq.incoming_track_status = incoming_track_status;
+	}
+}
+
+void imquic_set_track_status_accepted_cb(imquic_endpoint *endpoint,
+		void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.track_status_accepted = track_status_accepted;
+	}
+}
+
+void imquic_set_track_status_error_cb(imquic_endpoint *endpoint,
+		void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_codes, const char *reason)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.track_status_error = track_status_error;
 	}
 }
 

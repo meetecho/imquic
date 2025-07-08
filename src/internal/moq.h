@@ -49,8 +49,9 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_UNSUBSCRIBE = 0xa,
 	IMQUIC_MOQ_SUBSCRIBE_DONE = 0xb,
 	IMQUIC_MOQ_ANNOUNCE_CANCEL = 0xc,
-	IMQUIC_MOQ_TRACK_STATUS_REQUEST = 0xd,
-	IMQUIC_MOQ_TRACK_STATUS = 0xe,
+	IMQUIC_MOQ_TRACK_STATUS = 0xd,
+	IMQUIC_MOQ_TRACK_STATUS_OK = 0xe,
+	IMQUIC_MOQ_TRACK_STATUS_ERROR = 0xf,
 	IMQUIC_MOQ_GOAWAY = 0x10,
 	IMQUIC_MOQ_SUBSCRIBE_NAMESPACE = 0x11,
 	IMQUIC_MOQ_SUBSCRIBE_NAMESPACE_OK = 0x12,
@@ -609,13 +610,6 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse a \c TRACK_STATUS_REQUEST message
- * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] bytes The buffer containing the message to parse
- * @param[in] blen Size of the buffer to parse
- * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
- * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_track_status_request(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c TRACK_STATUS message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -623,6 +617,20 @@ size_t imquic_moq_parse_track_status_request(imquic_moq_context *moq, uint8_t *b
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c TRACK_STATUS_OK message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_track_status_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c TRACK_STATUS_ERROR message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_track_status_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse an \c OBJECT_DATAGRAM message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -1018,32 +1026,53 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_fetch_error_code error, const char *reason);
-/*! \brief Helper to add a \c TRACK_STATUS_REQUEST message to a buffer
- * @param moq The imquic_moq_context generating the message
- * @param bytes The buffer to add the message to
- * @param blen The size of the buffer
- * @param request_id The request ID to put in the message (only v11 and later)
- * @param track_namespace The namespace to put in the message
- * @param track_name The track name to put in the message
- * @param parameters The parameters to add, if any (only v11 and later)
- * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_track_status_request(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper to add a \c TRACK_STATUS message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param request_id The request ID to put in the message (only v11 and later)
- * @param track_namespace The namespace to put in the message (only before v11)
- * @param track_name The track name to put in the message (only before v11)
- * @param status_code The status code to put in the message
- * @param last_group_id The last group ID to put in the message
- * @param last_object_id The last object ID to put in the message
- * @param parameters The parameters to add, if any (only v11 and later)
+ * @param request_id The request ID to put in the message
+ * @param track_alias The track alias to put in the message
+ * @param track_namespace The namespace to put in the message
+ * @param track_name The track name to put in the message
+ * @param priority The track_statusr priority to put in the message
+ * @param group_order The group order to put in the message
+ * @param forward The forward value to put in the message
+ * @param filter The filter as a imquic_moq_filter_type value
+ * @param start_group The start group ID to put in the message
+ * @param start_object The start object ID to put in the message
+ * @param end_group The end group ID to put in the message
+ * @param end_object The end object ID to put in the message
+ * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_name *track_name,
-	uint64_t status_code, uint64_t last_group_id, uint64_t last_object_id, imquic_moq_subscribe_parameters *parameters);
+size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
+	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, gboolean forward,
+	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters);
+/*! \brief Helper method to add a \c TRACK_STATUS_OK message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message
+ * @param track_alias The track alias to put in the message
+ * @param expires The expires value to put in the message
+ * @param group_order The group order to put in the message
+ * @param content_exists Whether the following two properties should be added to the message
+ * @param largest_group_id Largest group ID to add to the message, if needed
+ * @param largest_object_id Largest object ID to add to the message, if needed
+ * @param parameters The parameters to add, if any (only after v06)
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_track_status_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+	uint64_t track_alias, uint64_t expires, imquic_moq_group_order group_order, gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id,
+	imquic_moq_subscribe_parameters *parameters);
+/*! \brief Helper method to add a \c TRACK_STATUS_ERRROR message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message
+ * @param error Error code associated to the message
+ * @param reason Verbose description of the error, if any
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_track_status_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+	imquic_moq_sub_error_code error, const char *reason);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -1317,10 +1346,13 @@ typedef struct imquic_moq_callbacks {
 	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, gboolean descending, imquic_moq_location *largest);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason);
-	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_REQUEST messages */
-	void (* incoming_track_status_request)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
-	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_track_status_code status_code, imquic_moq_location *largest);
+	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
+	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ACCEPTED messages */
+	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest);
+	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ERROR messages */
+	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming MoQ objects */
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
