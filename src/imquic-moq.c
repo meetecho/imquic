@@ -210,12 +210,12 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 
 /* Helpers */
 const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple) {
-	if(tns == NULL || tns->buffer == 0 || tns->length == 0)
+	if(tns == NULL)
 		return NULL;
 	*buffer = '\0';
 	char temp[256];
 	size_t offset = 0;
-	while(tns != NULL && tns->buffer != NULL) {
+	while(tns != NULL) {
 		if(blen - offset == 0)
 			goto trunc;
 		if(offset > 0) {
@@ -223,7 +223,7 @@ const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, si
 			offset++;
 			buffer[offset] = '\0';
 		}
-		g_snprintf(temp, sizeof(temp), "%.*s", (int)tns->length, tns->buffer);
+		g_snprintf(temp, sizeof(temp), "%.*s", (int)tns->length, (tns->buffer ? (char *)tns->buffer : ""));
 		if(blen - offset < strlen(temp))
 			goto trunc;
 		offset = g_strlcat(buffer, temp, blen);
