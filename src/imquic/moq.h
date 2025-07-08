@@ -148,8 +148,8 @@
  * The reason for this separation of version negotiation in different
  * groups is due to the incompatibility in the messaging on the wire, which
  * saw breaking changes in v06 and v11. At the time of writing, this stack
- * supports MoQ versions from v06 ( \c IMQUIC_MOQ_VERSION_06 ) up to v12
- * ( \c IMQUIC_MOQ_VERSION_12 ), but not all versions will be supported
+ * supports MoQ versions from v06 ( \c IMQUIC_MOQ_VERSION_06 ) up to v13
+ * ( \c IMQUIC_MOQ_VERSION_13 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
@@ -1037,7 +1037,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_11 = 0xff00000B,
 	/* Draft version -12 */
 	IMQUIC_MOQ_VERSION_12 = 0xff00000C,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_12,
+	/* Draft version -13 */
+	IMQUIC_MOQ_VERSION_13 = 0xff00000D,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_13,
 	/* Any post-v11 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,
