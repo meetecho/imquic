@@ -90,11 +90,11 @@
  * <code>Meetecho</code>, <code>Lorenzo</code>), which give context to
  * the whole tuple (Lorenzo is part of Meetecho, Meetecho is part of Italy).
  * This is particularly important because it can give context to applications
- * as well, and to requests like \c SUBSCRIBE_ANNOUNCES : if we imagine
+ * as well, and to requests like \c SUBSCRIBE_NAMESPACE : if we imagine
  * a chat application, for instance, we may have a tuple like
  * <code>moq-chat / 1234 / Lorenzo</code> to indicate that Lorenzo is
  * in room \c 1234 of application <code>moq-chat</code>, which means that
- * anyone sending a \c SUBSCRIBE_ANNOUNCES for the partial tuple
+ * anyone sending a \c SUBSCRIBE_NAMESPACE for the partial tuple
  * <code>moq-chat / 1234</code> will be notified when Lorenzo announces
  * and unannounces their presence in that context.
  *
@@ -224,8 +224,8 @@
  * be prepared to receive responses to those requests, and have a way
  * of receiving MoQ objects to consume. It can also ask a relay to be
  * notified when specific namespaces (or namespaces prefixed by a specific
- * tuple) become available, via \c SUBSCRIBE_ANNOUNCES and
- * \c UNSUBSCRIBE_ANNOUNCES requests.
+ * tuple) become available, via \c SUBSCRIBE_NAMESPACE and
+ * \c UNSUBSCRIBE_NAMESPACE requests.
  *
  * In order to be advertised as a subscriber, the role in MoQ should be
  * set accordingly. This means passing \c IMQUIC_MOQ_SUBSCRIBER to the
@@ -256,9 +256,9 @@
  * All those callbacks refer to the \c request_id identifier that was
  * previously mapped to that subscription (more on that later).
  *
- * Similar callbacks are available for when a \c SUBSCRIBE_ANNOUNCES has
- * been sent, namely \ref imquic_set_subscribe_announces_accepted_cb,
- * \ref imquic_set_subscribe_announces_error_cb. It's worth pointing out
+ * Similar callbacks are available for when a \c SUBSCRIBE_NAMESPACE has
+ * been sent, namely \ref imquic_set_subscribe_namespace_accepted_cb,
+ * \ref imquic_set_subscribe_namespace_error_cb. It's worth pointing out
  * that if a subscriber expressed interest in getting info on \c ANNOUNCE
  * requests related to specific tuple namespaces, it should also configure the
  * \ref imquic_set_incoming_announce_cb and \ref imquic_set_incoming_unannounce_cb
@@ -315,7 +315,7 @@
  * it will receive to all interested subscribers, potentially caching
  * them as well. Keeping track of announced namespaces, a relay usually
  * also advertizes their presence to subscribers that sent a
- * \c SUBSCRIBE_ANNOUNCES request matching the tuple.
+ * \c SUBSCRIBE_NAMESPACE request matching the tuple.
  *
  * In a nutshell, this means that, from a functional perspective, a
  * relay will need to be able to act both as a publisher and a subscriber
@@ -905,29 +905,29 @@ void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
 	void (* requests_blocked)(imquic_connection *conn, uint64_t max_request_id));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c SUBSCRIBE_ANNOUNCES request.
+ * an incoming \c SUBSCRIBE_NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_subscribe_announces Pointer to the function that will handle the incoming \c SUBSCRIBE_ANNOUNCES */
-void imquic_set_incoming_subscribe_announces_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe_announces)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen));
+ * @param incoming_subscribe_namespace Pointer to the function that will handle the incoming \c SUBSCRIBE_NAMESPACE */
+void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
+	void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when an
- * \c SUBSCRIBE_ANNOUNCES we previously sent was accepted
+ * \c SUBSCRIBE_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_announces_accepted Pointer to the function that will fire when an \c SUBSCRIBE_ANNOUNCES is accepted */
-void imquic_set_subscribe_announces_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_announces_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+ * @param subscribe_namespace_accepted Pointer to the function that will fire when an \c SUBSCRIBE_NAMESPACE is accepted */
+void imquic_set_subscribe_namespace_accepted_cb(imquic_endpoint *endpoint,
+	void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when an
- * \c SUBSCRIBE_ANNOUNCES we previously sent was rejected with an error
+ * \c SUBSCRIBE_NAMESPACE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_announces_error Pointer to the function that will fire when an \c SUBSCRIBE_ANNOUNCES is rejected */
-void imquic_set_subscribe_announces_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_announces_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason));
+ * @param subscribe_namespace_error Pointer to the function that will fire when an \c SUBSCRIBE_NAMESPACE is rejected */
+void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
+	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c UNSUBSCRIBE_ANNOUNCES request.
+ * an incoming \c UNSUBSCRIBE_NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_unsubscribe_announces Pointer to the function that will handle the incoming \c UNSUBSCRIBE_ANNOUNCES */
-void imquic_set_incoming_unsubscribe_announces_cb(imquic_endpoint *endpoint,
-	void (* incoming_unsubscribe_announces)(imquic_connection *conn, imquic_moq_namespace *tns));
+ * @param incoming_unsubscribe_namespace Pointer to the function that will handle the incoming \c UNSUBSCRIBE_NAMESPACE */
+void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
+	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1211,33 +1211,33 @@ int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imqu
  * @param request_id The unique \c request_id value associated to the subscription to unsubscribe from
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
-/*! \brief Function to send a \c SUBSCRIBE_ANNOUNCES request
+/*! \brief Function to send a \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID (only v11 and later)
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param auth The authentication info, if any
  * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen);
-/*! \brief Function to accept an incoming \c SUBSCRIBE_ANNOUNCES request
+int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen);
+/*! \brief Function to accept an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c SUBSCRIBE_ANNOUNCES request (only v11 and later)
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to accept notifications for (only before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
-/*! \brief Function to reject an incoming \c SUBSCRIBE_ANNOUNCES request
+int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+/*! \brief Function to reject an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c SUBSCRIBE_ANNOUNCES request (only v11 and later)
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to reject notifications for (only before v11)
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason);
-/*! \brief Function to send a \c UNSUBSCRIBE_ANNOUNCES request
+int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason);
+/*! \brief Function to send a \c UNSUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns);
+int imquic_moq_unsubscribe_namespace(imquic_connection *conn, imquic_moq_namespace *tns);
 /*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
