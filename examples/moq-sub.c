@@ -135,8 +135,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	gboolean forward = TRUE;
 	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0))
 		forward = FALSE;
-	if(options.subscribe_announces) {
-		/* Only send a SUBSCRIBE_ANNOUNCES: the relay will send us a
+	if(options.subscribe_namespace) {
+		/* Only send a SUBSCRIBE_NAMESPACE: the relay will send us a
 		 * PUBLISH request when there's something we can subscribe to */
 		if(moq_version < IMQUIC_MOQ_VERSION_12) {
 			/* Version is too old, we can't: stop here */
@@ -144,7 +144,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			g_atomic_int_inc(&stop);
 			return;
 		}
-		imquic_moq_subscribe_announces(conn, imquic_moq_get_next_request_id(conn), tns, auth, authlen);
+		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), tns, auth, authlen);
 		return;
 	}
 	/* If we got here, we're subscribing manually to the specified tracks,
@@ -258,12 +258,12 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id
 		g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_announces_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to announcements '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_announces_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
+static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to announcements in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
@@ -460,8 +460,8 @@ int main(int argc, char *argv[]) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %d\n", moq_version - IMQUIC_MOQ_VERSION_BASE);
 		}
 	}
-	if(options.subscribe_announces && options.fetch != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Can't enable SUBSCRIBE_ANNOUNCES and FETCH at the same time\n");
+	if(options.subscribe_namespace && options.fetch != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Can't enable SUBSCRIBE_NAMESPACE and FETCH at the same time\n");
 		ret = 1;
 		goto done;
 	}
@@ -474,14 +474,14 @@ int main(int argc, char *argv[]) {
 			ret = 1;
 			goto done;
 		}
-	} else if(options.subscribe_announces) {
+	} else if(options.subscribe_namespace) {
 		if(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12)) {
 			/* Version is too old, we can't: stop here */
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
 			ret = 1;
 			goto done;
 		}
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE_ANNOUNCES and incoming PUBLISH for the subscription\n");
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE_NAMESPACE and incoming PUBLISH for the subscription\n");
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE for the subscription\n");
 	}
@@ -490,7 +490,7 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	if(!options.subscribe_announces && (options.track_name == NULL || options.track_name[0] == NULL)) {
+	if(!options.subscribe_namespace && (options.track_name == NULL || options.track_name[0] == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
 		ret = 1;
 		goto done;
@@ -522,7 +522,7 @@ int main(int argc, char *argv[]) {
 		end_location.object = (options.end_object == IMQUIC_MAX_VARINT) ? 0 : (options.end_object + 1);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "FETCH range: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			start_location.group, start_location.object, end_location.group, end_location.object);
-	} else if(!options.subscribe_announces) {
+	} else if(!options.subscribe_namespace) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using '%s' as the SUBSCRIBE filter type\n", imquic_moq_filter_type_str(filter_type));
 		if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
 			start_location.group = options.start_group;
@@ -633,8 +633,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_done_cb(client, imquic_demo_subscribe_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
 	imquic_set_fetch_error_cb(client, imquic_demo_fetch_error);
-	imquic_set_subscribe_announces_accepted_cb(client, imquic_demo_subscribe_announces_accepted);
-	imquic_set_subscribe_announces_error_cb(client, imquic_demo_subscribe_announces_error);
+	imquic_set_subscribe_namespace_accepted_cb(client, imquic_demo_subscribe_namespace_accepted);
+	imquic_set_subscribe_namespace_error_cb(client, imquic_demo_subscribe_namespace_error);
 	imquic_set_incoming_object_cb(client, imquic_demo_incoming_object);
 	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
