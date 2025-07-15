@@ -20,7 +20,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_name, "MoQ track name to subscribe to (can be called multiple times to subscribe to multiple tracks; default=none)", "name" },
 		{ "relay-auth-info", 'A', 0, G_OPTION_ARG_STRING, &options->relay_auth_info, "Auth info required to connect to the relay, if any (default=none)", "string" },
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to subscribe, if needed (default=none)", "string" },
-		{ "subscribe-announces", 'B', 0, G_OPTION_ARG_NONE, &options->subscribe_announces, "If set, will only send a SUBSCRIBE_ANNOUNCES instead of a SUBSCRIBE, and will expect a PUBLISH from the relay (default=no)", "order" },
+		{ "subscribe-namespace", 'B', 0, G_OPTION_ARG_NONE, &options->subscribe_namespace, "If set, will only send a SUBSCRIBE_NAMESPACE instead of a SUBSCRIBE, and will expect a PUBLISH from the relay (default=no)", "order" },
 		{ "filter-type", 'F', 0, G_OPTION_ARG_STRING, &options->filter_type, "Filter type to use for SUBSCRIBE (default=LargestObject)", "LargestObject|NextGroupStart|AbsoluteStart|AbsoluteRange" },
 		{ "fetch", 'f', 0, G_OPTION_ARG_STRING, &options->fetch, "Use FETCH instead of SUBSCRIBE/PUBLISH, in the specified order (ascending/descending)", "order" },
 		{ "join", 'j', 0, G_OPTION_ARG_INT, &options->join_offset, "When using FETCH, use a Joining Fetch and get the specified number of preceding groups (default=-1, no joining fetch)", "offset" },

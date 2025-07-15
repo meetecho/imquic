@@ -924,7 +924,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen) {
+static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen) {
 	/* We received a subscribe for a namespace tuple */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -937,10 +937,10 @@ static void imquic_demo_incoming_subscribe_announces(imquic_connection *conn, ui
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, tns, ns);
 	monitors = g_list_prepend(monitors, mon);
 	g_mutex_unlock(&mutex);
-	imquic_moq_accept_subscribe_announces(conn, request_id, tns);
+	imquic_moq_accept_subscribe_namespace(conn, request_id, tns);
 }
 
-static void imquic_demo_incoming_unsubscribe_announces(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, imquic_moq_namespace *tns) {
 	/* We received an unsubscribe */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -1366,8 +1366,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_updated_cb(server, imquic_demo_subscribe_updated);
 	imquic_set_subscribe_done_cb(server, imquic_demo_subscribe_done);
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
-	imquic_set_incoming_subscribe_announces_cb(server, imquic_demo_incoming_subscribe_announces);
-	imquic_set_incoming_unsubscribe_announces_cb(server, imquic_demo_incoming_unsubscribe_announces);
+	imquic_set_incoming_subscribe_namespace_cb(server, imquic_demo_incoming_subscribe_namespace);
+	imquic_set_incoming_unsubscribe_namespace_cb(server, imquic_demo_incoming_unsubscribe_namespace);
 	imquic_set_incoming_standalone_fetch_cb(server, imquic_demo_incoming_standalone_fetch);
 	imquic_set_incoming_joining_fetch_cb(server, imquic_demo_incoming_joining_fetch);
 	imquic_set_incoming_fetch_cancel_cb(server, imquic_demo_incoming_fetch_cancel);
