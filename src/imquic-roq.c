@@ -14,7 +14,7 @@
 #include "internal/connection.h"
 #include "internal/roq.h"
 
-#define IMQUIC_ROQ_ALPN		"roq-10"
+#define IMQUIC_ROQ_ALPN		"roq-14"
 
 /* Create a RoQ server */
 imquic_server *imquic_create_roq_server(const char *name, ...) {
