@@ -175,11 +175,6 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Check if there's authorization needed */
 	if(auth != NULL)
 		imquic_moq_print_auth_info(conn, auth, authlen);
-	if(!imquic_moq_check_auth_info(conn, options.auth_info, auth, authlen)) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_UNAUTHORIZED, "Unauthorized access", track_alias);
-		return;
-	}
 	/* TODO Check priority, filters, forwarding */
 	if(descending) {
 		/* We don't support descending mode yet */

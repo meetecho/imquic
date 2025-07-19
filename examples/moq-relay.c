@@ -684,6 +684,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
 	if(auth != NULL)
 		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(!imquic_moq_check_auth_info(conn, options.sub_auth_info, auth, authlen)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_UNAUTHORIZED, "Unauthorized access", track_alias);
+		return;
+	}
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
 	/* Find the namespace */
@@ -770,7 +775,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
 		/* We send a 'Largest Object' filter to the subscriber, we'll filter ourselves in case */
 		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn,
-			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL, auth, authlen);
+			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL, NULL, 0);
 	}
 	g_mutex_unlock(&mutex);
 }

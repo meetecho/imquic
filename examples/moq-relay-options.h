@@ -17,6 +17,7 @@
 typedef struct demo_options {
 	char *moq_version;
 	const char *auth_info;
+	const char *sub_auth_info;
 	const char *ip;
 	int port;
 	gboolean raw_quic;
