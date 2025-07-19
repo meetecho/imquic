@@ -1970,7 +1970,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		imquic_get_connection_name(moq->conn), track_alias);
 	uint8_t group_order = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR((group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	IMQUIC_MOQ_CHECK_ERR(group_order > IMQUIC_MOQ_ORDERING_DESCENDING, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), group_order);
@@ -2231,7 +2231,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		imquic_get_connection_name(moq->conn), priority);
 	uint8_t group_order = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR((group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	IMQUIC_MOQ_CHECK_ERR((group_order > IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), group_order);
@@ -2438,7 +2438,7 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	uint8_t group_order = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR((group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	IMQUIC_MOQ_CHECK_ERR(group_order > IMQUIC_MOQ_ORDERING_DESCENDING, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8" (%s)\n",
 		imquic_get_connection_name(moq->conn), group_order, imquic_moq_group_order_str(group_order));
@@ -2907,7 +2907,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		imquic_get_connection_name(moq->conn), priority);
 	uint8_t group_order = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR((group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	IMQUIC_MOQ_CHECK_ERR(group_order > IMQUIC_MOQ_ORDERING_DESCENDING, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %s (%"SCNu8"))\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_group_order_str(group_order), group_order);
@@ -3108,7 +3108,7 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 	uint8_t group_order = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR((group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	IMQUIC_MOQ_CHECK_ERR(group_order > IMQUIC_MOQ_ORDERING_DESCENDING, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), group_order);
@@ -3257,7 +3257,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 		imquic_get_connection_name(moq->conn), priority);
 	uint8_t group_order = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR((group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	IMQUIC_MOQ_CHECK_ERR(group_order > IMQUIC_MOQ_ORDERING_DESCENDING, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), group_order);
@@ -3376,7 +3376,7 @@ size_t imquic_moq_parse_track_status_ok(imquic_moq_context *moq, uint8_t *bytes,
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS_OK");
 	uint8_t group_order = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR((group_order != IMQUIC_MOQ_ORDERING_ASCENDING && group_order != IMQUIC_MOQ_ORDERING_DESCENDING), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
+	IMQUIC_MOQ_CHECK_ERR(group_order > IMQUIC_MOQ_ORDERING_DESCENDING, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Group Order value");
 	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS_OK");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8" (%s)\n",
 		imquic_get_connection_name(moq->conn), group_order, imquic_moq_group_order_str(group_order));
