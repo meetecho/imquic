@@ -95,7 +95,18 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		/* We use ANNOUNCE + SUBSCRIBE */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), options.track_name);
-		imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &tns[0]);
+		/* Check if we need to prepare an auth token */
+		uint8_t auth[256];
+		size_t authlen = 0;
+		if(options.auth_info && strlen(options.auth_info) > 0) {
+			authlen = sizeof(auth);
+			if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen) < 0) {
+				authlen = 0;
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
+					imquic_get_connection_name(conn));
+			}
+		}
+		imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &tns[0], auth, authlen);
 	} else {
 		/* We use PUBLISH */
 		if(moq_version < IMQUIC_MOQ_VERSION_12) {
@@ -112,8 +123,19 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		moq_request_id = imquic_moq_get_next_request_id(conn);
 		moq_track_alias = 0;
 		gboolean forward = FALSE;
+		/* Check if we need to prepare an auth token */
+		uint8_t auth[256];
+		size_t authlen = 0;
+		if(options.auth_info && strlen(options.auth_info) > 0) {
+			authlen = sizeof(auth);
+			if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen) < 0) {
+				authlen = 0;
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
+					imquic_get_connection_name(conn));
+			}
+		}
 		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias,
-			FALSE, NULL, forward, NULL, 0);
+			FALSE, NULL, forward, auth, authlen);
 	}
 }
 

@@ -796,7 +796,7 @@ void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_announce Pointer to the function that will handle the incoming \c ANNOUNCE */
 void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
-	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c ANNOUNCE_CANCEL request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1094,8 +1094,11 @@ uint64_t imquic_moq_get_next_request_id(imquic_connection *conn);
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to announce
+ * @param auth The authentication info, if any
+ * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns,
+	uint8_t *auth, size_t authlen);
 /*! \brief Function to accept an incoming \c ANNOUNCE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c ANNOUNCE request (only v11 and later)
@@ -1151,7 +1154,7 @@ int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id, imqu
 /*! \brief Function to send a \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription
- * @param track_alias A unique numeric identifier to associate to the track in this subscription
+ * @param track_alias A unique numeric identifier to associate to the track in this subscription (ignored starting from v12)
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param tn The imquic_moq_name track name to subscribe to
  * @param priority The subscriber priority

@@ -1295,7 +1295,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified when a MoQ connection is ready (setup performed on both ends) */
 	void (* moq_ready)(imquic_connection *conn);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE messages */
-	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_CANCEL messages */
 	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ACCEPTED messages */
