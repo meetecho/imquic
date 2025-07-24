@@ -3246,11 +3246,6 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 	moq->expected_request_id = request_id + request_id_increment;
 	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	/* Move on */
-	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken TRACK_STATUS");
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias: %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), track_alias);
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
@@ -3323,7 +3318,6 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("track_status");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		json_object_set_new(message, "track_alias", json_integer(track_alias));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
 		imquic_qlog_moq_message_add_track(message, &tn);
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
@@ -3337,7 +3331,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_track_status) {
 		moq->conn->socket->callbacks.moq.incoming_track_status(moq->conn,
-			request_id, track_alias, &tns[0], &tn,
+			request_id, &tns[0], &tn,
 			priority, (group_order == IMQUIC_MOQ_ORDERING_DESCENDING), forward,
 			filter, &start, &end,
 			(parameters.auth_token_set ? parameters.auth_token : NULL),
@@ -5142,7 +5136,7 @@ size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_
 	return offset;
 }
 
-size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
+size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, gboolean forward,
 		imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
@@ -5152,7 +5146,6 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size
 		return 0;
 	}
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
-	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_TRACK_STATUS);
 	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_TRACK_STATUS);
 	bytes[offset] = priority;
@@ -5179,7 +5172,6 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("track_status");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		json_object_set_new(message, "track_alias", json_integer(track_alias));
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		imquic_qlog_moq_message_add_track(message, track_name);
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
@@ -6881,7 +6873,7 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id) {
 	return 0;
 }
 
-int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, uint8_t priority, gboolean descending, gboolean forward,
 		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
@@ -6939,7 +6931,7 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, uint64
 		parameters.auth_token_len = authlen;
 	}
 	sb_len = imquic_moq_add_track_status(moq, &buffer[poffset], blen-poffset,
-		request_id, track_alias, tns, tn,
+		request_id, tns, tn,
 		priority, descending ? IMQUIC_MOQ_ORDERING_DESCENDING : IMQUIC_MOQ_ORDERING_ASCENDING, forward,
 		filter_type,
 			(content_exists ? start_location->group : 0), (content_exists ? start_location->object : 0),

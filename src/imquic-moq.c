@@ -563,7 +563,7 @@ void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_track_status_cb(imquic_endpoint *endpoint,
-		void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
 			uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {

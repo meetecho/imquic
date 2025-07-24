@@ -1031,7 +1031,6 @@ size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
- * @param track_alias The track alias to put in the message
  * @param track_namespace The namespace to put in the message
  * @param track_name The track name to put in the message
  * @param priority The track_statusr priority to put in the message
@@ -1044,7 +1043,7 @@ size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_
  * @param end_object The end object ID to put in the message
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
+size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, gboolean forward,
 	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add a \c TRACK_STATUS_OK message to a buffer
@@ -1347,7 +1346,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
-	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ACCEPTED messages */
 	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest);

@@ -951,7 +951,7 @@ void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_track_status Pointer to the function that will handle the incoming \c TRACK_STATUS */
 void imquic_set_incoming_track_status_cb(imquic_endpoint *endpoint,
-	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when a
  * \c TRACK_STATUS we previously sent was accepted
@@ -1284,7 +1284,6 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
  * support for this request is disabled in versions earlier than v13
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this request
- * @param track_alias A unique numeric identifier to associate to the track in this request
  * @param tns The imquic_moq_namespace namespace the track to track_status to belongs to
  * @param tn The imquic_moq_name track name to track_status to
  * @param priority The track_statusr priority
@@ -1296,7 +1295,7 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
  * @param auth The authentication info, if any
  * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
+int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
 	uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen);
 /*! \brief Function to accept an incoming \c TRACK_STATUS request
  * @note Due to considerable changes between v12 and v13 on \c TRACK_STATUS ,
