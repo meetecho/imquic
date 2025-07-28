@@ -552,6 +552,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	track->request_id = request_id;
 	track->track_alias = track_alias;
 	track->published = TRUE;
+	track->pending = FALSE;
 	annc->pub->relay_track_alias = track_alias + 1;
 	g_hash_table_insert(annc->tracks, g_strdup(name), track);
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
@@ -724,10 +725,15 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Already subscribed with ID %"SCNu64"\n", request_id);
 		return;
 	}
+	if(imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_12) {
+		/* Starting from v12, the publisher always chooses the track_alias */
+		track_alias = track->track_alias;
+	}
 	/* Create a subscription to this track */
 	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, track, request_id, track_alias);
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
-	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
+	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12 || !track->pending)
+		g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
 	g_mutex_lock(&track->mutex);
 	track->subscriptions = g_list_append(track->subscriptions, s);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
@@ -769,10 +775,12 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
 		track->request_id = imquic_moq_get_next_request_id(annc->pub->conn);
-		track->track_alias = annc->pub->relay_track_alias;
-		annc->pub->relay_track_alias++;
 		g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
-		g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
+		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
+			track->track_alias = annc->pub->relay_track_alias;
+			annc->pub->relay_track_alias++;
+			g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
+		}
 		/* We send a 'Largest Object' filter to the subscriber, we'll filter ourselves in case */
 		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn,
 			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL, NULL, 0);
@@ -802,13 +810,21 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
 		return;
 	}
+	if(imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_12) {
+		/* Starting from v12, the publisher always chooses the track_alias */
+		track->track_alias = track_alias;
+		g_hash_table_insert(pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
+	}
 	/* Send a SUBSCRIBE_OK to all subscribers */
 	g_mutex_lock(&track->mutex);
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
-		if(s && s->sub && s->sub->conn)
+		if(s && s->sub && s->sub->conn) {
+			s->track_alias = track->track_alias;
+			g_hash_table_insert(s->sub->subscriptions, imquic_uint64_dup(s->track_alias), s);
 			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, s->track_alias, 0, descending, largest);
+		}
 		temp = temp->next;
 	}
 	g_mutex_unlock(&track->mutex);

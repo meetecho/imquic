@@ -121,7 +121,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			.length = strlen(options.track_name)
 		};
 		moq_request_id = imquic_moq_get_next_request_id(conn);
-		moq_track_alias = 0;
+		moq_track_alias = 5;
 		gboolean forward = FALSE;
 		/* Check if we need to prepare an auth token */
 		uint8_t auth[256];
@@ -230,8 +230,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Accept the subscription */
 	moq_request_id = request_id;
-	moq_track_alias = track_alias;
-	imquic_moq_accept_subscribe(conn, request_id, track_alias, 0, FALSE, pub_started ? &sub_start : NULL);
+	moq_track_alias = 0;
+	if(moq_version < IMQUIC_MOQ_VERSION_12)
+		moq_track_alias = track_alias;
+	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, 0, FALSE, pub_started ? &sub_start : NULL);
 	/* Start sending objects */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
