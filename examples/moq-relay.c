@@ -40,7 +40,7 @@ static void imquic_demo_handle_signal(int signum) {
 
 /* Relay state */
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
-static GMutex mutex;
+static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
 static GHashTable *connections = NULL, *publishers = NULL, *subscribers = NULL, *namespaces = NULL;
 static GList *monitors = NULL;
 static GList *fetches = NULL;
@@ -52,7 +52,7 @@ typedef struct imquic_demo_moq_publisher {
 	GHashTable *subscriptions;
 	GHashTable *subscriptions_by_id;
 	uint64_t relay_track_alias;
-	GMutex mutex;
+	imquic_mutex mutex;
 } imquic_demo_moq_publisher;
 static imquic_demo_moq_publisher *imquic_demo_moq_publisher_create(imquic_connection *conn);
 static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub);
@@ -61,7 +61,7 @@ typedef struct imquic_demo_moq_announcement {
 	imquic_demo_moq_publisher *pub;
 	char *track_namespace;
 	GHashTable *tracks;
-	GMutex mutex;
+	imquic_mutex mutex;
 } imquic_demo_moq_announcement;
 static imquic_demo_moq_announcement *imquic_demo_moq_announcement_create(imquic_demo_moq_publisher *pub, const char *track_namespace);
 static void imquic_demo_moq_announcement_destroy(imquic_demo_moq_announcement *annc);
@@ -75,7 +75,7 @@ typedef struct imquic_demo_moq_track {
 	gboolean pending;
 	GList *subscriptions;
 	GList *objects;
-	GMutex mutex;
+	imquic_mutex mutex;
 } imquic_demo_moq_track;
 static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_announcement *annc, const char *track_name);
 static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *annc);
@@ -84,7 +84,7 @@ typedef struct imquic_demo_moq_subscriber {
 	imquic_connection *conn;
 	GHashTable *subscriptions;
 	GHashTable *subscriptions_by_id;
-	GMutex mutex;
+	imquic_mutex mutex;
 } imquic_demo_moq_subscriber;
 static imquic_demo_moq_subscriber *imquic_demo_moq_subscriber_create(imquic_connection *conn);
 static void imquic_demo_moq_subscriber_destroy(imquic_demo_moq_subscriber *sub);
@@ -99,7 +99,7 @@ typedef struct imquic_demo_moq_subscription {
 	gboolean fetch;
 	gboolean forward;
 	GList *objects;
-	GMutex mutex;
+	imquic_mutex mutex;
 } imquic_demo_moq_subscription;
 static imquic_demo_moq_subscription *imquic_demo_moq_subscription_create(imquic_demo_moq_subscriber *sub,
 	imquic_demo_moq_track *track, uint64_t request_id, uint64_t track_alias);
@@ -122,7 +122,7 @@ static imquic_demo_moq_publisher *imquic_demo_moq_publisher_create(imquic_connec
 	pub->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	pub->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 
-	g_mutex_init(&pub->mutex);
+	imquic_mutex_init(&pub->mutex);
 	return pub;
 }
 static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
@@ -143,7 +143,7 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
 			g_hash_table_unref(pub->subscriptions);
 		if(pub->subscriptions_by_id != NULL)
 			g_hash_table_unref(pub->subscriptions_by_id);
-		g_mutex_clear(&pub->mutex);
+		imquic_mutex_destroy(&pub->mutex);
 		g_free(pub);
 	}
 }
@@ -153,7 +153,7 @@ static imquic_demo_moq_announcement *imquic_demo_moq_announcement_create(imquic_
 	annc->track_namespace = g_strdup(track_namespace);
 	annc->tracks = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_track_destroy);
-	g_mutex_init(&annc->mutex);
+	imquic_mutex_init(&annc->mutex);
 	return annc;
 }
 static void imquic_demo_moq_announcement_destroy(imquic_demo_moq_announcement *annc) {
@@ -173,7 +173,7 @@ static void imquic_demo_moq_announcement_destroy(imquic_demo_moq_announcement *a
 			}
 			g_hash_table_unref(annc->tracks);
 		}
-		g_mutex_clear(&annc->mutex);
+		imquic_mutex_destroy(&annc->mutex);
 		g_free(annc);
 	}
 }
@@ -182,7 +182,7 @@ static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_annou
 	t->annc = annc;
 	t->track_name = g_strdup(track_name);
 	t->pending = TRUE;
-	g_mutex_init(&t->mutex);
+	imquic_mutex_init(&t->mutex);
 	return t;
 }
 static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
@@ -193,7 +193,7 @@ static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 			g_hash_table_remove(t->annc->pub->subscriptions_by_id, &t->request_id);
 			g_hash_table_remove(t->annc->pub->subscriptions, &t->track_alias);
 		}
-		g_mutex_lock(&t->mutex);
+		imquic_mutex_lock(&t->mutex);
 		GList *temp = t->subscriptions;
 		while(temp) {
 			imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
@@ -211,8 +211,8 @@ static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 		t->subscriptions = NULL;
 		g_list_free_full(t->objects, (GDestroyNotify)imquic_moq_object_cleanup);
 		t->objects = NULL;
-		g_mutex_unlock(&t->mutex);
-		g_mutex_clear(&t->mutex);
+		imquic_mutex_unlock(&t->mutex);
+		imquic_mutex_destroy(&t->mutex);
 		g_free(t);
 	}
 }
@@ -223,7 +223,7 @@ static imquic_demo_moq_subscriber *imquic_demo_moq_subscriber_create(imquic_conn
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_subscription_destroy);
 	sub->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, NULL);
-	g_mutex_init(&sub->mutex);
+	imquic_mutex_init(&sub->mutex);
 	return sub;
 }
 static void imquic_demo_moq_subscriber_destroy(imquic_demo_moq_subscriber *sub) {
@@ -241,7 +241,7 @@ static void imquic_demo_moq_subscriber_destroy(imquic_demo_moq_subscriber *sub) 
 		}
 		if(sub->subscriptions_by_id)
 			g_hash_table_unref(sub->subscriptions_by_id);
-		g_mutex_clear(&sub->mutex);
+		imquic_mutex_destroy(&sub->mutex);
 		g_free(sub);
 	}
 }
@@ -253,22 +253,22 @@ static imquic_demo_moq_subscription *imquic_demo_moq_subscription_create(imquic_
 	s->request_id = request_id;
 	s->track_alias = track_alias;
 	s->forward = TRUE;
-	g_mutex_init(&s->mutex);
+	imquic_mutex_init(&s->mutex);
 	return s;
 }
 static void imquic_demo_moq_subscription_destroy(imquic_demo_moq_subscription *s) {
 	if(s) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Removing subscription %"SCNu64"/%"SCNu64"\n", s->request_id, s->track_alias);
 		if(s->track) {
-			g_mutex_lock(&s->track->mutex);
+			imquic_mutex_lock(&s->track->mutex);
 			s->track->subscriptions = g_list_remove(s->track->subscriptions, s);
-			g_mutex_unlock(&s->track->mutex);
+			imquic_mutex_unlock(&s->track->mutex);
 		}
 		if(s->fetch) {
 			g_list_free(s->objects);
 			fetches = g_list_remove(fetches, s);
 		}
-		g_mutex_clear(&s->mutex);
+		imquic_mutex_destroy(&s->mutex);
 		g_free(s);
 	}
 }
@@ -403,10 +403,10 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, uint64_t requ
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New announced namespace: '%s'\n",
 		imquic_get_connection_name(conn), ns);
 	/* Check if this was announced already */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	if(g_hash_table_lookup(namespaces, ns) != NULL) {
 		/* Already announced, reject */
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Already announced\n", imquic_get_connection_name(conn));
 		imquic_moq_reject_announce(conn, request_id, tns, IMQUIC_MOQ_ANNCERR_INTERNAL_ERROR, "Already announced");
 		return;
@@ -437,7 +437,7 @@ static void imquic_demo_incoming_announce(imquic_connection *conn, uint64_t requ
 		}
 		g_list_free(list);
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 	/* Accept the announcement */
 	imquic_moq_accept_announce(conn, request_id, tns);
 }
@@ -449,16 +449,16 @@ static void imquic_demo_incoming_announce_cancel(imquic_connection *conn, imquic
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Cancelled announce of namespace: '%s' (%d, %s)\n",
 		imquic_get_connection_name(conn), ns, error_code, reason);
 	/* Find the namespace */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
 	if(annc == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
 		return;
 	}
 	if(annc->pub == NULL || annc->pub->conn != conn) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got ANNOUNCE_CANCEL from a different connection, ignoring\n",
 			imquic_get_connection_name(conn));
 		return;
@@ -467,7 +467,7 @@ static void imquic_demo_incoming_announce_cancel(imquic_connection *conn, imquic
 	g_hash_table_remove(namespaces, ns);
 	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
@@ -477,16 +477,16 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace unannounced: '%s'\n",
 		imquic_get_connection_name(conn), ns);
 	/* Find the namespace */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
 	if(annc == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
 		return;
 	}
 	if(annc->pub == NULL || annc->pub->conn != conn) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got UNANNOUNCE from a different connection, ignoring\n",
 			imquic_get_connection_name(conn));
 		return;
@@ -510,7 +510,7 @@ static void imquic_demo_incoming_unannounce(imquic_connection *conn, imquic_moq_
 		}
 		g_list_free(list);
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
@@ -526,7 +526,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
 	/* We also treat an incoming PUBLISH as an ANNOUNCE for that namespace */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
 	if(annc == NULL) {
 		/* Find the publisher from this connection */
@@ -543,7 +543,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	}
 	/* We also treat it as if we sent a SUBSCRIBE that got accepted */
 	if(g_hash_table_lookup(annc->tracks, name) != NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Track '%s' already published\n", name);
 		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_PUBERR_UNAUTHORIZED, "Track already published");
 		return;
@@ -579,12 +579,12 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 				imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, track, pub_request_id, track_alias);
 				g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(pub_request_id), s);
 				g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
-				g_mutex_lock(&track->mutex);
+				imquic_mutex_lock(&track->mutex);
 				track->subscriptions = g_list_append(track->subscriptions, s);
 				s->forward = FALSE;
 				s->sub_end.group = IMQUIC_MAX_VARINT;
 				s->sub_end.object = IMQUIC_MAX_VARINT;
-				g_mutex_unlock(&track->mutex);
+				imquic_mutex_unlock(&track->mutex);
 				/* Send the request */
 				imquic_moq_publish(mon->conn, pub_request_id, tns, tn, track_alias,
 					descending, largest, forward, auth, authlen);
@@ -593,7 +593,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		}
 		g_list_free(list);
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 	/* Done */
 	imquic_moq_accept_publish(conn, request_id, forward, 0, FALSE,
 		IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL);
@@ -604,10 +604,10 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish '%"SCNu64"' accepted\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
 		return;
@@ -615,7 +615,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	/* Update the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &request_id);
 	if(s == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No subscription with ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), request_id);
 		return;
@@ -650,17 +650,17 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Find the subscriber */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
 		return;
@@ -671,7 +671,7 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
 		g_hash_table_remove(sub->subscriptions, &s->track_alias);
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 
@@ -693,10 +693,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
 	/* Find the namespace */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
 	if(annc == NULL || annc->pub == NULL || annc->pub->conn == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST, "Namespace not found", track_alias);
@@ -721,7 +721,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Make sure we don't know this subscription already */
 	if(g_hash_table_lookup(sub->subscriptions_by_id, &request_id) != NULL) {
 		/* FIXME Should we return an error? */
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Already subscribed with ID %"SCNu64"\n", request_id);
 		return;
 	}
@@ -734,7 +734,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
 	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12 || !track->pending)
 		g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
-	g_mutex_lock(&track->mutex);
+	imquic_mutex_lock(&track->mutex);
 	track->subscriptions = g_list_append(track->subscriptions, s);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
 		imquic_get_connection_name(conn), (forward ? "enabled" : "disabled"));
@@ -766,7 +766,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
 	}
-	g_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&track->mutex);
 	/* Only accept the subscribe right now if the track is already active */
 	if(!track->pending) {
 		/* Fill in the largest location before answering */
@@ -785,7 +785,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_subscribe(annc->pub->conn, track->request_id, track->track_alias, tns, tn,
 			priority, descending, TRUE, IMQUIC_MOQ_FILTER_LARGEST_OBJECT, NULL, NULL, NULL, 0);
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, uint64_t expires, gboolean descending, imquic_moq_location *largest) {
@@ -797,16 +797,16 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 			imquic_get_connection_name(conn), largest->group, largest->object);
 	}
 	/* Find the track associated to this subscription */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
 	if(pub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No publisher found for that subscription\n");
 		return;
 	}
 	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions_by_id, &request_id);
 	if(track == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
 		return;
 	}
@@ -816,7 +816,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		g_hash_table_insert(pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
 	}
 	/* Send a SUBSCRIBE_OK to all subscribers */
-	g_mutex_lock(&track->mutex);
+	imquic_mutex_lock(&track->mutex);
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
@@ -827,10 +827,10 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		}
 		temp = temp->next;
 	}
-	g_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&track->mutex);
 	/* Remove the pending flag */
 	track->pending = FALSE;
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias) {
@@ -838,21 +838,21 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64"/%"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, track_alias, error_code, reason);
 	/* Find the track associated to this subscription */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
 	if(pub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No publisher found for that subscription\n");
 		return;
 	}
 	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions_by_id, &request_id);
 	if(track == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
 		return;
 	}
 	/* Send a SUBSCRIBE_ERROR to all subscribers */
-	g_mutex_lock(&track->mutex);
+	imquic_mutex_lock(&track->mutex);
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
@@ -860,21 +860,21 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			imquic_moq_reject_subscribe(s->sub->conn, s->request_id, error_code, reason, track_alias);
 		temp = temp->next;
 	}
-	g_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&track->mutex);
 	/* Destroy the track */
 	if(track->annc && track->annc->tracks)
 		g_hash_table_remove(track->annc->tracks, track->track_name);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
 		return;
@@ -887,7 +887,7 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 			imquic_get_connection_name(conn), (forward ? "enabled" : "disabled"));
 		s->forward = forward;
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
@@ -895,21 +895,21 @@ static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
 	/* Find the track associated to this subscription */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
 	if(pub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No publisher found for that subscription\n");
 		return;
 	}
 	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions_by_id, &request_id);
 	if(track == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
 		return;
 	}
 	/* Send a SUBSCRIBE_DONE to all subscribers */
-	g_mutex_lock(&track->mutex);
+	imquic_mutex_lock(&track->mutex);
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
@@ -917,21 +917,21 @@ static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request
 			imquic_moq_subscribe_done(s->sub->conn, s->request_id, status_code, reason);
 		temp = temp->next;
 	}
-	g_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&track->mutex);
 	/* Destroy the track */
 	if(track->annc && track->annc->tracks)
 		g_hash_table_remove(track->annc->tracks, track->track_name);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	/* We received an unsubscribe */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for subscription %"SCNu64"\n", imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
 		return;
@@ -942,7 +942,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
 		g_hash_table_remove(sub->subscriptions, &s->track_alias);
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen) {
@@ -954,10 +954,10 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 	if(auth != NULL)
 		imquic_moq_print_auth_info(conn, auth, authlen);
 	/* Keep track of this as a monitor */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, tns, ns);
 	monitors = g_list_prepend(monitors, mon);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 	imquic_moq_accept_subscribe_namespace(conn, request_id, tns);
 }
 
@@ -969,7 +969,7 @@ static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, 
 		imquic_get_connection_name(conn), ns);
 	/* FIXME Get rid of the associated monitor */
 	imquic_demo_moq_monitor *mon = NULL;
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	GList *temp = monitors;
 	while(temp) {
 		mon = (imquic_demo_moq_monitor *)temp->data;
@@ -980,7 +980,7 @@ static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, 
 		}
 		temp = temp->next;
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
@@ -999,10 +999,10 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	if(auth != NULL)
 		imquic_moq_print_auth_info(conn, auth, authlen);
 	/* Find the namespace */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
 	if(annc == NULL || annc->pub == NULL || annc->pub->conn == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
 		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_TRACK_DOES_NOT_EXIST, "Namespace not found");
@@ -1012,7 +1012,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, name);
 	if(track == NULL || track->pending || track->objects == NULL) {
 		/* TODO We should relay the FETCH to the publisher */
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Track not found\n",
 			imquic_get_connection_name(conn));
 		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_TRACK_DOES_NOT_EXIST, "Track not found");
@@ -1027,7 +1027,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	}
 	/* Make sure we don't know this subscription already */
 	if(g_hash_table_lookup(sub->subscriptions_by_id, &request_id) != NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Already subscribed with ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), request_id);
 		return;
@@ -1035,7 +1035,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	/* Create a subscription to this track, and add to the list of fetches to serve */
 	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, track, request_id, 0);
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
-	g_mutex_lock(&track->mutex);
+	imquic_mutex_lock(&track->mutex);
 	track->subscriptions = g_list_append(track->subscriptions, s);
 	/* Prepare the list of objects to send, out of the provided range */
 	GList *temp = track->objects;
@@ -1059,11 +1059,11 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	s->fetch = TRUE;
 	if(descending)
 		s->objects = g_list_sort(s->objects, imquic_demo_reorder_descending);
-	g_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&track->mutex);
 	fetches = g_list_prepend(fetches, s);
 	/* Accept the fetch */
 	imquic_moq_accept_fetch(conn, request_id, descending, &largest);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id ,
@@ -1074,7 +1074,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 		joining_request_id, request_id, joining_start, descending ? "descending" : "ascending");
 	if(auth != NULL)
 		imquic_moq_print_auth_info(conn, auth, authlen);
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	/* Create a subscriber, if needed */
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
@@ -1085,7 +1085,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	/* Find the reference subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &joining_request_id);
 	if(s == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No subscription with ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), joining_request_id);
 		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_INVALID_JOINING_REQUEST_ID, "Subscription not found");
@@ -1093,7 +1093,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	}
 	/* Make sure we don't know this subscription already */
 	if(g_hash_table_lookup(sub->subscriptions_by_id, &request_id) != NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Already subscribed with ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), request_id);
 		return;
@@ -1102,7 +1102,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	imquic_demo_moq_track *track = s->track;
 	imquic_demo_moq_subscription *jf = imquic_demo_moq_subscription_create(sub, track, request_id, 0);
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), jf);
-	g_mutex_lock(&track->mutex);
+	imquic_mutex_lock(&track->mutex);
 	track->subscriptions = g_list_append(track->subscriptions, jf);
 	/* Prepare the list of objects to send, using the provided group offset */
 	GList *temp = track->objects;
@@ -1128,28 +1128,28 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	jf->fetch = TRUE;
 	if(descending)
 		jf->objects = g_list_sort(jf->objects, imquic_demo_reorder_descending);
-	g_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&track->mutex);
 	fetches = g_list_prepend(fetches, jf);
 	/* Accept the fetch */
 	imquic_moq_accept_fetch(conn, request_id, descending, &largest);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t request_id) {
 	/* We received an unsubscribe */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming fetch cancel for subscription %"SCNu64"\n", imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
 		return;
 	}
 	/* Get rid of the subscription */
 	g_hash_table_remove(sub->subscriptions_by_id, &request_id);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
@@ -1162,23 +1162,23 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	}
 	/* Find the track associated to this subscription */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
 	if(pub == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No publisher found for that subscription\n",
 			imquic_get_connection_name(conn));
 		return;
 	}
 	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions, &object->track_alias);
 	if(track == NULL) {
-		g_mutex_unlock(&mutex);
+		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No track found for that subscription\n",
 			imquic_get_connection_name(conn));
 		return;
 	}
 	/* Duplicate the object, in case we need it later for a FETCH */
-	g_mutex_lock(&track->mutex);
+	imquic_mutex_lock(&track->mutex);
 	track->objects = g_list_prepend(track->objects, imquic_moq_object_duplicate(object));
 	/* Relay the object to all subscribers */
 	if(!options.quiet) {
@@ -1219,7 +1219,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		temp = temp->next;
 	}
 	/* Done */
-	g_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&track->mutex);
 	/* Any subscription we should get rid of? */
 	temp = done;
 	while(temp) {
@@ -1231,14 +1231,14 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		temp = temp->next;
 	}
 	g_list_free(done);
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
 	/* Remove publishers/subscribers associated to this connection */
-	g_mutex_lock(&mutex);
+	imquic_mutex_lock(&mutex);
 	g_hash_table_remove(publishers, conn);
 	g_hash_table_remove(subscribers, conn);
 	GList *temp = monitors, *next = NULL;
@@ -1251,7 +1251,7 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 		}
 		temp = next;
 	}
-	g_mutex_unlock(&mutex);
+	imquic_mutex_unlock(&mutex);
 	if(g_hash_table_remove(connections, conn))
 		imquic_connection_unref(conn);
 }
@@ -1405,10 +1405,10 @@ int main(int argc, char *argv[]) {
 	imquic_start_endpoint(server);
 
 	while(!stop) {
-		g_mutex_lock(&mutex);
+		imquic_mutex_lock(&mutex);
 		if(fetches == NULL) {
 			/* Nothing to do, just wait */
-			g_mutex_unlock(&mutex);
+			imquic_mutex_unlock(&mutex);
 			g_usleep(100000);
 		} else {
 			/* Iterate on the fetches and serve the requested objects */
@@ -1433,7 +1433,7 @@ int main(int argc, char *argv[]) {
 				}
 				temp = next;
 			}
-			g_mutex_unlock(&mutex);
+			imquic_mutex_unlock(&mutex);
 		}
 	}
 

@@ -145,6 +145,7 @@
 #ifndef IMQUIC_IMQUIC_H
 #define IMQUIC_IMQUIC_H
 
+#include "mutex.h"
 #include "debug.h"
 
 /* Opaque structures */

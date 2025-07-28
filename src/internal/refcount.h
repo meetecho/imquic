@@ -57,7 +57,7 @@ void my_free_function(imquic_refcount *counter) {
 #define IMQUIC_REFCOUNT_H
 
 #include <glib.h>
-#include "mutex.h"
+#include "../imquic/mutex.h"
 
 //~ #define IMQUIC_REFCOUNT_DEBUG
 

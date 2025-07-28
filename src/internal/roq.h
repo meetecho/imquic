@@ -22,7 +22,6 @@
 
 #include "../imquic/imquic.h"
 #include "qlog.h"
-#include "mutex.h"
 #include "refcount.h"
 
 #define IMQUIC_ROQ		7499633

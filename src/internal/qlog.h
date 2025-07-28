@@ -26,7 +26,6 @@ gboolean imquic_qlog_is_supported(void);
 #include <jansson.h>
 
 #include "refcount.h"
-#include "mutex.h"
 
 /** @name QLOG properties definitions
  */
