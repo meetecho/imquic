@@ -821,8 +821,11 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && s->sub && s->sub->conn) {
-			s->track_alias = track->track_alias;
-			g_hash_table_insert(s->sub->subscriptions, imquic_uint64_dup(s->track_alias), s);
+			if(imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_12) {
+				/* Starting from v12, the publisher always chooses the track_alias */
+				s->track_alias = track->track_alias;
+				g_hash_table_insert(s->sub->subscriptions, imquic_uint64_dup(s->track_alias), s);
+			}
 			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, s->track_alias, 0, descending, largest);
 		}
 		temp = temp->next;
