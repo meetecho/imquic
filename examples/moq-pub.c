@@ -121,7 +121,6 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			.length = strlen(options.track_name)
 		};
 		moq_request_id = imquic_moq_get_next_request_id(conn);
-		moq_track_alias = 5;
 		gboolean forward = FALSE;
 		/* Check if we need to prepare an auth token */
 		uint8_t auth[256];
@@ -230,7 +229,6 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Accept the subscription */
 	moq_request_id = request_id;
-	moq_track_alias = 0;
 	if(moq_version < IMQUIC_MOQ_VERSION_12)
 		moq_track_alias = track_alias;
 	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, 0, FALSE, pub_started ? &sub_start : NULL);
@@ -309,7 +307,6 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
-		moq_track_alias = 0;
 		g_atomic_int_set(&send_objects, 0);
 		return;
 	} else if(group_id == sub_end.group && object_id == sub_end.object) {
@@ -352,7 +349,6 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
-		moq_track_alias = 0;
 		g_atomic_int_set(&send_objects, 0);
 	}
 }
@@ -450,6 +446,9 @@ int main(int argc, char *argv[]) {
 			goto done;
 		}
 	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64", if a version higher or equal than 12 is negotiated\n",
+		options.track_alias);
+	moq_track_alias	= options.track_alias;
 
 	/* Check if we need to create a QLOG file, and which we should save */
 	gboolean qlog_quic = FALSE, qlog_http3 = FALSE, qlog_moq = FALSE;
