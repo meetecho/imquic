@@ -994,7 +994,7 @@ size_t imquic_moq_add_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *by
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 	uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, imquic_moq_group_order group_order,
-	imquic_moq_fetch_range *range, imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_location_range *range, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add an \c FETCH_CANCEL message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1287,9 +1287,8 @@ typedef struct imquic_moq_callbacks {
 	void (* new_connection)(imquic_connection *conn, void *user_data);
 	/*! \brief Callback function to be notified about incoming \c CLIENT_SETUP messages
 	 * \note This only makes sense for servers: to accept a connection, servers
-	 * should use \ref imquic_moq_accept_connection; to reject a connection,
-	 * you can use \ref imquic_close_connection instead.. If a callback is not
-	 * configured, a \c SERVER_SETUP is sent automatically. */
+	 * must simply return \c 0 ; to reject a connection, servers must return an
+	 * error code. If a callback is not configured, a \c SERVER_SETUP is sent automatically. */
 	uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified when a MoQ connection is ready (setup performed on both ends) */
 	void (* moq_ready)(imquic_connection *conn);
@@ -1336,7 +1335,7 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen);
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen);
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified about incoming \c FETCH_CANCEL messages */

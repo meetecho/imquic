@@ -400,13 +400,13 @@ typedef struct imquic_moq_location {
 	uint64_t object;
 } imquic_moq_location;
 
-/*! \brief MoQ FETCH range (from where to where) */
-typedef struct imquic_moq_fetch_range {
+/*! \brief MoQ location range (from where to where, e.g., for FETCH) */
+typedef struct imquic_moq_location_range {
 	/*! \brief Start group/object */
 	imquic_moq_location start;
 	/*! \brief End group/object */
 	imquic_moq_location end;
-} imquic_moq_fetch_range;
+} imquic_moq_location_range;
 
 /*! \brief Ways of sending objects */
 typedef enum imquic_moq_delivery {
@@ -920,7 +920,7 @@ void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
  * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen));
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1246,7 +1246,7 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, imquic_moq_namespa
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn,
-	gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen);
+	gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen);
 /*! \brief Function to send a joining \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription

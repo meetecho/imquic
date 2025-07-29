@@ -677,6 +677,73 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 	imquic_mutex_unlock(&mutex);
 }
 
+static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
+	/* We received a request to return the track status */
+	char tns_buffer[256], tn_buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming request to return the track status for '%s'/'%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, request_id);
+	if(auth != NULL)
+		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(!imquic_moq_check_auth_info(conn, options.sub_auth_info, auth, authlen)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_SUBERR_UNAUTHORIZED, "Unauthorized access");
+		return;
+	}
+	if(name == NULL || strlen(name) == 0)
+		name = "temp";
+	/* Find the namespace */
+	imquic_mutex_lock(&mutex);
+	imquic_demo_moq_announcement *annc = g_hash_table_lookup(namespaces, ns);
+	if(annc == NULL || annc->pub == NULL || annc->pub->conn == NULL) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST, "Namespace not found");
+		return;
+	}
+	/* Do we know this track already? */
+	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, name);
+	if(track == NULL) {
+		/* TODO We don't: we should forward this upstream, but we
+		 * currently don't as this is just a proof-of-concept handling
+		 * of a TRACK_STATUS request to reply with something */
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST, "Namespace not found");
+		return;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
+		imquic_get_connection_name(conn), (forward ? "enabled" : "disabled"));
+	/* Check the filter */
+	imquic_moq_object *largest = NULL;
+	imquic_mutex_lock(&track->mutex);
+	if(!track->pending && track->objects != NULL)
+		largest = (imquic_moq_object *)track->objects->data;
+	imquic_moq_location start = { 0 };
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
+		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
+	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
+		start.group = largest ? largest->group_id : 0;
+		start.object = largest ? largest->object_id : 0;
+	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
+		start.group = largest ? (largest->group_id + 1) : 0;
+		start.object = 0;
+	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+			filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		start = *start_location;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
+			imquic_get_connection_name(conn), start.group, start.object);
+	}
+	imquic_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&mutex);
+	/* TODO We should make the track_alias mapping persistent for this subscriber */
+	uint64_t track_alias = track->track_alias;
+	imquic_moq_accept_track_status(conn, request_id, track_alias, 0, FALSE, largest ? &start : NULL);
+}
 
 static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
@@ -985,7 +1052,7 @@ static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, 
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen) {
+		gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -1382,6 +1449,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_publish_cb(server, imquic_demo_incoming_publish);
 	imquic_set_publish_accepted_cb(server, imquic_demo_publish_accepted);
 	imquic_set_publish_error_cb(server, imquic_demo_publish_error);
+	imquic_set_incoming_track_status_cb(server, imquic_demo_incoming_track_status);
 	imquic_set_incoming_subscribe_cb(server, imquic_demo_incoming_subscribe);
 	imquic_set_subscribe_accepted_cb(server, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(server, imquic_demo_subscribe_error);

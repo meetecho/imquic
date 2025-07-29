@@ -123,7 +123,7 @@ typedef struct imquic_demo_moq_subscription {
 	gboolean forward;
 	gboolean fetch;
 	gboolean descending;
-	imquic_moq_fetch_range range;
+	imquic_moq_location_range range;
 	int64_t test[IMQUIC_DEMO_TEST_MAX];
 	GThread *thread;
 	volatile int destroyed;
@@ -420,7 +420,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen) {
+		gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);

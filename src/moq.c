@@ -2919,7 +2919,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %s (%"SCNu8"))\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_group_order_str(group_order), group_order);
 	imquic_moq_fetch_type type = IMQUIC_MOQ_FETCH_STANDALONE;
-	imquic_moq_fetch_range range = { 0 };
+	imquic_moq_location_range range = { 0 };
 	uint64_t joining_request_id = 0, joining_start = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
 		type = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -4957,7 +4957,7 @@ size_t imquic_moq_add_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *by
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 		uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, imquic_moq_group_order group_order,
-		imquic_moq_fetch_range *range, imquic_moq_subscribe_parameters *parameters) {
+		imquic_moq_location_range *range, imquic_moq_subscribe_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || (range == NULL && (moq->version < IMQUIC_MOQ_VERSION_08 || type == IMQUIC_MOQ_FETCH_STANDALONE))) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH));
@@ -6694,7 +6694,7 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, imquic_moq_namespa
 }
 
 int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen) {
+		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tn == NULL || range == NULL) {
