@@ -2144,6 +2144,7 @@ size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Group Order: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), group_order);
 	uint64_t filter = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR((filter < 0x1 || filter > 0x4), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Filter type");
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_OK");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Filter type: %s (%"SCNu64")\n",
@@ -2317,6 +2318,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 			imquic_get_connection_name(moq->conn), forward);
 	}
 	uint64_t filter = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR((filter < 0x1 || filter > 0x4), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Filter type");
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Filter type: %s (%"SCNu64")\n",
@@ -3338,6 +3340,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Forward: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), forward);
 	uint64_t filter = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR((filter < 0x1 || filter > 0x4), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Filter type");
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken TRACK_STATUS");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Filter type: %s (%"SCNu64")\n",
