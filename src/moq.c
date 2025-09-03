@@ -283,23 +283,23 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 	return NULL;
 }
 
-const char *imquic_moq_announce_error_code_str(imquic_moq_announce_error_code code) {
+const char *imquic_moq_publish_namespace_error_code_str(imquic_moq_publish_namespace_error_code code) {
 	switch(code) {
-		case IMQUIC_MOQ_ANNCERR_INTERNAL_ERROR:
+		case IMQUIC_MOQ_PUBNSERR_INTERNAL_ERROR:
 			return "Internal Error";
-		case IMQUIC_MOQ_ANNCERR_UNAUTHORIZED:
+		case IMQUIC_MOQ_PUBNSERR_UNAUTHORIZED:
 			return "Unauthorized";
-		case IMQUIC_MOQ_ANNCERR_TIMEOUT:
+		case IMQUIC_MOQ_PUBNSERR_TIMEOUT:
 			return "Timeout";
-		case IMQUIC_MOQ_ANNCERR_NOT_SUPPORTED:
+		case IMQUIC_MOQ_PUBNSERR_NOT_SUPPORTED:
 			return "Not Supported";
-		case IMQUIC_MOQ_ANNCERR_UNINTERESTED:
+		case IMQUIC_MOQ_PUBNSERR_UNINTERESTED:
 			return "Uninterested";
-		case IMQUIC_MOQ_ANNCERR_MALFORMED_AUTH_TOKEN:
+		case IMQUIC_MOQ_PUBNSERR_MALFORMED_AUTH_TOKEN:
 			return "Malformed Auth Token";
-		case IMQUIC_MOQ_ANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS:
+		case IMQUIC_MOQ_PUBNSERR_UNKNOWN_AUTH_TOKEN_ALIAS:
 			return "Unknown Auth Token Alias";
-		case IMQUIC_MOQ_ANNCERR_EXPIRED_AUTH_TOKEN:
+		case IMQUIC_MOQ_PUBNSERR_EXPIRED_AUTH_TOKEN:
 			return "Expired Auth Token";
 		default: break;
 	}
@@ -350,23 +350,23 @@ const char *imquic_moq_sub_error_code_str(imquic_moq_sub_error_code code) {
 	return NULL;
 }
 
-const char *imquic_moq_subannc_error_code_str(imquic_moq_subannc_error_code code) {
+const char *imquic_moq_subns_error_code_str(imquic_moq_subns_error_code code) {
 	switch(code) {
-		case IMQUIC_MOQ_SUBANNCERR_INTERNAL_ERROR:
+		case IMQUIC_MOQ_SUBNSERR_INTERNAL_ERROR:
 			return "Internal Error";
-		case IMQUIC_MOQ_SUBANNCERR_UNAUTHORIZED:
+		case IMQUIC_MOQ_SUBNSERR_UNAUTHORIZED:
 			return "Unauthorized";
-		case IMQUIC_MOQ_SUBANNCERR_TIMEOUT:
+		case IMQUIC_MOQ_SUBNSERR_TIMEOUT:
 			return "Timeout";
-		case IMQUIC_MOQ_SUBANNCERR_NOT_SUPPORTED:
+		case IMQUIC_MOQ_SUBNSERR_NOT_SUPPORTED:
 			return "Not Supported";
-		case IMQUIC_MOQ_SUBANNCERR_NAMESPACE_PREFIX_UNKNOWN:
+		case IMQUIC_MOQ_SUBNSERR_NAMESPACE_PREFIX_UNKNOWN:
 			return "Namespace Prefix Unknown";
-		case IMQUIC_MOQ_SUBANNCERR_MALFORMED_AUTH_TOKEN:
+		case IMQUIC_MOQ_SUBNSERR_MALFORMED_AUTH_TOKEN:
 			return "Malformed Auth Token";
-		case IMQUIC_MOQ_SUBANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS:
+		case IMQUIC_MOQ_SUBNSERR_UNKNOWN_AUTH_TOKEN_ALIAS:
 			return "Unknown Auth Token Alias";
-		case IMQUIC_MOQ_SUBANNCERR_EXPIRED_AUTH_TOKEN:
+		case IMQUIC_MOQ_SUBNSERR_EXPIRED_AUTH_TOKEN:
 			return "Expired Auth Token";
 		default: break;
 	}
@@ -435,20 +435,20 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type) {
 			return "SUBSCRIBE_OK";
 		case IMQUIC_MOQ_SUBSCRIBE_ERROR:
 			return "SUBSCRIBE_ERROR";
-		case IMQUIC_MOQ_ANNOUNCE:
-			return "ANNOUNCE";
-		case IMQUIC_MOQ_ANNOUNCE_OK:
-			return "ANNOUNCE_OK";
-		case IMQUIC_MOQ_ANNOUNCE_ERROR:
-			return "ANNOUNCE_ERROR";
-		case IMQUIC_MOQ_UNANNOUNCE:
-			return "UNANNOUNCE";
+		case IMQUIC_MOQ_PUBLISH_NAMESPACE:
+			return "PUBLISH_NAMESPACE";
+		case IMQUIC_MOQ_PUBLISH_NAMESPACE_OK:
+			return "PUBLISH_NAMESPACE_OK";
+		case IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR:
+			return "PUBLISH_NAMESPACE_ERROR";
+		case IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE:
+			return "PUBLISH_NAMESPACE_DONE";
 		case IMQUIC_MOQ_UNSUBSCRIBE:
 			return "UNSUBSCRIBE";
 		case IMQUIC_MOQ_SUBSCRIBE_DONE:
 			return "SUBSCRIBE_DONE";
-		case IMQUIC_MOQ_ANNOUNCE_CANCEL:
-			return "ANNOUNCE_CANCEL";
+		case IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL:
+			return "PUBLISH_NAMESPACE_CANCEL";
 		case IMQUIC_MOQ_TRACK_STATUS:
 			return "TRACK_STATUS";
 		case IMQUIC_MOQ_TRACK_STATUS_OK:
@@ -1224,21 +1224,21 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			} else if(type == IMQUIC_MOQ_REQUESTS_BLOCKED) {
 				/* Parse this REQUESTS_BLOCKED message */
 				parsed = imquic_moq_parse_requests_blocked(moq, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_ANNOUNCE) {
-				/* Parse this ANNOUNCE message */
-				parsed = imquic_moq_parse_announce(moq, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_ANNOUNCE_OK) {
-				/* Parse this ANNOUNCE_OK message */
-				parsed = imquic_moq_parse_announce_ok(moq, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_ANNOUNCE_ERROR) {
-				/* Parse this ANNOUNCE_ERROR message */
-				parsed = imquic_moq_parse_announce_error(moq, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_UNANNOUNCE) {
-				/* Parse this UNANNOUNCE message */
-				parsed = imquic_moq_parse_unannounce(moq, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_ANNOUNCE_CANCEL) {
-				/* Parse this ANNOUNCE_CANCEL message */
-				parsed = imquic_moq_parse_announce_cancel(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_NAMESPACE) {
+				/* Parse this PUBLISH_NAMESPACE message */
+				parsed = imquic_moq_parse_publish_namespace(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_NAMESPACE_OK) {
+				/* Parse this PUBLISH_NAMESPACE_OK message */
+				parsed = imquic_moq_parse_publish_namespace_ok(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR) {
+				/* Parse this PUBLISH_NAMESPACE_ERROR message */
+				parsed = imquic_moq_parse_publish_namespace_error(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE) {
+				/* Parse this PUBLISH_NAMESPACE_DONE message */
+				parsed = imquic_moq_parse_publish_namespace_done(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL) {
+				/* Parse this PUBLISH_NAMESPACE_CANCEL message */
+				parsed = imquic_moq_parse_publish_namespace_cancel(moq, &bytes[offset], plen, &error);
 			} else if(type == IMQUIC_MOQ_PUBLISH) {
 				/* Parse this PUBLISH message */
 				parsed = imquic_moq_parse_publish(moq, &bytes[offset], plen, &error);
@@ -1707,7 +1707,7 @@ size_t imquic_moq_parse_requests_blocked(imquic_moq_context *moq, uint8_t *bytes
 	return offset;
 }
 
-size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
@@ -1717,7 +1717,7 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 	uint64_t request_id = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken ANNOUNCE");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -1730,21 +1730,21 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
-	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE", FALSE);
+	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken PUBLISH_NAMESPACE", FALSE);
 	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken ANNOUNCE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_subscribe_parameters parameters = { 0 };
 	for(i = 0; i<params_num; i++) {
-		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken ANNOUNCE");
+		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 		offset += imquic_moq_parse_subscribe_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken ANNOUNCE");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
@@ -1754,20 +1754,20 @@ size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t
 	}
 #endif
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_announce) {
-		moq->conn->socket->callbacks.moq.incoming_announce(moq->conn, request_id, &tns[0],
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish_namespace) {
+		moq->conn->socket->callbacks.moq.incoming_publish_namespace(moq->conn, request_id, &tns[0],
 			(parameters.auth_token_set ? parameters.auth_token : NULL),
 			(parameters.auth_token_set ? parameters.auth_token_len : 0));
 	} else {
 		/* No handler for this request, let's reject it ourselves */
-		imquic_moq_reject_announce(moq->conn, request_id, &tns[0], IMQUIC_MOQ_ANNCERR_NOT_SUPPORTED, "Not handled");
+		imquic_moq_reject_publish_namespace(moq->conn, request_id, &tns[0], IMQUIC_MOQ_PUBNSERR_NOT_SUPPORTED, "Not handled");
 	}
 	if(error)
 		*error = 0;
 	return offset;
 }
 
-size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_publish_namespace_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
@@ -1779,17 +1779,17 @@ size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, siz
 	memset(&tns, 0, sizeof(tns));
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken ANNOUNCE_OK");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
 	} else {
 		uint64_t tns_num = 0, i = 0;
-		IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE_OK", TRUE);
+		IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken PUBLISH_NAMESPACE_OK", TRUE);
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce_ok");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_ok");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		else
@@ -1798,8 +1798,8 @@ size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, siz
 	}
 #endif
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.announce_accepted) {
-		moq->conn->socket->callbacks.moq.announce_accepted(moq->conn, request_id,
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_namespace_accepted) {
+		moq->conn->socket->callbacks.moq.publish_namespace_accepted(moq->conn, request_id,
 			(moq->version < IMQUIC_MOQ_VERSION_11 ? &tns[0] : NULL));
 	}
 	if(error)
@@ -1807,7 +1807,7 @@ size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, siz
 	return offset;
 }
 
-size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_publish_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
@@ -1819,25 +1819,25 @@ size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, 
 	memset(&tns, 0, sizeof(tns));
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken ANNOUNCE_ERROR");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_ERROR");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
 	} else {
 		uint64_t tns_num = 0, i = 0;
-		IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE_ERROR", FALSE);
+		IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken PUBLISH_NAMESPACE_ERROR", FALSE);
 	}
 	uint64_t error_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken ANNOUNCE_ERROR");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_ERROR");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_error_code_str(error_code), error_code);
 	uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken ANNOUNCE_ERROR");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_ERROR");
 	offset += length;
 	char reason[1024], *reason_str = NULL;
 	if(rs_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken ANNOUNCE_ERROR");
+		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_ERROR");
 		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
@@ -1850,7 +1850,7 @@ size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce_error");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_error");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		else
@@ -1862,8 +1862,8 @@ size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 #endif
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.announce_error) {
-		moq->conn->socket->callbacks.moq.announce_error(moq->conn, request_id,
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_namespace_error) {
+		moq->conn->socket->callbacks.moq.publish_namespace_error(moq->conn, request_id,
 			(moq->version < IMQUIC_MOQ_VERSION_11 ? &tns[0] : NULL), error_code, reason_str);
 	}
 	if(error)
@@ -1871,7 +1871,7 @@ size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, 
 	return offset;
 }
 
-size_t imquic_moq_parse_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_publish_namespace_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
@@ -1881,23 +1881,23 @@ size_t imquic_moq_parse_unannounce(imquic_moq_context *moq, uint8_t *bytes, size
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
-	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken UNANNOUNCE", TRUE);
+	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken PUBLISH_NAMESPACE_DONE", TRUE);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("unannounce");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_done");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_unannounce)
-		moq->conn->socket->callbacks.moq.incoming_unannounce(moq->conn, &tns[0]);
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_namespace_done)
+		moq->conn->socket->callbacks.moq.publish_namespace_done(moq->conn, &tns[0]);
 	if(error)
 		*error = 0;
 	return offset;
 }
 
-size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_publish_namespace_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
@@ -1909,17 +1909,17 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 	uint64_t error_code = 0;
 	char reason[1024], *reason_str = NULL;
 	uint64_t tns_num = 0, i = 0;
-	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken ANNOUNCE_CANCEL", FALSE);
+	IMQUIC_MOQ_PARSE_NAMESPACES(tns_num, i, "Broken PUBLISH_NAMESPACE_CANCEL", FALSE);
 	error_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken ANNOUNCE_CANCEL");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_error_code_str(error_code), error_code);
 	uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken ANNOUNCE_CANCEL");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
 	offset += length;
 	if(rs_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken ANNOUNCE_CANCEL");
+		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
 		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
@@ -1932,7 +1932,7 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce_cancel");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_cancel");
 		imquic_qlog_moq_message_add_namespace(message, &tns[0]);
 		json_object_set_new(message, "error_code", json_integer(error_code));
 		if(reason_str != NULL)
@@ -1941,8 +1941,8 @@ size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes,
 	}
 #endif
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_announce_cancel)
-		moq->conn->socket->callbacks.moq.incoming_announce_cancel(moq->conn, &tns[0], error_code, reason);
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish_namespace_cancel)
+		moq->conn->socket->callbacks.moq.incoming_publish_namespace_cancel(moq->conn, &tns[0], error_code, reason);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2743,7 +2743,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, uint8_t *by
 			(parameters.auth_token_set ? parameters.auth_token_len : 0));
 	} else {
 		/* No handler for this request, let's reject it ourselves */
-		imquic_moq_reject_subscribe_namespace(moq->conn, request_id, &tns[0], IMQUIC_MOQ_SUBANNCERR_NOT_SUPPORTED, "Not handled");
+		imquic_moq_reject_subscribe_namespace(moq->conn, request_id, &tns[0], IMQUIC_MOQ_SUBNSERR_NOT_SUPPORTED, "Not handled");
 	}
 	if(error)
 		*error = 0;
@@ -4365,22 +4365,22 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
 	return offset;
 }
 
-size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_subscribe_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE));
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_NAMESPACE));
 		return 0;
 	}
 	size_t offset = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_11)
 		offset += imquic_write_varint(request_id, bytes, blen);
-	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE);
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_NAMESPACE);
 	uint8_t params_num = 0;
 	offset += imquic_moq_subscribe_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
@@ -4392,21 +4392,21 @@ size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t b
 	return offset;
 }
 
-size_t imquic_moq_add_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_namespace *track_namespace) {
+size_t imquic_moq_add_publish_namespace_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_namespace *track_namespace) {
 	if(bytes == NULL || blen < 1 || (moq->version < IMQUIC_MOQ_VERSION_11 && track_namespace == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_OK));
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_NAMESPACE_OK));
 		return 0;
 	}
 	size_t offset = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		offset += imquic_write_varint(request_id, bytes, blen);
 	} else {
-		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE_OK);
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_NAMESPACE_OK);
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce_ok");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_ok");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		else
@@ -4417,18 +4417,18 @@ size_t imquic_moq_add_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_
 	return offset;
 }
 
-size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_announce_error_code error, const char *reason) {
+size_t imquic_moq_add_publish_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_publish_namespace_error_code error, const char *reason) {
 	if(bytes == NULL || blen < 1 || (moq->version < IMQUIC_MOQ_VERSION_11 && track_namespace == NULL) || (reason && strlen(reason) > 1024)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_ERROR));
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR));
 		return 0;
 	}
 	size_t offset = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_11) {
 		offset += imquic_write_varint(request_id, bytes, blen);
 	} else {
-		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE_ERROR);
+		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR);
 	}
 	offset += imquic_write_varint(error, &bytes[offset], blen-offset);
 	size_t reason_len = reason ? strlen(reason) : 0;
@@ -4439,7 +4439,7 @@ size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, si
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce_error");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_error");
 		if(moq->version >= IMQUIC_MOQ_VERSION_11)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		else
@@ -4453,17 +4453,17 @@ size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, si
 	return offset;
 }
 
-size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace) {
+size_t imquic_moq_add_publish_namespace_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_UNANNOUNCE));
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE));
 		return 0;
 	}
 	size_t offset = 0;
-	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_UNANNOUNCE);
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("unannounce");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_done");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
@@ -4471,15 +4471,15 @@ size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t
 	return offset;
 }
 
-size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_namespace *track_namespace, imquic_moq_announce_error_code error, const char *reason) {
+size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		imquic_moq_namespace *track_namespace, imquic_moq_publish_namespace_error_code error, const char *reason) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL || (reason && strlen(reason) > 1024)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_ANNOUNCE_CANCEL));
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL));
 		return 0;
 	}
 	size_t offset = 0;
-	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_ANNOUNCE_CANCEL);
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL);
 	offset += imquic_write_varint(error, &bytes[offset], blen-offset);
 	size_t reason_len = reason ? strlen(reason) : 0;
 	offset += imquic_write_varint(reason_len, &bytes[offset], blen-offset);
@@ -4489,7 +4489,7 @@ size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, s
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("announce_cancel");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_cancel");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace);
 		json_object_set_new(message, "error_code", json_integer(error));
 		if(reason != NULL)
@@ -4902,7 +4902,7 @@ size_t imquic_moq_add_subscribe_namespace_ok(imquic_moq_context *moq, uint8_t *b
 }
 
 size_t imquic_moq_add_subscribe_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_subannc_error_code error, const char *reason) {
+		uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_subns_error_code error, const char *reason) {
 	if(bytes == NULL || blen < 1 || (moq->version < IMQUIC_MOQ_VERSION_11 && track_namespace == NULL) || (reason && strlen(reason) > 1024)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_NAMESPACE_ERROR));
@@ -6057,7 +6057,7 @@ size_t imquic_moq_build_auth_token(imquic_moq_auth_token *token, uint8_t *bytes,
 }
 
 /* Namespaces and subscriptions */
-int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns,
+int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns,
 		uint8_t *auth, size_t authlen) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -6085,7 +6085,7 @@ int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq
 		}
 		moq->next_request_id = request_id + 2;
 	}
-	/* TODO Check if this namespace exists and was announced here */
+	/* TODO Check if this namespace exists and was publish_namespaced here */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	imquic_moq_subscribe_parameters parameters = { 0 };
@@ -6099,8 +6099,8 @@ int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq
 		memcpy(parameters.auth_token, auth, authlen);
 		parameters.auth_token_len = authlen;
 	}
-	size_t ann_len = imquic_moq_add_announce(moq, &buffer[poffset], blen-poffset, request_id, tns, &parameters);
-	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_ANNOUNCE, buffer, blen, poffset, ann_len, &start);
+	size_t ann_len = imquic_moq_add_publish_namespace(moq, &buffer[poffset], blen-poffset, request_id, tns, &parameters);
+	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_NAMESPACE, buffer, blen, poffset, ann_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, ann_len, FALSE);
 	moq->control_stream_offset += ann_len;
@@ -6110,7 +6110,7 @@ int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq
 	return 0;
 }
 
-int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || (moq->version < IMQUIC_MOQ_VERSION_11 && (tns == NULL || tns->buffer == 0 || tns->length == 0))) {
@@ -6122,11 +6122,11 @@ int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imq
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	/* TODO Check if the request ID exists */
-	/* TODO Check if this namespace exists and was announced here */
+	/* TODO Check if this namespace exists and was publish_namespaced here */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
-	size_t ann_len = imquic_moq_add_announce_ok(moq, &buffer[poffset], blen-poffset, request_id, tns);
-	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_ANNOUNCE_OK, buffer, blen, poffset, ann_len, &start);
+	size_t ann_len = imquic_moq_add_publish_namespace_ok(moq, &buffer[poffset], blen-poffset, request_id, tns);
+	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_NAMESPACE_OK, buffer, blen, poffset, ann_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, ann_len, FALSE);
 	moq->control_stream_offset += ann_len;
@@ -6136,7 +6136,7 @@ int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imq
 	return 0;
 }
 
-int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
+int imquic_moq_reject_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || (reason && strlen(reason) > 1024) ||
@@ -6149,11 +6149,11 @@ int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imq
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	/* TODO Check if the request ID exists */
-	/* TODO Check if this namespace exists and was announced here */
+	/* TODO Check if this namespace exists and was publish_namespaced here */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
-	size_t ann_len = imquic_moq_add_announce_error(moq, &buffer[poffset], blen-poffset, request_id, tns, error_code, reason);
-	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_ANNOUNCE_ERROR, buffer, blen, poffset, ann_len, &start);
+	size_t ann_len = imquic_moq_add_publish_namespace_error(moq, &buffer[poffset], blen-poffset, request_id, tns, error_code, reason);
+	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR, buffer, blen, poffset, ann_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, ann_len, FALSE);
 	moq->control_stream_offset += ann_len;
@@ -6163,7 +6163,7 @@ int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imq
 	return 0;
 }
 
-int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
+int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
@@ -6174,11 +6174,11 @@ int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns) {
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
-	/* TODO Check if this namespace exists and was announced here */
+	/* TODO Check if this namespace exists and was publish_namespaced here */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
-	size_t ann_len = imquic_moq_add_unannounce(moq, &buffer[poffset], blen-poffset, tns);
-	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_UNANNOUNCE, buffer, blen, poffset, ann_len, &start);
+	size_t ann_len = imquic_moq_add_publish_namespace_done(moq, &buffer[poffset], blen-poffset, tns);
+	ann_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE, buffer, blen, poffset, ann_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, ann_len, FALSE);
 	moq->control_stream_offset += ann_len;
@@ -6643,7 +6643,7 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
 	return 0;
 }
 
-int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
+int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subns_error_code error_code, const char *reason) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || (reason && strlen(reason) > 1024) ||
@@ -6707,7 +6707,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
-	/* TODO Check if this namespace exists and was announced here */
+	/* TODO Check if this namespace exists and was publish_namespaced here */
 	/* TODO Track subscription and track alias */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
@@ -6759,7 +6759,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
-	/* TODO Check if this namespace exists and was announced here */
+	/* TODO Check if this namespace exists and was publish_namespaced here */
 	/* TODO Track subscription and track alias */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;

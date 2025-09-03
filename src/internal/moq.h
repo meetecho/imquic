@@ -42,13 +42,13 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_SUBSCRIBE = 0x3,
 	IMQUIC_MOQ_SUBSCRIBE_OK = 0x4,
 	IMQUIC_MOQ_SUBSCRIBE_ERROR = 0x5,
-	IMQUIC_MOQ_ANNOUNCE = 0x6,
-	IMQUIC_MOQ_ANNOUNCE_OK = 0x7,
-	IMQUIC_MOQ_ANNOUNCE_ERROR = 0x8,
-	IMQUIC_MOQ_UNANNOUNCE = 0x9,
+	IMQUIC_MOQ_PUBLISH_NAMESPACE = 0x6,
+	IMQUIC_MOQ_PUBLISH_NAMESPACE_OK = 0x7,
+	IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR = 0x8,
+	IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE = 0x9,
 	IMQUIC_MOQ_UNSUBSCRIBE = 0xa,
 	IMQUIC_MOQ_SUBSCRIBE_DONE = 0xb,
-	IMQUIC_MOQ_ANNOUNCE_CANCEL = 0xc,
+	IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL = 0xc,
 	IMQUIC_MOQ_TRACK_STATUS = 0xd,
 	IMQUIC_MOQ_TRACK_STATUS_OK = 0xe,
 	IMQUIC_MOQ_TRACK_STATUS_ERROR = 0xf,
@@ -456,56 +456,56 @@ size_t imquic_moq_parse_max_request_id(imquic_moq_context *moq, uint8_t *bytes, 
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c ANNOUNCE message
+/*! \brief Helper to parse a \c PUBLISH_NAMESPACE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_announce(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c ANNOUNCE_OK message
+size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c PUBLISH_NAMESPACE_OK message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c ANNOUNCE_ERROR message
+size_t imquic_moq_parse_publish_namespace_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c PUBLISH_NAMESPACE_ERROR message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_announce_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c UNANNOUNCE message
+size_t imquic_moq_parse_publish_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c PUBLISH_NAMESPACE_DONE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c ANNOUNCE_CANCEL message
+size_t imquic_moq_parse_publish_namespace_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c PUBLISH_NAMESPACE_CANCEL message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c PUBLISH message
+size_t imquic_moq_parse_publish_namespace_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c PUBLISH message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c PUBLISH_OK message
+/*! \brief Helper to parse a \c PUBLISH_OK message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse an \c PUBLISH_ERROR message
+/*! \brief Helper to parse a \c PUBLISH_ERROR message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
@@ -758,54 +758,54 @@ size_t imquic_moq_add_max_request_id(imquic_moq_context *moq, uint8_t *bytes, si
  * @param max_request_id Maximum request ID to put in the message
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t max_request_id);
-/*! \brief Helper method to add an \c ANNOUNCE message to a buffer
+/*! \brief Helper method to add a \c PUBLISH_NAMESPACE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message (only v11 and later)
- * @param track_namespace Namespace to announce
+ * @param track_namespace Namespace to publish_namespace
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_subscribe_parameters *parameters);
-/*! \brief Helper method to add an \c ANNOUNCE_OK message to a buffer
+/*! \brief Helper method to add a \c PUBLISH_NAMESPACE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message (only v11 and later)
- * @param track_namespace Namespace for which the announcement succeeded (only before v11)
+ * @param track_namespace Namespace for which the publish_namespacement succeeded (only before v11)
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+size_t imquic_moq_add_publish_namespace_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t request_id, imquic_moq_namespace *track_namespace);
-/*! \brief Helper method to add an \c ANNOUNCE_ERROR message to a buffer
+/*! \brief Helper method to add a \c PUBLISH_NAMESPACE_ERROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message (only v11 and later)
- * @param track_namespace Namespace for which the announcement caused an error (only before v11)
+ * @param track_namespace Namespace for which the publish_namespacement caused an error (only before v11)
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+size_t imquic_moq_add_publish_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t request_id, imquic_moq_namespace *track_namespace,
-	imquic_moq_announce_error_code error, const char *reason);
-/*! \brief Helper method to add an \c UNANNOUNCE message to a buffer
+	imquic_moq_publish_namespace_error_code error, const char *reason);
+/*! \brief Helper method to add a \c PUBLISH_NAMESPACE_DONE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param track_namespace Namespace to unannounce
+ * @param track_namespace Namespace to publish_namespace_done
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_unannounce(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace);
-/*! \brief Helper method to add aN \c ANNOUNCE_CANCEL message to a buffer
+size_t imquic_moq_add_publish_namespace_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace);
+/*! \brief Helper method to add aN \c PUBLISH_NAMESPACE_CANCEL message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param track_namespace Namespace for which to cancel the announcement
+ * @param track_namespace Namespace for which to cancel the publish_namespacement
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_announce_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
-	imquic_moq_announce_error_code error, const char *reason);
+size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
+	imquic_moq_publish_namespace_error_code error, const char *reason);
 /*! \brief Helper to add a \c PUBLISH message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -968,7 +968,7 @@ size_t imquic_moq_add_subscribe_namespace_ok(imquic_moq_context *moq, uint8_t *b
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t request_id, imquic_moq_namespace *track_namespace,
-	imquic_moq_subannc_error_code error, const char *reason);
+	imquic_moq_subns_error_code error, const char *reason);
 /*! \brief Helper method to add an \c UNSUBSCRIBE_NAMESPACE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1292,16 +1292,16 @@ typedef struct imquic_moq_callbacks {
 	uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified when a MoQ connection is ready (setup performed on both ends) */
 	void (* moq_ready)(imquic_connection *conn);
-	/*! \brief Callback function to be notified about incoming \c ANNOUNCE messages */
-	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen);
-	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_CANCEL messages */
-	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
-	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ACCEPTED messages */
-	void (* announce_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
-	/*! \brief Callback function to be notified about incoming \c ANNOUNCE_ERROR messages */
-	void (* announce_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
-	/*! \brief Callback function to be notified about incoming \c UNANNOUNCE messages */
-	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE messages */
+	void (* incoming_publish_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_CANCEL messages */
+	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_ACCEPTED messages */
+	void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_ERROR messages */
+	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_DONE messages */
+	void (* publish_namespace_done)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH messages */
 	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias,
 		gboolean descending, imquic_moq_location *largest, gboolean forward, uint8_t *auth, size_t authlen);
@@ -1330,7 +1330,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_NAMESPACE_ACCEPTED messages */
 	void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_NAMESPACE_ERROR messages */
-	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason);
+	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subns_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNSUBSCRIBE_NAMESPACE messages */
 	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */

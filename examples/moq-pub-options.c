@@ -20,7 +20,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING, &options->track_name, "MoQ track name to publish (default=none)", "name" },
 		{ "first-group", 'f', 0, G_OPTION_ARG_INT64, &options->first_group, "First group ID to send (default=0; sends 'Prior Group ID Gap' extension for the first sent object in that group, if set))", "id" },
 		{ "relay-auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->relay_auth_info, "Auth info required to connect to the relay, if any (default=none)", "string" },
-		{ "auth-info", 'A', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to announce/publish, if needed (default=none)", "string" },
+		{ "auth-info", 'A', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to publish_namespace/publish, if needed (default=none)", "string" },
 		{ "delivery", 'D', 0, G_OPTION_ARG_STRING, &options->delivery, "How MoQ objects should be sent (default=subgroup; supported=datagram,subgroup,track)", "type" },
 		{ "publish", 'X', 0, G_OPTION_ARG_NONE, &options->publish, "Use a PUBLISH right away instead of waiting for a SUBSCRIBE (default=no; only supported for v12 and later)", NULL },
 		{ "track-alias", 't', 0, G_OPTION_ARG_INT64, &options->track_alias, "Track alias to use for subscriptions (default=0; only supported for v12 and later)", NULL },

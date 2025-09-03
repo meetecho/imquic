@@ -296,12 +296,12 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id
 }
 
 static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to announcements '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to announcements in request '%"SCNu64"': error %d (%s)\n",
+static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subns_error_code error_code, const char *reason) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
