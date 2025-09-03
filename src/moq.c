@@ -2095,7 +2095,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		}
 		json_object_set_new(message, "forward", json_integer(forward));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "publish_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -2197,7 +2197,7 @@ size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -2374,7 +2374,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "forward", json_integer(forward));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -2472,7 +2472,7 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 		json_object_set_new(message, "end_group", json_integer(end_group));
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -2565,7 +2565,7 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 			json_object_set_new(message, "largest_object_id", json_integer(largest.object));
 		}
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -3225,7 +3225,7 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 		json_object_set_new(message, "largest_group_id", json_integer(largest.group));
 		json_object_set_new(message, "largest_object_id", json_integer(largest.object));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -3394,7 +3394,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "forward", json_integer(forward));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "track_status_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -3497,7 +3497,7 @@ size_t imquic_moq_parse_track_status_ok(imquic_moq_context *moq, uint8_t *bytes,
 			json_object_set_new(message, "largest_object_id", json_integer(largest.object));
 		}
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "track_status_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4609,7 +4609,7 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		}
 		json_object_set_new(message, "forward", json_integer(forward));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4653,7 +4653,7 @@ size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "filter_type", json_integer(filter));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4738,7 +4738,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "filter_type", json_integer(filter));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4780,7 +4780,7 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
 		json_object_set_new(message, "end_group", json_integer(end_group));
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -4823,7 +4823,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
 			json_object_set_new(message, "largest_object_id", json_integer(largest_object_id));
 		}
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -5165,7 +5165,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
 		json_object_set_new(message, "largest_group_id", json_integer(largest_group_id));
 		json_object_set_new(message, "largest_object_id", json_integer(largest_object_id));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "subscribe_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -5248,7 +5248,7 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "filter_type", json_integer(filter));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "track_status_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
@@ -5289,7 +5289,7 @@ size_t imquic_moq_add_track_status_ok(imquic_moq_context *moq, uint8_t *bytes, s
 			json_object_set_new(message, "largest_object_id", json_integer(largest_object_id));
 		}
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "track_status_parameters");
+		imquic_qlog_moq_message_add_subscribe_parameters(message, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
 #endif
