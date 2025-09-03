@@ -47,7 +47,7 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR = 0x8,
 	IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE = 0x9,
 	IMQUIC_MOQ_UNSUBSCRIBE = 0xa,
-	IMQUIC_MOQ_SUBSCRIBE_DONE = 0xb,
+	IMQUIC_MOQ_PUBLISH_DONE = 0xb,
 	IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL = 0xc,
 	IMQUIC_MOQ_TRACK_STATUS = 0xd,
 	IMQUIC_MOQ_TRACK_STATUS_OK = 0xe,
@@ -547,13 +547,13 @@ size_t imquic_moq_parse_subscribe_error(imquic_moq_context *moq, uint8_t *bytes,
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse a \c SUBSCRIBE_DONE message
+/*! \brief Helper to parse a \c PUBLISH_DONE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_publish_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c SUBSCRIBE_NAMESPACE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -924,7 +924,7 @@ size_t imquic_moq_add_subscribe_error(imquic_moq_context *moq, uint8_t *bytes, s
  * @param request_id The request ID to put in the message
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id);
-/*! \brief Helper method to add a \c SUBSCRIBE_DONE message to a buffer
+/*! \brief Helper method to add a \c PUBLISH_DONE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
@@ -936,7 +936,7 @@ size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_
  * @param final_group Final group ID to add to the message, if needed (only before v08)
  * @param final_object Final object ID to add to the message, if needed (only before v08)
  * @returns The size of the generated message, if successful, or 0 otherwise (only before v08) */
-size_t imquic_moq_add_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+size_t imquic_moq_add_publish_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_sub_done_code status, uint64_t streams_count, const char *reason, gboolean content_exists, uint64_t final_group, uint64_t final_object);
 /*! \brief Helper to add a \c SUBSCRIBE_NAMESPACE message to a buffer
  * @param moq The imquic_moq_context generating the message
@@ -1319,8 +1319,8 @@ typedef struct imquic_moq_callbacks {
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */
 	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
-	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_DONE messages */
-	void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_DONE messages */
+	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages */
 	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c REQUESTS_BLOCKED messages */

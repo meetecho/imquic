@@ -303,8 +303,8 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		/* We've sent all that we were asked about */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 			imquic_get_connection_name(moq_conn));
-		/* Send a SUBSCRIBE_DONE */
-		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		/* Send a PUBLISH_DONE */
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -345,8 +345,8 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		/* We've sent the last object */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 			imquic_get_connection_name(moq_conn));
-		/* Send a SUBSCRIBE_DONE */
-		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		/* Send a PUBLISH_DONE */
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -581,9 +581,9 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	g_list_free_full(objects, (GDestroyNotify)g_free);
-	/* We're done, check if we need to send a SUBSCRIBE_DONE and/or an PUBLISH_NAMESPACE_DONE */
+	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
 	if(g_atomic_int_get(&started) && !g_atomic_int_get(&done_sent))
-		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
 	if(!options.publish) {
 		imquic_moq_namespace tns[32];	/* FIXME */
 		int i = 0;

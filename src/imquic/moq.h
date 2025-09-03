@@ -249,9 +249,8 @@
  * - \ref imquic_set_subscribe_error_cb configures the callback to be notified
  * about the request being rejected (e.g., because the track doesn't exist,
  * or the provided athentication info was incorrect);
- * - \ref imquic_set_subscribe_done_cb configures the callback to be notified
- * about a subscription being completed (currently unused, as also the
- * subjects of discussions within the MoQ standardization efforts).
+ * - \ref imquic_set_publish_done_cb configures the callback to be notified
+ * about an existing subscription being completed.
  *
  * All those callbacks refer to the \c request_id identifier that was
  * previously mapped to that subscription (more on that later).
@@ -870,14 +869,11 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
 void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
 	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
 /*! \brief Configure the callback function to be notified when a
- * \c SUBSCRIBE we previously sent is now done
- * @note Currently unused, considering there are discussions in the MoQ
- * standardization efforts on whether this is actually useful or not,
- * or if it even works at all.
+ * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_done Pointer to the function that will fire when a \c SUBSCRIBE is done */
-void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
-	void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason));
+ * @param publish_done Pointer to the function that will fire when a \c PUBLSH or \c SUBSCRIBE is done */
+void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
+	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1196,14 +1192,14 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, im
  * @param forward Whether objects should be forwarded, when this subscription is updated (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
-/*! \brief Function to send a \c SUBSCRIBE_DONE request
+/*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription that's now done
  * @param status_code The status code
  * @param reason A reason phrase, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason);
+int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason);
 /*! \brief Function to send a \c UNSUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to unsubscribe from

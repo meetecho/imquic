@@ -958,9 +958,9 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
+static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription via ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
 	/* Find the track associated to this subscription */
 	imquic_mutex_lock(&mutex);
@@ -976,13 +976,13 @@ static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
 		return;
 	}
-	/* Send a SUBSCRIBE_DONE to all subscribers */
+	/* Send a PUBLISH_DONE to all subscribers */
 	imquic_mutex_lock(&track->mutex);
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && s->sub && s->sub->conn)
-			imquic_moq_subscribe_done(s->sub->conn, s->request_id, status_code, reason);
+			imquic_moq_publish_done(s->sub->conn, s->request_id, status_code, reason);
 		temp = temp->next;
 	}
 	imquic_mutex_unlock(&track->mutex);
@@ -1268,8 +1268,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				/* We've sent all that we were asked about for this subscription */
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 					imquic_get_connection_name(s->sub->conn));
-				/* Send a SUBSCRIBE_DONE */
-				imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				/* Send a PUBLISH_DONE */
+				imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 				/* Get rid of this subscription */
 				done = g_list_prepend(done, s);
 				temp = temp->next;
@@ -1454,7 +1454,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_accepted_cb(server, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(server, imquic_demo_subscribe_error);
 	imquic_set_subscribe_updated_cb(server, imquic_demo_subscribe_updated);
-	imquic_set_subscribe_done_cb(server, imquic_demo_subscribe_done);
+	imquic_set_publish_done_cb(server, imquic_demo_publish_done);
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_subscribe_namespace_cb(server, imquic_demo_incoming_subscribe_namespace);
 	imquic_set_incoming_unsubscribe_namespace_cb(server, imquic_demo_incoming_unsubscribe_namespace);

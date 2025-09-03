@@ -445,8 +445,8 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type) {
 			return "PUBLISH_NAMESPACE_DONE";
 		case IMQUIC_MOQ_UNSUBSCRIBE:
 			return "UNSUBSCRIBE";
-		case IMQUIC_MOQ_SUBSCRIBE_DONE:
-			return "SUBSCRIBE_DONE";
+		case IMQUIC_MOQ_PUBLISH_DONE:
+			return "PUBLISH_DONE";
 		case IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL:
 			return "PUBLISH_NAMESPACE_CANCEL";
 		case IMQUIC_MOQ_TRACK_STATUS:
@@ -1263,9 +1263,9 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			} else if(type == IMQUIC_MOQ_UNSUBSCRIBE) {
 				/* Parse this UNSUBSCRIBE message */
 				parsed = imquic_moq_parse_unsubscribe(moq, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_SUBSCRIBE_DONE) {
-				/* Parse this SUBSCRIBE_DONE message */
-				parsed = imquic_moq_parse_subscribe_done(moq, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_DONE) {
+				/* Parse this PUBLISH_DONE message */
+				parsed = imquic_moq_parse_publish_done(moq, &bytes[offset], plen, &error);
 			} else if(type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE) {
 				/* Parse this SUBSCRIBE_NAMESPACE message */
 				parsed = imquic_moq_parse_subscribe_namespace(moq, &bytes[offset], plen, &error);
@@ -2607,7 +2607,7 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 	return offset;
 }
 
-size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_publish_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
@@ -2615,31 +2615,31 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t status_code = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Status Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_sub_done_code_str(status_code), status_code);
 	uint64_t streams_count = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
 		streams_count = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Streams Count: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), streams_count);
 	}
 	uint64_t rs_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || (moq->version < IMQUIC_MOQ_VERSION_08 && length >= blen-offset) ||
-		(moq->version >= IMQUIC_MOQ_VERSION_08 && length > blen-offset), NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+		(moq->version >= IMQUIC_MOQ_VERSION_08 && length > blen-offset), NULL, 0, 0, "Broken PUBLISH_DONE");
 	offset += length;
 	char reason[1024], *reason_str = NULL;
 	if(rs_len > 0) {
 		IMQUIC_MOQ_CHECK_ERR(((moq->version < IMQUIC_MOQ_VERSION_08 && rs_len >= blen-offset) ||
-			(moq->version >= IMQUIC_MOQ_VERSION_08 && rs_len > blen-offset)), NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+			(moq->version >= IMQUIC_MOQ_VERSION_08 && rs_len > blen-offset)), NULL, 0, 0, "Broken PUBLISH_DONE");
 		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
@@ -2658,14 +2658,14 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Content Exists: %"SCNu8"\n",
 			imquic_get_connection_name(moq->conn), content_exists);
 		if(content_exists > 0) {
-			IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+			IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_DONE");
 			uint64_t fg_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
 			offset += length;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Final Group ID: %"SCNu64"\n",
 				imquic_get_connection_name(moq->conn), fg_id);
 			uint64_t fo_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_DONE");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
 			offset += length;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Final Object ID: %"SCNu64"\n",
 				imquic_get_connection_name(moq->conn), fo_id);
@@ -2673,7 +2673,7 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_done");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_done");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "status_code", json_integer(status_code));
 		json_object_set_new(message, "streams_count", json_integer(streams_count));
@@ -2683,8 +2683,8 @@ size_t imquic_moq_parse_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 #endif
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.subscribe_done)
-		moq->conn->socket->callbacks.moq.subscribe_done(moq->conn, request_id, status_code, streams_count, reason_str);
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_done)
+		moq->conn->socket->callbacks.moq.publish_done(moq->conn, request_id, status_code, streams_count, reason_str);
 	if(error)
 		*error = 0;
 	return offset;
@@ -4810,11 +4810,11 @@ size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 	return offset;
 }
 
-size_t imquic_moq_add_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+size_t imquic_moq_add_publish_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 		imquic_moq_sub_done_code status, uint64_t streams_count, const char *reason, gboolean content_exists, uint64_t final_group, uint64_t final_object) {
 	if(bytes == NULL || blen < 1 || (reason && strlen(reason) > 1024)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
-			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_DONE));
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_DONE));
 		return 0;
 	}
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
@@ -4837,7 +4837,7 @@ size_t imquic_moq_add_subscribe_done(imquic_moq_context *moq, uint8_t *bytes, si
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_done");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_done");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "status_code", json_integer(status));
 		json_object_set_new(message, "streams_count", json_integer(streams_count));
@@ -6526,7 +6526,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	return 0;
 }
 
-int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason) {
+int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
@@ -6551,9 +6551,9 @@ int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imqu
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	/* TODO Compute streams count */
-	size_t sd_len = imquic_moq_add_subscribe_done(moq, &buffer[poffset], blen-poffset,
+	size_t sd_len = imquic_moq_add_publish_done(moq, &buffer[poffset], blen-poffset,
 		request_id, status_code, streams_count, reason, FALSE, 0, 0);
-	sd_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_SUBSCRIBE_DONE, buffer, blen, poffset, sd_len, &start);
+	sd_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_PUBLISH_DONE, buffer, blen, poffset, sd_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, sd_len, FALSE);
 	moq->control_stream_offset += sd_len;

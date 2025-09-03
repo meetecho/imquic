@@ -275,9 +275,9 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		filter_type, &start_location, &end_location_sub);
 }
 
-static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
+static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription via ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
 	/* TODO */
 }
@@ -679,7 +679,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_accepted_cb(client, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(client, imquic_demo_subscribe_error);
 	imquic_set_incoming_publish_cb(client, imquic_demo_incoming_publish);
-	imquic_set_subscribe_done_cb(client, imquic_demo_subscribe_done);
+	imquic_set_publish_done_cb(client, imquic_demo_publish_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
 	imquic_set_fetch_error_cb(client, imquic_demo_fetch_error);
 	imquic_set_subscribe_namespace_accepted_cb(client, imquic_demo_subscribe_namespace_accepted);

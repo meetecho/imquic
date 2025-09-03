@@ -619,8 +619,8 @@ static void *imquic_demo_tester_thread(void *data) {
 					imquic_get_connection_name(s->sub->conn), group_id, object_id, s->range.end.group, s->range.end.object);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 					imquic_get_connection_name(s->sub->conn));
-				/* Send a SUBSCRIBE_DONE */
-				imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				/* Send a PUBLISH_DONE */
+				imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 				send_done = FALSE;
 				break;
 			}
@@ -741,8 +741,8 @@ static void *imquic_demo_tester_thread(void *data) {
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping delivery thread\n", imquic_get_connection_name(conn));
 	if(send_done && s->sub != NULL) {
-		/* Send a SUBSCRIBE_DONE */
-		imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Test over");
+		/* Send a PUBLISH_DONE */
+		imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Test over");
 	}
 	/* Destroy the subscription and the resources */
 	if(s->sub != NULL) {
