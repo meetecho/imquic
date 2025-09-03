@@ -20,6 +20,7 @@
 #include "internal/moq.h"
 #include "internal/quic.h"
 #include "internal/connection.h"
+#include "internal/version.h"
 #include "imquic/debug.h"
 
 /* Logging */
@@ -116,6 +117,14 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 			memcpy(parameters.auth_token, moq->auth, moq->authlen);
 			parameters.auth_token_len = moq->authlen;
 		}
+		if((moq->version >= IMQUIC_MOQ_VERSION_14 && moq->version <= IMQUIC_MOQ_VERSION_MAX) ||
+				moq->version == IMQUIC_MOQ_VERSION_ANY) {
+			/* FIXME */
+			parameters.moqt_implementation_set = TRUE;
+			g_snprintf(parameters.moqt_implementation, sizeof(parameters.moqt_implementation), "imquic %s", imquic_version_string_full);
+		}
+		/* TODO For raw quic connections, we should expose ways to
+		 * fill in and use the PATH and ATTRIBUTE parameters as well */
 		GList *versions = NULL;
 		if(moq->version == IMQUIC_MOQ_VERSION_ANY) {
 			/* Offer all newer supported versions */
@@ -276,6 +285,10 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 			return "Unknown Auth Token Alias";
 		case IMQUIC_MOQ_EXPIRED_AUTH_TOKEN:
 			return "Expired Auth Token";
+		case IMQUIC_MOQ_INVALID_AUTHORITY:
+			return "Invalid Authority";
+		case IMQUIC_MOQ_MALFORMED_AUTHORITY:
+			return "Malformed Authority";
 		case IMQUIC_MOQ_UNKNOWN_ERROR:
 			return "Unknown Error";
 		default: break;
@@ -745,6 +758,10 @@ const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type 
 			return "AUTHORIZATION_TOKEN";
 		case IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE:
 			return "MAX_AUTH_TOKEN_CACHE_SIZE";
+		case IMQUIC_MOQ_SETUP_PARAM_AUTHORITY:
+			return "AUTHORITY";
+		case IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION:
+			return "MOQT_IMPLEMENTATION";
 		default: break;
 	}
 	return NULL;
@@ -868,6 +885,10 @@ size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 			*params_num = *params_num + 1;
 		if(moq->version >= IMQUIC_MOQ_VERSION_12 && parameters->auth_token_set)
 			*params_num = *params_num + 1;
+		if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->authority_set)
+			*params_num = *params_num + 1;
+		if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->moqt_implementation_set)
+			*params_num = *params_num + 1;
 		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
 		if(*params_num > 0) {
 			if(parameters->role_set) {
@@ -889,6 +910,14 @@ size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 			if(moq->version >= IMQUIC_MOQ_VERSION_12 && parameters->auth_token_set) {
 				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 					IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN, parameters->auth_token, parameters->auth_token_len);
+			}
+			if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->authority_set) {
+				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_SETUP_PARAM_AUTHORITY, (uint8_t *)parameters->authority, strlen(parameters->authority));
+			}
+			if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->moqt_implementation_set) {
+				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+					IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION, (uint8_t *)parameters->moqt_implementation, strlen(parameters->moqt_implementation));
 			}
 		}
 	}
@@ -1504,15 +1533,32 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	for(i = 0; i<params_num; i++) {
 		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken CLIENT_SETUP");
-		if(parameters.role_set) {
-			/* TODO Keep track of it and/or validate it */
-		} else if(parameters.max_request_id_set) {
-			/* Update the value we have */
-			moq->max_request_id = parameters.max_request_id;
-		} else if(parameters.max_auth_token_cache_size && moq->version >= IMQUIC_MOQ_VERSION_11) {
-			/* Update the value we have */
-			moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
-		}
+	}
+	if(parameters.role_set) {
+		/* TODO Keep track of it and/or validate it */
+	}
+	if(parameters.max_request_id_set) {
+		/* Update the value we have */
+		moq->max_request_id = parameters.max_request_id;
+	}
+	if(parameters.max_auth_token_cache_size && moq->version >= IMQUIC_MOQ_VERSION_11) {
+		/* Update the value we have */
+		moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
+	}
+	if(parameters.moqt_implementation_set && moq->version >= IMQUIC_MOQ_VERSION_14) {
+		/* Print the implemntation */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Remote MoQT implementation: %s\n",
+			imquic_get_connection_name(moq->conn), parameters.moqt_implementation);
+	}
+	if(parameters.path_set) {
+		/* TODO Handle and validate */
+		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
+			IMQUIC_MOQ_CHECK_ERR(version == 0, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received on a WebTransport");
+	}
+	if(parameters.authority_set) {
+		/* TODO Handle and validate */
+		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
+			IMQUIC_MOQ_CHECK_ERR(version == 0, error, IMQUIC_MOQ_INVALID_PATH, 0, "AUTHORITY received on a WebTransport");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -1551,6 +1597,11 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	if(moq->version >= IMQUIC_MOQ_VERSION_11 && moq->local_max_auth_token_cache_size > 0) {
 		s_parameters.max_auth_token_cache_size_set = TRUE;
 		s_parameters.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
+	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_14) {
+		/* FIXME */
+		s_parameters.moqt_implementation_set = TRUE;
+		g_snprintf(s_parameters.moqt_implementation, sizeof(s_parameters.moqt_implementation), "imquic %s", imquic_version_string_full);
 	}
 	uint8_t buffer[200];
 	size_t buflen = sizeof(buffer), poffset = 5, start = 0;
@@ -1618,15 +1669,30 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	for(i = 0; i<params_num; i++) {
 		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SERVER_SETUP");
-		if(parameters.role_set) {
-			/* TODO Keep track of it and/or validate it */
-		} else if(parameters.max_request_id_set) {
-			/* Update the value we have */
-			moq->max_request_id = parameters.max_request_id;
-		} else if(parameters.max_auth_token_cache_size_set && moq->version >= IMQUIC_MOQ_VERSION_11) {
-			/* Update the value we have */
-			moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
-		}
+	}
+	if(parameters.role_set) {
+		/* TODO Keep track of it and/or validate it */
+	}
+	if(parameters.max_request_id_set) {
+		/* Update the value we have */
+		moq->max_request_id = parameters.max_request_id;
+	}
+	if(parameters.max_auth_token_cache_size_set && moq->version >= IMQUIC_MOQ_VERSION_11) {
+		/* Update the value we have */
+		moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
+	}
+	if(parameters.moqt_implementation_set && moq->version >= IMQUIC_MOQ_VERSION_14) {
+		/* Print the implemntation */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Remote MoQT implementation: %s\n",
+			imquic_get_connection_name(moq->conn), parameters.moqt_implementation);
+	}
+	if(parameters.path_set) {
+		/* Servers can't use PATH */
+		IMQUIC_MOQ_CHECK_ERR(version == 0, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received from a server");
+	}
+	if(parameters.authority_set) {
+		/* Servers can't use AUTHORITY */
+		IMQUIC_MOQ_CHECK_ERR(version == 0, error, IMQUIC_MOQ_INVALID_PATH, 0, "AUTHORITY received from a server");
 	}
 	if(moq->max_request_id == 0) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID parameter received, setting it to 1\n",
@@ -5637,6 +5703,18 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 		char ai_str[513];
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s\n",
 			imquic_get_connection_name(moq->conn), imquic_hex_str(&bytes[offset], auth_len, ai_str, sizeof(ai_str)));
+	} else if(type == IMQUIC_MOQ_SETUP_PARAM_AUTHORITY && moq->version >= IMQUIC_MOQ_VERSION_14) {
+		params->authority_set = TRUE;
+		if(len > 0)
+			g_snprintf(params->authority, sizeof(params->authority), "%.*s", (int)len, &bytes[offset]);
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
+			imquic_get_connection_name(moq->conn), params->authority);
+	} else if(type == IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION && moq->version >= IMQUIC_MOQ_VERSION_14) {
+		params->moqt_implementation_set = TRUE;
+		if(len > 0)
+			g_snprintf(params->moqt_implementation, sizeof(params->moqt_implementation), "%.*s", (int)len, &bytes[offset]);
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
+			imquic_get_connection_name(moq->conn), params->moqt_implementation);
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter '%"SCNu64"'\n",
 			imquic_get_connection_name(moq->conn), type);
@@ -7395,6 +7473,18 @@ void imquic_qlog_moq_message_add_setup_parameters(json_t *message, imquic_moq_se
 		char ai_str[513];
 		json_object_set_new(auth_token, "value", json_string(imquic_hex_str(parameters->auth_token, parameters->auth_token_len, ai_str, sizeof(ai_str))));
 		json_array_append_new(params, auth_token);
+	}
+	if(parameters->authority_set) {
+		json_t *authority = json_object();
+		json_object_set_new(authority, "name", json_string("authority"));
+		json_object_set_new(authority, "value", json_string(parameters->authority));
+		json_array_append_new(params, authority);
+	}
+	if(parameters->moqt_implementation_set) {
+		json_t *moqt_implementation = json_object();
+		json_object_set_new(moqt_implementation, "name", json_string("moqt_implementation"));
+		json_object_set_new(moqt_implementation, "value", json_string(parameters->moqt_implementation));
+		json_array_append_new(params, moqt_implementation);
 	}
 	if(parameters->unknown) {
 		json_t *unknown = json_object();

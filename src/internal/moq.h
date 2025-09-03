@@ -166,6 +166,8 @@ typedef enum imquic_moq_setup_parameter_type {
 	IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID = 0x02,
 	IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN = 0x03,
 	IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
+	IMQUIC_MOQ_SETUP_PARAM_AUTHORITY = 0x05,
+	IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION = 0x07,
 } imquic_moq_setup_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_setup_parameter_type value.
  * @param type The imquic_moq_setup_parameter_type value
@@ -223,6 +225,14 @@ typedef struct imquic_moq_setup_parameters {
 	uint8_t auth_token[256];
 	/*! \brief Size of the AUTHORIZATION_TOKEN parameter */
 	size_t auth_token_len;
+	/*! \brief Whether the AUTHORITY parameter is set */
+	gboolean authority_set;
+	/*! \brief Value of the AUTHORITY parameter */
+	char authority[256];
+	/*! \brief Whether the MOQT_IMPLEMENTATION parameter is set */
+	gboolean moqt_implementation_set;
+	/*! \brief Value of the MOQT_IMPLEMENTATION parameter */
+	char moqt_implementation[256];
 	/*! \brief Whether there's unknown parameters */
 	gboolean unknown;
 } imquic_moq_setup_parameters;
