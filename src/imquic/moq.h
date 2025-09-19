@@ -869,7 +869,7 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
 void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
-	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
+	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1186,14 +1186,17 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 /*! \brief Function to send a \c SUBSCRIBE_UPDATE request
+ * \note Version 14 of the draft introduced a new "Subscription Request ID", which means the
+ * meaning of \c request_id will change depending on which version the connection is using
  * @param conn The imquic_connection to send the request on
- * @param request_id The unique \c request_id value associated to the subscription to update
+ * @param request_id Unique \c request_id value (before v14, this is associated to the subscription to update)
+ * @param sub_request_id Unique \c request_id value associated to the subscription to update (ignored before v14)
  * @param start_location The group and object to start from
  * @param end_group The group to end at
  * @param priority The subscriber priority
  * @param forward Whether objects should be forwarded, when this subscription is updated (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
+int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
 /*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on

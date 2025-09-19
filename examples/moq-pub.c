@@ -266,17 +266,27 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 	size_t extensions_len = 0;
 	size_t extensions_count = 0;
 	gboolean first = g_atomic_int_compare_and_exchange(&started, 0, 1);
-	if((first && options.first_group > 0 && group_id == options.first_group) || options.extensions) {
+	if((first && options.first_group > 0 && group_id == options.first_group) ||
+			(first && options.first_object > 0 && object_id == options.first_object) ||
+			options.extensions) {
 		/* We have extensions to add to the object */
 		GList *exts = NULL;
 		imquic_moq_object_extension pgidext = { 0 };
+		imquic_moq_object_extension poidext = { 0 };
 		imquic_moq_object_extension numext = { 0 };
 		imquic_moq_object_extension dataext = { 0 };
 		if(first && options.first_group > 0 && group_id == options.first_group) {
 			/* Add the Prior Group ID Gap extension */
-			pgidext.id = 0x40;
+			pgidext.id = 0x3C;
 			pgidext.value.number = options.first_group;
 			exts = g_list_append(exts, &pgidext);
+			extensions_count++;
+		}
+		if(first && options.first_object > 0 && object_id == options.first_object) {
+			/* Add the Prior Object ID Gap extension */
+			poidext.id = 0x3E;
+			poidext.value.number = options.first_object;
+			exts = g_list_append(exts, &poidext);
 			extensions_count++;
 		}
 		if(options.extensions) {
@@ -438,6 +448,8 @@ int main(int argc, char *argv[]) {
 	}
 	if(options.first_group > 0)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %"SCNu64" (will send the 'Prior Group ID Gap' extension)\n", options.first_group);
+	if(options.first_object > 0)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' extension)\n", options.first_object);
 	if(options.publish) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
 		if(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12)) {
@@ -527,6 +539,7 @@ int main(int argc, char *argv[]) {
 	int64_t now = g_get_monotonic_time(), before = now;
 	GList *objects = NULL;
 	group_id = options.first_group;
+	object_id = options.first_object;
 	char *seconds = NULL;
 	gboolean last = FALSE;
 	while(!stop) {

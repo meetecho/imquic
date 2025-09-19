@@ -696,11 +696,16 @@ int main(int argc, char *argv[]) {
 			/* TODO This should be done for all subscriptions */
 			GList *temp = request_ids;
 			while(temp) {
-				uint64_t *request_id = (uint64_t *)temp->data;
+				uint64_t *rid = (uint64_t *)temp->data;
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a SUBSCRIBE_UPDATE for ID %"SCNu64"\n",
-					imquic_get_connection_name(moq_conn), *request_id);
+					imquic_get_connection_name(moq_conn), *rid);
 				imquic_moq_location start_location = { 0 };
-				imquic_moq_update_subscribe(moq_conn, *request_id, &start_location, end_location_sub.group, 0, TRUE);
+				/* The verb has a different syntax, starting from v14 */
+				uint64_t request_id = *rid, sub_request_id = request_id;
+				if(imquic_moq_get_version(moq_conn) >= IMQUIC_MOQ_VERSION_14)
+					request_id = imquic_moq_get_next_request_id(moq_conn);
+				imquic_moq_update_subscribe(moq_conn, request_id, sub_request_id,
+					&start_location, end_location_sub.group, 0, TRUE);
 				temp = temp->next;
 			}
 		}

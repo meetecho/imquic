@@ -889,6 +889,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
+ * @param subrequest_id The subscription request ID to put in the message (ignored before v14)
  * @param start_group The start group ID to put in the message
  * @param start_object The start object ID to put in the message
  * @param end_group The end group ID to put in the message
@@ -897,7 +898,8 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
  * @param forward The forward value to put in the message (only starting from v11)
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
+size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t request_id, uint64_t sub_request_id,
 	uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, uint8_t priority,
 	gboolean forward, imquic_moq_subscribe_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_OK message to a buffer
@@ -1328,7 +1330,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */
-	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
+	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_DONE messages */
 	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages */

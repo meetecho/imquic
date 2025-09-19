@@ -21,6 +21,7 @@ typedef struct demo_options {
 	const char **track_namespace;
 	const char *track_name;
 	uint64_t first_group;
+	uint64_t first_object;
 	const char *relay_auth_info;
 	const char *auth_info;
 	const char *delivery;
