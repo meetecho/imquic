@@ -78,27 +78,37 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type);
 
 /*! \brief MoQ datagram messages */
 typedef enum imquic_moq_datagram_message_type {
+	/* OBJECT_DATAGRAM */
 	IMQUIC_MOQ_OBJECT_DATAGRAM = 0x1,
 		IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT = 0x0,
 		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG = 0x3,
 		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT = 0x2,
-	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x5,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x4,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11 = 0x3,		/* Deprecated in v12 */
-		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11 = 0x2,	/* Deprecated in v12 */
+		IMQUIC_MOQ_OBJECT_DATAGRAM_NOOID = 0x5,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT_NOOID = 0x4,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOOID = 0x7,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT_NOOID = 0x6,
+	/* OBJECT_DATAGRAM_STATUS */
+	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x20,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x21,
+			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v13 = 0x5,		/* Deprecated in v14 */
+			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v13 = 0x4,	/* Deprecated in v14 */
+			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11 = 0x3,		/* Deprecated in v12 */
+			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11 = 0x2,	/* Deprecated in v12 */
 } imquic_moq_datagram_message_type;
 /*! \brief Helper function to return the imquic_moq_datagram_message_type value for \c OBJECT_DATAGRAM out of the individual properties.
  * @param version The version of the connection
  * @param ext Whether there are extensions
  * @param eog Whether there is an End of Group
+ * @param eog Whether there is an Object ID (ignored before v14)
  * @returns The type name as a string, if valid, or NULL otherwise */
-imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog);
+imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog, gboolean oid);
 /*! \brief Helper function to parse a imquic_moq_datagram_message_type value for \c OBJECT_DATAGRAM to the individual properties.
  * @param[in] version The version of the connection
  * @param[in] type The imquic_moq_datagram_message_type instance to parse
  * @param[out] ext Output variable to write whether there are extensions
- * @param[out] eog Output variable to write whether there is an End of Group */
-void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_moq_datagram_message_type type, gboolean *ext, gboolean *eog);
+ * @param[out] eog Output variable to write whether there is an End of Group
+ * @param[out] oid Output variable to write whether there is an Object ID (ignored before v14) */
+void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_moq_datagram_message_type type, gboolean *ext, gboolean *eog, gboolean *oid);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_datagram_message_type value.
  * @param type The imquic_data_moq_message_type value
  * @param version The version of the connection
@@ -116,7 +126,7 @@ typedef enum imquic_moq_data_message_type {
 		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11 = 0xB,		/* Deprecated in v12 */
 		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11 = 0xC,			/* Deprecated in v12 */
 		IMQUIC_MOQ_SUBGROUP_HEADER_v11 = 0xD,				/* Deprecated in v12 */
-		/* v12 */
+		/* v12 and beyond */
 		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT = 0x10,
 		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 = 0x11,
 		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT = 0x12,

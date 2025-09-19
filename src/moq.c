@@ -507,7 +507,7 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type) {
 	return NULL;
 }
 
-imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog) {
+imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog, gboolean oid) {
 	if(version < IMQUIC_MOQ_VERSION_11)
 		return IMQUIC_MOQ_OBJECT_DATAGRAM;
 	if(version == IMQUIC_MOQ_VERSION_11) {
@@ -515,6 +515,17 @@ imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_
 		return ext ? IMQUIC_MOQ_OBJECT_DATAGRAM : IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT;
 	}
 	/* If we're here, we're on v12 or later */
+	if(version < IMQUIC_MOQ_VERSION_14)
+		oid = TRUE;
+	if(!oid) {
+		if(!ext && !eog)
+			return IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT_NOOID;
+		else if(ext && !eog)
+			return IMQUIC_MOQ_OBJECT_DATAGRAM_NOOID;
+		else if(!ext && eog)
+			return IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT_NOOID;
+		return IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOOID;
+	}
 	if(!ext && !eog)
 		return IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT;
 	else if(ext && !eog)
@@ -524,7 +535,7 @@ imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_
 	return IMQUIC_MOQ_OBJECT_DATAGRAM_EOG;
 }
 
-void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_moq_datagram_message_type type, gboolean *ext, gboolean *eog) {
+void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_moq_datagram_message_type type, gboolean *ext, gboolean *eog, gboolean *oid) {
 	if(version < IMQUIC_MOQ_VERSION_11) {
 		return;
 	} else if(version == IMQUIC_MOQ_VERSION_11) {
@@ -533,10 +544,20 @@ void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_m
 			*ext = (type == IMQUIC_MOQ_OBJECT_DATAGRAM);
 	} else {
 		/* v12 and later */
-		if(ext)
-			*ext = (type == IMQUIC_MOQ_OBJECT_DATAGRAM || type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG);
-		if(eog)
-			*eog = (type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT || type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG);
+		if(ext) {
+			*ext = (type == IMQUIC_MOQ_OBJECT_DATAGRAM || type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG ||
+				(version >= IMQUIC_MOQ_VERSION_14 && type == IMQUIC_MOQ_OBJECT_DATAGRAM_NOOID) ||
+				(version >= IMQUIC_MOQ_VERSION_14 && type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOOID));
+		}
+		if(eog) {
+			*eog = (type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT || type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG ||
+				(version >= IMQUIC_MOQ_VERSION_14 && type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT_NOOID) ||
+				(version >= IMQUIC_MOQ_VERSION_14 && type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOOID));
+		}
+		if(version >= IMQUIC_MOQ_VERSION_14 && oid) {
+			*oid = (type == IMQUIC_MOQ_OBJECT_DATAGRAM || type == IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT ||
+				type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG || type == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT);
+		}
 	}
 }
 
@@ -559,12 +580,28 @@ const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_typ
 				return "OBJECT_DATAGRAM_STATUS";
 			default: break;
 		}
+	} else if(version == IMQUIC_MOQ_VERSION_12 || version == IMQUIC_MOQ_VERSION_13) {
+		switch(type) {
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG:
+				return "OBJECT_DATAGRAM";
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v13:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v13:
+				return "OBJECT_DATAGRAM_STATUS";
+			default: break;
+		}
 	} else {
 		switch(type) {
 			case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT:
 			case IMQUIC_MOQ_OBJECT_DATAGRAM:
 			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT:
 			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT_NOOID:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_NOOID:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT_NOOID:
+			case IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOOID:
 				return "OBJECT_DATAGRAM";
 			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT:
 			case IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS:
@@ -1142,14 +1179,19 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		imquic_moq_datagram_message_type dtype = imquic_read_varint(&bytes[offset], blen-offset, &tlen);
 		offset += tlen;
 		if(dtype == IMQUIC_MOQ_OBJECT_DATAGRAM || (moq->version >= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT) ||
-				(moq->version >= IMQUIC_MOQ_VERSION_12 && (dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG || dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT))) {
+				(moq->version >= IMQUIC_MOQ_VERSION_12 && moq->version <= IMQUIC_MOQ_VERSION_13 &&
+					(dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG || dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT)) ||
+				(moq->version >= IMQUIC_MOQ_VERSION_14 && (dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_NOOID || dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT_NOOID ||
+					dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOOID || dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT_NOOID))) {
 			/* Parse this OBJECT_DATAGRAM message */
 			parsed = imquic_moq_parse_object_datagram(moq, &bytes[offset], blen-offset, dtype, &error);
 			IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 		} else if(moq->version >= IMQUIC_MOQ_VERSION_08 &&
 				((moq->version <= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11) ||
 				(moq->version == IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11) ||
-				(moq->version >= IMQUIC_MOQ_VERSION_12 && (dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS ||
+				(moq->version >= IMQUIC_MOQ_VERSION_12 && moq->version <= IMQUIC_MOQ_VERSION_13 &&
+					(dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v13 || dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v13)) ||
+				(moq->version >= IMQUIC_MOQ_VERSION_14 && (dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS ||
 					dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT)))) {
 			/* Parse this OBJECT_DATAGRAM_STATUS message */
 			parsed = imquic_moq_parse_object_datagram_status(moq, &bytes[offset], blen-offset, dtype, &error);
@@ -3578,6 +3620,9 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 5)
 		return 0;
+	/* TODO Check EOG too */
+	gboolean has_ext = FALSE, has_oid = TRUE;
+	imquic_moq_datagram_message_type_parse(moq->version, dtype, &has_ext, NULL, &has_oid);
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = 0;
@@ -3598,9 +3643,12 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:          %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
-	uint64_t object_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
-	offset += length;
+	uint64_t object_id = 0;
+	if(moq->version < IMQUIC_MOQ_VERSION_14 || has_oid) {
+		object_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
+		offset += length;
+	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object ID:         %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), object_id);
 	uint8_t priority = bytes[offset];
@@ -3609,9 +3657,6 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		imquic_get_connection_name(moq->conn), priority);
 	size_t ext_offset = 0, ext_len = 0;
 	uint64_t ext_count = 0;
-	/* TODO Check EOG too */
-	gboolean has_ext = FALSE;
-	imquic_moq_datagram_message_type_parse(moq->version, dtype, &has_ext, NULL);
 	if(has_ext) {
 		/* The object contains extensions */
 		if(moq->version > IMQUIC_MOQ_VERSION_08) {
@@ -3746,7 +3791,8 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 	uint64_t ext_count = 0;
 	if(moq->version > IMQUIC_MOQ_VERSION_08 &&
 			((moq->version <= IMQUIC_MOQ_VERSION_11 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11) ||
-			(moq->version >= IMQUIC_MOQ_VERSION_12 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS))) {
+			(moq->version >= IMQUIC_MOQ_VERSION_12 && moq->version <= IMQUIC_MOQ_VERSION_13 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v13) ||
+			(moq->version >= IMQUIC_MOQ_VERSION_14 && dtype == IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS))) {
 		/* The object contains extensions */
 		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
@@ -5358,13 +5404,16 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 	imquic_moq_datagram_message_type dtype = IMQUIC_MOQ_OBJECT_DATAGRAM;
 	/* TODO Involve EOG */
 	gboolean has_ext = (extensions != NULL && elen > 0), is_eog = FALSE;
-	dtype = imquic_moq_datagram_message_type_return(moq->version, has_ext, is_eog);
+	gboolean has_oid = (moq->version < IMQUIC_MOQ_VERSION_14 ||
+		(moq->version >= IMQUIC_MOQ_VERSION_14 && object_id != 0));
+	dtype = imquic_moq_datagram_message_type_return(moq->version, has_ext, is_eog, has_oid);
 	size_t offset = imquic_write_varint(dtype, bytes, blen);
 	if(moq->version < IMQUIC_MOQ_VERSION_07)
 		offset += imquic_write_varint(request_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
-	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
+	if(moq->version < IMQUIC_MOQ_VERSION_14 || has_oid)
+		offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
 	bytes[offset] = priority;
 	offset++;
 	if(moq->version >= IMQUIC_MOQ_VERSION_08 && has_ext)
@@ -5392,10 +5441,12 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
 			imquic_get_connection_name(moq->conn), imquic_moq_datagram_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS, moq->version));
 		return 0;
 	}
-	imquic_moq_datagram_message_type dtype = (moq->version >= IMQUIC_MOQ_VERSION_12 ? IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS : IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11);
 	gboolean has_ext = (extensions != NULL && elen > 0);
-	if(moq->version >= IMQUIC_MOQ_VERSION_11 && has_ext)
-		dtype = (moq->version >= IMQUIC_MOQ_VERSION_12 ? IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT : IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11);
+	imquic_moq_datagram_message_type dtype = has_ext ? IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS : IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT;
+	if(moq->version <= IMQUIC_MOQ_VERSION_11)
+		dtype = has_ext ? IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11 : IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11;
+	else if(moq->version == IMQUIC_MOQ_VERSION_12 || moq->version == IMQUIC_MOQ_VERSION_13)
+		dtype = has_ext ? IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v13 : IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v13;
 	size_t offset = imquic_write_varint(dtype, bytes, blen);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
