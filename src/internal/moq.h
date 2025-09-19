@@ -389,6 +389,8 @@ typedef struct imquic_moq_stream {
 	imquic_moq_buffer *buffer;
 	/*! \brief Whether we got at least an object on this stream */
 	gboolean got_objects;
+	/*! \brief Last Object ID handled */
+	uint64_t last_object_id;
 	/*! \brief Whether we closed this stream */
 	gboolean closed;
 } imquic_moq_stream;

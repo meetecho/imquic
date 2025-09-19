@@ -3974,6 +3974,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	size_t blen = moq_stream->buffer->length;
 	size_t offset = 0;
 	uint8_t length = 0;
+	/* Note: this will be a delta, on v14 and later */
 	uint64_t object_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	if(length == 0 || length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
@@ -4068,8 +4069,15 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		 * is set to the first object we receive in the sequence */
 		moq_stream->subgroup_id = object_id;
 	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_14) {
+		/* Object IDs are a delta, starting from v14 */
+		object_id += moq_stream->last_object_id;
+		if(moq_stream->got_objects)
+			object_id++;
+	}
 	if(!moq_stream->got_objects)
 		moq_stream->got_objects = TRUE;
+	moq_stream->last_object_id = object_id;
 	/* Notify the payload at the application layer */
 	imquic_moq_object object = {
 		.request_id = moq_stream->request_id,
@@ -7262,8 +7270,24 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shgo_len = 0;
 		if(valid_pkt) {
+			uint64_t object_id = object->object_id;
+			if(moq->version >= IMQUIC_MOQ_VERSION_14) {
+				/* Object IDs are a delta, starting from v14 */
+				if(moq_stream->got_objects && object_id <= moq_stream->last_object_id) {
+					IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't send older object on this subgroup (%"SCNu64" <= %"SCNu64")\n",
+						imquic_get_connection_name(conn), object_id, moq_stream->last_object_id);
+					imquic_refcount_decrease(&moq->ref);
+					g_free(buffer);
+					return -1;
+				}
+				object_id -= moq_stream->last_object_id;
+				if(moq_stream->got_objects)
+					object_id--;
+				moq_stream->got_objects = TRUE;
+				moq_stream->last_object_id = object->object_id;
+			}
 			shgo_len = imquic_moq_add_subgroup_header_object(moq, moq_stream, buffer, bufsize,
-				object->object_id, object->object_status, object->payload, object->payload_len,
+				object_id, object->object_status, object->payload, object->payload_len,
 				object->extensions_count, object->extensions, object->extensions_len);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
