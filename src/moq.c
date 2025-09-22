@@ -5539,12 +5539,15 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
 		/* Whatever was passed, ignore it and use the legacy type */
 		dtype = IMQUIC_MOQ_SUBGROUP_HEADER_LEGACY;
 	}
+	gboolean has_sg = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_sg, NULL, NULL, NULL);
 	size_t offset = imquic_write_varint(dtype, bytes, blen);
 	if(moq->version < IMQUIC_MOQ_VERSION_07)
 		offset += imquic_write_varint(request_id, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
-	offset += imquic_write_varint(subgroup_id, &bytes[offset], blen-offset);
+	if(has_sg)
+		offset += imquic_write_varint(subgroup_id, &bytes[offset], blen-offset);
 	bytes[offset] = priority;
 	offset++;
 	return offset;
@@ -7747,6 +7750,7 @@ void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_strea
 	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_header_created");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream->stream_id));
+	json_object_set_new(data, "type", json_integer(stream->type));
 	json_object_set_new(data, "track_alias", json_integer(stream->track_alias));
 	json_object_set_new(data, "group_id", json_integer(stream->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(stream->subgroup_id));
@@ -7760,6 +7764,7 @@ void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream
 	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_header_parsed");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream->stream_id));
+	json_object_set_new(data, "type", json_integer(stream->type));
 	json_object_set_new(data, "track_alias", json_integer(stream->track_alias));
 	json_object_set_new(data, "group_id", json_integer(stream->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(stream->subgroup_id));

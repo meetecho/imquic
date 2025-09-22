@@ -708,3 +708,17 @@ const char *imquic_moq_object_status_str(imquic_moq_object_status status) {
 	}
 	return NULL;
 }
+
+/* Extension header types  */
+const char *imquic_moq_extension_type_str(imquic_moq_extension_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP:
+			return "Prior Group ID Gap";
+		case IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP:
+			return "Prior Object ID Gap";
+		case IMQUIC_MOQ_EXT_IMMUTABLE_EXTENSIONS:
+			return "Immutable Extensions";
+		default: break;
+	}
+	return NULL;
+}

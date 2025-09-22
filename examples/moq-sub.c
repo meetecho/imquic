@@ -330,10 +330,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		GList *temp = extensions;
 		while(temp) {
 			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			const char *ext_name = imquic_moq_extension_type_str(ext->id);
 			if(ext->id % 2 == 0) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' = %"SCNu64"\n", ext->id, ext->value.number);
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
+					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
 			} else {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' = %.*s\n", ext->id, (int)ext->value.data.length, ext->value.data.buffer);
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
+					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
 			}
 			temp = temp->next;
 		}

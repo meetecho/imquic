@@ -277,14 +277,14 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		imquic_moq_object_extension dataext = { 0 };
 		if(first && options.first_group > 0 && group_id == options.first_group) {
 			/* Add the Prior Group ID Gap extension */
-			pgidext.id = 0x3C;
+			pgidext.id = IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP;
 			pgidext.value.number = options.first_group;
 			exts = g_list_append(exts, &pgidext);
 			extensions_count++;
 		}
 		if(first && options.first_object > 0 && object_id == options.first_object) {
 			/* Add the Prior Object ID Gap extension */
-			poidext.id = 0x3E;
+			poidext.id = IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP;
 			poidext.value.number = options.first_object;
 			exts = g_list_append(exts, &poidext);
 			extensions_count++;

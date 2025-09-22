@@ -471,6 +471,22 @@ GList *imquic_moq_parse_object_extensions(uint8_t *extensions, size_t elen);
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_object_extensions(GList *extensions, uint8_t *bytes, size_t blen);
 
+/*! \brief Known MoQ Object Extension header types
+ * \note The library will not try to interpret extensions and their
+ * payload: this is always left up to applications */
+typedef enum imquic_moq_extension_type {
+	/* Prior Group ID Gap */
+	IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP = 0x3C,
+	/* Prior Object ID Gap */
+	IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP = 0x3E,
+	/* Immutable Extensions */
+	IMQUIC_MOQ_EXT_IMMUTABLE_EXTENSIONS = 0xB,
+} imquic_moq_extension_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_extension_type value.
+ * @param type The imquic_moq_extension_type value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_extension_type_str(imquic_moq_extension_type type);
+
 /*! \brief MoQ Object
  * \note This may contain info related to different MoQ versions, and so
  * should be considered a higher level abstraction that the internal
