@@ -2420,6 +2420,13 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		json_object_set_new(message, "subscriber_priority", json_integer(priority));
 		json_object_set_new(message, "group_order", json_integer(group_order));
 		json_object_set_new(message, "forward", json_integer(forward));
+		json_object_set_new(message, "filter_type", json_integer(filter));
+		if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_START || filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			json_object_set_new(message, "start_group", json_integer(start.group));
+			json_object_set_new(message, "start_object", json_integer(start.object));
+		}
+		if(filter == IMQUIC_MOQ_FILTER_ABSOLUTE_START || filter == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE)
+			json_object_set_new(message, "end_group", json_integer(end.group));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_subscribe_parameters(message, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
