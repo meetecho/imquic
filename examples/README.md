@@ -44,7 +44,7 @@ In both cases, the client will then send a single `ciao` buffer on a bidirection
 
 To build the RTP Over QUIC (RoQ) examples, pass `--enable-roq-examples` to the `./configure` script. This will build two command line applications, namely:
 
-* `imquic-roq-server`, a basic RoQ server, that will just print the flow ID and RTP headers of the incoming packets;
+* `imquic-roq-server`, a basic RoQ server, that can print the flow ID and RTP headers of the incoming packets, and/or echo packets back;
 * `imquic-roq-client`, a basic RoQ client, that will listen for RTP packets on some UDP ports, and restream them via QUIC.
 
 Both provide a few configuration options: pass `-h` or `--help` for more information.
@@ -53,7 +53,11 @@ This launches the RoQ server on port `9000`, using the provided certificate, and
 
 	./examples/imquic-roq-server -q -p 9000 -c ../localhost.crt -k ../localhost.key -s ../key_log.log
 
-This launches the RoQ client to connect to that server, waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate `STREAM` for each RTP packet:
+Since no other parameter is provided, the default behaviour is just to print some detail about incoming packets. To not show such information, the `-Z` or `--quiet` flag can be passed. The RoQ server can also be configured to echo packets back to the client via `-e` or `--echo`. This launches the same RoQ server as before, but in quiet (`-Z`) and echo (`-e`) mode and on WebTransport too (`-w`):
+
+	./examples/imquic-roq-server -w -q -p 9000 -Z -e -c ../localhost.crt -k ../localhost.key -s ../key_log.log
+
+This instead launches the RoQ client to connect to that server (whether in echo mode or not), waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate `STREAM` for each RTP packet:
 
 	./examples/imquic-roq-client -q -a 15002 -A 0 -v 15004 -V 1 -r 127.0.0.1 -R 9000 -m streams
 

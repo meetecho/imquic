@@ -88,6 +88,23 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	roq_conn = conn;
 }
 
+static void imquic_demo_rtp_incoming(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
+		uint64_t flow_id, uint8_t *bytes, size_t blen) {
+	/* If this is called, it means the server we're sending RTP packets to
+	 * sent us something back (e.g., the imquic RoQ server in echo mode) */
+	if(!imquic_is_rtp(bytes, blen)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s]  -- [flow=%"SCNu64"][%zu] Not an RTP packet\n",
+			imquic_get_connection_name(conn), flow_id, blen);
+		return;
+	}
+	imquic_rtp_header *rtp = (imquic_rtp_header *)bytes;
+	if(!options.quiet) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][recv]  -- [%s][flow=%"SCNu64"][%zu] ssrc=%"SCNu32", pt=%d, seq=%"SCNu16", ts=%"SCNu32"\n",
+			imquic_get_connection_name(conn), imquic_roq_multiplexing_str(multiplexing), flow_id, blen,
+			ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+	}
+}
+
 static void imquic_demo_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection gone\n", imquic_get_connection_name(conn));
@@ -239,6 +256,8 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 	}
+	if(options.quiet)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Quiet mode (won't print RTP packets)\n");
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
 	/* Initialize the library and create a server */
@@ -276,6 +295,7 @@ int main(int argc, char *argv[]) {
 	if(options.webtransport && imquic_get_endpoint_subprotocol(client) != NULL)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Subprotocol: %s\n", imquic_get_endpoint_subprotocol(client));
 	imquic_set_new_roq_connection_cb(client, imquic_demo_new_connection);
+	imquic_set_rtp_incoming_cb(client, imquic_demo_rtp_incoming);
 	imquic_set_roq_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);
 
@@ -349,7 +369,7 @@ int main(int argc, char *argv[]) {
 					sent = imquic_roq_send_rtp(roq_conn, multiplexing, flow_id, buffer, bytes, one_stream_per_packet);
 					if(sent == 0) {
 						IMQUIC_LOG(IMQUIC_LOG_WARN, "Couldn't send RTP packet...\n");
-					} else {
+					} else if(!options.quiet) {
 						imquic_rtp_header *rtp = (imquic_rtp_header *)buffer;
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- [%s][flow=%"SCNu64"][%d] ssrc=%"SCNu32", pt=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32"\n",
 							mode, flow_id, bytes, ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));

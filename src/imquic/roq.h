@@ -67,6 +67,18 @@
 
 #include "imquic.h"
 
+/*! \brief RTP Over QUIC multiplexing modes */
+typedef enum imquic_roq_multiplexing {
+	/*! \brief RTP packet over \c DATAGRAM */
+	IMQUIC_ROQ_DATAGRAM,
+	/*! \brief One or more RTP packets over a \c STREAM */
+	IMQUIC_ROQ_STREAM,
+} imquic_roq_multiplexing;
+/*! \brief Helper function to serialize to string the name of a imquic_roq_multiplexing property.
+ * @param type The imquic_roq_multiplexing property
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_roq_multiplexing_str(imquic_roq_multiplexing type);
+
 /** @name RoQ endpoints management
  */
 ///@{
@@ -144,7 +156,8 @@ void imquic_set_new_roq_connection_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param rtp_incoming Pointer to the function that will be invoked when there's a new incoming RTP packet */
 void imquic_set_rtp_incoming_cb(imquic_endpoint *endpoint,
-	void (* rtp_incoming)(imquic_connection *conn, uint64_t flow_id, uint8_t *bytes, size_t blen));
+	void (* rtp_incoming)(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
+		uint64_t flow_id, uint8_t *bytes, size_t blen));
 /*! \brief Configure the callback function to be notified when an existing
  * RoQ connection handled by this endpoint has been closed/shut down.
  * @note This is a good place to release the last reference to the connection
@@ -153,18 +166,6 @@ void imquic_set_rtp_incoming_cb(imquic_endpoint *endpoint,
 void imquic_set_roq_connection_gone_cb(imquic_endpoint *endpoint,
 	void (* roq_connection_gone)(imquic_connection *conn));
 ///@}
-
-/*! \brief RTP Over QUIC multiplexing modes */
-typedef enum imquic_roq_multiplexing {
-	/*! \brief RTP packet over \c DATAGRAM */
-	IMQUIC_ROQ_DATAGRAM,
-	/*! \brief One or more RTP packets over a \c STREAM */
-	IMQUIC_ROQ_STREAM,
-} imquic_roq_multiplexing;
-/*! \brief Helper function to serialize to string the name of a imquic_roq_multiplexing property.
- * @param type The imquic_roq_multiplexing property
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_roq_multiplexing_str(imquic_roq_multiplexing type);
 
 /** @name Using the RoQ API
  */

@@ -85,7 +85,8 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New RoQ connection\n", imquic_get_connection_name(conn));
 }
 
-static void imquic_demo_rtp_incoming(imquic_connection *conn, uint64_t flow_id, uint8_t *bytes, size_t blen) {
+static void imquic_demo_rtp_incoming(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
+		uint64_t flow_id, uint8_t *bytes, size_t blen) {
 	/* The library gives us access to the RTP packet directly. no matter how it got there */
 	if(!imquic_is_rtp(bytes, blen)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s]  -- [flow=%"SCNu64"][%zu] Not an RTP packet\n",
@@ -94,9 +95,21 @@ static void imquic_demo_rtp_incoming(imquic_connection *conn, uint64_t flow_id, 
 		return;
 	}
 	imquic_rtp_header *rtp = (imquic_rtp_header *)bytes;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- [flow=%"SCNu64"][%zu] ssrc=%"SCNu32", pt=%d, seq=%"SCNu16", ts=%"SCNu32"\n",
-		imquic_get_connection_name(conn), flow_id, blen,
-		ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+	if(!options.quiet) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- [%s][flow=%"SCNu64"][%zu] ssrc=%"SCNu32", pt=%d, seq=%"SCNu16", ts=%"SCNu32"\n",
+			imquic_get_connection_name(conn), imquic_roq_multiplexing_str(multiplexing), flow_id, blen,
+			ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+	}
+	if(options.echo) {
+		/* Send the packet back to the client */
+		size_t sent = imquic_roq_send_rtp(conn, multiplexing, flow_id, bytes, blen, TRUE);
+		if(sent == 0) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Couldn't send RTP packet...\n");
+		} else if(!options.quiet) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- [%s][flow=%"SCNu64"][%zu] Sent RTP packet back to the client\n",
+				imquic_get_connection_name(conn), imquic_roq_multiplexing_str(multiplexing), flow_id, sent);
+		}
+	}
 }
 
 static void imquic_demo_connection_gone(imquic_connection *conn) {
@@ -172,6 +185,10 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 	}
+	if(options.quiet)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Quiet mode (won't print RTP packets)\n");
+	if(options.echo)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Echo mode (will send incoming RTP packets back to the client)\n");
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
 	/* Initialize the library and create a server */

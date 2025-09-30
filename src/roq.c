@@ -111,8 +111,10 @@ static int imquic_roq_buffer_data(imquic_roq_endpoint *endpoint, uint64_t flow_i
 		if(endpoint->conn && endpoint->conn->qlog != NULL && endpoint->conn->qlog->roq)
 			imquic_roq_qlog_stream_packet_parsed(endpoint->conn->qlog, stream_id, flow_id, pkt->rtp_len);
 #endif
-		if(pkt->rtp_len > 0 && endpoint->conn && endpoint->conn->socket && endpoint->conn->socket->callbacks.roq.rtp_incoming)
-			endpoint->conn->socket->callbacks.roq.rtp_incoming(endpoint->conn, flow_id, pkt->buffer + pkt->offset, pkt->rtp_len);
+		if(pkt->rtp_len > 0 && endpoint->conn && endpoint->conn->socket && endpoint->conn->socket->callbacks.roq.rtp_incoming) {
+			endpoint->conn->socket->callbacks.roq.rtp_incoming(endpoint->conn,
+				IMQUIC_ROQ_STREAM, flow_id, pkt->buffer + pkt->offset, pkt->rtp_len);
+		}
 		/* Move on */
 		pkt->offset += pkt->rtp_len;
 		pkt->rtp_len = 0;
@@ -218,8 +220,10 @@ void imquic_roq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
 	if(conn->qlog != NULL && conn->qlog->roq)
 		imquic_roq_qlog_datagram_packet_parsed(conn->qlog, flow_id, length - parsed);
 #endif
-	if(length > 0 && conn->socket && conn->socket->callbacks.roq.rtp_incoming)
-		conn->socket->callbacks.roq.rtp_incoming(conn, flow_id, bytes + parsed, length - parsed);
+	if(length > 0 && conn->socket && conn->socket->callbacks.roq.rtp_incoming) {
+		conn->socket->callbacks.roq.rtp_incoming(conn,
+			IMQUIC_ROQ_DATAGRAM, flow_id, bytes + parsed, length - parsed);
+	}
 }
 
 void imquic_roq_connection_gone(imquic_connection *conn) {

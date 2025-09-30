@@ -220,7 +220,8 @@ void imquic_set_new_roq_connection_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_rtp_incoming_cb(imquic_endpoint *endpoint,
-		void (* rtp_incoming)(imquic_connection *conn, uint64_t flow_id, uint8_t *bytes, size_t blen)) {
+		void (* rtp_incoming)(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
+			uint64_t flow_id, uint8_t *bytes, size_t blen)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_ROQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set RoQ callback on non-RoQ endpoint\n");
