@@ -275,9 +275,9 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		filter_type, &start_location, &end_location_sub);
 }
 
-static void imquic_demo_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
+static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription via ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
 	/* TODO */
 }
@@ -296,12 +296,12 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id
 }
 
 static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to announcements '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to announcements in request '%"SCNu64"': error %d (%s)\n",
+static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subns_error_code error_code, const char *reason) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
@@ -330,10 +330,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		GList *temp = extensions;
 		while(temp) {
 			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			const char *ext_name = imquic_moq_extension_type_str(ext->id);
 			if(ext->id % 2 == 0) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' = %"SCNu64"\n", ext->id, ext->value.number);
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
+					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
 			} else {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' = %.*s\n", ext->id, (int)ext->value.data.length, ext->value.data.buffer);
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
+					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
 			}
 			temp = temp->next;
 		}
@@ -679,7 +682,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_accepted_cb(client, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(client, imquic_demo_subscribe_error);
 	imquic_set_incoming_publish_cb(client, imquic_demo_incoming_publish);
-	imquic_set_subscribe_done_cb(client, imquic_demo_subscribe_done);
+	imquic_set_publish_done_cb(client, imquic_demo_publish_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
 	imquic_set_fetch_error_cb(client, imquic_demo_fetch_error);
 	imquic_set_subscribe_namespace_accepted_cb(client, imquic_demo_subscribe_namespace_accepted);
@@ -696,11 +699,16 @@ int main(int argc, char *argv[]) {
 			/* TODO This should be done for all subscriptions */
 			GList *temp = request_ids;
 			while(temp) {
-				uint64_t *request_id = (uint64_t *)temp->data;
+				uint64_t *rid = (uint64_t *)temp->data;
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a SUBSCRIBE_UPDATE for ID %"SCNu64"\n",
-					imquic_get_connection_name(moq_conn), *request_id);
+					imquic_get_connection_name(moq_conn), *rid);
 				imquic_moq_location start_location = { 0 };
-				imquic_moq_update_subscribe(moq_conn, *request_id, &start_location, end_location_sub.group, 0, TRUE);
+				/* The verb has a different syntax, starting from v14 */
+				uint64_t request_id = *rid, sub_request_id = request_id;
+				if(imquic_moq_get_version(moq_conn) >= IMQUIC_MOQ_VERSION_14)
+					request_id = imquic_moq_get_next_request_id(moq_conn);
+				imquic_moq_update_subscribe(moq_conn, request_id, sub_request_id,
+					&start_location, end_location_sub.group, 0, TRUE);
 				temp = temp->next;
 			}
 		}

@@ -1925,6 +1925,13 @@ size_t imquic_payload_parse_datagram(imquic_connection *conn, imquic_packet *pkt
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	if(conn->http3 != NULL && datagram_length > 0) {
+		/* We need to strip the Quarter Stream ID from the payload */
+		uint64_t qsid = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- -- Quarter Stream ID: (%"SCNu64")\n", qsid);
+		offset++;
+		datagram_length--;
+	}
 	/* Pass the data to the application callback */
 	imquic_connection_notify_datagram_incoming(conn, &bytes[offset], datagram_length);
 	/* Move on */
@@ -2434,14 +2441,25 @@ size_t imquic_payload_add_datagram(imquic_connection *conn, imquic_packet *pkt, 
 	bytes[offset] = IMQUIC_DATAGRAM |
 		(!last ? 0x01 : 0x00);
 	offset++;
+	size_t actual_datagram_length = datagram_length;
+	if(conn->http3 != NULL) {
+		/* FIXME For HTTP/3 and WebTransport DATAGRAM, we need to prefix
+		 * the payload with the Quarter Stream ID: we don't currently
+		 * support it, so we simply hardcode its value to 0x00 */
+		actual_datagram_length++;
+	}
 	if(!last)
-		offset += imquic_write_varint(datagram_length, &bytes[offset], blen-offset);
+		offset += imquic_write_varint(actual_datagram_length, &bytes[offset], blen-offset);
+	if(conn->http3 != NULL) {
+		bytes[offset] = 0;
+		offset++;
+	}
 	memcpy(&bytes[offset], datagram, datagram_length);
 	offset += datagram_length;
 #ifdef HAVE_QLOG
 	if(conn->qlog != NULL && conn->qlog->quic && pkt != NULL) {
 		json_t *frame = imquic_qlog_prepare_packet_frame("datagram");
-		json_object_set_new(pkt->qlog_frames, "length", json_integer(datagram_length));
+		json_object_set_new(pkt->qlog_frames, "length", json_integer(actual_datagram_length));
 		imquic_qlog_event_add_raw(frame, "raw", NULL, offset);
 		if(pkt->qlog_frame != NULL)
 			json_decref(pkt->qlog_frame);

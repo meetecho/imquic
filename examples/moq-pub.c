@@ -80,7 +80,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_get_connection_name(conn), imquic_moq_version_str(imquic_moq_get_version(conn)));
 	moq_version = imquic_moq_get_version(conn);
 	g_atomic_int_set(&connected, 1);
-	/* Let's announce our namespace or publish right away */
+	/* Let's publish our namespace or publish right away */
 	imquic_moq_namespace tns[32];	/* FIXME */
 	int i = 0;
 	while(options.track_namespace[i] != NULL) {
@@ -92,7 +92,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 	pub_tns = imquic_moq_namespace_str(tns, pub_tns_buffer, sizeof(pub_tns_buffer), TRUE);
 	if(!options.publish) {
-		/* We use ANNOUNCE + SUBSCRIBE */
+		/* We use PUBLISH_NAMESPACE + incoming SUBSCRIBE */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), options.track_name);
 		/* Check if we need to prepare an auth token */
@@ -106,7 +106,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_announce(conn, imquic_moq_get_next_request_id(conn), &tns[0], auth, authlen);
+		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], auth, authlen);
 	} else {
 		/* We use PUBLISH */
 		if(moq_version < IMQUIC_MOQ_VERSION_12) {
@@ -138,14 +138,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 }
 
-static void imquic_demo_announce_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announce '%s' accepted\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace '%s' accepted\n",
 		imquic_get_connection_name(conn), ns);
 }
 
-static void imquic_demo_announce_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason) {
+static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason) {
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace '%s': error %d (%s)\n",
@@ -192,7 +192,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_INTERNAL_ERROR, "We already have a subscriber", track_alias);
 		return;
 	}
-	/* TODO Check if it matches our announced namespace */
+	/* TODO Check if it matches our published namespace */
 	/* Check if there's authorization needed */
 	if(auth != NULL)
 		imquic_moq_print_auth_info(conn, auth, authlen);
@@ -266,17 +266,27 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 	size_t extensions_len = 0;
 	size_t extensions_count = 0;
 	gboolean first = g_atomic_int_compare_and_exchange(&started, 0, 1);
-	if((first && options.first_group > 0 && group_id == options.first_group) || options.extensions) {
+	if((first && options.first_group > 0 && group_id == options.first_group) ||
+			(first && options.first_object > 0 && object_id == options.first_object) ||
+			options.extensions) {
 		/* We have extensions to add to the object */
 		GList *exts = NULL;
 		imquic_moq_object_extension pgidext = { 0 };
+		imquic_moq_object_extension poidext = { 0 };
 		imquic_moq_object_extension numext = { 0 };
 		imquic_moq_object_extension dataext = { 0 };
 		if(first && options.first_group > 0 && group_id == options.first_group) {
 			/* Add the Prior Group ID Gap extension */
-			pgidext.id = 0x40;
+			pgidext.id = IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP;
 			pgidext.value.number = options.first_group;
 			exts = g_list_append(exts, &pgidext);
+			extensions_count++;
+		}
+		if(first && options.first_object > 0 && object_id == options.first_object) {
+			/* Add the Prior Object ID Gap extension */
+			poidext.id = IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP;
+			poidext.value.number = options.first_object;
+			exts = g_list_append(exts, &poidext);
 			extensions_count++;
 		}
 		if(options.extensions) {
@@ -303,8 +313,8 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		/* We've sent all that we were asked about */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 			imquic_get_connection_name(moq_conn));
-		/* Send a SUBSCRIBE_DONE */
-		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		/* Send a PUBLISH_DONE */
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -345,8 +355,8 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		/* We've sent the last object */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 			imquic_get_connection_name(moq_conn));
-		/* Send a SUBSCRIBE_DONE */
-		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		/* Send a PUBLISH_DONE */
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -438,8 +448,10 @@ int main(int argc, char *argv[]) {
 	}
 	if(options.first_group > 0)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %"SCNu64" (will send the 'Prior Group ID Gap' extension)\n", options.first_group);
+	if(options.first_object > 0)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' extension)\n", options.first_object);
 	if(options.publish) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of ANNOUNCE + SUBSCRIBE\n");
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
 		if(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12)) {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
 			ret = 1;
@@ -510,8 +522,8 @@ int main(int argc, char *argv[]) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Delivery: %s\n", imquic_moq_delivery_str(delivery));
 	imquic_set_new_moq_connection_cb(client, imquic_demo_new_connection);
 	imquic_set_moq_ready_cb(client, imquic_demo_ready);
-	imquic_set_announce_accepted_cb(client, imquic_demo_announce_accepted);
-	imquic_set_announce_error_cb(client, imquic_demo_announce_error);
+	imquic_set_publish_namespace_accepted_cb(client, imquic_demo_publish_namespace_accepted);
+	imquic_set_publish_namespace_error_cb(client, imquic_demo_publish_namespace_error);
 	imquic_set_publish_accepted_cb(client, imquic_demo_publish_accepted);
 	imquic_set_publish_error_cb(client, imquic_demo_publish_error);
 	imquic_set_incoming_subscribe_cb(client, imquic_demo_incoming_subscribe);
@@ -527,6 +539,7 @@ int main(int argc, char *argv[]) {
 	int64_t now = g_get_monotonic_time(), before = now;
 	GList *objects = NULL;
 	group_id = options.first_group;
+	object_id = options.first_object;
 	char *seconds = NULL;
 	gboolean last = FALSE;
 	while(!stop) {
@@ -581,9 +594,9 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	g_list_free_full(objects, (GDestroyNotify)g_free);
-	/* We're done, check if we need to send a SUBSCRIBE_DONE and/or an UNANNOUNCE */
+	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
 	if(g_atomic_int_get(&started) && !g_atomic_int_get(&done_sent))
-		imquic_moq_subscribe_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
 	if(!options.publish) {
 		imquic_moq_namespace tns[32];	/* FIXME */
 		int i = 0;
@@ -594,7 +607,7 @@ int main(int argc, char *argv[]) {
 			tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
 			i++;
 		}
-		imquic_moq_unannounce(moq_conn, &tns[0]);
+		imquic_moq_publish_namespace_done(moq_conn, &tns[0]);
 	}
 	/* Shutdown the client */
 	imquic_shutdown_endpoint(client);

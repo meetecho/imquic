@@ -377,7 +377,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
+static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id,
+		imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
@@ -390,7 +391,8 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 		return;
 	}
 	/* Update the subscription */
-	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &request_id);
+	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id,
+		imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_14 ? &sub_request_id : &request_id);
 	if(s && !s->fetch) {
 		/* TODO Update start location and end group too */
 		s->forward = forward;
@@ -619,8 +621,8 @@ static void *imquic_demo_tester_thread(void *data) {
 					imquic_get_connection_name(s->sub->conn), group_id, object_id, s->range.end.group, s->range.end.object);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 					imquic_get_connection_name(s->sub->conn));
-				/* Send a SUBSCRIBE_DONE */
-				imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				/* Send a PUBLISH_DONE */
+				imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 				send_done = FALSE;
 				break;
 			}
@@ -741,8 +743,8 @@ static void *imquic_demo_tester_thread(void *data) {
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping delivery thread\n", imquic_get_connection_name(conn));
 	if(send_done && s->sub != NULL) {
-		/* Send a SUBSCRIBE_DONE */
-		imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Test over");
+		/* Send a PUBLISH_DONE */
+		imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Test over");
 	}
 	/* Destroy the subscription and the resources */
 	if(s->sub != NULL) {

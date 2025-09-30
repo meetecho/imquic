@@ -562,7 +562,7 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 		imquic_qlog_http3_append_object(headers, ":scheme", "https");
 		imquic_qlog_http3_append_object(headers, ":authority",
 			imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address), TRUE));
-		imquic_qlog_http3_append_object(headers, ":path", "path");
+		imquic_qlog_http3_append_object(headers, ":path", path);
 		imquic_qlog_http3_append_object(headers, ":protocol", "webtransport");
 		imquic_qlog_http3_append_object(headers, "user-agent", "imquic/0.0.1alpha");
 		imquic_qlog_http3_append_object(headers, "sec-fetch-dest", "webtransport");

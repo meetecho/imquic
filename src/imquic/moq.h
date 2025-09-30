@@ -68,7 +68,7 @@
  *
  * Depending on the MoQ role, you can configure different callbacks and
  * use different methods to send MoQ requests of your own. For instance,
- * a relay may want to be aware of incomming \c ANNOUNCE requests, but
+ * a relay may want to be aware of incomming \c PUBLISH_NAMESPACE requests, but
  * a publisher won't care; at the same time, a publisher will need to
  * be aware of incoming \c SUBSCRIBE requests, but a subscriber won't
  * need/care about those. The following sections will cover the different
@@ -95,8 +95,8 @@
  * <code>moq-chat / 1234 / Lorenzo</code> to indicate that Lorenzo is
  * in room \c 1234 of application <code>moq-chat</code>, which means that
  * anyone sending a \c SUBSCRIBE_NAMESPACE for the partial tuple
- * <code>moq-chat / 1234</code> will be notified when Lorenzo announces
- * and unannounces their presence in that context.
+ * <code>moq-chat / 1234</code> will be notified when Lorenzo publish_namespaces
+ * and publish_namespace_dones their presence in that context.
  *
  * In the imquic MoQ integration, this is made possible using the
  * \ref imquic_moq_namespace structure, where each instance identifies
@@ -118,11 +118,11 @@
  *
  * \section moqpub MoQ Publishers
  *
- * In MoQ, a publisher is an endpoint that announces a specific namespace,
+ * In MoQ, a publisher is an endpoint that publish_namespaces a specific namespace,
  * and reacts to incoming subscriptions to specific tracks of that namespace
  * by sending objects, possibly using different multiplexing/forwarding modes.
  * This means that, in principle, it will need to be able to send
- * \c ANNOUNCE and \c UNANNOUNCE requests, be notified about the result
+ * \c PUBLISH_NAMESPACE and \c PUBLISH_NAMESPACE_DONE requests, be notified about the result
  * of those requests and incoming subscriptions, send responses to
  * subscriptions and send objects.
  *
@@ -148,8 +148,8 @@
  * The reason for this separation of version negotiation in different
  * groups is due to the incompatibility in the messaging on the wire, which
  * saw breaking changes in v06 and v11. At the time of writing, this stack
- * supports MoQ versions from v06 ( \c IMQUIC_MOQ_VERSION_06 ) up to v13
- * ( \c IMQUIC_MOQ_VERSION_13 ), but not all versions will be supported
+ * supports MoQ versions from v06 ( \c IMQUIC_MOQ_VERSION_06 ) up to v14
+ * ( \c IMQUIC_MOQ_VERSION_14 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
@@ -158,16 +158,16 @@
  *
  * Speaking of callbacks (since those must be configured before starting
  * the imquic endpoint), there are two different callbacks that need to
- * be configured to know if an \c ANNOUNCE request was successful:
+ * be configured to know if a \c PUBLISH_NAMESPACE request was successful:
  *
- * - \ref imquic_set_announce_accepted_cb configures the callback to be notified
+ * - \ref imquic_set_publish_namespace_accepted_cb configures the callback to be notified
  * about the request being successful, while
- * - \ref imquic_set_announce_error_cb configures the callback to be notified
- * when an \c ANNOUNCE fails instead.
+ * - \ref imquic_set_publish_namespace_error_cb configures the callback to be notified
+ * when a \c PUBLISH_NAMESPACE fails instead.
  *
  * Both callbacks will reference a \ref imquic_moq_namespace object with
  * info on the namespace they're referring to (which will typically be
- * the same one sent in a previous \c ANNOUNCE request).
+ * the same one sent in a previous \c PUBLISH_NAMESPACE request).
  *
  * To deal with incoming subscriptions, instead, you can configure a callback
  * for intercepting incoming \c SUBSCRIBE requests via \ref imquic_set_incoming_subscribe_cb,
@@ -179,9 +179,9 @@
  * intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
  *
  * That said, once callbacks have been configured, the endpoint started, and the publisher
- * role set, a publisher can start sending requests. To announce a new
- * namespace they'll be responsible for, they can use \ref imquic_moq_announce;
- * the \ref imquic_moq_unannounce request, instead, notifies the peer (e.g.,
+ * role set, a publisher can start sending requests. To publish_namespace a new
+ * namespace they'll be responsible for, they can use \ref imquic_moq_publish_namespace;
+ * the \ref imquic_moq_publish_namespace_done request, instead, notifies the peer (e.g.,
  * a relay), that the publisher is not serving that namespace anymore.
  * Both will reference the namespace in a \ref imquic_moq_namespace property.
  *
@@ -249,9 +249,8 @@
  * - \ref imquic_set_subscribe_error_cb configures the callback to be notified
  * about the request being rejected (e.g., because the track doesn't exist,
  * or the provided athentication info was incorrect);
- * - \ref imquic_set_subscribe_done_cb configures the callback to be notified
- * about a subscription being completed (currently unused, as also the
- * subjects of discussions within the MoQ standardization efforts).
+ * - \ref imquic_set_publish_done_cb configures the callback to be notified
+ * about an existing subscription being completed.
  *
  * All those callbacks refer to the \c request_id identifier that was
  * previously mapped to that subscription (more on that later).
@@ -259,9 +258,9 @@
  * Similar callbacks are available for when a \c SUBSCRIBE_NAMESPACE has
  * been sent, namely \ref imquic_set_subscribe_namespace_accepted_cb,
  * \ref imquic_set_subscribe_namespace_error_cb. It's worth pointing out
- * that if a subscriber expressed interest in getting info on \c ANNOUNCE
+ * that if a subscriber expressed interest in getting info on \c PUBLISH_NAMESPACE
  * requests related to specific tuple namespaces, it should also configure the
- * \ref imquic_set_incoming_announce_cb and \ref imquic_set_incoming_unannounce_cb
+ * \ref imquic_set_incoming_publish_namespace_cb and \ref imquic_set_publish_namespace_done_cb
  * we introduced in the publisher section before.
  *
  * The outcome of \c FETCH requests can be intercepted via the following
@@ -307,13 +306,13 @@
  * In MoQ, a relay is an endpoint that can act as both a publisher and
  * a subscriber at the same time. It can act as an intermediary for
  * subscription requests on behalf of a publisher, for instance: to make
- * a simple example, a publisher may announce a specific namespace to
+ * a simple example, a publisher may publish_namespace a specific namespace to
  * a relay, which will then make it available to interested subscribers
  * (or to other relays). If multiple subscribers are interested in the
  * same content, the relay may only send a single \c SUBSCRIBE request
  * back to the publisher, and then selectively forward the same objects
  * it will receive to all interested subscribers, potentially caching
- * them as well. Keeping track of announced namespaces, a relay usually
+ * them as well. Keeping track of publish_namespaced namespaces, a relay usually
  * also advertizes their presence to subscribers that sent a
  * \c SUBSCRIBE_NAMESPACE request matching the tuple.
  *
@@ -472,6 +471,22 @@ GList *imquic_moq_parse_object_extensions(uint8_t *extensions, size_t elen);
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_object_extensions(GList *extensions, uint8_t *bytes, size_t blen);
 
+/*! \brief Known MoQ Object Extension header types
+ * \note The library will not try to interpret extensions and their
+ * payload: this is always left up to applications */
+typedef enum imquic_moq_extension_type {
+	/* Prior Group ID Gap */
+	IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP = 0x3C,
+	/* Prior Object ID Gap */
+	IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP = 0x3E,
+	/* Immutable Extensions */
+	IMQUIC_MOQ_EXT_IMMUTABLE_EXTENSIONS = 0xB,
+} imquic_moq_extension_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_extension_type value.
+ * @param type The imquic_moq_extension_type value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_extension_type_str(imquic_moq_extension_type type);
+
 /*! \brief MoQ Object
  * \note This may contain info related to different MoQ versions, and so
  * should be considered a higher level abstraction that the internal
@@ -582,6 +597,8 @@ typedef enum imquic_moq_error_code {
 	IMQUIC_MOQ_MALFORMED_AUTH_TOKEN = 0x16,
 	IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS = 0x17,
 	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
+	IMQUIC_MOQ_INVALID_AUTHORITY = 0x19,
+	IMQUIC_MOQ_MALFORMED_AUTHORITY = 0x1A,
 	/* Not an actual error */
 	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
 } imquic_moq_error_code;
@@ -590,21 +607,21 @@ typedef enum imquic_moq_error_code {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_error_code_str(imquic_moq_error_code code);
 
-/*! \brief Announce error codes */
-typedef enum imquic_moq_announce_error_code {
-	IMQUIC_MOQ_ANNCERR_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_ANNCERR_UNAUTHORIZED = 0x1,
-	IMQUIC_MOQ_ANNCERR_TIMEOUT = 0x2,
-	IMQUIC_MOQ_ANNCERR_NOT_SUPPORTED = 0x3,
-	IMQUIC_MOQ_ANNCERR_UNINTERESTED = 0x4,
-	IMQUIC_MOQ_ANNCERR_MALFORMED_AUTH_TOKEN = 0x10,
-	IMQUIC_MOQ_ANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
-	IMQUIC_MOQ_ANNCERR_EXPIRED_AUTH_TOKEN = 0x12,
-} imquic_moq_announce_error_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_announce_error_code value.
- * @param code The imquic_moq_announce_error_code value
+/*! \brief Publish Namespace error codes */
+typedef enum imquic_moq_publish_namespace_error_code {
+	IMQUIC_MOQ_PUBNSERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_PUBNSERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_PUBNSERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_PUBNSERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_PUBNSERR_UNINTERESTED = 0x4,
+	IMQUIC_MOQ_PUBNSERR_MALFORMED_AUTH_TOKEN = 0x10,
+	IMQUIC_MOQ_PUBNSERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
+	IMQUIC_MOQ_PUBNSERR_EXPIRED_AUTH_TOKEN = 0x12,
+} imquic_moq_publish_namespace_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_publish_namespace_error_code value.
+ * @param code The imquic_moq_publish_namespace_error_code value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_announce_error_code_str(imquic_moq_announce_error_code code);
+const char *imquic_moq_publish_namespace_error_code_str(imquic_moq_publish_namespace_error_code code);
 
 /*! \brief Publish error codes */
 typedef enum imquic_moq_pub_error_code {
@@ -637,21 +654,21 @@ typedef enum imquic_moq_sub_error_code {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_sub_error_code_str(imquic_moq_sub_error_code code);
 
-/*! \brief Subscribe announces error codes */
-typedef enum imquic_moq_subannc_error_code {
-	IMQUIC_MOQ_SUBANNCERR_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_SUBANNCERR_UNAUTHORIZED = 0x1,
-	IMQUIC_MOQ_SUBANNCERR_TIMEOUT = 0x2,
-	IMQUIC_MOQ_SUBANNCERR_NOT_SUPPORTED = 0x3,
-	IMQUIC_MOQ_SUBANNCERR_NAMESPACE_PREFIX_UNKNOWN = 0x4,
-	IMQUIC_MOQ_SUBANNCERR_MALFORMED_AUTH_TOKEN = 0x10,
-	IMQUIC_MOQ_SUBANNCERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
-	IMQUIC_MOQ_SUBANNCERR_EXPIRED_AUTH_TOKEN = 0x12,
-} imquic_moq_subannc_error_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_subannc_error_code value.
- * @param code The imquic_moq_subannc_error_code value
+/*! \brief Subscribe namespaces error codes */
+typedef enum imquic_moq_subns_error_code {
+	IMQUIC_MOQ_SUBNSERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_SUBNSERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_SUBNSERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_SUBNSERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_SUBNSERR_NAMESPACE_PREFIX_UNKNOWN = 0x4,
+	IMQUIC_MOQ_SUBNSERR_MALFORMED_AUTH_TOKEN = 0x10,
+	IMQUIC_MOQ_SUBNSERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
+	IMQUIC_MOQ_SUBNSERR_EXPIRED_AUTH_TOKEN = 0x12,
+} imquic_moq_subns_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_subns_error_code value.
+ * @param code The imquic_moq_subns_error_code value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_subannc_error_code_str(imquic_moq_subannc_error_code code);
+const char *imquic_moq_subns_error_code_str(imquic_moq_subns_error_code code);
 
 /*! \brief Fetch error codes */
 typedef enum imquic_moq_fetch_error_code {
@@ -792,35 +809,35 @@ void imquic_set_incoming_moq_connection_cb(imquic_endpoint *endpoint,
 void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
 	void (* moq_ready)(imquic_connection *conn));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c ANNOUNCE request.
+ * an incoming \c PUBLISH_NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_announce Pointer to the function that will handle the incoming \c ANNOUNCE */
-void imquic_set_incoming_announce_cb(imquic_endpoint *endpoint,
-	void (* incoming_announce)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen));
+ * @param incoming_publish_namespace Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE */
+void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
+	void (* incoming_publish_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c ANNOUNCE_CANCEL request.
+ * an incoming \c PUBLISH_NAMESPACE_CANCEL request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_announce_cancel Pointer to the function that will handle the incoming \c ANNOUNCE_CANCEL */
-void imquic_set_incoming_announce_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_announce_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason));
+ * @param incoming_publish_namespace_cancel Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_CANCEL */
+void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
+	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when an
- * \c ANNOUNCE we previously sent was accepted
+ * \c PUBLISH_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param announce_accepted Pointer to the function that will fire when an \c ANNOUNCE is accepted */
-void imquic_set_announce_accepted_cb(imquic_endpoint *endpoint,
-	void (* announce_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+ * @param publish_namespace_accepted Pointer to the function that will fire when a \c PUBLISH_NAMESPACE is accepted */
+void imquic_set_publish_namespace_accepted_cb(imquic_endpoint *endpoint,
+	void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when an
- * \c ANNOUNCE we previously sent was rejected with an error
+ * \c PUBLISH_NAMESPACE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param announce_error Pointer to the function that will fire when an \c ANNOUNCE is rejected */
-void imquic_set_announce_error_cb(imquic_endpoint *endpoint,
-	void (* announce_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason));
+ * @param publish_namespace_error Pointer to the function that will fire when a \c PUBLISH_NAMESPACE is rejected */
+void imquic_set_publish_namespace_error_cb(imquic_endpoint *endpoint,
+	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c UNANNOUNCE request.
+ * an incoming \c PUBLISH_NAMESPACE_DONE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_unannounce Pointer to the function that will handle the incoming \c UNANNOUNCE */
-void imquic_set_incoming_unannounce_cb(imquic_endpoint *endpoint,
-	void (* incoming_unannounce)(imquic_connection *conn, imquic_moq_namespace *tns));
+ * @param publish_namespace_done Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_DONE */
+void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
+	void (* publish_namespace_done)(imquic_connection *conn, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c PUBLISH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -868,16 +885,13 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
 void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
-	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
+	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward));
 /*! \brief Configure the callback function to be notified when a
- * \c SUBSCRIBE we previously sent is now done
- * @note Currently unused, considering there are discussions in the MoQ
- * standardization efforts on whether this is actually useful or not,
- * or if it even works at all.
+ * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_done Pointer to the function that will fire when a \c SUBSCRIBE is done */
-void imquic_set_subscribe_done_cb(imquic_endpoint *endpoint,
-	void (* subscribe_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason));
+ * @param publish_done Pointer to the function that will fire when a \c PUBLSH or \c SUBSCRIBE is done */
+void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
+	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -907,7 +921,7 @@ void imquic_set_subscribe_namespace_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_namespace_error Pointer to the function that will fire when an \c SUBSCRIBE_NAMESPACE is rejected */
 void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason));
+	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subns_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1032,7 +1046,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_12 = 0xff00000C,
 	/* Draft version -13 */
 	IMQUIC_MOQ_VERSION_13 = 0xff00000D,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_13,
+	/* Draft version -14 */
+	IMQUIC_MOQ_VERSION_14 = 0xff00000E,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_14,
 	/* Any post-v11 version: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,
@@ -1090,34 +1106,34 @@ uint64_t imquic_moq_get_next_request_id(imquic_connection *conn);
  */
 ///@{
 /* Namespaces and subscriptions */
-/*! \brief Function to send an \c ANNOUNCE request
+/*! \brief Function to send a \c PUBLISH_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID (only v11 and later)
- * @param tns The imquic_moq_namespace namespace to announce
+ * @param tns The imquic_moq_namespace namespace to publish_namespace
  * @param auth The authentication info, if any
  * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns,
+int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns,
 	uint8_t *auth, size_t authlen);
-/*! \brief Function to accept an incoming \c ANNOUNCE request
+/*! \brief Function to accept an incoming \c PUBLISH_NAMESPACE request
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c ANNOUNCE request (only v11 and later)
+ * @param request_id The request ID of the original \c PUBLISH_NAMESPACE request (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to accept (only before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
-/*! \brief Function to reject an incoming \c ANNOUNCE request
+int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+/*! \brief Function to reject an incoming \c PUBLISH_NAMESPACE request
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c ANNOUNCE request (only v11 and later)
+ * @param request_id The request ID of the original \c PUBLISH_NAMESPACE request (only v11 and later)
  * @param tns The imquic_moq_namespace namespace to reject (only before v11)
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_announce(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_announce_error_code error_code, const char *reason);
-/*! \brief Function to send an \c UNANNOUNCE request
+int imquic_moq_reject_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason);
+/*! \brief Function to send a \c PUBLISH_NAMESPACE_DONE request
  * @param conn The imquic_connection to send the request on
- * @param tns The imquic_moq_namespace namespace to unannounce
+ * @param tns The imquic_moq_namespace namespace to publish_namespace_done
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_unannounce(imquic_connection *conn, imquic_moq_namespace *tns);
+int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namespace *tns);
 /*! \brief Function to send a \c PUBLISH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription
@@ -1186,22 +1202,25 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 /*! \brief Function to send a \c SUBSCRIBE_UPDATE request
+ * \note Version 14 of the draft introduced a new "Subscription Request ID", which means the
+ * meaning of \c request_id will change depending on which version the connection is using
  * @param conn The imquic_connection to send the request on
- * @param request_id The unique \c request_id value associated to the subscription to update
+ * @param request_id Unique \c request_id value (before v14, this is associated to the subscription to update)
+ * @param sub_request_id Unique \c request_id value associated to the subscription to update (ignored before v14)
  * @param start_location The group and object to start from
  * @param end_group The group to end at
  * @param priority The subscriber priority
  * @param forward Whether objects should be forwarded, when this subscription is updated (ignored before v11)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
-/*! \brief Function to send a \c SUBSCRIBE_DONE request
+int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward);
+/*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription that's now done
  * @param status_code The status code
  * @param reason A reason phrase, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason);
+int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, const char *reason);
 /*! \brief Function to send a \c UNSUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to unsubscribe from
@@ -1228,7 +1247,7 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subannc_error_code error_code, const char *reason);
+int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subns_error_code error_code, const char *reason);
 /*! \brief Function to send a \c UNSUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from

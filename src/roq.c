@@ -174,6 +174,12 @@ void imquic_roq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
 	if(flow_id == NULL) {
 		/* We don't, get it from the data */
 		s_flow_id = imquic_varint_read(bytes, length, &parsed);
+		if(parsed == 0) {
+			/* FIXME How should we handle this? */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][RoQ] [STREAM-%"SCNu64"] Invalid Flow ID (not a varint?)\n",
+				imquic_get_connection_name(conn), stream_id);
+			return;
+		}
 		p_offset += parsed;
 		if(!complete) {
 			imquic_mutex_lock(&endpoint->mutex);
@@ -201,6 +207,12 @@ void imquic_roq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
 	/* Get the flow ID */
 	uint8_t parsed = 0;
 	uint64_t flow_id = imquic_varint_read(bytes, length, &parsed);
+	if(parsed == 0) {
+		/* FIXME How should we handle this? */
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][RoQ] [DATAGRAM] Invalid Flow ID (not a varint?)\n",
+			imquic_get_connection_name(conn));
+		return;
+	}
 	/* Notify the application */
 #ifdef HAVE_QLOG
 	if(conn->qlog != NULL && conn->qlog->roq)
