@@ -62,7 +62,7 @@ static void imquic_demo_datagram_incoming(imquic_connection *conn, uint8_t *byte
 	/* Got incoming data via DATAGRAM */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] [DATAGRAM] Got data: %"SCNu64"\n", imquic_get_connection_name(conn), length);
 	int len = length;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len - 1, (char *)(bytes + 1));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len, (char *)bytes);
 	/* FIXME Send it back */
 	imquic_send_on_datagram(conn, bytes, length);
 }
