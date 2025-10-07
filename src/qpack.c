@@ -247,9 +247,9 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 				break;
 			}
 			/* TODO Handle the value */
-			if(parsed > ctx->rtable->size) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "Received a 'Set Dynamic Table Capacity' with a larger size than the current one\n");
-				break;
+			if(parsed > ctx->rtable->capacity) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "Received a 'Set Dynamic Table Capacity' with a larger size than the one we expected (%"SCNu64" > %zu)\n",
+					parsed, ctx->rtable->capacity);
 			}
 			offset += length;
 		} else if(b0) {
