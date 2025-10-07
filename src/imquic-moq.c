@@ -14,7 +14,7 @@
 #include "internal/connection.h"
 #include "internal/moq.h"
 
-#define IMQUIC_MOQ_ALPN		"moq-00"
+#define IMQUIC_MOQ_ALPN		"moq-14"
 
 /* Create a MoQ server */
 imquic_server *imquic_create_moq_server(const char *name, ...) {
@@ -64,7 +64,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 		} else if(property == IMQUIC_CONFIG_SNI || property == IMQUIC_CONFIG_HTTP3_PATH) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating servers\n", imquic_config_str(property));
 			va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -96,7 +96,9 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	if(config.webtransport) {
 		if(!config.raw_quic)
 			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_MOQ_ALPN;
+		/* FIXME This should actually be automatically "crafted"
+		 * out of the MoQ draft version(s) we want to negotiate */
+		config.wt_protocols = IMQUIC_MOQ_ALPN;
 	}
 	/* Create the server */
 	imquic_server *server = imquic_network_endpoint_create(&config);
@@ -160,7 +162,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			config.sni = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_HTTP3_PATH) {
 			config.h3_path = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -192,7 +194,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	if(config.webtransport) {
 		if(!config.raw_quic)
 			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_MOQ_ALPN;
+		config.wt_protocols = IMQUIC_MOQ_ALPN;
 	}
 	/* Create the client */
 	imquic_client *client = imquic_network_endpoint_create(&config);

@@ -49,8 +49,8 @@ typedef struct imquic_configuration {
 	gboolean webtransport;
 	/*! \brief In case WebTransport is used, the HTTP/3 path to connect to (client-only) */
 	const char *h3_path;
-	/*! \brief In case WebTransport is used, the subprotocol to negotiate (currently unused) */
-	const char *subprotocol;
+	/*! \brief In case WebTransport is used, a comma separated list of the protocol(s) to negotiate */
+	const char *wt_protocols;
 	/*! \brief Path to save QLOG files to, if needed/supported: a filename for clients, a folder for servers */
 	const char *qlog_path;
 	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */

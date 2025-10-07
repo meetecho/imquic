@@ -131,6 +131,19 @@ int main(int argc, char *argv[]) {
 		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", options.alpn);
 	}
+	char wt_protocols[256];
+	wt_protocols[0] = '\0';
+	if(options.webtransport && options.wt_protocols != NULL) {
+		size_t wt_len = sizeof(wt_protocols);
+		int i = 0;
+		while(options.wt_protocols[i] != NULL) {
+			if(strlen(wt_protocols) > 0)
+				g_strlcat(wt_protocols, ",", wt_len);
+			g_strlcat(wt_protocols, options.wt_protocols[i], wt_len);
+			i++;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocols: %s\n", wt_protocols);
+	}
 	if(options.ticket_file != NULL)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled (ticket file '%s')\n", options.ticket_file);
 
@@ -172,6 +185,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
 		IMQUIC_CONFIG_ALPN, options.alpn,
 		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
+		IMQUIC_CONFIG_WT_PROTOCOLS, (options.webtransport && strlen(wt_protocols) > 0) ? wt_protocols : NULL,
 		IMQUIC_CONFIG_EARLY_DATA, (options.ticket_file != NULL),
 		IMQUIC_CONFIG_TICKET_FILE, options.ticket_file,
 		IMQUIC_CONFIG_HTTP3_PATH, options.path,

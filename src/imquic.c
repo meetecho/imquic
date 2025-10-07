@@ -170,8 +170,8 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_RAW_QUIC";
 		case IMQUIC_CONFIG_WEBTRANSPORT:
 			return "IMQUIC_CONFIG_WEBTRANSPORT";
-		case IMQUIC_CONFIG_SUBPROTOCOL:
-			return "IMQUIC_CONFIG_SUBPROTOCOL";
+		case IMQUIC_CONFIG_WT_PROTOCOLS:
+			return "IMQUIC_CONFIG_WT_PROTOCOLS";
 		case IMQUIC_CONFIG_DONE:
 			return "IMQUIC_CONFIG_DONE";
 		default:
@@ -234,8 +234,8 @@ imquic_server *imquic_create_server(const char *name, ...) {
 		} else if(property == IMQUIC_CONFIG_HTTP3_PATH) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating servers\n", imquic_config_str(property));
 			va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
-			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_WT_PROTOCOLS) {
+			config.wt_protocols = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
@@ -314,8 +314,8 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.webtransport = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_HTTP3_PATH) {
 			config.h3_path = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
-			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_WT_PROTOCOLS) {
+			config.wt_protocols = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
@@ -357,8 +357,8 @@ const char *imquic_get_endpoint_alpn(imquic_endpoint *endpoint) {
 	return endpoint ? (const char *)endpoint->alpn : NULL;
 }
 
-const char *imquic_get_endpoint_subprotocol(imquic_endpoint *endpoint) {
-	return endpoint ? (const char *)endpoint->subprotocol : NULL;
+const char **imquic_get_endpoint_wt_protocols(imquic_endpoint *endpoint) {
+	return endpoint ? (const char **)endpoint->wt_protocols : NULL;
 }
 
 uint16_t imquic_get_endpoint_port(imquic_endpoint *endpoint) {

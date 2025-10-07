@@ -3965,7 +3965,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 			imquic_qlog_alpn_information(conn->qlog, NULL, 0, NULL, 0, alpn);
 #endif
 		if(conn->socket->webtransport && !strcasecmp(alpn, "h3"))
-			conn->http3 = imquic_http3_connection_create(conn, conn->socket->subprotocol);
+			conn->http3 = imquic_http3_connection_create(conn, conn->socket->wt_protocols);
 	}
 }
 

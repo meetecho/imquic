@@ -263,8 +263,11 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_WEBTRANSPORT,
 	/*! \brief For WebTransport, path to respond to (defaults to "/") */
 	IMQUIC_CONFIG_HTTP3_PATH,
-	/*! \brief Subprotocol to negotiate on the main ALPN, if any (string) */
-	IMQUIC_CONFIG_SUBPROTOCOL,
+	/*! \brief Protocol(s) to negotiate on WebTransport, if any (string)
+	 * \note To provide more than one, use a comma-separated list. Notice
+	 * that this is ignored for RoQ and MoQ endpoints, as the primitives
+	 * for version negotiation are used there to automatically set this */
+	IMQUIC_CONFIG_WT_PROTOCOLS,
 	/*! \brief Save a QLOG file to this path
 	 * \note For servers, this will need to be a folder, and not a specific
 	 * filename, as servers will handle multiple connections. This property
@@ -366,10 +369,10 @@ gboolean imquic_is_endpoint_server(imquic_endpoint *endpoint);
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns The ALPN, if successful, or NULL otherwise */
 const char *imquic_get_endpoint_alpn(imquic_endpoint *endpoint);
-/*! \brief Helper function to get the WebTransport protocol a local client or server is configured to negotiate
+/*! \brief Helper function to get the WebTransport protocol(s) a local client or server is configured to negotiate
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
- * @returns The subprotocol, if successful, or NULL otherwise */
-const char *imquic_get_endpoint_subprotocol(imquic_endpoint *endpoint);
+ * @returns The WebTransport protocol(s), if successful, or NULL otherwise */
+const char **imquic_get_endpoint_wt_protocols(imquic_endpoint *endpoint);
 /*! \brief Helper function to get the local port a client or server is bound to
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns The local port number */

@@ -77,8 +77,8 @@ typedef struct imquic_network_endpoint {
 	gboolean webtransport;
 	/*! \brief For WebTransport clients, the path to \c CONNECT to (\c / by default) */
 	char *h3_path;
-	/*! \brief In case WebTransport is used, subprotocol to negotiate (currently unused) */
-	char *subprotocol;
+	/*! \brief In case WebTransport is used, array of protocols to negotiate */
+	char **wt_protocols;
 	/*! \brief List of connections handled by this socket (may be more than one for servers) */
 	GHashTable *connections;
 	/*! \brief Number of connections handled by this socket (may be more than one for servers) */

@@ -14,7 +14,8 @@
 #include "internal/connection.h"
 #include "internal/roq.h"
 
-#define IMQUIC_ROQ_ALPN		"roq-14"
+#define IMQUIC_ROQ_ALPN				"roq-14"
+#define IMQUIC_ROQ_WT_PROTOCOLS		"roq-14,roq-13,roq-12,roq-11,roq-10"
 
 /* Create a RoQ server */
 imquic_server *imquic_create_roq_server(const char *name, ...) {
@@ -57,7 +58,7 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating servers\n", imquic_config_str(property));
 			va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -96,7 +97,8 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 	if(config.webtransport) {
 		if(!config.raw_quic)
 			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_ROQ_ALPN;
+		/* FIXME */
+		config.wt_protocols = IMQUIC_ROQ_WT_PROTOCOLS;
 	}
 	/* Create the server */
 	imquic_server *server = imquic_network_endpoint_create(&config);
@@ -151,7 +153,7 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			config.early_data = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {
 			config.ticket_file = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -191,7 +193,8 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 	if(config.webtransport) {
 		if(!config.raw_quic)
 			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_ROQ_ALPN;
+		/* FIXME */
+		config.wt_protocols = IMQUIC_ROQ_WT_PROTOCOLS;
 	}
 	/* Create the client */
 	imquic_client *client = imquic_network_endpoint_create(&config);

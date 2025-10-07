@@ -218,8 +218,15 @@ int main(int argc, char *argv[]) {
 	}
 	if(options.raw_quic)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", imquic_get_endpoint_alpn(server));
-	if(options.webtransport && imquic_get_endpoint_subprotocol(server) != NULL)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Subprotocol: %s\n", imquic_get_endpoint_subprotocol(server));
+	if(options.webtransport && imquic_get_endpoint_wt_protocols(server) != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocols:\n");
+		int i = 0;
+		const char **wt_protocols = imquic_get_endpoint_wt_protocols(server);
+		while(wt_protocols[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", wt_protocols[i]);
+			i++;
+		}
+	}
 	imquic_set_new_roq_connection_cb(server, imquic_demo_new_connection);
 	imquic_set_rtp_incoming_cb(server, imquic_demo_rtp_incoming);
 	imquic_set_roq_connection_gone_cb(server, imquic_demo_connection_gone);

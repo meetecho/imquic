@@ -122,7 +122,7 @@ static void imquic_network_endpoint_free(const imquic_refcount *ne_ref) {
 	g_free(ne->sni);
 	g_free(ne->alpn);
 	g_free(ne->h3_path);
-	g_free(ne->subprotocol);
+	g_strfreev(ne->wt_protocols);
 	g_free(ne->qlog_path);
 	g_hash_table_unref(ne->connections);
 	imquic_tls_destroy(ne->tls);
@@ -422,7 +422,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		ne->webtransport = TRUE;
 		if(config->h3_path && strlen(config->h3_path) > 0)
 			ne->h3_path = g_strdup(config->h3_path);
-		ne->subprotocol = config->subprotocol ? g_strdup(config->subprotocol) : NULL;
+		ne->wt_protocols = config->wt_protocols ? g_strsplit(config->wt_protocols, ",", -1) : NULL;
 	}
 	if(config->qlog_path != NULL) {
 #ifndef HAVE_QLOG

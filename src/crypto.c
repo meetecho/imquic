@@ -166,7 +166,7 @@ static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
 				imquic_get_connection_name(conn), alpn);
 			conn->alpn_negotiated = TRUE;
-			conn->http3 = imquic_http3_connection_create(conn, conn->socket->subprotocol);
+			conn->http3 = imquic_http3_connection_create(conn, conn->socket->wt_protocols);
 			selected = p;
 			selected_len = lp;
 			break;

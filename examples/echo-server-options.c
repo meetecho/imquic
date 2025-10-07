@@ -24,6 +24,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "raw-quic", 'q', 0, G_OPTION_ARG_NONE, &options->raw_quic, "Whether raw QUIC should be offered for connections or not (default=no)", NULL },
 		{ "alpn", 'a', 0, G_OPTION_ARG_STRING, &options->alpn, "ALPN to negotiate, if using raw QUIC (default=none)", "alpn" },
 		{ "webtransport", 'w', 0, G_OPTION_ARG_NONE, &options->webtransport, "Whether WebTransport should be offered for connections or not (default=no)", NULL },
+		{ "wt-protocols", 'W', 0, G_OPTION_ARG_STRING_ARRAY, &options->wt_protocols, "Protocol to negotiate via WebTransport (can be called multiple times, in order of priority; default=none)", "alpn" },
 		{ "zero-rtt", '0', 0, G_OPTION_ARG_NONE, &options->early_data, "Whether early data via 0-RTT should be supported (default=no)", NULL },
 		{ "qlog-path", 'Q', 0, G_OPTION_ARG_STRING, &options->qlog_path, "Path to a folder where to save QLOG files for all connections (default=none)", "path" },
 		{ "qlog-logging", 'l', 0, G_OPTION_ARG_STRING_ARRAY, &options->qlog_logging, "Save these events to QLOG (can be called multiple times to save multiple things; default=none)", "quic|http3" },

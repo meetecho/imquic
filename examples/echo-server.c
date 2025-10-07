@@ -123,6 +123,19 @@ int main(int argc, char *argv[]) {
 		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", options.alpn);
 	}
+	char wt_protocols[256];
+	wt_protocols[0] = '\0';
+	if(options.webtransport && options.wt_protocols != NULL) {
+		size_t wt_len = sizeof(wt_protocols);
+		int i = 0;
+		while(options.wt_protocols[i] != NULL) {
+			if(strlen(wt_protocols) > 0)
+				g_strlcat(wt_protocols, ",", wt_len);
+			g_strlcat(wt_protocols, options.wt_protocols[i], wt_len);
+			i++;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocols: %s\n", wt_protocols);
+	}
 	if(options.early_data)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled\n");
 
@@ -161,6 +174,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
 		IMQUIC_CONFIG_ALPN, options.alpn,
 		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
+		IMQUIC_CONFIG_WT_PROTOCOLS, (options.webtransport && strlen(wt_protocols) > 0) ? wt_protocols : NULL,
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
