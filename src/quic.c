@@ -527,8 +527,8 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 				return -1;
 			}
 			char address[60];
-			IMQUIC_LOG(IMQUIC_LOG_VERB, "Creating new connection (%s)\n",
-				imquic_network_address_str(sender, address, sizeof(address), TRUE));
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Creating new connection (%s)\n",
+				socket->name, imquic_network_address_str(sender, address, sizeof(address), TRUE));
 			conn = imquic_connection_create(socket);
 			memcpy(&conn->peer, sender, sizeof(conn->peer));
 			if(pkt->destination.len > 0) {
@@ -3959,7 +3959,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 		conn->alpn_negotiated = TRUE;
 		g_snprintf(alpn, alpn_len, "%.*s", data_len, (char *)data);
 		conn->chosen_alpn = g_strdup(alpn);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated ALPN: %s\n",
 			imquic_get_connection_name(conn), alpn);
 #ifdef HAVE_QLOG
 		if(conn->qlog != NULL && conn->qlog->quic)
@@ -4000,7 +4000,7 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 	if(socket == NULL || socket->is_server)
 		return -1;
 	/* Create a new connection */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating new connection\n");
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Creating new connection\n", socket->name);
 	imquic_connection *conn = imquic_connection_create(socket);
 	/* Generate a Destination and Source ID */
 	uint64_t dest_id = imquic_random_uint64();

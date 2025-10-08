@@ -85,6 +85,9 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	/* Got new connection */
 	imquic_connection_ref(conn);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New connection\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	roq_conn = conn;
 }
 

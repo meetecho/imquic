@@ -288,6 +288,8 @@ typedef enum imquic_config {
 	/*! \brief Whether sequential JSON should be used, instead of regular JSON
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_SEQUENTIAL,
+	/*! \brief MoQ version to negotiate (only used when creating MoQ endpoints, ignored otherwise) */
+	IMQUIC_CONFIG_MOQ_VERSION,
 	/*! \brief Generic user data, if any (void pointer) */
 	IMQUIC_CONFIG_USER_DATA,
 	/*! \brief Must be the last property, followed by NULL */

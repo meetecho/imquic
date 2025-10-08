@@ -67,6 +67,8 @@ typedef struct imquic_configuration {
 	gboolean early_data;
 	/*! \brief File to use for session tickets, when doing early data */
 	const char *ticket_file;
+	/*! \brief MoQ version to negotiate, if any */
+	uint32_t moq_version;
 	/*! \brief Optional user data, to pass back when notifying new connections associated to this endpoint */
 	void *user_data;
 } imquic_configuration;

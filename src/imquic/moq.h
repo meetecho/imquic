@@ -26,13 +26,9 @@
  * variants defined in this page instead. Specifically, to create a MoQ
  * server you won't use \ref imquic_create_server, but will use \ref imquic_create_moq_server
  * instead; likewise, a \ref imquic_create_moq_client variant exists for creating
- * MoQ clients too.
- *
- * It's important to point out, though, that in MoQ there's a clear distinction
- * between the QUIC role (client or server) and the MoQ role (publisher,
- * subscriber, relay). The above mentioned methods specify the QUIC role,
- * while the MoQ role is configured reacting to one of the specific MoQ
- * callbacks in the library.
+ * MoQ clients too. These MoQ specific endpoint constructors are also
+ * where you specify the \ref imquic_version to negotiate. via the
+ * \c IMQUIC_CONFIG_MOQ_VERSION constructor flag.
  *
  * Speaking of callbacks, considering the library needs to take care
  * of the MoQ protocol internally, attempting to use the generic callback
@@ -54,9 +50,8 @@
  * a QUIC or WebTransport connection was successfully established, but no
  * MoQ message has been exchanged yet. Most importantly, that callback
  * precedes the MoQ handshake/setup, which means that's the perfect place
- * to specify the MoQ role and version of your endpoint, which you can do
- * with a call to \ref imquic_moq_set_role and \ref imquic_moq_set_version
- * respectively. As soon as you return from the callback function, in case
+ * to configure some settings, e.g., the maximum number of request IDs.
+ * As soon as you return from the callback function, in case
  * the application is a client the internal MoQ stack in imquic will
  * perform the MoQ setup accordingly; for servers it will wait for a
  * connection from a client to do so.
@@ -1060,15 +1055,6 @@ typedef enum imquic_moq_version {
  * @param version The imquic_moq_version property
  * @returns The version name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_version_str(imquic_moq_version version);
-/*! \brief Method to set the MoQ version on a connection. Must be done as
- * soon as the connection is established, and before sending any MoQ message.
- * A good place to do that is the callback fired when a new connection is available.
- * @note The version can only be set once: it's an error to try and change it later,
- * since the MoQ handshake will already have taken place.
- * @param conn The imquic_connection to set the version on
- * @param version The imquic_moq_version to use/offer
- * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version);
 /*! \brief Helper function to get the MoQ version associated with a connection.
  * @param conn The imquic_connection to query
  * @returns The imquic_moq_version value */

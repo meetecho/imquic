@@ -209,7 +209,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 	} else if(config->alpn != NULL && !config->raw_quic) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] ALPN ignored when only using WebTransport (forcing 'h3')\n", config->name);
 	}
-	if(config->raw_quic && !strcasecmp(config->alpn, "h3")) {
+	if(config->raw_quic && strstr(config->alpn, "h3") != NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] HTTP/3 is currently only supported for WebTransport\n", config->name);
 		return NULL;
 	}

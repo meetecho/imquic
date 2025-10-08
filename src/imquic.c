@@ -162,6 +162,10 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_TLS_KEY";
 		case IMQUIC_CONFIG_TLS_PASSWORD:
 			return "IMQUIC_CONFIG_TLS_PASSWORD";
+		case IMQUIC_CONFIG_EARLY_DATA:
+			return "IMQUIC_CONFIG_EARLY_DATA";
+		case IMQUIC_CONFIG_TICKET_FILE:
+			return "IMQUIC_CONFIG_TICKET_FILE";
 		case IMQUIC_CONFIG_SNI:
 			return "IMQUIC_CONFIG_SNI";
 		case IMQUIC_CONFIG_ALPN:
@@ -170,8 +174,26 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_RAW_QUIC";
 		case IMQUIC_CONFIG_WEBTRANSPORT:
 			return "IMQUIC_CONFIG_WEBTRANSPORT";
+		case IMQUIC_CONFIG_HTTP3_PATH:
+			return "IMQUIC_CONFIG_HTTP3_PATH";
 		case IMQUIC_CONFIG_WT_PROTOCOLS:
 			return "IMQUIC_CONFIG_WT_PROTOCOLS";
+		case IMQUIC_CONFIG_QLOG_PATH:
+			return "IMQUIC_CONFIG_QLOG_PATH";
+		case IMQUIC_CONFIG_QLOG_QUIC:
+			return "IMQUIC_CONFIG_QLOG_QUIC";
+		case IMQUIC_CONFIG_QLOG_HTTP3:
+			return "IMQUIC_CONFIG_QLOG_HTTP3";
+		case IMQUIC_CONFIG_QLOG_ROQ:
+			return "IMQUIC_CONFIG_QLOG_ROQ";
+		case IMQUIC_CONFIG_QLOG_MOQ:
+			return "IMQUIC_CONFIG_QLOG_MOQ";
+		case IMQUIC_CONFIG_QLOG_SEQUENTIAL:
+			return "IMQUIC_CONFIG_QLOG_SEQUENTIAL";
+		case IMQUIC_CONFIG_MOQ_VERSION:
+			return "IMQUIC_CONFIG_MOQ_VERSION";
+		case IMQUIC_CONFIG_USER_DATA:
+			return "IMQUIC_CONFIG_USER_DATA";
 		case IMQUIC_CONFIG_DONE:
 			return "IMQUIC_CONFIG_DONE";
 		default:
@@ -250,6 +272,9 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
+			va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else {
@@ -330,6 +355,9 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
+			va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else {

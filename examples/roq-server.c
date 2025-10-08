@@ -83,6 +83,9 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	imquic_connection_ref(conn);
 	g_hash_table_insert(connections, conn, conn);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New RoQ connection\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 }
 
 static void imquic_demo_rtp_incoming(imquic_connection *conn, imquic_roq_multiplexing multiplexing,

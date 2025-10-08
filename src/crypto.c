@@ -156,7 +156,7 @@ static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char
 			imquic_get_connection_name(conn), lp, alpn);
 		/* Check WebTransport first */
 		if(conn->socket->webtransport && !strcasecmp(alpn, h3_alpn)) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated ALPN: %s\n",
 				imquic_get_connection_name(conn), alpn);
 			conn->alpn_negotiated = TRUE;
 			conn->chosen_alpn = g_strdup(h3_alpn);
@@ -170,7 +170,7 @@ static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char
 			i = 0;
 			while(conn->socket->alpn[i] != NULL) {
 				if(!strcasecmp(alpn, conn->socket->alpn[i])) {
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
+					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated ALPN: %s\n",
 						imquic_get_connection_name(conn), alpn);
 					conn->alpn_negotiated = TRUE;
 					conn->chosen_alpn = g_strdup(alpn);

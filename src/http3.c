@@ -202,7 +202,7 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *str
 #endif
 		/* FIXME */
 		if(type == IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT && value != 0)
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Establishing WebTransport\n", imquic_get_connection_name(h3c->conn));
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Establishing WebTransport\n", imquic_get_connection_name(h3c->conn));
 	}
 	g_hash_table_remove(h3c->buffers, &stream->stream_id);
 #ifdef HAVE_QLOG

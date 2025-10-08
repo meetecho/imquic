@@ -58,9 +58,11 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	/* Got new connection */
 	imquic_connection_ref(conn);
 	moq_conn = conn;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection (negotiating version)\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection (configuring parameters)\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBLISHER);
-	imquic_moq_set_version(conn, moq_version);
 	imquic_moq_set_max_request_id(conn, max_request_id);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
@@ -510,6 +512,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
+		IMQUIC_CONFIG_MOQ_VERSION, moq_version,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {
 		ret = 1;
