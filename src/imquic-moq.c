@@ -684,28 +684,29 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 
 static const char *imquic_moq_version_alpn(imquic_moq_version version) {
 	switch(version) {
+		/* Notice we still also always advertise moq-00, for previous versions */
 		case IMQUIC_MOQ_VERSION_06:
-			return "moq-06";
+			return "moq-06,moq-00";
 		case IMQUIC_MOQ_VERSION_07:
-			return "moq-07";
+			return "moq-07,moq-00";
 		case IMQUIC_MOQ_VERSION_08:
-			return "moq-08";
+			return "moq-08,moq-00";
 		case IMQUIC_MOQ_VERSION_09:
-			return "moq-09";
+			return "moq-09,moq-00";
 		case IMQUIC_MOQ_VERSION_10:
-			return "moq-10";
+			return "moq-10,moq-00";
 		case IMQUIC_MOQ_VERSION_11:
-			return "moq-11";
+			return "moq-11,moq-00";
 		case IMQUIC_MOQ_VERSION_12:
-			return "moq-12";
+			return "moq-12,moq-00";
 		case IMQUIC_MOQ_VERSION_13:
-			return "moq-13";
+			return "moq-13,moq-00";
 		case IMQUIC_MOQ_VERSION_14:
-			return "moq-14";
+			return "moq-14,moq-00";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "moq-14,moq-13,moq-12,moq-11";
+			return "moq-14,moq-13,moq-12,moq-11,moq-00";
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
-			return "moq-10,moq-09,moq-08,moq-07,moq-06";
+			return "moq-10,moq-09,moq-08,moq-07,moq-06,moq-00";
 		default: break;
 	}
 	return NULL;
