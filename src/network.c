@@ -120,9 +120,9 @@ static void imquic_network_endpoint_free(const imquic_refcount *ne_ref) {
 	imquic_network_endpoint *ne = imquic_refcount_containerof(ne_ref, imquic_network_endpoint, ref);
 	g_free(ne->name);
 	g_free(ne->sni);
-	g_free(ne->alpn);
+	g_strfreev(ne->alpn);
 	g_free(ne->h3_path);
-	g_free(ne->subprotocol);
+	g_strfreev(ne->wt_protocols);
 	g_free(ne->cc_algo);
 	g_free(ne->qlog_path);
 	g_hash_table_unref(ne->connections);
@@ -207,9 +207,10 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 	if(config->alpn == NULL && config->raw_quic) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Missing ALPN\n", config->name);
 		return NULL;
-	} else if(config->alpn != NULL && !config->raw_quic)
+	} else if(config->alpn != NULL && !config->raw_quic) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] ALPN ignored when only using WebTransport (forcing 'h3')\n", config->name);
-	if(config->raw_quic && !strcasecmp(config->alpn, "h3")) {
+	}
+	if(config->raw_quic && strstr(config->alpn, "h3") != NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] HTTP/3 is currently only supported for WebTransport\n", config->name);
 		return NULL;
 	}
@@ -417,13 +418,13 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 	ne->sni = g_strdup(config->sni);
 	if(config->raw_quic) {
 		ne->raw_quic = TRUE;
-		ne->alpn = g_strdup(config->alpn);
+		ne->alpn = g_strsplit(config->alpn, ",", -1);
 	}
 	if(config->webtransport) {
 		ne->webtransport = TRUE;
 		if(config->h3_path && strlen(config->h3_path) > 0)
 			ne->h3_path = g_strdup(config->h3_path);
-		ne->subprotocol = config->subprotocol ? g_strdup(config->subprotocol) : NULL;
+		ne->wt_protocols = config->wt_protocols ? g_strsplit(config->wt_protocols, ",", -1) : NULL;
 	}
 	if(config->cc_algo == NULL)
 		config->cc_algo = IMQUIC_CONGESTION_CONTROL_NEWRENO;

@@ -62,7 +62,7 @@ int imquic_moq_auth_info_to_bytes(imquic_connection *conn, const char *auth_info
 		imquic_moq_auth_token token = { 0 };
 		token.alias_type = IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE;
 		token.token_type_set = TRUE;
-		token.token_type = 1;	/* FIXME */
+		token.token_type = 0;	/* FIXME */
 		token.token_value.buffer = (uint8_t *)auth_info;
 		token.token_value.length = strlen(auth_info);
 		size_t offset = imquic_moq_build_auth_token(&token, auth, *authlen);

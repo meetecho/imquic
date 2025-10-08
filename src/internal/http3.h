@@ -157,8 +157,8 @@ typedef struct imquic_http3_connection {
 	imquic_qpack_context *qpack;
 	/*! \brief Whether a WebTransport connection has been established */
 	gboolean webtransport;
-	/*! \brief Subprotocol to negotiate on WebTransport, if any (currently unused) */
-	char *subprotocol;
+	/*! \brief Array of protocols to negotiate on WebTransport, if any */
+	char **wt_protocols;
 	/*! \brief Buffers for incoming data, indexed by stream ID */
 	GHashTable *buffers;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
@@ -168,9 +168,9 @@ typedef struct imquic_http3_connection {
 } imquic_http3_connection;
 /*! \brief Helper method to create a new HTTP/3 connection associated with a new QUIC core connection
  * @param conn The QUIC core connection to associate this HTTP/3 instance to
- * @param subprotocol The subprotocol to negotiate on WebTransport, if any (currently unused)
+ * @param wt_protocols Array of protocols to negotiate on WebTransport, if any
  * @returns A pointer to a new imquic_http3_connection instance, if successful, or NULL otherwise */
-imquic_http3_connection *imquic_http3_connection_create(imquic_connection *conn, char *subprotocol);
+imquic_http3_connection *imquic_http3_connection_create(imquic_connection *conn, char **wt_protocols);
 /*! \brief Helper method to destroy an existing HTTP/3 connection associated with a QUIC core connection
  * @param h3c The imquic_http3_connection to destroy */
 void imquic_http3_connection_destroy(imquic_http3_connection *h3c);
@@ -228,12 +228,15 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *str
 int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *es, size_t *es_len, uint8_t *rs, size_t *rs_len);
 /*! \brief Helper to prepare a new HTTP/3 response
  * @param h3c The imquic_http3_connection instance to prepare the response for
+ * @param error_code The error code to send back
+ * @param wt_protocol The WebTransport protocol to negotiate, if any
  * @param es Buffer to use for the QPACK encoder stream, if needed
  * @param es_len Size of the encoder stream buffer
  * @param rs Buffer to use for the HTTP/3 request
  * @param rs_len Size of the request buffer
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, uint8_t *es, size_t *es_len, uint8_t *rs, size_t *rs_len);
+int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, int error_code, char *wt_protocol,
+	uint8_t *es, size_t *es_len, uint8_t *rs, size_t *rs_len);
 /*! \brief Helper to prepare a new \c SETTINGS frame
  * @param h3c The imquic_http3_connection instance to prepare the \c SETTINGS frame for
  * @returns 0 in case of success, a negative integer otherwise */

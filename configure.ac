@@ -99,20 +99,23 @@ PKG_CHECK_MODULES([IMQUIC],[
 	glib-2.0 >= $glib_version
 ])
 
+IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version"
+IMQUIC_PACKAGES_PRIVATE=""
+
 IMQUIC_MANUAL_LIBS="${IMQUIC_MANUAL_LIBS} -lm"
 AC_SUBST(IMQUIC_MANUAL_LIBS)
 
 AS_IF([test "x${boringssl_dir}" != "x"],
-	  [echo "Trying to use BoringSSL instead of quictls...";
-	   AC_MSG_NOTICE([BoringSSL directory is ${boringssl_dir}])
-	   CFLAGS="$CFLAGS -I${boringssl_dir}/include";
-	   BORINGSSL_CFLAGS=" -I${boringssl_dir}/include";
+      [echo "Trying to use BoringSSL instead of quictls...";
+       AC_MSG_NOTICE([BoringSSL directory is ${boringssl_dir}])
+       CFLAGS="$CFLAGS -I${boringssl_dir}/include";
+       BORINGSSL_CFLAGS="-I${boringssl_dir}/include";
        AC_SUBST(BORINGSSL_CFLAGS)
-	   BORINGSSL_LIBS=" -L${boringssl_dir}/lib -lstdc++";
+       BORINGSSL_LIBS="-lstdc++ -L${boringssl_dir}/lib64 -lssl -lcrypto";
        AC_SUBST(BORINGSSL_LIBS)
-	   AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
-	                    [AC_DEFINE(HAVE_BORINGSSL)],
-	                    [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}])])
+       AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
+                        [AC_DEFINE(IMQUIC_BORINGSSL)],
+                        [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}])])
       ],
       [
        PKG_CHECK_MODULES([QUICTLS],[openssl+quictls])
@@ -132,10 +135,14 @@ AS_IF([test "x$enable_qlog" != "xno"],
                           AC_DEFINE(HAVE_QLOG)
                           enable_qlog=yes
                           AM_CONDITIONAL([ENABLE_QLOG], true)
+                          IMQUIC_PACKAGES_PRIVATE="jansson >= 2.5.0"
                          ],
                          [
                           AC_MSG_ERROR([Jansson headers not found])])
                          ])
+
+AC_SUBST(IMQUIC_PACKAGES_PUBLIC)
+AC_SUBST(IMQUIC_PACKAGES_PRIVATE)
 
 ##
 # Examples
@@ -185,18 +192,18 @@ AS_IF([test -z "$DOXYGEN" -o -z "$DOT"],
       ])
 AM_CONDITIONAL([ENABLE_DOCS], [test "x$enable_docs" = "xyes"])
 if test "x$enable_docs" = "xyes"; then
-	doxygen_version=$($DOXYGEN --version)
-	AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
-                           [],
-                           [],
-                           [
-                            AS_VERSION_COMPARE([$doxygen_version], [1.8.14],
-                                               [AC_MSG_ERROR([Doxygen $doxygen_version not usable: versions between 1.8.12 and 1.8.14 are known to render poorly.])],
-                                               [],
-                                               []
-                                              )
-                           ]
-                          )
+    doxygen_version=$($DOXYGEN --version)
+    AS_VERSION_COMPARE([$doxygen_version], [1.8.11],
+                       [],
+                       [],
+                       [
+                        AS_VERSION_COMPARE([$doxygen_version], [1.8.14],
+                                           [AC_MSG_ERROR([Doxygen $doxygen_version not usable: versions between 1.8.12 and 1.8.14 are known to render poorly.])],
+                                           [],
+                                           []
+                                          )
+                       ]
+                      )
 fi
 
 AM_CONDITIONAL([WITH_SOURCE_DATE_EPOCH], [test "x$SOURCE_DATE_EPOCH" != "x"])
@@ -210,6 +217,7 @@ AC_CONFIG_FILES([
   src/Makefile
   examples/Makefile
   docs/Makefile
+  imquic.pc
 ])
 
 AC_OUTPUT

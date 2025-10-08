@@ -44,7 +44,7 @@ In both cases, the client will then send a single `ciao` buffer on a bidirection
 
 To build the RTP Over QUIC (RoQ) examples, pass `--enable-roq-examples` to the `./configure` script. This will build two command line applications, namely:
 
-* `imquic-roq-server`, a basic RoQ server, that will just print the flow ID and RTP headers of the incoming packets;
+* `imquic-roq-server`, a basic RoQ server, that can print the flow ID and RTP headers of the incoming packets, and/or echo packets back;
 * `imquic-roq-client`, a basic RoQ client, that will listen for RTP packets on some UDP ports, and restream them via QUIC.
 
 Both provide a few configuration options: pass `-h` or `--help` for more information.
@@ -53,7 +53,11 @@ This launches the RoQ server on port `9000`, using the provided certificate, and
 
 	./examples/imquic-roq-server -q -p 9000 -c ../localhost.crt -k ../localhost.key -s ../key_log.log
 
-This launches the RoQ client to connect to that server, waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate `STREAM` for each RTP packet:
+Since no other parameter is provided, the default behaviour is just to print some detail about incoming packets. To not show such information, the `-Z` or `--quiet` flag can be passed. The RoQ server can also be configured to echo packets back to the client via `-e` or `--echo`. This launches the same RoQ server as before, but in quiet (`-Z`) and echo (`-e`) mode and on WebTransport too (`-w`):
+
+	./examples/imquic-roq-server -w -q -p 9000 -Z -e -c ../localhost.crt -k ../localhost.key -s ../key_log.log
+
+This instead launches the RoQ client to connect to that server (whether in echo mode or not), waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate `STREAM` for each RTP packet:
 
 	./examples/imquic-roq-client -q -a 15002 -A 0 -v 15004 -V 1 -r 127.0.0.1 -R 9000 -m streams
 
@@ -88,13 +92,13 @@ Assuming [moq-rs](https://github.com/kixelated/moq-rs)'s `moq-pub` application i
 
 Assuming Meta's [moxygen](https://github.com/facebookexperimental/moxygen) relay is running on that address and that a [moq-encoder-player](https://github.com/facebookexperimental/moq-encoder-player/) instance is publishing audio and video, this creates a MoQ subscriber (on WebTransport) to both tracks that prints the LOC header (`-t loc`) of each incoming object:
 
-	./examples/imquic-moq-sub -r 127.0.0.1 -R 4433 -w -H /moq -n vc -N 12345678-audio -N 12345678-video -a secret -t loc -w -s ../key_log.log
+	./examples/imquic-moq-sub -r 127.0.0.1 -R 4433 -w -H /moq -n vc -N 12345678-audio -N 12345678-video -A secret -t loc -w -s ../key_log.log
 
 `imquic-moq-sub` also supports `FETCH` to obtain objects from a relay, both in standalone and (assuming v08 of the draft is used) joining mode. You enable `FETCH` by specifying the order you want using `-f`: by default this enables standalone fetch, but if you want a joining one (meaning a `SUBSCRIBE` is sent too) you also need to specify the preceding group offset via the `-j` property. This is an example of subscribing to the current time with a joining fetch that's just interested in all objects from the latest group (`-j 0`):
 
 	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -w -n clock -N now -t text -M 8 -f ascending -j 0
 
-`imquic-moq-test` implements the publisher side of the [MoQT tester draft](https://afrind.github.io/moq-test/). At the time of writing, even though it's a publisher, it acts as a QUIC and/or WebTransport server and never announces any namespace, meaning it's expected that subscribers interested in testing it will need to connect to it directly, as part of point-to-point functional tests. This is an example of how it can be launched as a server that supports both raw QUIC and WebTransport (since both `-q` and `-w` are passed):
+`imquic-moq-test` implements the publisher side of the [MoQT tester draft](https://afrind.github.io/moq-test/). At the time of writing, even though it's a publisher, it acts as a QUIC and/or WebTransport server and never publish_namespaces any namespace, meaning it's expected that subscribers interested in testing it will need to connect to it directly, as part of point-to-point functional tests. This is an example of how it can be launched as a server that supports both raw QUIC and WebTransport (since both `-q` and `-w` are passed):
 
 	./examples/imquic-moq-test -c ../localhost.crt -k ../localhost.key -p 9000 -q -w
 

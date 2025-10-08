@@ -83,9 +83,13 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	imquic_connection_ref(conn);
 	g_hash_table_insert(connections, conn, conn);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New RoQ connection\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 }
 
-static void imquic_demo_rtp_incoming(imquic_connection *conn, uint64_t flow_id, uint8_t *bytes, size_t blen) {
+static void imquic_demo_rtp_incoming(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
+		uint64_t flow_id, uint8_t *bytes, size_t blen) {
 	/* The library gives us access to the RTP packet directly. no matter how it got there */
 	if(!imquic_is_rtp(bytes, blen)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s]  -- [flow=%"SCNu64"][%zu] Not an RTP packet\n",
@@ -94,9 +98,21 @@ static void imquic_demo_rtp_incoming(imquic_connection *conn, uint64_t flow_id, 
 		return;
 	}
 	imquic_rtp_header *rtp = (imquic_rtp_header *)bytes;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- [flow=%"SCNu64"][%zu] ssrc=%"SCNu32", pt=%d, seq=%"SCNu16", ts=%"SCNu32"\n",
-		imquic_get_connection_name(conn), flow_id, blen,
-		ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+	if(!options.quiet) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- [%s][flow=%"SCNu64"][%zu] ssrc=%"SCNu32", pt=%d, seq=%"SCNu16", ts=%"SCNu32"\n",
+			imquic_get_connection_name(conn), imquic_roq_multiplexing_str(multiplexing), flow_id, blen,
+			ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+	}
+	if(options.echo) {
+		/* Send the packet back to the client */
+		size_t sent = imquic_roq_send_rtp(conn, multiplexing, flow_id, bytes, blen, TRUE);
+		if(sent == 0) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Couldn't send RTP packet...\n");
+		} else if(!options.quiet) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- [%s][flow=%"SCNu64"][%zu] Sent RTP packet back to the client\n",
+				imquic_get_connection_name(conn), imquic_roq_multiplexing_str(multiplexing), flow_id, sent);
+		}
+	}
 }
 
 static void imquic_demo_connection_gone(imquic_connection *conn) {
@@ -172,6 +188,10 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 	}
+	if(options.quiet)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Quiet mode (won't print RTP packets)\n");
+	if(options.echo)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Echo mode (will send incoming RTP packets back to the client)\n");
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
 	/* Initialize the library and create a server */
@@ -199,10 +219,24 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	if(options.raw_quic)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", imquic_get_endpoint_alpn(server));
-	if(options.webtransport && imquic_get_endpoint_subprotocol(server) != NULL)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Subprotocol: %s\n", imquic_get_endpoint_subprotocol(server));
+	if(options.raw_quic) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN(s):\n");
+		int i = 0;
+		const char **alpns = imquic_get_endpoint_alpns(server);
+		while(alpns[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", alpns[i]);
+			i++;
+		}
+	}
+	if(options.webtransport && imquic_get_endpoint_wt_protocols(server) != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocol(s):\n");
+		int i = 0;
+		const char **wt_protocols = imquic_get_endpoint_wt_protocols(server);
+		while(wt_protocols[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", wt_protocols[i]);
+			i++;
+		}
+	}
 	imquic_set_new_roq_connection_cb(server, imquic_demo_new_connection);
 	imquic_set_rtp_incoming_cb(server, imquic_demo_rtp_incoming);
 	imquic_set_roq_connection_gone_cb(server, imquic_demo_connection_gone);

@@ -98,6 +98,8 @@ static void imquic_connection_free(const imquic_refcount *conn_ref) {
 	imquic_connection *conn = imquic_refcount_containerof(conn_ref, imquic_connection, ref);
 	g_free(conn->name);
 	g_free(conn->alpn.buffer);
+	g_free(conn->chosen_alpn);
+	g_free(conn->chosen_wt_protocol);
 	g_list_free(conn->connection_ids);
 	g_hash_table_unref(conn->streams);
 	g_hash_table_unref(conn->streams_done);
@@ -178,23 +180,32 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	conn->outgoing_datagram = g_queue_new();
 	conn->blocked_streams = imquic_listmap_create(IMQUIC_LISTMAP_NUMBER64, (GDestroyNotify)g_free);
 	/* We'll set the ALPN(s) manually: 1 byte prefix + the string itself for each of them */
-	size_t length = 0, offset = 0, alpn_len = 0;
+	size_t length = 0, offset = 0;
 	if(conn->socket->raw_quic) {
-		alpn_len = strlen(conn->socket->alpn);
-		length = alpn_len + 1;
+		int i = 0;
+		while(conn->socket->alpn[i] != NULL) {
+			length += strlen(conn->socket->alpn[i]) + 1;
+			i++;
+		}
 	}
 	if(conn->socket->webtransport)
 		length += 3;	/* h3 */
 	conn->alpn.length = length;
 	conn->alpn.buffer = g_malloc(conn->alpn.length);
-	if(conn->socket->raw_quic) {
-		conn->alpn.buffer[0] = alpn_len;
-		memcpy(conn->alpn.buffer + 1, conn->socket->alpn, alpn_len);
-		offset = alpn_len + 1;
-	}
 	if(conn->socket->webtransport) {
 		conn->alpn.buffer[offset] = 2;
 		memcpy(conn->alpn.buffer + offset + 1, "h3", 2);
+		offset += 3;
+	}
+	if(conn->socket->raw_quic) {
+		int i = 0;
+		while(conn->socket->alpn[i] != NULL) {
+			size_t alpn_len = strlen(conn->socket->alpn[i]);
+			conn->alpn.buffer[offset] = alpn_len;
+			memcpy(conn->alpn.buffer + offset + 1, conn->socket->alpn[i], alpn_len);
+			offset += alpn_len + 1;
+			i++;
+		}
 	}
 	imquic_refcount_init(&conn->ref, imquic_connection_free);
 	imquic_network_endpoint_add_connection(conn->socket, conn, TRUE);

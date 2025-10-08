@@ -20,9 +20,8 @@
 
 #include <glib.h>
 
-#include "../imquic/imquic.h"
+#include "../imquic/roq.h"
 #include "qlog.h"
-#include "mutex.h"
 #include "refcount.h"
 
 #define IMQUIC_ROQ		7499633
@@ -63,7 +62,8 @@ typedef struct imquic_roq_callbacks {
 	/*! \brief Callback function to be notified about new RoQ connections */
 	void (* new_connection)(imquic_connection *conn, void *user_data);
 	/*! \brief Callback function to be notified about incoming RTP packets */
-	void (* rtp_incoming)(imquic_connection *conn, uint64_t flow_id, uint8_t *bytes, size_t blen);
+	void (* rtp_incoming)(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
+		uint64_t flow_id, uint8_t *bytes, size_t blen);
 	/*! \brief Callback function to be notified about RoQ connections being closed */
 	void (* connection_gone)(imquic_connection *conn);
 } imquic_roq_callbacks;

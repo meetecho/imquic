@@ -14,7 +14,7 @@
 #include "internal/connection.h"
 #include "internal/roq.h"
 
-#define IMQUIC_ROQ_ALPN		"roq-10"
+#define IMQUIC_ROQ_ALPN				"roq-14,roq-13,roq-12,roq-11,roq-10"
 
 /* Create a RoQ server */
 imquic_server *imquic_create_roq_server(const char *name, ...) {
@@ -31,6 +31,7 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -56,7 +57,7 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating servers\n", imquic_config_str(property));
 			va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -82,24 +83,22 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n", imquic_config_str(property));
+			va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);
 	}
 	va_end(args);
 	/* Check if we need raw RoQ and/or RoQ over WebTransport */
-	config.alpn = IMQUIC_ROQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_ROQ_ALPN;
-	}
+	config.alpn = config.raw_quic ? IMQUIC_ROQ_ALPN : NULL;
+	config.wt_protocols = config.webtransport ? IMQUIC_ROQ_ALPN : NULL;
 	/* Create the server */
 	imquic_server *server = imquic_network_endpoint_create(&config);
 	if(server == NULL)
@@ -130,6 +129,7 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -152,7 +152,7 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			config.early_data = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {
 			config.ticket_file = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -179,24 +179,22 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating RoQ endpoints\n", imquic_config_str(property));
+			va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);
 	}
 	va_end(args);
 	/* Check if we need raw RoQ and/or RoQ over WebTransport */
-	config.alpn = IMQUIC_ROQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_ROQ_ALPN;
-	}
+	config.alpn = config.raw_quic ? IMQUIC_ROQ_ALPN : NULL;
+	config.wt_protocols = config.webtransport ? IMQUIC_ROQ_ALPN : NULL;
 	/* Create the client */
 	imquic_client *client = imquic_network_endpoint_create(&config);
 	if(client == NULL)
@@ -224,7 +222,8 @@ void imquic_set_new_roq_connection_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_rtp_incoming_cb(imquic_endpoint *endpoint,
-		void (* rtp_incoming)(imquic_connection *conn, uint64_t flow_id, uint8_t *bytes, size_t blen)) {
+		void (* rtp_incoming)(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
+			uint64_t flow_id, uint8_t *bytes, size_t blen)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_ROQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set RoQ callback on non-RoQ endpoint\n");

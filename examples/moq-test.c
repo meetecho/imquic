@@ -123,7 +123,7 @@ typedef struct imquic_demo_moq_subscription {
 	gboolean forward;
 	gboolean fetch;
 	gboolean descending;
-	imquic_moq_fetch_range range;
+	imquic_moq_location_range range;
 	int64_t test[IMQUIC_DEMO_TEST_MAX];
 	GThread *thread;
 	volatile int destroyed;
@@ -287,9 +287,11 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	g_mutex_lock(&mutex);
 	g_hash_table_insert(connections, conn, conn);
 	g_mutex_unlock(&mutex);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection (negotiating version)\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New MoQ connection (configuring parameters)\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBLISHER);
-	imquic_moq_set_version(conn, moq_version);
 	imquic_moq_set_max_request_id(conn, 1000);	/* FIXME */
 }
 
@@ -344,7 +346,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	s->range.end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
 		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LATEST_OBJECT) {
+	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 		s->range.start.group = test[TUPLE_FIELD_START_GROUP];
 		s->range.start.object = test[TUPLE_FIELD_START_OBJECT];
 	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
@@ -366,7 +368,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Accept and serve the test subscription */
 	/* FIXME Each subscriber gets its own objects, so it's always a fresh start,
 	 * which means we don't provide any largest location before answering */
-	imquic_moq_accept_subscribe(conn, request_id, 0, FALSE, NULL);
+	imquic_moq_accept_subscribe(conn, request_id, track_alias, 0, FALSE, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -377,7 +379,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
+static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id,
+		imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
@@ -390,7 +393,8 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 		return;
 	}
 	/* Update the subscription */
-	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &request_id);
+	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id,
+		imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_14 ? &sub_request_id : &request_id);
 	if(s && !s->fetch) {
 		/* TODO Update start location and end group too */
 		s->forward = forward;
@@ -420,7 +424,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		gboolean descending, imquic_moq_fetch_range *range, uint8_t *auth, size_t authlen) {
+		gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -619,8 +623,8 @@ static void *imquic_demo_tester_thread(void *data) {
 					imquic_get_connection_name(s->sub->conn), group_id, object_id, s->range.end.group, s->range.end.object);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 					imquic_get_connection_name(s->sub->conn));
-				/* Send a SUBSCRIBE_DONE */
-				imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				/* Send a PUBLISH_DONE */
+				imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 				send_done = FALSE;
 				break;
 			}
@@ -737,13 +741,12 @@ static void *imquic_demo_tester_thread(void *data) {
 				g_mutex_unlock(&mutex);
 				break;
 			}
-			next_group = FALSE;
 		}
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping delivery thread\n", imquic_get_connection_name(conn));
 	if(send_done && s->sub != NULL) {
-		/* Send a SUBSCRIBE_DONE */
-		imquic_moq_subscribe_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Test over");
+		/* Send a PUBLISH_DONE */
+		imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Test over");
 	}
 	/* Destroy the subscription and the resources */
 	if(s->sub != NULL) {
@@ -870,15 +873,30 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
+		IMQUIC_CONFIG_MOQ_VERSION, moq_version,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(server == NULL) {
 		ret = 1;
 		goto done;
 	}
-	if(options.raw_quic)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", imquic_get_endpoint_alpn(server));
-	if(options.webtransport && imquic_get_endpoint_subprotocol(server) != NULL)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Subprotocol: %s\n", imquic_get_endpoint_subprotocol(server));
+	if(options.raw_quic) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN(s):\n");
+		int i = 0;
+		const char **alpns = imquic_get_endpoint_alpns(server);
+		while(alpns[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", alpns[i]);
+			i++;
+		}
+	}
+	if(options.webtransport && imquic_get_endpoint_wt_protocols(server) != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocol(s):\n");
+		int i = 0;
+		const char **wt_protocols = imquic_get_endpoint_wt_protocols(server);
+		while(wt_protocols[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", wt_protocols[i]);
+			i++;
+		}
+	}
 	imquic_set_new_moq_connection_cb(server, imquic_demo_new_connection);
 	imquic_set_moq_ready_cb(server, imquic_demo_ready);
 	imquic_set_incoming_subscribe_cb(server, imquic_demo_incoming_subscribe);

@@ -60,6 +60,10 @@ int imquic_init(const char *secrets_log) {
 	return 0;
 }
 
+gboolean imquic_is_inited(void) {
+	return g_atomic_int_get(&initialized) == IMQUIC_INITIALIZED;
+}
+
 void imquic_deinit(void) {
 	g_atomic_int_set(&initialized, IMQUIC_UNINITIALIZED);
 	imquic_quic_deinit();
@@ -118,13 +122,10 @@ const char *imquic_get_build_sha(void) {
 
 /* Logging */
 void imquic_set_log_level(int level) {
-	if(level > -1) {
-		if(level < IMQUIC_LOG_NONE)
-			level = 0;
-		else if(level > IMQUIC_LOG_MAX)
-			level = IMQUIC_LOG_MAX;
-		imquic_log_level = level;
-	}
+	if(level < IMQUIC_LOG_NONE)
+		level = IMQUIC_LOG_NONE;
+	else if(level > IMQUIC_LOG_MAX)
+		level = IMQUIC_LOG_MAX;
 	imquic_log_level = level;
 }
 
@@ -161,6 +162,10 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_TLS_KEY";
 		case IMQUIC_CONFIG_TLS_PASSWORD:
 			return "IMQUIC_CONFIG_TLS_PASSWORD";
+		case IMQUIC_CONFIG_EARLY_DATA:
+			return "IMQUIC_CONFIG_EARLY_DATA";
+		case IMQUIC_CONFIG_TICKET_FILE:
+			return "IMQUIC_CONFIG_TICKET_FILE";
 		case IMQUIC_CONFIG_SNI:
 			return "IMQUIC_CONFIG_SNI";
 		case IMQUIC_CONFIG_ALPN:
@@ -169,10 +174,28 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_RAW_QUIC";
 		case IMQUIC_CONFIG_WEBTRANSPORT:
 			return "IMQUIC_CONFIG_WEBTRANSPORT";
-		case IMQUIC_CONFIG_SUBPROTOCOL:
-			return "IMQUIC_CONFIG_SUBPROTOCOL";
 		case IMQUIC_CONFIG_CONGESTION_CONTROL:
 			return "IMQUIC_CONFIG_CONGESTION_CONTROL";
+		case IMQUIC_CONFIG_HTTP3_PATH:
+			return "IMQUIC_CONFIG_HTTP3_PATH";
+		case IMQUIC_CONFIG_WT_PROTOCOLS:
+			return "IMQUIC_CONFIG_WT_PROTOCOLS";
+		case IMQUIC_CONFIG_QLOG_PATH:
+			return "IMQUIC_CONFIG_QLOG_PATH";
+		case IMQUIC_CONFIG_QLOG_QUIC:
+			return "IMQUIC_CONFIG_QLOG_QUIC";
+		case IMQUIC_CONFIG_QLOG_HTTP3:
+			return "IMQUIC_CONFIG_QLOG_HTTP3";
+		case IMQUIC_CONFIG_QLOG_ROQ:
+			return "IMQUIC_CONFIG_QLOG_ROQ";
+		case IMQUIC_CONFIG_QLOG_MOQ:
+			return "IMQUIC_CONFIG_QLOG_MOQ";
+		case IMQUIC_CONFIG_QLOG_SEQUENTIAL:
+			return "IMQUIC_CONFIG_QLOG_SEQUENTIAL";
+		case IMQUIC_CONFIG_MOQ_VERSION:
+			return "IMQUIC_CONFIG_MOQ_VERSION";
+		case IMQUIC_CONFIG_USER_DATA:
+			return "IMQUIC_CONFIG_USER_DATA";
 		case IMQUIC_CONFIG_DONE:
 			return "IMQUIC_CONFIG_DONE";
 		default:
@@ -203,6 +226,7 @@ imquic_server *imquic_create_server(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -240,8 +264,8 @@ imquic_server *imquic_create_server(const char *name, ...) {
 		} else if(property == IMQUIC_CONFIG_HTTP3_PATH) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating servers\n", imquic_config_str(property));
 			va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
-			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_WT_PROTOCOLS) {
+			config.wt_protocols = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
 			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
@@ -258,12 +282,14 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
+			va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);
@@ -290,6 +316,7 @@ imquic_client *imquic_create_client(const char *name, ...) {
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
+		va_end(args);
 		return NULL;
 	}
 	property = va_arg(args, int);
@@ -322,8 +349,8 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.webtransport = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_HTTP3_PATH) {
 			config.h3_path = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_SUBPROTOCOL) {
-			config.subprotocol = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_WT_PROTOCOLS) {
+			config.wt_protocols = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_CONGESTION_CONTROL) {
 			config.cc_algo = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_PATH) {
@@ -340,12 +367,14 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
+			va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
-		} else if(property == IMQUIC_CONFIG_DONE) {
-			break;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported property %d (%s)\n", property, imquic_config_str(property));
+			va_end(args);
 			return NULL;
 		}
 		property = va_arg(args, int);
@@ -364,12 +393,12 @@ gboolean imquic_is_endpoint_server(imquic_endpoint *endpoint) {
 	return endpoint ? endpoint->is_server : FALSE;
 }
 
-const char *imquic_get_endpoint_alpn(imquic_endpoint *endpoint) {
-	return endpoint ? (const char *)endpoint->alpn : NULL;
+const char **imquic_get_endpoint_alpns(imquic_endpoint *endpoint) {
+	return endpoint ? (const char **)endpoint->alpn : NULL;
 }
 
-const char *imquic_get_endpoint_subprotocol(imquic_endpoint *endpoint) {
-	return endpoint ? (const char *)endpoint->subprotocol : NULL;
+const char **imquic_get_endpoint_wt_protocols(imquic_endpoint *endpoint) {
+	return endpoint ? (const char **)endpoint->wt_protocols : NULL;
 }
 
 uint16_t imquic_get_endpoint_port(imquic_endpoint *endpoint) {
@@ -462,7 +491,15 @@ int imquic_send_on_datagram(imquic_connection *conn, uint8_t *bytes, uint64_t le
 }
 
 const char *imquic_get_connection_alpn(imquic_connection *conn) {
-	return (const char *)(conn && conn->socket ? conn->socket->alpn : NULL);
+	return (const char *)(conn ? conn->chosen_alpn : NULL);
+}
+
+gboolean imquic_is_connection_webtransport(imquic_connection *conn) {
+	return conn ? (conn->http3 && conn->http3->webtransport) : FALSE;
+}
+
+const char *imquic_get_connection_wt_protocol(imquic_connection *conn) {
+	return (const char *)(conn ? conn->chosen_wt_protocol : NULL);
 }
 
 const char *imquic_get_connection_name(imquic_connection *conn) {

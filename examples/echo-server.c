@@ -42,6 +42,9 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	imquic_connection_ref(conn);
 	g_hash_table_insert(connections, conn, conn);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New connection\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 }
 
 static void imquic_demo_stream_incoming(imquic_connection *conn, uint64_t stream_id,
@@ -62,7 +65,7 @@ static void imquic_demo_datagram_incoming(imquic_connection *conn, uint8_t *byte
 	/* Got incoming data via DATAGRAM */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] [DATAGRAM] Got data: %"SCNu64"\n", imquic_get_connection_name(conn), length);
 	int len = length;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len - 1, (char *)(bytes + 1));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len, (char *)bytes);
 	/* FIXME Send it back */
 	imquic_send_on_datagram(conn, bytes, length);
 }
@@ -115,13 +118,36 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
+	char alpn[256];
+	alpn[0] = '\0';
 	if(options.raw_quic) {
-		if(options.alpn == NULL || strlen(options.alpn) == 0) {
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing ALPN to negotiate\n");
+		if(options.alpn == NULL || options.alpn[0] == NULL || strlen(options.alpn[0]) == 0) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing ALPN(s) to negotiate\n");
 			ret = 1;
 			goto done;
 		}
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", options.alpn);
+		size_t alpn_len = sizeof(alpn);
+		int i = 0;
+		while(options.alpn[i] != NULL) {
+			if(strlen(alpn) > 0)
+				g_strlcat(alpn, ",", alpn_len);
+			g_strlcat(alpn, options.alpn[i], alpn_len);
+			i++;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN(s): %s\n", alpn);
+	}
+	char wt_protocols[256];
+	wt_protocols[0] = '\0';
+	if(options.webtransport && options.wt_protocols != NULL) {
+		size_t wt_len = sizeof(wt_protocols);
+		int i = 0;
+		while(options.wt_protocols[i] != NULL) {
+			if(strlen(wt_protocols) > 0)
+				g_strlcat(wt_protocols, ",", wt_len);
+			g_strlcat(wt_protocols, options.wt_protocols[i], wt_len);
+			i++;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocol(s): %s\n", wt_protocols);
 	}
 	if(options.early_data)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled\n");
@@ -159,8 +185,9 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_LOCAL_BIND, options.ip,
 		IMQUIC_CONFIG_LOCAL_PORT, options.port,
 		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
-		IMQUIC_CONFIG_ALPN, options.alpn,
+		IMQUIC_CONFIG_ALPN, options.raw_quic ? alpn : NULL,
 		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
+		IMQUIC_CONFIG_WT_PROTOCOLS, (options.webtransport && strlen(wt_protocols) > 0) ? wt_protocols : NULL,
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
