@@ -3958,6 +3958,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 		}
 		conn->alpn_negotiated = TRUE;
 		g_snprintf(alpn, alpn_len, "%.*s", data_len, (char *)data);
+		conn->chosen_alpn = g_strdup(alpn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
 			imquic_get_connection_name(conn), alpn);
 #ifdef HAVE_QLOG

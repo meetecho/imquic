@@ -71,8 +71,8 @@ typedef struct imquic_network_endpoint {
 	char *sni;
 	/*! \brief Whether raw QUIC should be supported */
 	gboolean raw_quic;
-	/*! \brief ALPN this endpoint will negotiate, when using raw QUIC */
-	char *alpn;
+	/*! \brief Array of ALPN this endpoint will negotiate, when using raw QUIC */
+	char **alpn;
 	/*! \brief Whether WebTransport should be supported */
 	gboolean webtransport;
 	/*! \brief For WebTransport clients, the path to \c CONNECT to (\c / by default) */

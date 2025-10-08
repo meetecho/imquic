@@ -216,10 +216,17 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	if(options.raw_quic)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", imquic_get_endpoint_alpn(server));
+	if(options.raw_quic) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN(s):\n");
+		int i = 0;
+		const char **alpns = imquic_get_endpoint_alpns(server);
+		while(alpns[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", alpns[i]);
+			i++;
+		}
+	}
 	if(options.webtransport && imquic_get_endpoint_wt_protocols(server) != NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocols:\n");
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocol(s):\n");
 		int i = 0;
 		const char **wt_protocols = imquic_get_endpoint_wt_protocols(server);
 		while(wt_protocols[i] != NULL) {

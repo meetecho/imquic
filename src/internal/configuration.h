@@ -39,7 +39,7 @@ typedef struct imquic_configuration {
 	uint16_t remote_port;
 	/*! \brief SNI to force, if any (will use localhost otherwise) */
 	const char *sni;
-	/*! \brief ALPN to negotiate for raw QUIC */
+	/*! \brief Comma separated list of ALPN(s) to negotiate for raw QUIC */
 	const char *alpn;
 	/*! \brief Whether raw QUIC should be offered
 	 * \note In case both \c raw_quic and \c webtranport are set to \c FALSE

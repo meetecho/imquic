@@ -92,14 +92,10 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	}
 	va_end(args);
 	/* Check if we need raw MoQ and/or MoQ over WebTransport */
-	config.alpn = IMQUIC_MOQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
 		/* FIXME This should actually be automatically "crafted"
 		 * out of the MoQ draft version(s) we want to negotiate */
-		config.wt_protocols = IMQUIC_MOQ_ALPN;
-	}
+	config.alpn = config.raw_quic ? IMQUIC_MOQ_ALPN : NULL;
+	config.wt_protocols = config.webtransport ? IMQUIC_MOQ_ALPN : NULL;
 	/* Create the server */
 	imquic_server *server = imquic_network_endpoint_create(&config);
 	if(server == NULL)
@@ -190,12 +186,8 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	}
 	va_end(args);
 	/* Check if we need raw MoQ and/or MoQ over WebTransport */
-	config.alpn = IMQUIC_MOQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
-		config.wt_protocols = IMQUIC_MOQ_ALPN;
-	}
+	config.alpn = config.raw_quic ? IMQUIC_MOQ_ALPN : NULL;
+	config.wt_protocols = config.webtransport ? IMQUIC_MOQ_ALPN : NULL;
 	/* Create the client */
 	imquic_client *client = imquic_network_endpoint_create(&config);
 	if(client == NULL)

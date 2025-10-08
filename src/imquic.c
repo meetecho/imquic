@@ -353,8 +353,8 @@ gboolean imquic_is_endpoint_server(imquic_endpoint *endpoint) {
 	return endpoint ? endpoint->is_server : FALSE;
 }
 
-const char *imquic_get_endpoint_alpn(imquic_endpoint *endpoint) {
-	return endpoint ? (const char *)endpoint->alpn : NULL;
+const char **imquic_get_endpoint_alpns(imquic_endpoint *endpoint) {
+	return endpoint ? (const char **)endpoint->alpn : NULL;
 }
 
 const char **imquic_get_endpoint_wt_protocols(imquic_endpoint *endpoint) {
@@ -451,7 +451,15 @@ int imquic_send_on_datagram(imquic_connection *conn, uint8_t *bytes, uint64_t le
 }
 
 const char *imquic_get_connection_alpn(imquic_connection *conn) {
-	return (const char *)(conn && conn->socket ? conn->socket->alpn : NULL);
+	return (const char *)(conn ? conn->chosen_alpn : NULL);
+}
+
+gboolean imquic_is_connection_webtransport(imquic_connection *conn) {
+	return conn ? (conn->http3 && conn->http3->webtransport) : FALSE;
+}
+
+const char *imquic_get_connection_wt_protocol(imquic_connection *conn) {
+	return (const char *)(conn ? conn->chosen_wt_protocol : NULL);
 }
 
 const char *imquic_get_connection_name(imquic_connection *conn) {

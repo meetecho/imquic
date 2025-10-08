@@ -14,8 +14,7 @@
 #include "internal/connection.h"
 #include "internal/roq.h"
 
-#define IMQUIC_ROQ_ALPN				"roq-14"
-#define IMQUIC_ROQ_WT_PROTOCOLS		"roq-14,roq-13,roq-12,roq-11,roq-10"
+#define IMQUIC_ROQ_ALPN				"roq-14,roq-13,roq-12,roq-11,roq-10"
 
 /* Create a RoQ server */
 imquic_server *imquic_create_roq_server(const char *name, ...) {
@@ -93,13 +92,8 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 	}
 	va_end(args);
 	/* Check if we need raw RoQ and/or RoQ over WebTransport */
-	config.alpn = IMQUIC_ROQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
-		/* FIXME */
-		config.wt_protocols = IMQUIC_ROQ_WT_PROTOCOLS;
-	}
+	config.alpn = config.raw_quic ? IMQUIC_ROQ_ALPN : NULL;
+	config.wt_protocols = config.webtransport ? IMQUIC_ROQ_ALPN : NULL;
 	/* Create the server */
 	imquic_server *server = imquic_network_endpoint_create(&config);
 	if(server == NULL)
@@ -189,13 +183,8 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 	}
 	va_end(args);
 	/* Check if we need raw RoQ and/or RoQ over WebTransport */
-	config.alpn = IMQUIC_ROQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
-		/* FIXME */
-		config.wt_protocols = IMQUIC_ROQ_WT_PROTOCOLS;
-	}
+	config.alpn = config.raw_quic ? IMQUIC_ROQ_ALPN : NULL;
+	config.wt_protocols = config.webtransport ? IMQUIC_ROQ_ALPN : NULL;
 	/* Create the client */
 	imquic_client *client = imquic_network_endpoint_create(&config);
 	if(client == NULL)

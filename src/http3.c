@@ -492,7 +492,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 				} else if(!strcasecmp(header->name, "wt-available-protocols")) {
 					/* Check which protocol we should converge to */
 					has_wt_protocol = TRUE;
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Offered WebTransport protocols: %s\n",
+					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Offered WebTransport protocols: %s\n",
 						imquic_get_connection_name(h3c->conn), header->value);
 					int i = 0;
 					while(h3c->wt_protocols && h3c->wt_protocols[i] != NULL) {
@@ -512,7 +512,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 				} else if(!strcasecmp(header->name, "wt-protocol")) {
 					/* Check if we converged to anything */
 					has_wt_protocol = TRUE;
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated WebTransport protocol: %s\n",
+					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated WebTransport protocol: %s\n",
 						imquic_get_connection_name(h3c->conn), header->value);
 					int i = 0;
 					while(h3c->wt_protocols && h3c->wt_protocols[i] != NULL) {
@@ -520,6 +520,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 						if(strstr(header->value, h3c->wt_protocols[i]) != NULL) {
 							/* Found */
 							wt_protocol = h3c->wt_protocols[i];
+							h3c->conn->chosen_wt_protocol = g_strdup(wt_protocol);
 							break;
 						}
 						i++;
@@ -719,8 +720,10 @@ int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, int erro
 	g_snprintf(server, sizeof(server), "%s %s", imquic_name, imquic_version_string_full);
 	headers = g_list_append(headers, imquic_qpack_entry_create("server", server));
 	if(error_code == 200) {
-		if(wt_protocol != NULL)
+		if(wt_protocol != NULL) {
 			headers = g_list_append(headers, imquic_qpack_entry_create("wt-protocol", wt_protocol));
+			h3c->conn->chosen_wt_protocol = g_strdup(wt_protocol);
+		}
 		headers = g_list_append(headers, imquic_qpack_entry_create("sec-webtransport-http3-draft", "draft02"));
 	}
 	/* FIXME Is the stream supposed to be the right bidirectional stream? */

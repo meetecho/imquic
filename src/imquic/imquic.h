@@ -365,10 +365,10 @@ const char *imquic_get_endpoint_name(imquic_endpoint *endpoint);
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns TRUE if the endpoint is a server, or FALSE otherwise */
 gboolean imquic_is_endpoint_server(imquic_endpoint *endpoint);
-/*! \brief Helper function to get the ALPN a local client or server is configured to negotiate
+/*! \brief Helper function to get the ALPN(s) a local client or server is configured to negotiate
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns The ALPN, if successful, or NULL otherwise */
-const char *imquic_get_endpoint_alpn(imquic_endpoint *endpoint);
+const char **imquic_get_endpoint_alpns(imquic_endpoint *endpoint);
 /*! \brief Helper function to get the WebTransport protocol(s) a local client or server is configured to negotiate
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns The WebTransport protocol(s), if successful, or NULL otherwise */
@@ -425,10 +425,18 @@ void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
 /** @name Interacting with connections
  */
 ///@{
-/*! \brief Helper function to get the ALPN of a connection
+/*! \brief Helper function to get the negotiated ALPN of a connection
  * @param conn The imquic_connection to query
- * @returns The ALPN, if successful, or NULL otherwise */
+ * @returns The ALPN, if available, or NULL otherwise */
 const char *imquic_get_connection_alpn(imquic_connection *conn);
+/*! \brief Helper function to check if WebTransport was negotiated on a connection
+ * @param conn The imquic_connection to query
+ * @returns TRUE if WebTransport was negotiated, FALSE otherwise */
+gboolean imquic_is_connection_webtransport(imquic_connection *conn);
+/*! \brief Helper function to get the negotiated WebTransport protocol (if any) of a connection
+ * @param conn The imquic_connection to query
+ * @returns The WebTransport protocol, if available, or NULL otherwise */
+const char *imquic_get_connection_wt_protocol(imquic_connection *conn);
 /*! \brief Helper function to get the display name of a connection
  * @note The display name is the concatenation of the the endpoint name,
  * a slash character, and a monotonically increasing identifier.
