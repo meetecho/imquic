@@ -85,6 +85,9 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	/* Got new connection */
 	imquic_connection_ref(conn);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New connection\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	roq_conn = conn;
 }
 
@@ -290,10 +293,24 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	if(options.raw_quic)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", imquic_get_endpoint_alpn(client));
-	if(options.webtransport && imquic_get_endpoint_subprotocol(client) != NULL)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Subprotocol: %s\n", imquic_get_endpoint_subprotocol(client));
+	if(options.raw_quic) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN(s):\n");
+		int i = 0;
+		const char **alpns = imquic_get_endpoint_alpns(client);
+		while(alpns[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", alpns[i]);
+			i++;
+		}
+	}
+	if(options.webtransport && imquic_get_endpoint_wt_protocols(client) != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocol(s):\n");
+		int i = 0;
+		const char **wt_protocols = imquic_get_endpoint_wt_protocols(client);
+		while(wt_protocols[i] != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", wt_protocols[i]);
+			i++;
+		}
+	}
 	imquic_set_new_roq_connection_cb(client, imquic_demo_new_connection);
 	imquic_set_rtp_incoming_cb(client, imquic_demo_rtp_incoming);
 	imquic_set_roq_connection_gone_cb(client, imquic_demo_connection_gone);

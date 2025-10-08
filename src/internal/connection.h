@@ -139,6 +139,10 @@ struct imquic_connection {
 	imquic_connection_parameters local_params, remote_params;
 	/*! \brief ALPN */
 	imquic_data alpn;
+	/*! \brief Negotiated ALPN */
+	char *chosen_alpn;
+	/*! \brief Negotiated WebTransport protocol */
+	char *chosen_wt_protocol;
 	/*! \brief Next unidirectional and bidirectional stream we can create (as actual ID, not QUIC one) */
 	uint64_t stream_next_uni, stream_next_bidi;
 	/*! \brief Map of streams we're handling, and map of streams that are now done

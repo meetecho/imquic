@@ -145,7 +145,7 @@ static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char
 	char alpn[256];
 	size_t alpn_len = sizeof(alpn);
 	const unsigned char *p = in, *selected = NULL;
-	unsigned int tot = inlen, selected_len = 0;
+	unsigned int tot = inlen, selected_len = 0, i = 0;
 	while(tot > 0) {
 		lp = *p;
 		if(lp == 0)
@@ -154,22 +154,34 @@ static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char
 		g_snprintf(alpn, alpn_len, "%.*s", lp, (char *)p);
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][%u] %s\n",
 			imquic_get_connection_name(conn), lp, alpn);
-		if(conn->socket->raw_quic && !strcasecmp(alpn, conn->socket->alpn)) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
+		/* Check WebTransport first */
+		if(conn->socket->webtransport && !strcasecmp(alpn, h3_alpn)) {
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated ALPN: %s\n",
 				imquic_get_connection_name(conn), alpn);
 			conn->alpn_negotiated = TRUE;
+			conn->chosen_alpn = g_strdup(h3_alpn);
+			conn->http3 = imquic_http3_connection_create(conn, conn->socket->wt_protocols);
 			selected = p;
 			selected_len = lp;
 			break;
 		}
-		if(conn->socket->webtransport && !strcasecmp(alpn, h3_alpn)) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Negotiated ALPN: %s\n",
-				imquic_get_connection_name(conn), alpn);
-			conn->alpn_negotiated = TRUE;
-			conn->http3 = imquic_http3_connection_create(conn, conn->socket->subprotocol);
-			selected = p;
-			selected_len = lp;
-			break;
+		/* Now check the other ALPNs we advertised support for */
+		if(conn->socket->raw_quic) {
+			i = 0;
+			while(conn->socket->alpn[i] != NULL) {
+				if(!strcasecmp(alpn, conn->socket->alpn[i])) {
+					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated ALPN: %s\n",
+						imquic_get_connection_name(conn), alpn);
+					conn->alpn_negotiated = TRUE;
+					conn->chosen_alpn = g_strdup(alpn);
+					selected = p;
+					selected_len = lp;
+					break;
+				}
+				i++;
+			}
+			if(conn->alpn_negotiated)
+				break;
 		}
 		tot -= (lp + 1);
 		p += lp;

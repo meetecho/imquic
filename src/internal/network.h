@@ -71,14 +71,14 @@ typedef struct imquic_network_endpoint {
 	char *sni;
 	/*! \brief Whether raw QUIC should be supported */
 	gboolean raw_quic;
-	/*! \brief ALPN this endpoint will negotiate, when using raw QUIC */
-	char *alpn;
+	/*! \brief Array of ALPN this endpoint will negotiate, when using raw QUIC */
+	char **alpn;
 	/*! \brief Whether WebTransport should be supported */
 	gboolean webtransport;
 	/*! \brief For WebTransport clients, the path to \c CONNECT to (\c / by default) */
 	char *h3_path;
-	/*! \brief In case WebTransport is used, subprotocol to negotiate (currently unused) */
-	char *subprotocol;
+	/*! \brief In case WebTransport is used, array of protocols to negotiate */
+	char **wt_protocols;
 	/*! \brief List of connections handled by this socket (may be more than one for servers) */
 	GHashTable *connections;
 	/*! \brief Number of connections handled by this socket (may be more than one for servers) */
@@ -111,6 +111,8 @@ typedef struct imquic_network_endpoint {
 	gboolean qlog_sequential;
 	/*! \brief Whether QUIC and/or HTTP/3 and/or RoQ and/or MoQT events should be saved to QLOG, if supported */
 	gboolean qlog_quic, qlog_http3, qlog_roq, qlog_moq;
+	/*! brief MoQ version to negotiare, if any */
+	uint32_t moq_version;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection has been started */

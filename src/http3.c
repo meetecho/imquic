@@ -85,16 +85,16 @@ const char *imquic_http3_settings_type_str(imquic_http3_settings_type type) {
 static void imquic_http3_connection_free(const imquic_refcount *h3c_ref) {
 	imquic_http3_connection *h3c = imquic_refcount_containerof(h3c_ref, imquic_http3_connection, ref);
 	imquic_qpack_context_destroy(h3c->qpack);
-	g_free(h3c->subprotocol);
+	g_strfreev(h3c->wt_protocols);
 	g_hash_table_unref(h3c->buffers);
 	g_free(h3c);
 }
 
-imquic_http3_connection *imquic_http3_connection_create(imquic_connection *conn, char *subprotocol) {
+imquic_http3_connection *imquic_http3_connection_create(imquic_connection *conn, char **wt_protocols) {
 	imquic_http3_connection *h3c = g_malloc0(sizeof(imquic_http3_connection));
 	h3c->conn = conn;
 	h3c->is_server = conn->is_server;
-	h3c->subprotocol = subprotocol ? g_strdup(subprotocol) : NULL;
+	h3c->wt_protocols = wt_protocols ? g_strdupv(wt_protocols) : NULL;
 	h3c->buffers = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_buffer_chunk_free);
 	imquic_refcount_init(&h3c->ref, imquic_http3_connection_free);
@@ -202,7 +202,7 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *str
 #endif
 		/* FIXME */
 		if(type == IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT && value != 0)
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Establishing WebTransport\n", imquic_get_connection_name(h3c->conn));
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Establishing WebTransport\n", imquic_get_connection_name(h3c->conn));
 	}
 	g_hash_table_remove(h3c->buffers, &stream->stream_id);
 #ifdef HAVE_QLOG
@@ -465,6 +465,9 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 		imquic_qlog_event_add_raw(frame, "raw", NULL, blen);
 	}
 #endif
+	int error_code = -1;
+	gboolean has_wt_protocol = FALSE;
+	char *wt_protocol = NULL;
 	size_t bread = 0;
 	GList *headers = imquic_qpack_process(h3c->qpack, bytes, blen, &bread);
 	GList *temp = headers;
@@ -472,6 +475,59 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 	while(temp) {
 		header = (imquic_qpack_entry *)temp->data;
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- -- %s = %s\n", header->name, header->value);
+		if(header->name != NULL) {
+			/* We only evaluate a few of the headers we parse, since
+			 * at the moment we don't really care about all of them */
+			if(h3c->is_server) {
+				if(!strcasecmp(header->name, ":method")) {
+					if(header->value && !strcasecmp(header->value, "CONNECT")) {
+						if(error_code < 0)
+							error_code = 200;
+					} else {
+						/* Not a CONNECT */
+						IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported HTTP/3 request %s\n",
+							imquic_get_connection_name(h3c->conn), header->value);
+						error_code = 405;
+					}
+				} else if(!strcasecmp(header->name, "wt-available-protocols")) {
+					/* Check which protocol we should converge to */
+					has_wt_protocol = TRUE;
+					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Offered WebTransport protocols: %s\n",
+						imquic_get_connection_name(h3c->conn), header->value);
+					int i = 0;
+					while(h3c->wt_protocols && h3c->wt_protocols[i] != NULL) {
+						/* FIXME We need a better check than that */
+						if(strstr(header->value, h3c->wt_protocols[i]) != NULL) {
+							/* Found */
+							wt_protocol = h3c->wt_protocols[i];
+							break;
+						}
+						i++;
+					}
+				}
+			} else {
+				if(!strcasecmp(header->name, ":status")) {
+					/* Check what we got back */
+					error_code = header->value ? atoi(header->value) : -1;
+				} else if(!strcasecmp(header->name, "wt-protocol")) {
+					/* Check if we converged to anything */
+					has_wt_protocol = TRUE;
+					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated WebTransport protocol: %s\n",
+						imquic_get_connection_name(h3c->conn), header->value);
+					int i = 0;
+					while(h3c->wt_protocols && h3c->wt_protocols[i] != NULL) {
+						/* FIXME We need a better check than that */
+						if(strstr(header->value, h3c->wt_protocols[i]) != NULL) {
+							/* Found */
+							wt_protocol = h3c->wt_protocols[i];
+							h3c->conn->chosen_wt_protocol = g_strdup(wt_protocol);
+							break;
+						}
+						i++;
+					}
+				}
+			}
+		}
 #ifdef HAVE_QLOG
 		if(frame_headers != NULL)
 			imquic_qlog_http3_append_object(frame_headers, header->name, header->value);
@@ -484,15 +540,47 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 		imquic_http3_qlog_frame_parsed(h3c->conn->qlog, h3c->request_stream, blen, frame);
 #endif
 	if(!h3c->is_server) {
+		/* Check if the WebTransport protocol negotiation worked */
+		if(wt_protocol == NULL) {
+			if(!has_wt_protocol) {
+				/* The server didn't reply with a negotiated protocol,
+				 * maybe it's not supported? Fallback to the first */
+					/* TODO */
+			} else {
+				/* We didn't converge */
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported WebTransport protocols\n",
+					imquic_get_connection_name(h3c->conn));
+				error_code = -1;
+			}
+		}
 		/* Done */
-		h3c->webtransport = TRUE;
-		if(h3c->conn->socket->new_connection)
-			h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
+		if(error_code >= 200 && error_code < 300) {
+			h3c->webtransport = TRUE;
+			if(h3c->conn->socket->new_connection)
+				h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
+		} else {
+			/* Something went wrong, close the connection */
+			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR,
+				IMQUIC_CONNECTION_CLOSE_APP, "CONNECT error");
+		}
 	} else {
-		/* FIXME Let's assume it was a CONNECT and let's send a 200 OK */
+		/* Check if the WebTransport protocol negotiation worked */
+		if(wt_protocol == NULL) {
+			if(!has_wt_protocol) {
+				/* The client didn't offer any negotiated protocol,
+				 * maybe it's not supported? Fallback to the first */
+					/* TODO */
+			} else {
+				/* We didn't converge */
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported WebTransport protocols\n",
+					imquic_get_connection_name(h3c->conn));
+				error_code = 406;
+			}
+		}
+		/* Prepare a response */
 		uint8_t es[100], rs[100];
 		size_t es_len = 0, rs_len = 0;
-		if(imquic_http3_prepare_headers_response(h3c, es, &es_len, rs, &rs_len) == 0) {
+		if(imquic_http3_prepare_headers_response(h3c, error_code, wt_protocol, es, &es_len, rs, &rs_len) == 0) {
 			/* FIXME Prepare the necessary STREAM payload(s) */
 			if(es_len > 0) {
 				imquic_stream *enc_stream = g_hash_table_lookup(h3c->conn->streams, &h3c->local_qpack_encoder_stream);
@@ -505,6 +593,16 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 			g_queue_push_tail(h3c->conn->outgoing_data, imquic_dup_uint64(stream->stream_id));
 			h3c->conn->wakeup = TRUE;
 			imquic_loop_wakeup();
+			if(error_code == 200) {
+				h3c->webtransport = TRUE;
+				if(h3c->conn->socket->new_connection)
+					h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
+			}
+		}
+		if(error_code != 200) {
+			/* Something went wrong, close the connection */
+			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR,
+				IMQUIC_CONNECTION_CLOSE_APP, "CONNECT error");
 		}
 	}
 	return blen;
@@ -541,6 +639,22 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 		path = (const char *)h3c->conn->socket->h3_path;
 	headers = g_list_append(headers, imquic_qpack_entry_create(":path", path));
 	headers = g_list_append(headers, imquic_qpack_entry_create(":protocol", "webtransport"));
+	char wt_protocols[256];
+	wt_protocols[0] = '\0';
+	if(h3c->wt_protocols != NULL) {
+		size_t wt_len = sizeof(wt_protocols);
+		int i = 0;
+		while(h3c->wt_protocols[i] != NULL) {
+			if(strlen(wt_protocols) > 0)
+				g_strlcat(wt_protocols, ", ", wt_len);
+			g_strlcat(wt_protocols, "\"", wt_len);
+			g_strlcat(wt_protocols, h3c->wt_protocols[i], wt_len);
+			g_strlcat(wt_protocols, "\"", wt_len);
+			i++;
+		}
+		if(strlen(wt_protocols) > 0)
+			headers = g_list_append(headers, imquic_qpack_entry_create("wt-available-protocols", wt_protocols));
+	}
 	headers = g_list_append(headers, imquic_qpack_entry_create("user-agent", "imquic/0.0.1alpha"));
 	headers = g_list_append(headers, imquic_qpack_entry_create("sec-fetch-dest", "webtransport"));
 	headers = g_list_append(headers, imquic_qpack_entry_create("sec-webtransport-http3-draft02", "1"));
@@ -564,6 +678,8 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 			imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address), TRUE));
 		imquic_qlog_http3_append_object(headers, ":path", path);
 		imquic_qlog_http3_append_object(headers, ":protocol", "webtransport");
+		if(strlen(wt_protocols) > 0)
+			imquic_qlog_http3_append_object(headers, "wt-available-protocols", wt_protocols);
 		imquic_qlog_http3_append_object(headers, "user-agent", "imquic/0.0.1alpha");
 		imquic_qlog_http3_append_object(headers, "sec-fetch-dest", "webtransport");
 		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft02", "1");
@@ -591,16 +707,25 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 }
 
 /* FIXME HTTP/3 response */
-int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, uint8_t *es, size_t *es_len, uint8_t *rs, size_t *rs_len) {
+int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, int error_code, char *wt_protocol,
+		uint8_t *es, size_t *es_len, uint8_t *rs, size_t *rs_len) {
 	if(h3c->qpack == NULL)
 		h3c->qpack = imquic_qpack_context_create(4096);
 	/* FIXME BADLY This is all hardcoded */
 	GList *headers = NULL;
-	headers = g_list_append(headers, imquic_qpack_entry_create(":status", "200"));
+	char status_code[4];
+	g_snprintf(status_code, sizeof(status_code), "%d", error_code);
+	headers = g_list_append(headers, imquic_qpack_entry_create(":status", status_code));
 	char server[100];
 	g_snprintf(server, sizeof(server), "%s %s", imquic_name, imquic_version_string_full);
 	headers = g_list_append(headers, imquic_qpack_entry_create("server", server));
-	headers = g_list_append(headers, imquic_qpack_entry_create("sec-webtransport-http3-draft", "draft02"));
+	if(error_code == 200) {
+		if(wt_protocol != NULL) {
+			headers = g_list_append(headers, imquic_qpack_entry_create("wt-protocol", wt_protocol));
+			h3c->conn->chosen_wt_protocol = g_strdup(wt_protocol);
+		}
+		headers = g_list_append(headers, imquic_qpack_entry_create("sec-webtransport-http3-draft", "draft02"));
+	}
 	/* FIXME Is the stream supposed to be the right bidirectional stream? */
 	uint8_t rbuf[1024], ebuf[1024];
 	size_t r_len = sizeof(rbuf), e_len = sizeof(ebuf);
@@ -631,17 +756,18 @@ int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, uint8_t 
 	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3) {
 		json_t *frame = imquic_qlog_http3_prepare_content(NULL, "headers", FALSE);
 		json_t *headers = imquic_qlog_http3_prepare_content(frame, "headers", TRUE);
-		imquic_qlog_http3_append_object(headers, ":status", "200");
+		imquic_qlog_http3_append_object(headers, ":status", status_code);
 		imquic_qlog_http3_append_object(headers, "server", server);
-		imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
+		if(error_code == 200) {
+			if(wt_protocol != NULL)
+				imquic_qlog_http3_append_object(headers, "wt-protocol", wt_protocol);
+			imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
+		}
 		imquic_qlog_event_add_raw(frame, "raw", NULL, r_len);
 		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->request_stream, r_len, frame);
 	}
 #endif
 	/* Done */
-	h3c->webtransport = TRUE;
-	if(h3c->conn->socket->new_connection)
-		h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
 	return 0;
 }
 

@@ -14,7 +14,8 @@
 #include "internal/connection.h"
 #include "internal/moq.h"
 
-#define IMQUIC_MOQ_ALPN		"moq-00"
+/* Helper to dynamically return a set of ALPNs depending on the version to negotiate */
+static const char *imquic_moq_version_alpn(imquic_moq_version version);
 
 /* Create a MoQ server */
 imquic_server *imquic_create_moq_server(const char *name, ...) {
@@ -64,7 +65,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 		} else if(property == IMQUIC_CONFIG_SNI || property == IMQUIC_CONFIG_HTTP3_PATH) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating servers\n", imquic_config_str(property));
 			va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -81,6 +82,8 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 			config.qlog_moq = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			config.moq_version = va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else {
@@ -92,11 +95,11 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	}
 	va_end(args);
 	/* Check if we need raw MoQ and/or MoQ over WebTransport */
-	config.alpn = IMQUIC_MOQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_MOQ_ALPN;
+	config.alpn = config.raw_quic ? imquic_moq_version_alpn(config.moq_version) : NULL;
+	config.wt_protocols = config.webtransport ? imquic_moq_version_alpn(config.moq_version) : NULL;
+	if(config.alpn == NULL && config.wt_protocols == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid MoQ version\n");
+		return NULL;
 	}
 	/* Create the server */
 	imquic_server *server = imquic_network_endpoint_create(&config);
@@ -105,6 +108,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	/* Set our own callbacks for the endpoint, we'll expose different ones to the user */
 	server->internal_callbacks = TRUE;
 	server->protocol = IMQUIC_MOQ;
+	server->moq_version = config.moq_version;
 	server->new_connection = imquic_moq_new_connection;
 	server->stream_incoming = imquic_moq_stream_incoming;
 	server->datagram_incoming = imquic_moq_datagram_incoming;
@@ -160,7 +164,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			config.sni = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_HTTP3_PATH) {
 			config.h3_path = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_SUBPROTOCOL) {
+		} else if(property == IMQUIC_CONFIG_ALPN || property == IMQUIC_CONFIG_WT_PROTOCOLS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n",
 				imquic_config_str(property));
 			va_arg(args, char *);
@@ -177,6 +181,8 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			config.qlog_moq = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
+			config.moq_version = va_arg(args, int);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else {
@@ -188,11 +194,11 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	}
 	va_end(args);
 	/* Check if we need raw MoQ and/or MoQ over WebTransport */
-	config.alpn = IMQUIC_MOQ_ALPN;
-	if(config.webtransport) {
-		if(!config.raw_quic)
-			config.alpn = NULL;
- 		config.subprotocol = IMQUIC_MOQ_ALPN;
+	config.alpn = config.raw_quic ? imquic_moq_version_alpn(config.moq_version) : NULL;
+	config.wt_protocols = config.webtransport ? imquic_moq_version_alpn(config.moq_version) : NULL;
+	if(config.alpn == NULL && config.wt_protocols == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid MoQ version\n");
+		return NULL;
 	}
 	/* Create the client */
 	imquic_client *client = imquic_network_endpoint_create(&config);
@@ -201,6 +207,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	/* Set our own callbacks for the endpoint, we'll expose different ones to the user */
 	client->internal_callbacks = TRUE;
 	client->protocol = IMQUIC_MOQ;
+	client->moq_version = config.moq_version;
 	client->new_connection = imquic_moq_new_connection;
 	client->stream_incoming = imquic_moq_stream_incoming;
 	client->datagram_incoming = imquic_moq_datagram_incoming;
@@ -670,6 +677,36 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-XX(-from-11)";
 		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
 			return "draft-ietf-moq-transport-XX(-from-06-to-10)";
+		default: break;
+	}
+	return NULL;
+}
+
+static const char *imquic_moq_version_alpn(imquic_moq_version version) {
+	switch(version) {
+		/* Notice we still also always advertise moq-00, for previous versions */
+		case IMQUIC_MOQ_VERSION_06:
+			return "moq-06,moq-00";
+		case IMQUIC_MOQ_VERSION_07:
+			return "moq-07,moq-00";
+		case IMQUIC_MOQ_VERSION_08:
+			return "moq-08,moq-00";
+		case IMQUIC_MOQ_VERSION_09:
+			return "moq-09,moq-00";
+		case IMQUIC_MOQ_VERSION_10:
+			return "moq-10,moq-00";
+		case IMQUIC_MOQ_VERSION_11:
+			return "moq-11,moq-00";
+		case IMQUIC_MOQ_VERSION_12:
+			return "moq-12,moq-00";
+		case IMQUIC_MOQ_VERSION_13:
+			return "moq-13,moq-00";
+		case IMQUIC_MOQ_VERSION_14:
+			return "moq-14,moq-00";
+		case IMQUIC_MOQ_VERSION_ANY:
+			return "moq-14,moq-13,moq-12,moq-11,moq-00";
+		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
+			return "moq-10,moq-09,moq-08,moq-07,moq-06,moq-00";
 		default: break;
 	}
 	return NULL;

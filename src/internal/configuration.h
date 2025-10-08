@@ -39,7 +39,7 @@ typedef struct imquic_configuration {
 	uint16_t remote_port;
 	/*! \brief SNI to force, if any (will use localhost otherwise) */
 	const char *sni;
-	/*! \brief ALPN to negotiate for raw QUIC */
+	/*! \brief Comma separated list of ALPN(s) to negotiate for raw QUIC */
 	const char *alpn;
 	/*! \brief Whether raw QUIC should be offered
 	 * \note In case both \c raw_quic and \c webtranport are set to \c FALSE
@@ -49,8 +49,8 @@ typedef struct imquic_configuration {
 	gboolean webtransport;
 	/*! \brief In case WebTransport is used, the HTTP/3 path to connect to (client-only) */
 	const char *h3_path;
-	/*! \brief In case WebTransport is used, the subprotocol to negotiate (currently unused) */
-	const char *subprotocol;
+	/*! \brief In case WebTransport is used, a comma separated list of the protocol(s) to negotiate */
+	const char *wt_protocols;
 	/*! \brief Path to save QLOG files to, if needed/supported: a filename for clients, a folder for servers */
 	const char *qlog_path;
 	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */
@@ -67,6 +67,8 @@ typedef struct imquic_configuration {
 	gboolean early_data;
 	/*! \brief File to use for session tickets, when doing early data */
 	const char *ticket_file;
+	/*! \brief MoQ version to negotiate, if any */
+	uint32_t moq_version;
 	/*! \brief Optional user data, to pass back when notifying new connections associated to this endpoint */
 	void *user_data;
 } imquic_configuration;

@@ -48,6 +48,36 @@ void imquic_moq_deinit(void) {
 	imquic_mutex_unlock(&moq_mutex);
 }
 
+/* Helper to dynamically return the MoQ version associated with the negotiated ALPN */
+static imquic_moq_version imquic_moq_version_from_alpn(const char *alpn, imquic_moq_version fallback) {
+	if(alpn == NULL)
+		return fallback;
+	else if(!strcasecmp(alpn, "moq-14,moq-13,moq-12,moq-11"))
+		return IMQUIC_MOQ_VERSION_ANY;
+	else if(!strcasecmp(alpn, "moq-10,moq-09,moq-08,moq-07,moq-06"))
+		return IMQUIC_MOQ_VERSION_ANY_LEGACY;
+	else if(!strcasecmp(alpn, "moq-14"))
+		return IMQUIC_MOQ_VERSION_14;
+	else if(!strcasecmp(alpn, "moq-13"))
+		return IMQUIC_MOQ_VERSION_13;
+	else if(!strcasecmp(alpn, "moq-12"))
+		return IMQUIC_MOQ_VERSION_12;
+	else if(!strcasecmp(alpn, "moq-11"))
+		return IMQUIC_MOQ_VERSION_11;
+	else if(!strcasecmp(alpn, "moq-10"))
+		return IMQUIC_MOQ_VERSION_10;
+	else if(!strcasecmp(alpn, "moq-09"))
+		return IMQUIC_MOQ_VERSION_09;
+	else if(!strcasecmp(alpn, "moq-08"))
+		return IMQUIC_MOQ_VERSION_08;
+	else if(!strcasecmp(alpn, "moq-07"))
+		return IMQUIC_MOQ_VERSION_07;
+	else if(!strcasecmp(alpn, "moq-06"))
+		return IMQUIC_MOQ_VERSION_06;
+	/* If we got here, there was no specific ALPN negotiation */
+	return fallback;
+}
+
 /* Callbacks */
 void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	/* Got new connection */
@@ -56,7 +86,15 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	imquic_moq_context *moq = g_malloc0(sizeof(imquic_moq_context));
 	moq->conn = conn;
 	moq->is_server = conn->is_server;
-	moq->version = IMQUIC_MOQ_VERSION_ANY;
+	const char *alpn = imquic_is_connection_webtransport(conn) ?
+		imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn);
+	moq->version = imquic_moq_version_from_alpn(alpn, conn->socket->moq_version);
+	if(moq->version >= IMQUIC_MOQ_VERSION_08) {
+		moq->role_set = TRUE;
+		moq->type = IMQUIC_MOQ_ROLE_ENDPOINT;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s][MoQ] MoQ version: %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_moq_version_str(moq->version), alpn);
 	moq->streams = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_stream_destroy);
 	moq->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal,
@@ -5973,47 +6011,6 @@ imquic_moq_role imquic_moq_get_role(imquic_connection *conn) {
 	imquic_mutex_unlock(&moq->mutex);
 	imquic_refcount_decrease(&moq->ref);
 	return role;
-}
-
-/* Version management */
-int imquic_moq_set_version(imquic_connection *conn, imquic_moq_version version) {
-	imquic_mutex_lock(&moq_mutex);
-	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || moq->version_set) {
-		imquic_mutex_unlock(&moq_mutex);
-		return -1;
-	}
-	imquic_refcount_increase(&moq->ref);
-	imquic_mutex_unlock(&moq_mutex);
-	imquic_mutex_lock(&moq->mutex);
-	switch(version) {
-		case IMQUIC_MOQ_VERSION_06:
-		case IMQUIC_MOQ_VERSION_07:
-		case IMQUIC_MOQ_VERSION_08:
-		case IMQUIC_MOQ_VERSION_09:
-		case IMQUIC_MOQ_VERSION_10:
-		case IMQUIC_MOQ_VERSION_11:
-		case IMQUIC_MOQ_VERSION_12:
-		case IMQUIC_MOQ_VERSION_13:
-		case IMQUIC_MOQ_VERSION_14:
-		case IMQUIC_MOQ_VERSION_ANY:
-		case IMQUIC_MOQ_VERSION_ANY_LEGACY:
-			moq->version = version;
-			break;
-		default:
-			imquic_mutex_unlock(&moq->mutex);
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Unsupported version '%"SCNu32"'\n",
-				imquic_get_connection_name(conn), version);
-			return -1;
-	}
-	if(!moq->role_set && moq->version >= IMQUIC_MOQ_VERSION_08) {
-		moq->role_set = TRUE;
-		moq->type = IMQUIC_MOQ_ROLE_ENDPOINT;
-	}
-	/* Done */
-	imquic_mutex_unlock(&moq->mutex);
-	imquic_refcount_decrease(&moq->ref);
-	return 0;
 }
 
 imquic_moq_version imquic_moq_get_version(imquic_connection *conn) {

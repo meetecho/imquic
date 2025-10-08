@@ -42,6 +42,9 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	imquic_connection_ref(conn);
 	echo_conn = conn;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New connection\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
+		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
+		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	/* Send our text */
 	const char *text = options.text ? options.text : "ciao";
 	uint64_t stream_id = 0;
@@ -123,13 +126,36 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
+	char alpn[256];
+	alpn[0] = '\0';
 	if(options.raw_quic) {
-		if(options.alpn == NULL || strlen(options.alpn) == 0) {
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing ALPN to negotiate\n");
+		if(options.alpn == NULL || options.alpn[0] == NULL || strlen(options.alpn[0]) == 0) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing ALPN(s) to negotiate\n");
 			ret = 1;
 			goto done;
 		}
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN: %s\n", options.alpn);
+		size_t alpn_len = sizeof(alpn);
+		int i = 0;
+		while(options.alpn[i] != NULL) {
+			if(strlen(alpn) > 0)
+				g_strlcat(alpn, ",", alpn_len);
+			g_strlcat(alpn, options.alpn[i], alpn_len);
+			i++;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN(s): %s\n", alpn);
+	}
+	char wt_protocols[256];
+	wt_protocols[0] = '\0';
+	if(options.webtransport && options.wt_protocols != NULL) {
+		size_t wt_len = sizeof(wt_protocols);
+		int i = 0;
+		while(options.wt_protocols[i] != NULL) {
+			if(strlen(wt_protocols) > 0)
+				g_strlcat(wt_protocols, ",", wt_len);
+			g_strlcat(wt_protocols, options.wt_protocols[i], wt_len);
+			i++;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocol(s): %s\n", wt_protocols);
 	}
 	if(options.ticket_file != NULL)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled (ticket file '%s')\n", options.ticket_file);
@@ -170,8 +196,9 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_REMOTE_PORT, options.remote_port,
 		IMQUIC_CONFIG_SNI, options.sni,
 		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
-		IMQUIC_CONFIG_ALPN, options.alpn,
+		IMQUIC_CONFIG_ALPN, options.raw_quic ? alpn : NULL,
 		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
+		IMQUIC_CONFIG_WT_PROTOCOLS, (options.webtransport && strlen(wt_protocols) > 0) ? wt_protocols : NULL,
 		IMQUIC_CONFIG_EARLY_DATA, (options.ticket_file != NULL),
 		IMQUIC_CONFIG_TICKET_FILE, options.ticket_file,
 		IMQUIC_CONFIG_HTTP3_PATH, options.path,

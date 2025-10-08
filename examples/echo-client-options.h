@@ -27,8 +27,9 @@ typedef struct demo_options {
 	const char *secrets_log;
 	const char *sni;
 	gboolean raw_quic;
-	const char *alpn;
+	const char **alpn;
 	gboolean webtransport;
+	const char **wt_protocols;
 	const char *path;
 	const char *qlog_path;
 	const char **qlog_logging;

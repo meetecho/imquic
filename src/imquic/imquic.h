@@ -263,8 +263,11 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_WEBTRANSPORT,
 	/*! \brief For WebTransport, path to respond to (defaults to "/") */
 	IMQUIC_CONFIG_HTTP3_PATH,
-	/*! \brief Subprotocol to negotiate on the main ALPN, if any (string) */
-	IMQUIC_CONFIG_SUBPROTOCOL,
+	/*! \brief Protocol(s) to negotiate on WebTransport, if any (string)
+	 * \note To provide more than one, use a comma-separated list. Notice
+	 * that this is ignored for RoQ and MoQ endpoints, as the primitives
+	 * for version negotiation are used there to automatically set this */
+	IMQUIC_CONFIG_WT_PROTOCOLS,
 	/*! \brief Save a QLOG file to this path
 	 * \note For servers, this will need to be a folder, and not a specific
 	 * filename, as servers will handle multiple connections. This property
@@ -285,6 +288,8 @@ typedef enum imquic_config {
 	/*! \brief Whether sequential JSON should be used, instead of regular JSON
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_SEQUENTIAL,
+	/*! \brief MoQ version to negotiate (only used when creating MoQ endpoints, ignored otherwise) */
+	IMQUIC_CONFIG_MOQ_VERSION,
 	/*! \brief Generic user data, if any (void pointer) */
 	IMQUIC_CONFIG_USER_DATA,
 	/*! \brief Must be the last property, followed by NULL */
@@ -362,14 +367,14 @@ const char *imquic_get_endpoint_name(imquic_endpoint *endpoint);
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns TRUE if the endpoint is a server, or FALSE otherwise */
 gboolean imquic_is_endpoint_server(imquic_endpoint *endpoint);
-/*! \brief Helper function to get the ALPN a local client or server is configured to negotiate
+/*! \brief Helper function to get the ALPN(s) a local client or server is configured to negotiate
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns The ALPN, if successful, or NULL otherwise */
-const char *imquic_get_endpoint_alpn(imquic_endpoint *endpoint);
-/*! \brief Helper function to get the WebTransport protocol a local client or server is configured to negotiate
+const char **imquic_get_endpoint_alpns(imquic_endpoint *endpoint);
+/*! \brief Helper function to get the WebTransport protocol(s) a local client or server is configured to negotiate
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
- * @returns The subprotocol, if successful, or NULL otherwise */
-const char *imquic_get_endpoint_subprotocol(imquic_endpoint *endpoint);
+ * @returns The WebTransport protocol(s), if successful, or NULL otherwise */
+const char **imquic_get_endpoint_wt_protocols(imquic_endpoint *endpoint);
 /*! \brief Helper function to get the local port a client or server is bound to
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to query
  * @returns The local port number */
@@ -422,10 +427,18 @@ void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
 /** @name Interacting with connections
  */
 ///@{
-/*! \brief Helper function to get the ALPN of a connection
+/*! \brief Helper function to get the negotiated ALPN of a connection
  * @param conn The imquic_connection to query
- * @returns The ALPN, if successful, or NULL otherwise */
+ * @returns The ALPN, if available, or NULL otherwise */
 const char *imquic_get_connection_alpn(imquic_connection *conn);
+/*! \brief Helper function to check if WebTransport was negotiated on a connection
+ * @param conn The imquic_connection to query
+ * @returns TRUE if WebTransport was negotiated, FALSE otherwise */
+gboolean imquic_is_connection_webtransport(imquic_connection *conn);
+/*! \brief Helper function to get the negotiated WebTransport protocol (if any) of a connection
+ * @param conn The imquic_connection to query
+ * @returns The WebTransport protocol, if available, or NULL otherwise */
+const char *imquic_get_connection_wt_protocol(imquic_connection *conn);
 /*! \brief Helper function to get the display name of a connection
  * @note The display name is the concatenation of the the endpoint name,
  * a slash character, and a monotonically increasing identifier.
