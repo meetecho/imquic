@@ -386,6 +386,8 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Bound to [%s]:%"SCNu16"\n", config->name, ip, port);
 	}
 	if(!config->is_server) {
+		/* FIXME We should get rid of the connect() call for clients, here,
+		 * as it would make connection migration impossible in the future */
 		if(connect(quic_fd, (struct sockaddr *)&remote.addr, remote.addrlen) < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error connecting to %s... %d (%s)\n",
 				config->name, imquic_network_address_str(&remote, ip, sizeof(ip), TRUE), errno, g_strerror(errno));
@@ -479,8 +481,15 @@ int imquic_network_send(imquic_connection *conn, uint8_t *bytes, size_t blen) {
 	if(conn == NULL || conn->socket == NULL || conn->socket->fd < 0 || bytes == NULL || blen == 0)
 		return -1;
 	int sent = 0;
-	if((sent = sendto(conn->socket->fd, bytes, blen, 0,
-			(struct sockaddr *)&conn->peer.addr, conn->peer.addrlen)) < 0) {
+	if(conn->is_server) {
+		sent = sendto(conn->socket->fd, bytes, blen, 0,
+			(struct sockaddr *)&conn->peer.addr, conn->peer.addrlen);
+	} else {
+		/* FIXME For clients we're using connect() on the socket, so we need
+		 * to use send() instead of sendto() or OSX will complain about it */
+		sent = send(conn->socket->fd, bytes, blen, 0);
+	}
+	if(sent < 0) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, blen);
