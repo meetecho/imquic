@@ -99,7 +99,7 @@ typedef enum imquic_moq_datagram_message_type {
  * @param version The version of the connection
  * @param ext Whether there are extensions
  * @param eog Whether there is an End of Group
- * @param eog Whether there is an Object ID (ignored before v14)
+ * @param oid Whether there is an Object ID (ignored before v14)
  * @returns The type name as a string, if valid, or NULL otherwise */
 imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog, gboolean oid);
 /*! \brief Helper function to parse a imquic_moq_datagram_message_type value for \c OBJECT_DATAGRAM to the individual properties.
@@ -901,7 +901,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
- * @param subrequest_id The subscription request ID to put in the message (ignored before v14)
+ * @param sub_request_id The subscription request ID to put in the message (ignored before v14)
  * @param start_group The start group ID to put in the message
  * @param start_object The start object ID to put in the message
  * @param end_group The end group ID to put in the message

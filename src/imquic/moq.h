@@ -27,7 +27,7 @@
  * server you won't use \ref imquic_create_server, but will use \ref imquic_create_moq_server
  * instead; likewise, a \ref imquic_create_moq_client variant exists for creating
  * MoQ clients too. These MoQ specific endpoint constructors are also
- * where you specify the \ref imquic_version to negotiate. via the
+ * where you specify the \ref imquic_moq_version to negotiate. via the
  * \c IMQUIC_CONFIG_MOQ_VERSION constructor flag.
  *
  * Speaking of callbacks, considering the library needs to take care
@@ -701,6 +701,7 @@ typedef enum imquic_moq_sub_done_code {
  * @param code The imquic_moq_sub_done_code value
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_sub_done_code_str(imquic_moq_sub_done_code code);
+///@}
 
 /** @name MoQ endpoints management
  */
