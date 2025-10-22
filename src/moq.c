@@ -29,6 +29,9 @@
 //~ #define IMQUIC_MOQ_LOG_VERB	IMQUIC_LOG_INFO
 //~ #define IMQUIC_MOQ_LOG_HUGE	IMQUIC_LOG_INFO
 
+/* Request IDs management */
+#define IMQUIC_MOQ_REQUEST_ID_INCREMENT	2
+
 /* Collection of sessions */
 static GHashTable *moq_sessions = NULL;
 static imquic_mutex moq_mutex = IMQUIC_MUTEX_INITIALIZER;
@@ -1792,8 +1795,7 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, uint8_t *byte
 		imquic_get_connection_name(moq->conn), request_id);
 	/* Make sure this is in line with the expected request ID */
 	IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
-	uint64_t request_id_increment = (imquic_moq_get_version(moq->conn) >= IMQUIC_MOQ_VERSION_11) ? 2 : 1;
-	moq->expected_request_id = request_id + request_id_increment;
+	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
@@ -2253,8 +2255,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		imquic_get_connection_name(moq->conn), request_id);
 	/* Make sure this is in line with the expected request ID */
 	IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
-	uint64_t request_id_increment = 2;
-	moq->expected_request_id = request_id + request_id_increment;
+	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	/* Move on */
 	uint64_t track_alias = 0;
@@ -2722,8 +2723,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, uint8_t *by
 		imquic_get_connection_name(moq->conn), request_id);
 	/* Make sure this is in line with the expected request ID */
 	IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
-	uint64_t request_id_increment = 2;
-	moq->expected_request_id = request_id + request_id_increment;
+	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
@@ -2885,8 +2885,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		imquic_get_connection_name(moq->conn), request_id);
 	/* Make sure this is in line with the expected request ID */
 	IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
-	uint64_t request_id_increment = 2;
-	moq->expected_request_id = request_id + request_id_increment;
+	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	/* Move on */
 	imquic_moq_namespace tns[32];
@@ -3195,8 +3194,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 		imquic_get_connection_name(moq->conn), request_id);
 	/* Make sure this is in line with the expected request ID */
 	IMQUIC_MOQ_CHECK_ERR(request_id < moq->expected_request_id, error, IMQUIC_MOQ_TOO_MANY_REQUESTS, 0, "Too many requests");
-	uint64_t request_id_increment = 2;
-	moq->expected_request_id = request_id + request_id_increment;
+	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	IMQUIC_MOQ_CHECK_ERR(request_id >= moq->local_max_request_id, error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	/* Move on */
 	imquic_moq_namespace tns[32];
@@ -5534,7 +5532,7 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, i
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
-	moq->next_request_id = request_id + 2;
+	moq->next_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* TODO Check if this namespace exists and was publish_namespaced here */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
@@ -5669,8 +5667,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
-	uint64_t request_id_increment = 2;
-	moq->next_request_id = request_id + request_id_increment;
+	moq->next_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* Track this subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, track_alias);
 	imquic_mutex_lock(&moq->mutex);
@@ -5817,8 +5814,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
-	uint64_t request_id_increment = 2;
-	moq->next_request_id = request_id + request_id_increment;
+	moq->next_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* Send the request */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
@@ -6038,7 +6034,7 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
-	moq->next_request_id = request_id + 2;
+	moq->next_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* Send the request */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
@@ -6356,8 +6352,7 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
-	uint64_t request_id_increment = 2;
-	moq->next_request_id = request_id + request_id_increment;
+	moq->next_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* Send the request */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
