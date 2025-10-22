@@ -291,7 +291,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBLISHER);
 	imquic_moq_set_max_request_id(conn, 1000);	/* FIXME */
 }
 
@@ -670,7 +669,6 @@ static void *imquic_demo_tester_thread(void *data) {
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
 			.extensions = (extensions_len > 0) ? extensions : NULL,
 			.extensions_len = extensions_len,
-			.extensions_count = extensions_count,
 			.delivery = delivery,
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
@@ -698,7 +696,6 @@ static void *imquic_demo_tester_thread(void *data) {
 				object.payload = NULL;
 				object.extensions = NULL;
 				object.extensions_len = 0;
-				object.extensions_count = 0;
 				object.end_of_stream = TRUE;
 				if(send_object || last_object)
 					imquic_moq_send_object(conn, &object);
@@ -819,10 +816,6 @@ int main(int argc, char *argv[]) {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
 				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Unsupported MoQ version %s\n", options.moq_version);
-				ret = 1;
-				goto done;
-			} else if(moq_version < IMQUIC_MOQ_VERSION_06) {
-				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Versions lower than 6 don't support namespace tuples\n");
 				ret = 1;
 				goto done;
 			}

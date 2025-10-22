@@ -62,7 +62,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBLISHER);
 	imquic_moq_set_max_request_id(conn, max_request_id);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
@@ -140,18 +139,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 }
 
-static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
-	char buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace '%s' accepted\n",
-		imquic_get_connection_name(conn), ns);
+static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace '%"SCNu64"' accepted\n",
+		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason) {
-	char buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace '%s': error %d (%s)\n",
-		imquic_get_connection_name(conn), ns, error_code, reason);
+static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_publish_namespace_error_code error_code, const char *reason) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace: error %d (%s)\n",
+		imquic_get_connection_name(conn), error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -266,7 +261,6 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 static void imquic_demo_send_data(char *text, gboolean last) {
 	uint8_t extensions[256];
 	size_t extensions_len = 0;
-	size_t extensions_count = 0;
 	gboolean first = g_atomic_int_compare_and_exchange(&started, 0, 1);
 	if((first && options.first_group > 0 && group_id == options.first_group) ||
 			(first && options.first_object > 0 && object_id == options.first_object) ||
@@ -282,14 +276,12 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 			pgidext.id = IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP;
 			pgidext.value.number = options.first_group;
 			exts = g_list_append(exts, &pgidext);
-			extensions_count++;
 		}
 		if(first && options.first_object > 0 && object_id == options.first_object) {
 			/* Add the Prior Object ID Gap extension */
 			poidext.id = IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP;
 			poidext.value.number = options.first_object;
 			exts = g_list_append(exts, &poidext);
-			extensions_count++;
 		}
 		if(options.extensions) {
 			/* Just for fun, we add a couple of fake extensions to the object: a numeric
@@ -301,7 +293,6 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 			dataext.value.data.buffer = (uint8_t *)"lminiero";
 			dataext.value.data.length = strlen("lminiero");
 			exts = g_list_append(exts, &dataext);
-			extensions_count += 2;
 		}
 		extensions_len = imquic_moq_build_object_extensions(exts, extensions, sizeof(extensions));
 		g_list_free(exts);
@@ -336,7 +327,6 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		.payload_len = strlen(text),
 		.extensions = extensions,
 		.extensions_len = extensions_len,
-		.extensions_count = extensions_count,
 		.delivery = delivery,
 		.end_of_stream = FALSE
 	};
@@ -349,7 +339,6 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		object.payload = NULL;
 		object.extensions = NULL;
 		object.extensions_len = 0;
-		object.extensions_count = 0;
 		object.end_of_stream = TRUE;
 		imquic_moq_send_object(moq_conn, &object);
 	}
@@ -440,8 +429,6 @@ int main(int argc, char *argv[]) {
 			delivery = IMQUIC_MOQ_USE_DATAGRAM;
 		} else if(!strcasecmp(options.delivery, "subgroup")) {
 			delivery = IMQUIC_MOQ_USE_SUBGROUP;
-		} else if(!strcasecmp(options.delivery, "track")) {
-			delivery = IMQUIC_MOQ_USE_TRACK;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Unsupported delivery mode '%s'\n", options.delivery);
 			ret = 1;

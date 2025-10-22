@@ -88,7 +88,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_role(conn, IMQUIC_MOQ_SUBSCRIBER);
 	imquic_moq_set_max_request_id(conn, max_request_id);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
@@ -297,12 +296,12 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id
 		g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, uint64_t request_id) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_subns_error_code error_code, const char *reason) {
+static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_subns_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
@@ -320,7 +319,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		if(object->end_of_stream) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d on empty packet)\n",
 				imquic_get_connection_name(conn), imquic_moq_object_status_str(object->object_status), object->end_of_stream);
-			if(object->delivery == IMQUIC_MOQ_USE_TRACK || (object->delivery == IMQUIC_MOQ_USE_FETCH && options.join_offset < 0)) {
+			if(object->delivery == IMQUIC_MOQ_USE_FETCH && options.join_offset < 0) {
 				/* Stop here */
 				g_atomic_int_inc(&stop);
 			}
@@ -415,7 +414,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
 			imquic_get_connection_name(conn), imquic_moq_object_status_str(object->object_status), object->end_of_stream);
-		if(object->delivery == IMQUIC_MOQ_USE_TRACK || (object->delivery == IMQUIC_MOQ_USE_FETCH && options.join_offset < 0)) {
+		if(object->delivery == IMQUIC_MOQ_USE_FETCH && options.join_offset < 0) {
 			/* Last object received, stop here */
 			g_atomic_int_inc(&stop);
 		}

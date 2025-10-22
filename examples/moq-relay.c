@@ -375,7 +375,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_role(conn, IMQUIC_MOQ_PUBSUB);
 	imquic_moq_set_max_request_id(conn, 20);
 }
 
@@ -411,7 +410,7 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 		/* Already published, reject */
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Namespace already published\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_publish_namespace(conn, request_id, tns, IMQUIC_MOQ_PUBNSERR_INTERNAL_ERROR, "Namespace already published");
+		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_PUBNSERR_INTERNAL_ERROR, "Namespace already published");
 		return;
 	}
 	/* Find the publisher from this connection */
@@ -442,7 +441,7 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 	}
 	imquic_mutex_unlock(&mutex);
 	/* Accept the publish */
-	imquic_moq_accept_publish_namespace(conn, request_id, tns);
+	imquic_moq_accept_publish_namespace(conn, request_id);
 }
 
 static void imquic_demo_incoming_publish_namespace_cancel(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason) {
@@ -1030,7 +1029,7 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, tns, ns);
 	monitors = g_list_prepend(monitors, mon);
 	imquic_mutex_unlock(&mutex);
-	imquic_moq_accept_subscribe_namespace(conn, request_id, tns);
+	imquic_moq_accept_subscribe_namespace(conn, request_id);
 }
 
 static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, imquic_moq_namespace *tns) {
