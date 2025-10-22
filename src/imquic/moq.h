@@ -364,6 +364,20 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
+/*! \brief MoQ subscription filter */
+typedef struct imquic_moq_subscription_filter {
+	/*! \brief Filter type */
+	imquic_moq_filter_type type;
+	/*! \brief Start location (depending on filter type) */
+	imquic_moq_location start_location;
+	/*! \brief End group (depending on filter type) */
+	uint64_t end_group;
+} imquic_moq_subscription_filter;
+
+/*! \brief MoQ request parameters */
+typedef struct imquic_moq_request_parameters imquic_moq_request_parameters;
+/* TODO Add getters and setters */
+
 /*! \brief Ways of sending objects */
 typedef enum imquic_moq_delivery {
 	/*! \brief A single object on a \c DATAGRAM */

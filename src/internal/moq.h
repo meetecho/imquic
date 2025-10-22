@@ -180,18 +180,27 @@ typedef enum imquic_moq_setup_parameter_type {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type type);
 
-/*! \brief MoQ subscribe parameter types */
-typedef enum imquic_moq_subscribe_parameter_type {
-	IMQUIC_MOQ_SUB_PARAM_AUTHORIZATION_TOKEN_v11 = 0x01,	/* Deprecated in v12 */
-	IMQUIC_MOQ_SUB_PARAM_DELIVERY_TIMEOUT = 0x02,
-	IMQUIC_MOQ_SUB_PARAM_AUTHORIZATION_TOKEN = 0x03,
-	IMQUIC_MOQ_SUB_PARAM_MAX_CACHE_DURATION = 0x04,
-} imquic_moq_subscribe_parameter_type;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_subscribe_parameter_type value.
- * @param type The imquic_moq_subscribe_parameter_type value
+/*! \brief MoQ request parameter types */
+typedef enum imquic_moq_request_parameter_type {
+	IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN_v11 = 0x01,	/* Deprecated in v12 */
+	IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN = 0x03,
+	IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT = 0x02,
+	IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION = 0x04,
+	IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY = 0x0E,
+	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY = 0x20,
+	IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER = 0x22,
+	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER = 0x21,
+	IMQUIC_MOQ_REQUEST_PARAM_EXPIRES = 0x8,
+	IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT = 0x9,
+	IMQUIC_MOQ_REQUEST_PARAM_FORWARD = 0x10,
+	IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS = 0x30,
+	IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST = 0x32,
+} imquic_moq_request_parameter_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_request_parameter_type value.
+ * @param type The imquic_moq_request_parameter_type value
  * @param version The version of the connection
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_subscribe_parameter_type_str(imquic_moq_subscribe_parameter_type type, imquic_moq_version version);
+const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_type type, imquic_moq_version version);
 
 /*! \brief MoQ setup parameters */
 typedef struct imquic_moq_setup_parameters {
@@ -225,8 +234,8 @@ typedef struct imquic_moq_setup_parameters {
 	gboolean unknown;
 } imquic_moq_setup_parameters;
 
-/*! \brief MoQ subscribe parameters */
-typedef struct imquic_moq_subscribe_parameters {
+/*! \brief MoQ request parameters */
+struct imquic_moq_request_parameters {
 	/*! \brief Whether the AUTHORIZATION_TOKEN parameter is set */
 	gboolean auth_token_set;
 	/*! \brief Value of the AUTHORIZATION_TOKEN parameter */
@@ -241,9 +250,45 @@ typedef struct imquic_moq_subscribe_parameters {
 	gboolean max_cache_duration_set;
 	/*! \brief Value of the MAX_CACHE_DURATION parameter */
 	uint64_t max_cache_duration;
+	/*! \brief Whether the PUBLISHER_PRIORITY parameter is set */
+	gboolean publisher_priority_set;
+	/*! \brief Value of the PUBLISHER_PRIORITY parameter */
+	uint8_t publisher_priority;
+	/*! \brief Whether the SUBSCRIBER_PRIORITY parameter is set */
+	gboolean subscriber_priority_set;
+	/*! \brief Value of the SUBSCRIBER_PRIORITY parameter */
+	uint8_t subscriber_priority;
+	/*! \brief Whether the GROUP_ORDER parameter is set */
+	gboolean group_order_set;
+	/*! \brief Value of the GROUP_ORDER parameter */
+	gboolean group_order_ascending;
+	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
+	gboolean subscription_filter_set;
+	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
+	imquic_moq_subscription_filter subscription_filter;
+	/*! \brief Whether the EXPIRES parameter is set */
+	gboolean expires_set;
+	/*! \brief Value of the EXPIRES parameter */
+	uint64_t expires;
+	/*! \brief Whether the LARGEST_OBJECT parameter is set */
+	gboolean largest_object_set;
+	/*! \brief Value of the LARGEST_OBJECT parameter */
+	imquic_moq_location largest_object;
+	/*! \brief Whether the FORWARD parameter is set */
+	gboolean forward_set;
+	/*! \brief Value of the FORWARD parameter */
+	gboolean forward;
+	/*! \brief Whether the DYNAMIC_GROUPS parameter is set */
+	gboolean dynamic_groups_set;
+	/*! \brief Value of the DYNAMIC_GROUPS parameter */
+	gboolean dynamic_groups;
+	/*! \brief Whether the NEW_GROUP_REQUEST parameter is set */
+	gboolean new_group_request_set;
+	/*! \brief Value of the NEW_GROUP_REQUEST parameter */
+	uint64_t new_group_request;
 	/*! \brief Whether there's unknown parameters */
 	gboolean unknown;
-} imquic_moq_subscribe_parameters;
+};
 
 /*! \brief Group ordering for FETCH
  * \note Only supported since version -07 of the protocol */
@@ -761,7 +806,7 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_subscribe_parameters *parameters);
+	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c PUBLISH_NAMESPACE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -813,7 +858,7 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, uint8_t group_order,
-	gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id, gboolean forward, imquic_moq_subscribe_parameters *parameters);
+	gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id, gboolean forward, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c PUBLISH_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -832,7 +877,7 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	gboolean forward, uint8_t priority, uint8_t group_order,
 	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object,
-	imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c PUBLISH_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -863,7 +908,7 @@ size_t imquic_moq_add_publish_error(imquic_moq_context *moq, uint8_t *bytes, siz
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, gboolean forward,
-	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_UPDATE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -881,7 +926,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
 size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t request_id, uint64_t sub_request_id,
 	uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, uint8_t priority,
-	gboolean forward, imquic_moq_subscribe_parameters *parameters);
+	gboolean forward, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -897,7 +942,7 @@ size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, 
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	uint64_t track_alias, uint64_t expires, imquic_moq_group_order group_order, gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id,
-	imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -936,7 +981,7 @@ size_t imquic_moq_add_publish_done(imquic_moq_context *moq, uint8_t *bytes, size
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_subscribe_parameters *parameters);
+	uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_NAMESPACE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -979,7 +1024,7 @@ size_t imquic_moq_add_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *by
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 	uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, imquic_moq_group_order group_order,
-	imquic_moq_location_range *range, imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add an \c FETCH_CANCEL message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1000,7 +1045,7 @@ size_t imquic_moq_add_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, size
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	uint8_t group_order, uint8_t end_of_track, uint64_t largest_group_id, uint64_t largest_object_id,
-	imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c FETCH_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1030,7 +1075,7 @@ size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint8_t priority, uint8_t group_order, gboolean forward,
-	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_filter_type filter, uint64_t start_group, uint64_t start_object, uint64_t end_group, uint64_t end_object, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c TRACK_STATUS_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1046,7 +1091,7 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_track_status_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	uint64_t track_alias, uint64_t expires, imquic_moq_group_order group_order, gboolean content_exists, uint64_t largest_group_id, uint64_t largest_object_id,
-	imquic_moq_subscribe_parameters *parameters);
+	imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c TRACK_STATUS_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1188,11 +1233,11 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
  * @param[in] bytes Buffer containing the parameter to parse
  * @param[in] blen Size of the buffer to parse
- * @param[out] params imquic_moq_subscribe_parameters instance to put the parsed parameter in
+ * @param[out] params imquic_moq_request_parameters instance to put the parsed parameter in
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parameter, if successful, or 0 otherwise */
-size_t imquic_moq_parse_subscribe_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	imquic_moq_subscribe_parameters *params, uint8_t *error);
+size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	imquic_moq_request_parameters *params, uint8_t *error);
 /*! \brief Helper to add a MoQ (setup or subscribe) parameter with a numeric value to a buffer
  * @param moq The imquic_moq_context instance the parameter is for
  * @param bytes Buffer to add the parameter to
@@ -1221,15 +1266,15 @@ size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 	imquic_moq_setup_parameters *parameters,
 	uint8_t *bytes, size_t blen, uint8_t *params_num);
 
-/*! \brief Helper to serialize a imquic_moq_subscribe_parameters set to a buffer
+/*! \brief Helper to serialize a imquic_moq_request_parameters set to a buffer
  * @param[in] moq The imquic_moq_context instance the parameter is for
- * @param[in] parameters The imquic_moq_subscribe_parameters to serialize
+ * @param[in] parameters The imquic_moq_request_parameters to serialize
  * @param[out] bytes The buffer to add paramerers to
  * @param[in] blen The size of the buffer
  * @param[out] params_num The number of parameters added to the buffer
  * @returns The size of the serialized parameters, if successful, or 0 otherwise */
-size_t imquic_moq_subscribe_parameters_serialize(imquic_moq_context *moq,
-	imquic_moq_subscribe_parameters *parameters,
+size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
+	imquic_moq_request_parameters *parameters,
 	uint8_t *bytes, size_t blen, uint8_t *params_num);
 ///@}
 
@@ -1368,7 +1413,7 @@ void imquic_qlog_moq_message_add_setup_parameters(json_t *message, imquic_moq_se
  * @param message The message object to update
  * @param parameters The subscribe parameters to convert
  * @param name The name the array should have in the message object */
-void imquic_qlog_moq_message_add_subscribe_parameters(json_t *message, imquic_moq_subscribe_parameters *parameters, const char *name);
+void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_request_parameters *parameters, const char *name);
 /*! \brief Add a \c control_message_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message
