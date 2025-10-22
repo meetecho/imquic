@@ -77,9 +77,13 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 
 static void imquic_demo_ready(imquic_connection *conn) {
 	/* Negotiation was done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection ready (%s)\n",
-		imquic_get_connection_name(conn), imquic_moq_version_str(imquic_moq_get_version(conn)));
+	const char *peer = imquic_moq_get_remote_implementation(conn);
 	moq_version = imquic_moq_get_version(conn);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection ready\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s\n", imquic_get_connection_name(conn),
+		imquic_moq_version_str(moq_version));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s\n", imquic_get_connection_name(conn),
+		peer ? peer : "unknown implementation");
 	g_atomic_int_set(&connected, 1);
 	/* Let's publish our namespace or publish right away */
 	imquic_moq_namespace tns[32];	/* FIXME */

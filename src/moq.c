@@ -112,7 +112,6 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		conn->socket->callbacks.moq.new_connection(conn, user_data);
 	/* After the function returns, check if we can do something */
 	if(!moq->is_server) {
-		moq->version_set = TRUE;
 		/* Generate a CLIENT_SETUP */
 		imquic_moq_setup_parameters parameters = { 0 };
 		if(moq->local_max_request_id > 0) {
@@ -232,6 +231,7 @@ static void imquic_moq_context_destroy(imquic_moq_context *moq) {
 
 static void imquic_moq_context_free(const imquic_refcount *moq_ref) {
 	imquic_moq_context *moq = imquic_refcount_containerof(moq_ref, imquic_moq_context, ref);
+	g_free(moq->peer_implementation);
 	g_list_free(moq->supported_versions);
 	if(moq->streams)
 		g_hash_table_unref(moq->streams);
@@ -1511,6 +1511,7 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken CLIENT_SETUP");
 		offset += length;
 		uint64_t version = 0;
+		gboolean version_set = FALSE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- %"SCNu64" supported versions:\n",
 			imquic_get_connection_name(moq->conn), supported_vers);
 		g_list_free(moq->supported_versions);
@@ -1520,14 +1521,14 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken CLIENT_SETUP");
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- -- %"SCNu64" (expected %"SCNu32" -- %"SCNu32")\n",
 				imquic_get_connection_name(moq->conn), version, IMQUIC_MOQ_VERSION_MIN, IMQUIC_MOQ_VERSION_MAX);
-			if(!moq->version_set) {
+			if(!version_set) {
 				if(version == moq->version && moq->version <= IMQUIC_MOQ_VERSION_MAX) {
-					moq->version_set = TRUE;
+					version_set = TRUE;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- -- -- Selected version %"SCNu32"\n",
 						imquic_get_connection_name(moq->conn), moq->version);
 				} else if((version >= IMQUIC_MOQ_VERSION_MIN && version <= IMQUIC_MOQ_VERSION_14) && moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY) {
 					moq->version = version;
-					moq->version_set = TRUE;
+					version_set = TRUE;
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- Selected version %"SCNu32"\n",
 						imquic_get_connection_name(moq->conn), moq->version);
 				} else {
@@ -1562,9 +1563,11 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
 	}
 	if(parameters.moqt_implementation_set && moq->version >= IMQUIC_MOQ_VERSION_14) {
-		/* Print the implemntation */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Remote MoQT implementation: %s\n",
-			imquic_get_connection_name(moq->conn), parameters.moqt_implementation);
+		/* Take note of the implemntation */
+		g_free(moq->peer_implementation);
+		moq->peer_implementation = NULL;
+		if(strlen(parameters.moqt_implementation) > 0)
+			moq->peer_implementation = g_strdup(parameters.moqt_implementation);
 	}
 	if(parameters.path_set) {
 		/* TODO Handle and validate */
@@ -1657,12 +1660,10 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %"SCNu64" (expected %"SCNu32" -- %"SCNu32")\n",
 			imquic_get_connection_name(moq->conn), version, IMQUIC_MOQ_VERSION_MIN, IMQUIC_MOQ_VERSION_MAX);
 		if(version == moq->version && moq->version <= IMQUIC_MOQ_VERSION_MAX) {
-			moq->version_set = TRUE;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Selected version %"SCNu32"\n",
 				imquic_get_connection_name(moq->conn), moq->version);
 		} else if((version >= IMQUIC_MOQ_VERSION_MIN && version <= IMQUIC_MOQ_VERSION_14) && moq->version == IMQUIC_MOQ_VERSION_ANY_LEGACY) {
 			moq->version = version;
-			moq->version_set = TRUE;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Selected version %"SCNu32"\n",
 				imquic_get_connection_name(moq->conn), moq->version);
 		} else {
@@ -1691,9 +1692,11 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
 	}
 	if(parameters.moqt_implementation_set && moq->version >= IMQUIC_MOQ_VERSION_14) {
-		/* Print the implemntation */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Remote MoQT implementation: %s\n",
-			imquic_get_connection_name(moq->conn), parameters.moqt_implementation);
+		/* Take note of the implemntation */
+		g_free(moq->peer_implementation);
+		moq->peer_implementation = NULL;
+		if(strlen(parameters.moqt_implementation) > 0)
+			moq->peer_implementation = g_strdup(parameters.moqt_implementation);
 	}
 	if(parameters.path_set) {
 		/* Servers can't use PATH */
@@ -5287,7 +5290,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 imquic_moq_version imquic_moq_get_version(imquic_connection *conn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || !moq->version_set) {
+	if(moq == NULL) {
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -5363,6 +5366,18 @@ uint64_t imquic_moq_get_next_request_id(imquic_connection *conn) {
 	uint64_t next = moq->next_request_id;
 	imquic_mutex_unlock(&moq_mutex);
 	return next;
+}
+
+const char *imquic_moq_get_remote_implementation(imquic_connection *conn) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL) {
+		imquic_mutex_unlock(&moq_mutex);
+		return 0;
+	}
+	const char *implementation = (const char *)moq->peer_implementation;
+	imquic_mutex_unlock(&moq_mutex);
+	return implementation;
 }
 
 /* Object extensions management */

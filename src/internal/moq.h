@@ -234,62 +234,6 @@ typedef struct imquic_moq_setup_parameters {
 	gboolean unknown;
 } imquic_moq_setup_parameters;
 
-/*! \brief MoQ request parameters */
-struct imquic_moq_request_parameters {
-	/*! \brief Whether the AUTHORIZATION_TOKEN parameter is set */
-	gboolean auth_token_set;
-	/*! \brief Value of the AUTHORIZATION_TOKEN parameter */
-	uint8_t auth_token[256];
-	/*! \brief Size of the AUTHORIZATION_TOKEN parameter */
-	size_t auth_token_len;
-	/*! \brief Whether the DELIVERY_TIMEOUT parameter is set */
-	gboolean delivery_timeout_set;
-	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
-	uint64_t delivery_timeout;
-	/*! \brief Whether the MAX_CACHE_DURATION parameter is set */
-	gboolean max_cache_duration_set;
-	/*! \brief Value of the MAX_CACHE_DURATION parameter */
-	uint64_t max_cache_duration;
-	/*! \brief Whether the PUBLISHER_PRIORITY parameter is set */
-	gboolean publisher_priority_set;
-	/*! \brief Value of the PUBLISHER_PRIORITY parameter */
-	uint8_t publisher_priority;
-	/*! \brief Whether the SUBSCRIBER_PRIORITY parameter is set */
-	gboolean subscriber_priority_set;
-	/*! \brief Value of the SUBSCRIBER_PRIORITY parameter */
-	uint8_t subscriber_priority;
-	/*! \brief Whether the GROUP_ORDER parameter is set */
-	gboolean group_order_set;
-	/*! \brief Value of the GROUP_ORDER parameter */
-	gboolean group_order_ascending;
-	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
-	gboolean subscription_filter_set;
-	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
-	imquic_moq_subscription_filter subscription_filter;
-	/*! \brief Whether the EXPIRES parameter is set */
-	gboolean expires_set;
-	/*! \brief Value of the EXPIRES parameter */
-	uint64_t expires;
-	/*! \brief Whether the LARGEST_OBJECT parameter is set */
-	gboolean largest_object_set;
-	/*! \brief Value of the LARGEST_OBJECT parameter */
-	imquic_moq_location largest_object;
-	/*! \brief Whether the FORWARD parameter is set */
-	gboolean forward_set;
-	/*! \brief Value of the FORWARD parameter */
-	gboolean forward;
-	/*! \brief Whether the DYNAMIC_GROUPS parameter is set */
-	gboolean dynamic_groups_set;
-	/*! \brief Value of the DYNAMIC_GROUPS parameter */
-	gboolean dynamic_groups;
-	/*! \brief Whether the NEW_GROUP_REQUEST parameter is set */
-	gboolean new_group_request_set;
-	/*! \brief Value of the NEW_GROUP_REQUEST parameter */
-	uint64_t new_group_request;
-	/*! \brief Whether there's unknown parameters */
-	gboolean unknown;
-};
-
 /*! \brief Group ordering for FETCH
  * \note Only supported since version -07 of the protocol */
 typedef enum imquic_moq_group_order {
@@ -352,8 +296,8 @@ typedef struct imquic_moq_context {
 	GList *supported_versions;
 	/*! \brief Negotiated version */
 	imquic_moq_version version;
-	/*! \brief Whether a version has been set */
-	gboolean version_set;
+	/*! \brief MoQ implementation of our peer, if provided */
+	char *peer_implementation;
 	/*! \brief Auth data to use when connecting (clients only) */
 	uint8_t *auth;
 	/*! \brief Size of the auth data to use when connecting (clients only) */

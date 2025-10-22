@@ -394,8 +394,12 @@ static uint64_t imquic_demo_incoming_moq_connection(imquic_connection *conn, uin
 
 static void imquic_demo_ready(imquic_connection *conn) {
 	/* Negotiation was done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection ready (%s)\n",
-		imquic_get_connection_name(conn), imquic_moq_version_str(imquic_moq_get_version(conn)));
+	const char *peer = imquic_moq_get_remote_implementation(conn);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection ready\n", imquic_get_connection_name(conn));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s\n", imquic_get_connection_name(conn),
+		imquic_moq_version_str(imquic_moq_get_version(conn)));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s\n", imquic_get_connection_name(conn),
+		peer ? peer : "unknown implementation");
 }
 
 static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, uint8_t *auth, size_t authlen) {

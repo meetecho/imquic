@@ -374,9 +374,72 @@ typedef struct imquic_moq_subscription_filter {
 	uint64_t end_group;
 } imquic_moq_subscription_filter;
 
-/*! \brief MoQ request parameters */
-typedef struct imquic_moq_request_parameters imquic_moq_request_parameters;
-/* TODO Add getters and setters */
+/*! \brief MoQ request parameters
+ * \note This struct is used in the MoQ API signatures even when the
+ * negotiated version of MoQ is lower than v15, that is when most of
+ * the properties below were fields in the messages themselves, rather
+ * than parameters as they are now. The library takes care of the
+ * serialization/deserialization process automatically, so you can
+ * refer to this struct from an application perspective, and the
+ * library will take care of the rest. Notice that not all of these
+ * parameters are supported in all MoQ requests and responses, which
+ * means that the library will silently ignore parameters that are
+ * not supposed to be there in case. */
+typedef struct imquic_moq_request_parameters {
+	/*! \brief Whether the AUTHORIZATION_TOKEN parameter is set */
+	gboolean auth_token_set;
+	/*! \brief Value of the AUTHORIZATION_TOKEN parameter */
+	uint8_t auth_token[256];
+	/*! \brief Size of the AUTHORIZATION_TOKEN parameter */
+	size_t auth_token_len;
+	/*! \brief Whether the DELIVERY_TIMEOUT parameter is set */
+	gboolean delivery_timeout_set;
+	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
+	uint64_t delivery_timeout;
+	/*! \brief Whether the MAX_CACHE_DURATION parameter is set */
+	gboolean max_cache_duration_set;
+	/*! \brief Value of the MAX_CACHE_DURATION parameter */
+	uint64_t max_cache_duration;
+	/*! \brief Whether the PUBLISHER_PRIORITY parameter is set */
+	gboolean publisher_priority_set;
+	/*! \brief Value of the PUBLISHER_PRIORITY parameter */
+	uint8_t publisher_priority;
+	/*! \brief Whether the SUBSCRIBER_PRIORITY parameter is set */
+	gboolean subscriber_priority_set;
+	/*! \brief Value of the SUBSCRIBER_PRIORITY parameter */
+	uint8_t subscriber_priority;
+	/*! \brief Whether the GROUP_ORDER parameter is set */
+	gboolean group_order_set;
+	/*! \brief Value of the GROUP_ORDER parameter */
+	gboolean group_order_ascending;
+	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
+	gboolean subscription_filter_set;
+	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
+	imquic_moq_subscription_filter subscription_filter;
+	/*! \brief Whether the EXPIRES parameter is set */
+	gboolean expires_set;
+	/*! \brief Value of the EXPIRES parameter */
+	uint64_t expires;
+	/*! \brief Whether the LARGEST_OBJECT parameter is set */
+	gboolean largest_object_set;
+	/*! \brief Value of the LARGEST_OBJECT parameter */
+	imquic_moq_location largest_object;
+	/*! \brief Whether the FORWARD parameter is set */
+	gboolean forward_set;
+	/*! \brief Value of the FORWARD parameter */
+	gboolean forward;
+	/*! \brief Whether the DYNAMIC_GROUPS parameter is set */
+	gboolean dynamic_groups_set;
+	/*! \brief Value of the DYNAMIC_GROUPS parameter */
+	gboolean dynamic_groups;
+	/*! \brief Whether the NEW_GROUP_REQUEST parameter is set */
+	gboolean new_group_request_set;
+	/*! \brief Value of the NEW_GROUP_REQUEST parameter */
+	uint64_t new_group_request;
+	/*! \brief Whether there's unknown parameters
+	 * \note Only set by the stack, ignored if set by the application */
+	gboolean unknown;
+} imquic_moq_request_parameters;
 
 /*! \brief Ways of sending objects */
 typedef enum imquic_moq_delivery {
@@ -985,10 +1048,10 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_15,
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
-	IMQUIC_MOQ_VERSION_ANY = 0xffffffff,
+	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
 	/* Any version between v11 and v14: for client, it means offer all those versions;
 	 * for servers, it means accept the first supported offered version */
-	IMQUIC_MOQ_VERSION_ANY_LEGACY = 0xfffffffe
+	IMQUIC_MOQ_VERSION_ANY_LEGACY = 0xff0000fe
 } imquic_moq_version;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_version property.
  * @param version The imquic_moq_version property
@@ -1026,6 +1089,14 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
  * @param conn The imquic_connection to query
  * @returns The next Request ID */
 uint64_t imquic_moq_get_next_request_id(imquic_connection *conn);
+
+/*! \brief Helper function to return the MoQ implementation name as a
+ * string, if provided by the peer of this connection
+ * \note The string is owned by the library, so if you'll need to rely
+ * on it externally in your application, you should duplicate it yourself
+ * @param conn The imquic_connection to query
+ * @returns The name of the MoQ implementation, if available, or NULL otherwise */
+const char *imquic_moq_get_remote_implementation(imquic_connection *conn);
 
 /** @name Using the MoQ API
  */
