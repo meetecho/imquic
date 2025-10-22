@@ -440,6 +440,12 @@ typedef struct imquic_moq_request_parameters {
 	 * \note Only set by the stack, ignored if set by the application */
 	gboolean unknown;
 } imquic_moq_request_parameters;
+/*! \brief Helper method to initialize some defaults values (where
+ * applicable) for the supported parameters
+ * \note This doesn't set any of the 'set' properties to TRUE, it simply
+ * sets some defaults values for some properties (e.g., 128 for priority)
+ * @param parameters The imquic_moq_request_parameters to initialize */
+void imquic_moq_request_parameters_init_defaults(imquic_moq_request_parameters *parameters);
 
 /*! \brief Ways of sending objects */
 typedef enum imquic_moq_delivery {

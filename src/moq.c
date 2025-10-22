@@ -915,6 +915,16 @@ size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 	return offset;
 }
 
+void imquic_moq_request_parameters_init_defaults(imquic_moq_request_parameters *parameters) {
+	if(parameters == NULL)
+		return;
+	memset(parameters, 0, sizeof(imquic_moq_request_parameters));
+	parameters->publisher_priority = 128;
+	parameters->subscriber_priority = 128;
+	parameters->group_order_ascending = TRUE;
+	parameters->forward = TRUE;
+}
+
 size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		imquic_moq_request_parameters *parameters,
 		uint8_t *bytes, size_t blen, uint8_t *params_num) {
