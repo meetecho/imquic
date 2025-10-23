@@ -894,7 +894,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
  * @param request_id The request ID to put in the message
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
- * @param track_alias The track alias to put in the message (ignored after v12)
+ * @param track_alias The track alias to put in the message (ignored starting from v12)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_sub_error_code error, const char *reason, uint64_t track_alias);
@@ -947,9 +947,10 @@ size_t imquic_moq_add_subscribe_namespace_error(imquic_moq_context *moq, uint8_t
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param track_namespace The namespace to put in the message
+ * @param request_id The request ID to put in the message (added in v15)
+ * @param track_namespace The namespace to put in the message (ignored starting from v15)
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace);
+size_t imquic_moq_add_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_namespace *track_namespace);
 /*! \brief Helper to add a \c FETCH message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1273,7 +1274,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_NAMESPACE_ERROR messages */
 	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_subns_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNSUBSCRIBE_NAMESPACE messages */
-	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, imquic_moq_namespace *tns);
+	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen);

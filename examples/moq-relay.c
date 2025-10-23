@@ -107,11 +107,12 @@ static imquic_demo_moq_subscription *imquic_demo_moq_subscription_create(imquic_
 static void imquic_demo_moq_subscription_destroy(imquic_demo_moq_subscription *s);
 
 typedef struct imquic_demo_moq_monitor {
+	uint64_t request_id;
 	imquic_connection *conn;
 	imquic_moq_namespace *tns;
 	char *ns;
 } imquic_demo_moq_monitor;
-static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection *conn, imquic_moq_namespace *tns, const char *ns);
+static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *ns);
 static void imquic_demo_moq_monitor_destroy(imquic_demo_moq_monitor *mon);
 
 /* Constructors and destructors for helper structs */
@@ -274,9 +275,10 @@ static void imquic_demo_moq_subscription_destroy(imquic_demo_moq_subscription *s
 	}
 }
 
-static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection *conn, imquic_moq_namespace *tns, const char *ns) {
+static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *ns) {
 	imquic_demo_moq_monitor *mon = g_malloc0(sizeof(imquic_demo_moq_monitor));
 	mon->conn = conn;
+	mon->request_id = request_id;
 	mon->ns = ns ? g_strdup(ns) : NULL;
 	imquic_moq_namespace *new_tns = NULL, *prev = NULL;
 	while(tns) {
@@ -1030,25 +1032,32 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 		imquic_moq_print_auth_info(conn, auth, authlen);
 	/* Keep track of this as a monitor */
 	imquic_mutex_lock(&mutex);
-	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, tns, ns);
+	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns);
 	monitors = g_list_prepend(monitors, mon);
 	imquic_mutex_unlock(&mutex);
 	imquic_moq_accept_subscribe_namespace(conn, request_id);
 }
 
-static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	/* We received an unsubscribe */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for namespace prefix '%s'\n",
-		imquic_get_connection_name(conn), ns);
+	uint32_t conn_moq_version = imquic_moq_get_version(conn);
+	if(conn_moq_version <= IMQUIC_MOQ_VERSION_14) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for namespace prefix '%s'\n",
+			imquic_get_connection_name(conn), ns);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for namespace via ID %"SCNu64"\n",
+			imquic_get_connection_name(conn), request_id);
+	}
 	/* FIXME Get rid of the associated monitor */
 	imquic_demo_moq_monitor *mon = NULL;
 	imquic_mutex_lock(&mutex);
 	GList *temp = monitors;
 	while(temp) {
 		mon = (imquic_demo_moq_monitor *)temp->data;
-		if(conn == mon->conn && !strcasecmp(ns, mon->ns)) {
+		if(conn == mon->conn && ((conn_moq_version <= IMQUIC_MOQ_VERSION_14 && !strcasecmp(ns, mon->ns)) ||
+				(conn_moq_version >= IMQUIC_MOQ_VERSION_15 && request_id == mon->request_id))) {
 			monitors = g_list_delete_link(monitors, temp);
 			imquic_demo_moq_monitor_destroy(mon);
 			break;

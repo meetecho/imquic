@@ -963,7 +963,7 @@ void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe_namespace Pointer to the function that will handle the incoming \c UNSUBSCRIBE_NAMESPACE */
 void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
-	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, imquic_moq_namespace *tns));
+	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1248,9 +1248,10 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
 int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_subns_error_code error_code, const char *reason);
 /*! \brief Function to send a \c UNSUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_unsubscribe_namespace(imquic_connection *conn, imquic_moq_namespace *tns);
+int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
