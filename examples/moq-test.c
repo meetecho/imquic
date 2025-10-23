@@ -304,16 +304,16 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
-	if(auth != NULL)
-		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(parameters->auth_token_set)
+		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* Parse the namespace tuple to a test profile */
 	int64_t test[IMQUIC_DEMO_TEST_MAX];
 	char err[256];
@@ -340,11 +340,13 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* Create a subscription to this track */
 	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, track_alias);
 	memcpy(s->test, test, sizeof(test));
-	s->forward = forward;
+	s->forward = parameters->forward;
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
 	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
 	g_mutex_unlock(&mutex);
 	/* Check the filter */
+	uint64_t filter_type = parameters->subscription_filter_set ?
+		parameters->subscription_filter.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 	s->range.end.group = IMQUIC_MAX_VARINT;
 	s->range.end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
@@ -356,22 +358,28 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		s->range.start.group = test[TUPLE_FIELD_START_GROUP] + 1;
 		s->range.start.object = 0;
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
-		s->range.start = *start_location;
+		s->range.start = parameters->subscription_filter.start_location;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
 			imquic_get_connection_name(conn), s->range.start.group, s->range.start.object);
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		s->range.start = *start_location;
-		if(end_location->group == 0)
+		s->range.start = parameters->subscription_filter.start_location;
+		if(parameters->subscription_filter.end_group == 0)
 			s->range.end.group = IMQUIC_MAX_VARINT;
 		else
-			s->range.end.group = end_location->group - 1;
+			s->range.end.group = parameters->subscription_filter.end_group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), s->range.start.group, s->range.start.object, s->range.end.group);
 	}
 	/* Accept and serve the test subscription */
 	/* FIXME Each subscriber gets its own objects, so it's always a fresh start,
 	 * which means we don't provide any largest location before answering */
-	imquic_moq_accept_subscribe(conn, request_id, track_alias, 0, FALSE, NULL);
+	imquic_moq_request_parameters rparams;
+	imquic_moq_request_parameters_init_defaults(&rparams);
+	rparams.expires_set = TRUE;
+	rparams.expires = 0;
+	rparams.group_order_set = TRUE;
+	rparams.group_order_ascending = TRUE;
+	imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -382,8 +390,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id,
-		imquic_moq_location *start_location, uint64_t end_group, uint8_t priority, gboolean forward) {
+static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
@@ -398,9 +405,9 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 	/* Update the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id,
 		imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_14 ? &sub_request_id : &request_id);
-	if(s && !s->fetch) {
+	if(s && !s->fetch && parameters->forward_set) {
 		/* TODO Update start location and end group too */
-		s->forward = forward;
+		s->forward = parameters->forward;
 	}
 	g_mutex_unlock(&mutex);
 }
@@ -427,7 +434,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
+		imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -437,10 +444,11 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	else
 		range->end.object--;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s'/'%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, request_id, descending ? "descending" : "ascending",
+		imquic_get_connection_name(conn), ns, name, request_id,
+		parameters->group_order_ascending ? "ascending" : "descending",
 		range->start.group, range->start.object, range->end.group, range->end.object);
-	if(auth != NULL)
-		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(parameters->auth_token_set)
+		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* Parse the namespace tuple to a test profile */
 	int64_t test[IMQUIC_DEMO_TEST_MAX];
 	char err[256];
@@ -490,13 +498,17 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	/* Create a subscription to this track */
 	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, 0);
 	s->fetch = TRUE;
-	s->descending = descending;
+	s->descending = !parameters->group_order_ascending;
 	s->range = *range;
 	memcpy(s->test, test, sizeof(test));
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
 	g_mutex_unlock(&mutex);
 	/* Accept and serve the test subscription */
-	imquic_moq_accept_fetch(conn, request_id, descending, &largest);
+	imquic_moq_request_parameters rparams;
+	imquic_moq_request_parameters_init_defaults(&rparams);
+	rparams.group_order_set = parameters->group_order_set;
+	rparams.group_order_ascending = parameters->group_order_ascending;
+	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -508,13 +520,14 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 }
 
 static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id ,
-		gboolean absolute, uint64_t joining_start, gboolean descending, uint8_t *auth, size_t authlen) {
+		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters) {
 	/* We received a joining fetch */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), (absolute ? "absolute" : "relative"),
-		joining_request_id, request_id, joining_start, descending ? "descending" : "ascending");
-	if(auth != NULL)
-		imquic_moq_print_auth_info(conn, auth, authlen);
+		joining_request_id, request_id, joining_start,
+		parameters->group_order_ascending ? "ascending" : "descending");
+	if(parameters->auth_token_set)
+		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* TODO Add support for joining FETCH */
 	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_NOT_SUPPORTED, "Not implemented yet");
 }

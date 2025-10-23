@@ -101,17 +101,18 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), options.track_name);
 		/* Check if we need to prepare an auth token */
-		uint8_t auth[256];
-		size_t authlen = 0;
+		imquic_moq_request_parameters params;
+		imquic_moq_request_parameters_init_defaults(&params);
 		if(options.auth_info && strlen(options.auth_info) > 0) {
-			authlen = sizeof(auth);
-			if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen) < 0) {
-				authlen = 0;
+			params.auth_token_set = TRUE;
+			params.auth_token_len = sizeof(params.auth_token);
+			if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, params.auth_token, &params.auth_token_len) < 0) {
+				params.auth_token_set = FALSE;
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], auth, authlen);
+		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], &params);
 	} else {
 		/* We use PUBLISH */
 		if(moq_version < IMQUIC_MOQ_VERSION_12) {
@@ -128,18 +129,22 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		moq_request_id = imquic_moq_get_next_request_id(conn);
 		gboolean forward = FALSE;
 		/* Check if we need to prepare an auth token */
-		uint8_t auth[256];
-		size_t authlen = 0;
+		imquic_moq_request_parameters params;
+		imquic_moq_request_parameters_init_defaults(&params);
+		params.group_order_set = TRUE;
+		params.group_order_ascending = TRUE;
+		params.forward_set = TRUE;
+		params.forward = forward;
 		if(options.auth_info && strlen(options.auth_info) > 0) {
-			authlen = sizeof(auth);
-			if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, auth, &authlen) < 0) {
-				authlen = 0;
+			params.auth_token_set = TRUE;
+			params.auth_token_len = sizeof(params.auth_token);
+			if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, params.auth_token, &params.auth_token_len) < 0) {
+				params.auth_token_set = FALSE;
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias,
-			FALSE, NULL, forward, auth, authlen);
+		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias, &params);
 	}
 }
 
@@ -155,8 +160,7 @@ static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t request_id, gboolean forward, uint8_t priority, gboolean descending,
-		imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
+static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish '%"SCNu64"' accepted\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Start sending objects */
@@ -174,8 +178,8 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint8_t priority, gboolean descending, gboolean forward, imquic_moq_filter_type filter_type, imquic_moq_location *start_location, imquic_moq_location *end_location, uint8_t *auth, size_t authlen) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
@@ -195,15 +199,17 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* TODO Check if it matches our published namespace */
 	/* Check if there's authorization needed */
-	if(auth != NULL)
-		imquic_moq_print_auth_info(conn, auth, authlen);
+	if(parameters->auth_token_set)
+		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* TODO Check priority, filters, forwarding */
-	if(descending) {
+	if(!parameters->group_order_ascending) {
 		/* We don't support descending mode yet */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Descending group order unsupported, will send objects in ascending group order\n",
 			imquic_get_connection_name(conn));
 	}
 	/* Check the filter */
+	uint64_t filter_type = parameters->subscription_filter_set ?
+		parameters->subscription_filter.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 	gboolean pub_started = g_atomic_int_get(&started);
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
@@ -216,15 +222,15 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		sub_start.group = group_id + 1;
 		sub_start.object = 0;
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
-		sub_start = *start_location;
+		sub_start = parameters->subscription_filter.start_location;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object);
 	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		sub_start = *start_location;
-		if(end_location->group == 0)
+		sub_start = parameters->subscription_filter.start_location;
+		if(parameters->subscription_filter.end_group == 0)
 			sub_end.group = IMQUIC_MAX_VARINT;
 		else
-			sub_end.group = end_location->group - 1;
+			sub_end.group = parameters->subscription_filter.end_group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group);
 	}
@@ -232,7 +238,17 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	moq_request_id = request_id;
 	if(moq_version < IMQUIC_MOQ_VERSION_12)
 		moq_track_alias = track_alias;
-	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, 0, FALSE, pub_started ? &sub_start : NULL);
+	imquic_moq_request_parameters rparams;
+	imquic_moq_request_parameters_init_defaults(&rparams);
+	rparams.expires_set = TRUE;
+	rparams.expires = 0;
+	rparams.group_order_set = TRUE;
+	rparams.group_order_ascending = TRUE;
+	if(pub_started) {
+		rparams.largest_object_set = TRUE;
+		rparams.largest_object = sub_start;
+	}
+	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams);
 	/* Start sending objects */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
@@ -445,7 +461,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' extension)\n", options.first_object);
 	if(options.publish) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
-		if(moq_version == IMQUIC_MOQ_VERSION_ANY_LEGACY || (moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12)) {
+		if(moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12) {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
 			ret = 1;
 			goto done;
