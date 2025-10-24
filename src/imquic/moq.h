@@ -861,7 +861,7 @@ void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_namespace_accepted Pointer to the function that will fire when a \c PUBLISH_NAMESPACE is accepted */
 void imquic_set_publish_namespace_accepted_cb(imquic_endpoint *endpoint,
-	void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id));
+	void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an
  * \c PUBLISH_NAMESPACE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -921,6 +921,13 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * @param subscribe_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
 void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
 	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters));
+/*! \brief Configure the callback function to be notified when an OK
+ * is received for a \c SUBSCRIBE_UPDATE we previously sent
+ * @note This was only added in v15, and so will never be fired on older versions.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param subscribe_update_accepted Pointer to the function that will fire when a \c SUBSCRIBE_UPDATE is acknowledged */
+void imquic_set_subscribe_update_accepted_cb(imquic_endpoint *endpoint,
+	void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -950,7 +957,7 @@ void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_namespace_accepted Pointer to the function that will fire when an \c SUBSCRIBE_NAMESPACE is accepted */
 void imquic_set_subscribe_namespace_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id));
+	void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_NAMESPACE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1119,8 +1126,10 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, i
 /*! \brief Function to accept an incoming \c PUBLISH_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c PUBLISH_NAMESPACE request
+ * @param parameters The parameters to add to the request (ignored before v15)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t request_id);
+int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_request_parameters *parameters);
 /*! \brief Function to reject an incoming \c PUBLISH_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c PUBLISH_NAMESPACE request
@@ -1196,6 +1205,15 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id,
 	uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
+/*! \brief Function to accept an incoming \c SUBSCRIBE_UPDATE request
+ * \note This acknowledgement was only added in v15, which means it will
+ * be a no-action if you try to send it when negotiating an older version
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_UPDATE request
+ * @param parameters The parameters to add to the request
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_accept_subscribe_update(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on
@@ -1221,8 +1239,10 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 /*! \brief Function to accept an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
+ * @param parameters The parameters to add to the request (ignored before v15)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t request_id);
+int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_request_parameters *parameters);
 /*! \brief Function to reject an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request

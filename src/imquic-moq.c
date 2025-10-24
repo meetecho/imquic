@@ -325,7 +325,7 @@ void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_publish_namespace_accepted_cb(imquic_endpoint *endpoint,
-		void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id)) {
+		void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -436,6 +436,17 @@ void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_subscribe_update_accepted_cb(imquic_endpoint *endpoint,
+		void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.subscribe_update_accepted = subscribe_update_accepted;
+	}
+}
+
 void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
 		void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason)) {
 	if(endpoint != NULL) {
@@ -481,7 +492,7 @@ void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_namespace_accepted_cb(imquic_endpoint *endpoint,
-		void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id)) {
+		void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

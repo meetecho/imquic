@@ -310,8 +310,14 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
+	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
+		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
+			imquic_get_connection_name(conn), ns, name, request_id, track_alias);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64")\n",
+			imquic_get_connection_name(conn), ns, name, request_id);
+	}
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* Parse the namespace tuple to a test profile */
