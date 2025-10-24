@@ -447,6 +447,17 @@ void imquic_set_subscribe_update_accepted_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_subscribe_update_error_cb(imquic_endpoint *endpoint,
+		void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_codes, const char *reason)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.subscribe_update_error = subscribe_update_error;
+	}
+}
+
 void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
 		void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason)) {
 	if(endpoint != NULL) {

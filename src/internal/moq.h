@@ -1249,8 +1249,10 @@ typedef struct imquic_moq_callbacks {
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */
 	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
-	/*! \brief Callback function to be notified about an ACK to a previously sent \c SUBSCRIBE_UPDATE messages */
+	/*! \brief Callback function to be notified about an ACK to a previously sent \c SUBSCRIBE_UPDATE message */
 	void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
+	/*! \brief Callback function to be notified about incoming errors to a previously \c SUBSCRIBE_UPDATE message */
+	void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_DONE messages */
 	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages */

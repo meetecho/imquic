@@ -1012,7 +1012,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 
 static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id,
 		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription %"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
 	imquic_mutex_lock(&mutex);
@@ -1021,23 +1021,31 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe_update(conn, request_id, IMQUIC_MOQ_SUBERR_UPDATE_FAILED, "No such subscription");
 		return;
 	}
 	/* Update the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id,
 		imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_14 ? &sub_request_id : &request_id);
-	if(s && parameters->forward_set) {
+	if(s == NULL) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe_update(conn, request_id, IMQUIC_MOQ_SUBERR_UPDATE_FAILED, "No such subscription");
+		return;
+	}
+	imquic_moq_request_parameters rparams;
+	imquic_moq_request_parameters_init_defaults(&rparams);
+	if(parameters->forward_set) {
 		/* TODO Update start location and end group too */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
 			imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
 		s->forward = parameters->forward;
-		/* Send an acknowledgement back (only supported if we're on v15 or beyond) */
-		imquic_moq_request_parameters rparams;
-		imquic_moq_request_parameters_init_defaults(&rparams);
 		rparams.forward_set = TRUE;
 		rparams.forward = parameters->forward;
-		imquic_moq_accept_subscribe_update(conn, request_id, &rparams);
 	}
+	/* Send an acknowledgement back (only supported if we're on v15 or beyond) */
+	imquic_moq_accept_subscribe_update(conn, request_id, &rparams);
 	imquic_mutex_unlock(&mutex);
 }
 

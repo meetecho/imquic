@@ -2038,6 +2038,10 @@ size_t imquic_moq_parse_request_error(imquic_moq_context *moq, uint8_t *bytes, s
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.subscribe_error)
 				moq->conn->socket->callbacks.moq.subscribe_error(moq->conn, request_id, error_code, reason_str, 0);
 			break;
+		case IMQUIC_MOQ_SUBSCRIBE_UPDATE:
+			if(moq->conn->socket && moq->conn->socket->callbacks.moq.subscribe_update_error)
+				moq->conn->socket->callbacks.moq.subscribe_update_error(moq->conn, request_id, error_code, reason_str);
+			break;
 		case IMQUIC_MOQ_FETCH:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.fetch_error)
 				moq->conn->socket->callbacks.moq.fetch_error(moq->conn, request_id, error_code, reason_str);
@@ -2773,6 +2777,9 @@ size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.subscribe_updated) {
 		moq->conn->socket->callbacks.moq.subscribe_updated(moq->conn,
 			request_id, sub_request_id, &parameters);
+	} else if(moq->version != IMQUIC_MOQ_VERSION_15) {
+		/* No handler for this request, let's reject it ourselves */
+		imquic_moq_reject_subscribe_update(moq->conn, request_id, IMQUIC_MOQ_SUBERR_NOT_SUPPORTED, "Not handled");
 	}
 	if(error)
 		*error = 0;
@@ -6533,6 +6540,38 @@ int imquic_moq_accept_subscribe_update(imquic_connection *conn, uint64_t request
 	size_t blen = sizeof(buffer), poffset = 5, start = 0;
 	size_t sb_len = imquic_moq_add_request_ok(moq, &buffer[poffset], blen-poffset, request_id, parameters);
 	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_REQUEST_OK, buffer, blen, poffset, sb_len, &start);
+	imquic_connection_send_on_stream(conn, moq->control_stream_id,
+		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
+	moq->control_stream_offset += sb_len;
+	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
+int imquic_moq_reject_subscribe_update(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || (reason && strlen(reason) > 1024)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	if(moq->version < IMQUIC_MOQ_VERSION_15) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send %s errors on a connection using %s\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_UPDATE, moq->version),
+			imquic_moq_version_str(moq->version));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	/* TODO Check if we were subscribed */
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer), poffset = 5, start = 0;
+	size_t sb_len = imquic_moq_add_request_error(moq, &buffer[poffset], blen-poffset, request_id, error_code, reason);
+	sb_len = imquic_moq_add_control_message(moq, IMQUIC_MOQ_REQUEST_ERROR, buffer, blen, poffset, sb_len, &start);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		&buffer[start], moq->control_stream_offset, sb_len, FALSE);
 	moq->control_stream_offset += sb_len;

@@ -313,6 +313,11 @@ static void imquic_demo_subscribe_update_accepted(imquic_connection *conn, uint6
 		imquic_get_connection_name(conn), request_id);
 }
 
+static void imquic_demo_subscribe_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error updating our subscription via ID %"SCNu64": error %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, error_code, reason);
+}
+
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters) {
 	/* We received a publish */
@@ -794,6 +799,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_accepted_cb(client, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(client, imquic_demo_subscribe_error);
 	imquic_set_subscribe_update_accepted_cb(client, imquic_demo_subscribe_update_accepted);
+	imquic_set_subscribe_update_error_cb(client, imquic_demo_subscribe_update_error);
 	imquic_set_incoming_publish_cb(client, imquic_demo_incoming_publish);
 	imquic_set_publish_done_cb(client, imquic_demo_publish_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);

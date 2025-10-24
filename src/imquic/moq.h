@@ -681,6 +681,7 @@ typedef enum imquic_moq_sub_error_code {
 	IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST = 0x4,
 	IMQUIC_MOQ_SUBERR_INVALID_RANGE = 0x5,
 	IMQUIC_MOQ_SUBERR_RETRY_TRACK_ALIAS = 0x6,	/* Deprecated in v12 */
+	IMQUIC_MOQ_SUBERR_UPDATE_FAILED = 0x8,	/* Added in v15 */
 	IMQUIC_MOQ_SUBERR_MALFORMED_AUTH_TOKEN = 0x10,
 	IMQUIC_MOQ_SUBERR_UNKNOWN_AUTH_TOKEN_ALIAS = 0x11,	/* Deprecated in v12 */
 	IMQUIC_MOQ_SUBERR_EXPIRED_AUTH_TOKEN = 0x12,
@@ -928,6 +929,12 @@ void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
  * @param subscribe_update_accepted Pointer to the function that will fire when a \c SUBSCRIBE_UPDATE is acknowledged */
 void imquic_set_subscribe_update_accepted_cb(imquic_endpoint *endpoint,
 	void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
+/*! \brief Configure the callback function to be notified when a
+ * \c SUBSCRIBE_UPDATE we previously sent was rejected with an error
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param subscribe_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
+void imquic_set_subscribe_update_error_cb(imquic_endpoint *endpoint,
+	void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1191,7 +1198,7 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
  * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param track_alias The unique \c track_alias value associated to the subscription to reject
+ * @param track_alias The unique \c track_alias value associated to the subscription to reject (ignored starting from v12)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
@@ -1214,6 +1221,16 @@ int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id,
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_subscribe_update(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
+/*! \brief Function to reject an incoming \c SUBSCRIBE_UPDATE request
+ * \note This error response was only added in v15, which means it will
+ * be a no-action if you try to send it when negotiating an older version
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the subscription to reject
+ * @param error_code The error code to send back
+ * @param reason A string representation of the error, if needed
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_reject_subscribe_update(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_sub_error_code error_code, const char *reason);
 /*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on
