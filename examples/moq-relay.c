@@ -60,10 +60,12 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub);
 typedef struct imquic_demo_moq_published_namespace {
 	imquic_demo_moq_publisher *pub;
 	char *track_namespace;
+	imquic_moq_namespace *tns;
 	GHashTable *tracks;
 	imquic_mutex mutex;
 } imquic_demo_moq_published_namespace;
-static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub, const char *track_namespace);
+static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub,
+	const char *track_namespace, imquic_moq_namespace *tns);
 static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_published_namespace *annc);
 
 typedef struct imquic_demo_moq_track {
@@ -112,10 +114,16 @@ typedef struct imquic_demo_moq_monitor {
 	uint64_t request_id;
 	imquic_connection *conn;
 	imquic_moq_namespace *tns;
+	gboolean published;
+	GHashTable *known_tracks;
+	gboolean forward;
 	char *ns;
 } imquic_demo_moq_monitor;
 static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, const char *ns);
 static void imquic_demo_moq_monitor_destroy(imquic_demo_moq_monitor *mon);
+/* Helper functions to return monitors that match a namespace */
+static GList *imquic_demo_match_monitors(imquic_connection *conn, imquic_moq_namespace *tns);
+static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc, imquic_demo_moq_track *track, gboolean done);
 
 /* Constructors and destructors for helper structs */
 static imquic_demo_moq_publisher *imquic_demo_moq_publisher_create(imquic_connection *conn) {
@@ -151,10 +159,12 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
 		g_free(pub);
 	}
 }
-static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub, const char *track_namespace) {
+static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub,
+		const char *track_namespace, imquic_moq_namespace *tns) {
 	imquic_demo_moq_published_namespace *annc = g_malloc0(sizeof(imquic_demo_moq_published_namespace));
 	annc->pub = pub;
 	annc->track_namespace = g_strdup(track_namespace);
+	annc->tns = imquic_moq_namespace_duplicate(tns);
 	annc->tracks = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_track_destroy);
 	imquic_mutex_init(&annc->mutex);
@@ -163,10 +173,12 @@ static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_
 static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_published_namespace *annc) {
 	if(annc) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Removing namespace %s\n", annc->track_namespace);
+		imquic_demo_alert_monitors(annc, NULL, TRUE);
 		if(annc->track_namespace) {
 			g_hash_table_remove(namespaces, annc->track_namespace);
 			g_free(annc->track_namespace);
 		}
+		imquic_moq_namespace_free(annc->tns);
 		if(annc->tracks) {
 			GHashTableIter iter;
 			gpointer value;
@@ -204,6 +216,8 @@ static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 		while(temp) {
 			imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 			if(s) {
+				if(t->published && s->sub)
+					imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_TRACK_ENDED, "Publisher disconnected");
 				s->track = NULL;
 				if(s->fetch) {
 					g_list_free(s->objects);
@@ -284,74 +298,98 @@ static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection
 	mon->conn = conn;
 	mon->request_id = request_id;
 	mon->ns = ns ? g_strdup(ns) : NULL;
-	imquic_moq_namespace *new_tns = NULL, *prev = NULL;
-	while(tns) {
-		new_tns = g_malloc0(sizeof(imquic_moq_namespace));
-		if(tns->length > 0) {
-			new_tns->length = tns->length;
-			new_tns->buffer = g_malloc(new_tns->length);
-			memcpy(new_tns->buffer, tns->buffer, new_tns->length);
-		}
-		if(prev)
-			prev->next = new_tns;
-		if(mon->tns == NULL)
-			mon->tns = new_tns;
-		prev = new_tns;
-		tns = tns->next;
-	}
+	mon->forward = TRUE;
+	mon->tns = imquic_moq_namespace_duplicate(tns);
+	mon->known_tracks = g_hash_table_new(NULL, NULL);
 	return mon;
 }
 
 static void imquic_demo_moq_monitor_destroy(imquic_demo_moq_monitor *mon) {
 	if(mon) {
-		imquic_moq_namespace *tns = mon->tns, *next = NULL;
-		while(tns) {
-			next = tns->next;
-			g_free(tns->buffer);
-			g_free(tns);
-			tns = next;
-		}
 		g_free(mon->ns);
+		imquic_moq_namespace_free(mon->tns);
+		g_hash_table_destroy(mon->known_tracks);
 		g_free(mon);
 	}
 }
 
 /* Helper functions to return monitors that match a namespace */
-static gboolean imquic_moq_namespace_equal(const void *a, const void *b) {
-	const imquic_moq_namespace *tns_a = (imquic_moq_namespace *)a;
-	const imquic_moq_namespace *tns_b = (imquic_moq_namespace *)b;
-	if(!a || !b || tns_a->length != tns_b->length)
-		return FALSE;
-	for(size_t i=0; i<tns_a->length; i++) {
-		if(tns_a->buffer[i] != tns_b->buffer[i])
-			return FALSE;
-	}
-	return TRUE;
-}
-
 static GList *imquic_demo_match_monitors(imquic_connection *conn, imquic_moq_namespace *tns) {
-	if(monitors == NULL)
+	if(monitors == NULL || tns == NULL)
 		return NULL;
 	imquic_demo_moq_monitor *mon = NULL;
-	imquic_moq_namespace *a = NULL, *b = NULL;
 	GList *list = NULL, *temp = monitors;
 	while(temp) {
 		mon = (imquic_demo_moq_monitor *)temp->data;
-		if(mon->conn != conn) {
-			a = mon->tns;
-			b = tns;
-			while(a && b) {
-				if(imquic_moq_namespace_equal(a, b)) {
-					list = g_list_prepend(list, mon);
-					break;
-				}
-				a = a->next;
-				b = b->next;
-			}
-		}
+		if(mon->conn != conn && imquic_moq_namespace_contains(mon->tns, tns))
+			list = g_list_prepend(list, mon);
 		temp = temp->next;
 	}
 	return list;
+}
+
+static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc, imquic_demo_moq_track *track, gboolean done) {
+	if(annc == NULL && track == NULL)
+		return;
+	if(annc == NULL)
+		annc = track->annc;
+	imquic_moq_namespace *tns = annc ? annc->tns : NULL;
+	imquic_connection *conn = (annc && annc->pub) ? annc->pub->conn : NULL;
+	GList *list = imquic_demo_match_monitors(conn, tns);
+	if(list == NULL)
+		return;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace matches %d monitors\n",
+		imquic_get_connection_name(conn), g_list_length(list));
+	GList *temp = list;
+	imquic_demo_moq_monitor *mon = NULL;
+	while(temp) {
+		mon = (imquic_demo_moq_monitor *)temp->data;
+		if(mon->conn) {
+			if(!done && !mon->published) {
+				/* Send a PUBLISH_NAMESPACE */
+				mon->published = TRUE;
+				imquic_moq_publish_namespace(mon->conn, imquic_moq_get_next_request_id(conn), tns, NULL);
+			} else if(done && mon->published) {
+				/* Send a PUBLISH_NAMESPACE_DONE */
+				mon->published = FALSE;
+				imquic_moq_publish_namespace_done(mon->conn, tns);
+			}
+			if(track == NULL || g_hash_table_lookup(mon->known_tracks, track)) {
+				temp = temp->next;
+				continue;
+			}
+			/* Also send a PUBLISH to this interested subscriber: we create
+			 * a subscription to track it and relay the media when ready */
+			g_hash_table_insert(mon->known_tracks, track, track);
+			imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
+			if(sub == NULL) {
+				/* Create a new subscriber instance */
+				sub = imquic_demo_moq_subscriber_create(mon->conn);
+				g_hash_table_insert(subscribers, mon->conn, sub);
+			}
+			uint64_t relay_request_id = imquic_moq_get_next_request_id(mon->conn);
+			uint64_t relay_track_alias = sub->relay_track_alias;
+			sub->relay_track_alias++;
+			imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, track,
+				relay_request_id, relay_track_alias);
+			g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(relay_request_id), s);
+			g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(relay_track_alias), s);
+			track->subscriptions = g_list_append(track->subscriptions, s);
+			s->forward = mon->forward;
+			s->sub_end.group = IMQUIC_MAX_VARINT;
+			s->sub_end.object = IMQUIC_MAX_VARINT;
+			/* Send the request */
+			imquic_moq_name tn = {
+				.buffer = (uint8_t *)track->track_name,
+				.length = strlen(track->track_name),
+			};
+			imquic_moq_request_parameters params;
+			imquic_moq_request_parameters_init_defaults(&params);
+			imquic_moq_publish(mon->conn, relay_request_id, tns, &tn, relay_track_alias, &params);
+		}
+		temp = temp->next;
+	}
+	g_list_free(list);
 }
 
 /* Helper function to reorder objects in descending group order */
@@ -431,24 +469,11 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 		g_hash_table_insert(publishers, conn, pub);
 	}
 	/* Let's keep track of it */
-	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_published_namespace_create(pub, ns);
+	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_published_namespace_create(pub, ns, tns);
 	g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 	g_hash_table_insert(namespaces, g_strdup(ns), annc);
 	/* Check if there's monitors interested in this */
-	GList *list = imquic_demo_match_monitors(conn, tns);
-	if(list) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace matches %d monitors\n",
-			imquic_get_connection_name(conn), g_list_length(list));
-		GList *temp = list;
-		imquic_demo_moq_monitor *mon = NULL;
-		while(temp) {
-			mon = (imquic_demo_moq_monitor *)temp->data;
-			if(mon->conn)
-				imquic_moq_publish_namespace(mon->conn, imquic_moq_get_next_request_id(conn), tns, NULL);
-			temp = temp->next;
-		}
-		g_list_free(list);
-	}
+	imquic_demo_alert_monitors(annc, NULL, FALSE);
 	imquic_mutex_unlock(&mutex);
 	/* Accept the publish */
 	imquic_moq_accept_publish_namespace(conn, request_id, NULL);
@@ -503,25 +528,12 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_m
 			imquic_get_connection_name(conn));
 		return;
 	}
+	/* Check if there's monitors interested in this */
+	imquic_demo_alert_monitors(annc, NULL, TRUE);
 	/* Get rid of it */
 	g_hash_table_remove(namespaces, ns);
 	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
-	/* Check if there's monitors interested in this */
-	GList *list = imquic_demo_match_monitors(conn, tns);
-	if(list) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace matches %d monitors\n",
-			imquic_get_connection_name(conn), g_list_length(list));
-		GList *temp = list;
-		imquic_demo_moq_monitor *mon = NULL;
-		while(temp) {
-			mon = (imquic_demo_moq_monitor *)temp->data;
-			if(mon->conn)
-				imquic_moq_publish_namespace_done(mon->conn, tns);
-			temp = temp->next;
-		}
-		g_list_free(list);
-	}
 	imquic_mutex_unlock(&mutex);
 }
 
@@ -549,7 +561,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 			g_hash_table_insert(publishers, conn, pub);
 		}
 		/* Let's keep track of it */
-		annc = imquic_demo_moq_published_namespace_create(pub, ns);
+		annc = imquic_demo_moq_published_namespace_create(pub, ns, tns);
 		g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 		g_hash_table_insert(namespaces, g_strdup(ns), annc);
 	}
@@ -570,46 +582,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 	g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
 	/* Check if there's monitors interested in this */
-	GList *list = imquic_demo_match_monitors(conn, tns);
-	if(list) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace matches %d monitors\n",
-			imquic_get_connection_name(conn), g_list_length(list));
-		GList *temp = list;
-		imquic_demo_moq_monitor *mon = NULL;
-		while(temp) {
-			mon = (imquic_demo_moq_monitor *)temp->data;
-			if(mon->conn) {
-				/* Send the PUBLISH to this interested subscriber: we create
-				 * a subscription to track it and relay the media when ready */
-				imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
-				if(sub == NULL) {
-					/* Create a new subscriber instance */
-					sub = imquic_demo_moq_subscriber_create(mon->conn);
-					g_hash_table_insert(subscribers, mon->conn, sub);
-				}
-				uint64_t relay_request_id = imquic_moq_get_next_request_id(mon->conn);
-				uint64_t relay_track_alias = sub->relay_track_alias;
-				sub->relay_track_alias++;
-				imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, track,
-					relay_request_id, relay_track_alias);
-				g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(relay_request_id), s);
-				g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(relay_track_alias), s);
-				imquic_mutex_lock(&track->mutex);
-				track->subscriptions = g_list_append(track->subscriptions, s);
-				s->active = TRUE;
-				s->forward = FALSE;
-				s->sub_end.group = IMQUIC_MAX_VARINT;
-				s->sub_end.object = IMQUIC_MAX_VARINT;
-				imquic_mutex_unlock(&track->mutex);
-				/* Send the request */
-				imquic_moq_request_parameters params = *parameters;
-				params.auth_token_set = FALSE;
-				imquic_moq_publish(mon->conn, relay_request_id, tns, tn, relay_track_alias, &params);
-			}
-			temp = temp->next;
-		}
-		g_list_free(list);
-	}
+	imquic_demo_alert_monitors(annc, track, FALSE);
 	imquic_mutex_unlock(&mutex);
 	/* Done */
 	imquic_moq_request_parameters rparams = *parameters;
@@ -642,6 +615,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
 		imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
+	s->active = TRUE;
 	s->forward = parameters->forward;
 	/* Check the filter */
 	uint64_t filter_type = parameters->subscription_filter_set ?
@@ -964,6 +938,8 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		}
 		temp = temp->next;
 	}
+	/* Check if there's monitors interested in this */
+	imquic_demo_alert_monitors(NULL, track, FALSE);
 	imquic_mutex_unlock(&track->mutex);
 	/* Remove the pending flag */
 	track->pending = FALSE;
@@ -1116,9 +1092,25 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 	/* Keep track of this as a monitor */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns);
+	if(parameters->forward_set)
+		mon->forward = parameters->forward;
 	monitors = g_list_prepend(monitors, mon);
-	imquic_mutex_unlock(&mutex);
 	imquic_moq_accept_subscribe_namespace(conn, request_id, NULL);
+	/* Check if there's events we can push and already tracks we can publish */
+	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	if(annc != NULL) {
+		imquic_demo_alert_monitors(annc, NULL, FALSE);
+		if(annc->tracks) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, annc->tracks);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				imquic_demo_moq_track *track = value;
+				imquic_demo_alert_monitors(NULL, track, FALSE);
+			}
+		}
+	}
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
@@ -1385,8 +1377,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				temp = temp->next;
 				continue;
 			}
-			if(!s->forward) {
-				/* Subscriber doesn't want objects, for now */
+			if(!s->active || !s->forward) {
+				/* Subscription not establish yet, or subscriber doesn't
+				 * want to receive any object, for now, so skip this */
 				temp = temp->next;
 				continue;
 			}

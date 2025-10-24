@@ -323,6 +323,26 @@ typedef struct imquic_moq_namespace {
  * @param[in] tuple Whether the whole tuple should be stringified, or only the specific namespace
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple);
+/*! \brief Helper to check whether two namespaces are the sames
+ * @param first The first namespace to check
+ * @param second The second namespace to check
+ * @returns TRUE if the second namespace is part of the secondm, FALSE otherwise */
+gboolean imquic_moq_namespace_equals(imquic_moq_namespace *first, imquic_moq_namespace *second);
+/*! \brief Helper to check whether a namespace is contained in another
+ * @param parent The namespace parent to check
+ * @param child The namespace child to check
+ * @returns TRUE if the second namespace is part of the secondm, FALSE otherwise */
+gboolean imquic_moq_namespace_contains(imquic_moq_namespace *parent, imquic_moq_namespace *child);
+/*! \brief Helper to duplicate a namespace
+ * \note This will allocate a new buffer, that must be freed with imquic_moq_namespace
+ * @param tns The namespace to duplicate
+ * @returns A pointer to a new imquic_moq_namespace, if successful, NULL otherwise */
+imquic_moq_namespace *imquic_moq_namespace_duplicate(imquic_moq_namespace *tns);
+/*! \brief Helper to free a imquic_moq_namespace instance
+ * \note This should only be used if everything in the namespace, including
+ * buffers, were allocated, e.g., via a call to imquic_moq_namespace_duplicate
+ * @param tns The namespace to free */
+void imquic_moq_namespace_free(imquic_moq_namespace *tns);
 
 /*! \brief MoQ Track Name */
 typedef struct imquic_moq_name {
@@ -337,6 +357,11 @@ typedef struct imquic_moq_name {
  * @param[in] blen The size of the output buffer
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen);
+/*! \brief Helper to check whether two track names are the sames
+ * @param first The first track name to check
+ * @param second The second track name to check
+ * @returns TRUE if the second track name is part of the secondm, FALSE otherwise */
+gboolean imquic_moq_name_equals(imquic_moq_name *first, imquic_moq_name *second);
 
 /*! \brief MoQ filter type, for subscriptions */
 typedef enum imquic_moq_filter_type {
@@ -932,7 +957,7 @@ void imquic_set_subscribe_update_accepted_cb(imquic_endpoint *endpoint,
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE_UPDATE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
+ * @param subscribe_update_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
 void imquic_set_subscribe_update_error_cb(imquic_endpoint *endpoint,
 	void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when a

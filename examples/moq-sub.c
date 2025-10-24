@@ -147,6 +147,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			g_atomic_int_inc(&stop);
 			return;
 		}
+		/* Check if we need to request forwarding right away, or if we'll ask send an update later */
+		params.forward_set = TRUE;
+		params.forward = TRUE;
+		if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0))
+			params.forward = FALSE;
 		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), tns, &params);
 		return;
 	} else if(options.track_status && moq_version < IMQUIC_MOQ_VERSION_13) {
@@ -230,6 +235,24 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			imquic_get_connection_name(conn), options.update_subscribe);
 		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
 	}
+}
+
+static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
+	/* We received an publish_namespace */
+	char buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace: '%s'\n",
+		imquic_get_connection_name(conn), ns);
+	/* Accept the request */
+	imquic_moq_accept_publish_namespace(conn, request_id, NULL);
+}
+
+static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_moq_namespace *tns) {
+	/* We received an publish_namespace_done */
+	char buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace done: '%s'\n",
+		imquic_get_connection_name(conn), ns);
 }
 
 static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters) {
@@ -357,7 +380,8 @@ static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_i
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription via ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
-	/* TODO */
+	/* Stop here */
+	g_atomic_int_inc(&stop);
 }
 
 static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters) {
@@ -794,6 +818,8 @@ int main(int argc, char *argv[]) {
 	}
 	imquic_set_new_moq_connection_cb(client, imquic_demo_new_connection);
 	imquic_set_moq_ready_cb(client, imquic_demo_ready);
+	imquic_set_incoming_publish_namespace_cb(client, imquic_demo_incoming_publish_namespace);
+	imquic_set_publish_namespace_done_cb(client, imquic_demo_publish_namespace_done);
 	imquic_set_track_status_accepted_cb(client, imquic_demo_track_status_accepted);
 	imquic_set_track_status_error_cb(client, imquic_demo_track_status_error);
 	imquic_set_subscribe_accepted_cb(client, imquic_demo_subscribe_accepted);

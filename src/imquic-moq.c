@@ -246,6 +246,82 @@ trunc:
 	return NULL;
 }
 
+gboolean imquic_moq_namespace_equals(imquic_moq_namespace *first, imquic_moq_namespace *second) {
+	if(first == NULL || second == NULL)
+		return FALSE;
+	size_t i = 0;
+	while(first || second) {
+		if(first == NULL || second == NULL)
+			return FALSE;
+		if(first->length != second->length)
+			return FALSE;
+		for(i=0; i<first->length; i++) {
+			if(first->buffer[i] != second->buffer[i])
+				return FALSE;
+		}
+		first = first->next;
+		second = second->next;
+	}
+	/* If we got here, it's a success */
+	return TRUE;
+}
+
+gboolean imquic_moq_namespace_contains(imquic_moq_namespace *parent, imquic_moq_namespace *child) {
+	if(parent == NULL || child == NULL)
+		return FALSE;
+	size_t i = 0;
+	while(parent) {
+		if(child == NULL)
+			return FALSE;
+		if(parent->length != child->length)
+			return FALSE;
+		for(i=0; i<parent->length; i++) {
+			if(parent->buffer[i] != child->buffer[i])
+				return FALSE;
+		}
+		parent = parent->next;
+		child = child->next;
+	}
+	/* If we got here, it's a success */
+	return TRUE;
+}
+
+imquic_moq_namespace *imquic_moq_namespace_duplicate(imquic_moq_namespace *tns) {
+	if(tns == NULL)
+		return NULL;
+	imquic_moq_namespace *dup = g_malloc0(32 * sizeof(imquic_moq_namespace));
+	int index = 0;
+	while(tns != NULL) {
+		if(tns->buffer == NULL) {
+			dup[index].buffer = NULL;
+			dup[index].length = 0;
+		} else {
+			dup[index].buffer = g_malloc(tns->length);
+			memcpy(dup[index].buffer, tns->buffer, tns->length);
+			dup[index].length = tns->length;
+		}
+		if(index == 31) {
+			dup[index].next = NULL;
+			break;
+		}
+		dup[index].next = tns->next ? &dup[index+1] : NULL;
+		index++;
+		tns = tns->next;
+	}
+	return dup;
+}
+
+void imquic_moq_namespace_free(imquic_moq_namespace *tns) {
+	if(tns == NULL)
+		return;
+	imquic_moq_namespace *temp = tns;
+	while(temp != NULL) {
+		g_free(temp->buffer);
+		temp = temp->next;
+	}
+	g_free(tns);
+}
+
 const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen) {
 	if(tn == NULL || tn->buffer == 0 || tn->length == 0)
 		return NULL;
@@ -262,6 +338,20 @@ const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen)
 trunc:
 	IMQUIC_LOG(IMQUIC_LOG_ERR, "Insufficient buffer to render track name as a string (truncation would occur)\n");
 	return NULL;
+}
+
+gboolean imquic_moq_name_equals(imquic_moq_name *first, imquic_moq_name *second) {
+	if(first == NULL || second == NULL)
+		return FALSE;
+	if(first->length != second->length)
+		return FALSE;
+	size_t i = 0;
+	for(i=0; i<first->length; i++) {
+		if(first->buffer[i] != second->buffer[i])
+			return FALSE;
+	}
+	/* If we got here, it's a success */
+	return TRUE;
 }
 
 /* Setting callbacks */
