@@ -367,8 +367,14 @@ typedef struct imquic_moq_stream {
 	imquic_moq_buffer *buffer;
 	/*! \brief Whether we got at least an object on this stream */
 	gboolean got_objects;
+	/*! \brief Last Group ID handled */
+	uint64_t last_group_id;
+	/*! \brief Last Subgroup ID handled */
+	uint64_t last_subgroup_id;
 	/*! \brief Last Object ID handled */
 	uint64_t last_object_id;
+	/*! \brief Last priority handled */
+	uint8_t last_priority;
 	/*! \brief Whether we closed this stream */
 	gboolean closed;
 } imquic_moq_stream;
@@ -1118,6 +1124,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param moq The imquic_moq_context generating the object
  * @param bytes The buffer to add the object to
  * @param blen The size of the buffer
+ * @param flags The serialization flags (added in v15)
  * @param group_id The group ID
  * @param subgroup_id The subgroup ID
  * @param object_id The object ID
@@ -1129,7 +1136,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param elen The size of the object extensions buffer
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
+	uint8_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
 	uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen);
 /*! \brief Helper method to add a \c GOAWAY message to a buffer
  * @param moq The imquic_moq_context generating the message

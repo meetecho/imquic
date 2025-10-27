@@ -4178,31 +4178,73 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	size_t blen = moq_stream->buffer->length;
 	size_t offset = 0;
 	uint8_t length = 0;
-	uint64_t group_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	if(length == 0 || length >= blen-offset)
+	/* Since v15, FETCH objects are prefixed by serialization flags
+	 * that are supposed to optimize what will and will not be there */
+	uint8_t flags = 0xFF, lsb = flags & 0x03;
+	if(moq->version >= IMQUIC_MOQ_VERSION_15) {
+		flags = bytes[offset];
+		offset++;
+	}
+	if(length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
-	offset += length;
-	uint64_t subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	if(length == 0 || length >= blen-offset)
-		return -1;	/* Not enough data, try again later */
-	offset += length;
-	uint64_t object_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	if(length == 0 || length >= blen-offset)
-		return -1;	/* Not enough data, try again later */
-	offset += length;
-	uint8_t priority = bytes[offset];
-	offset++;
+	uint64_t group_id = 0;
+	if(flags & 0x08) {
+		group_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		if(length == 0 || length >= blen-offset)
+			return -1;	/* Not enough data, try again later */
+		offset += length;
+	} else {
+		/* TODO The group ID references a previous object */
+		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
+		group_id = moq_stream->group_id;
+	}
+	uint64_t subgroup_id = 0;
+	if(lsb == 0x03) {
+		subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		if(length == 0 || length >= blen-offset)
+			return -1;	/* Not enough data, try again later */
+		offset += length;
+	} else {
+		/* TODO The subgroup ID references a previous object */
+		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
+		if(lsb == 0x01)
+			subgroup_id = moq_stream->subgroup_id;
+		else if(lsb == 0x02)
+			subgroup_id = moq_stream->subgroup_id + 1;
+	}
+	uint64_t object_id = 0;
+	if(flags & 0x08) {
+		object_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		if(length == 0 || length >= blen-offset)
+			return -1;	/* Not enough data, try again later */
+		offset += length;
+	} else {
+		/* The object ID references a previous object */
+		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
+		object_id = moq_stream->last_object_id + 1;
+	}
+	uint8_t priority = 0;
+	if(flags & 0x10) {
+		priority = bytes[offset];
+		offset++;
+	} else {
+		/* The priority references a previous object */
+		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
+		priority = moq_stream->last_priority;
+	}
 	size_t ext_offset = 0, ext_len = 0;
-	ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	if(length == 0 || length >= blen-offset)
-		return -1;	/* Not enough data, try again later */
-	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), ext_len);
-	ext_offset = offset;
-	if(length == 0 || ext_len >= blen-offset)
-		return -1;	/* Not enough data, try again later */
-	offset += ext_len;
+	if(flags & 0x20) {
+		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		if(length == 0 || length >= blen-offset)
+			return -1;	/* Not enough data, try again later */
+		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), ext_len);
+		ext_offset = offset;
+		if(length == 0 || ext_len >= blen-offset)
+			return -1;	/* Not enough data, try again later */
+		offset += ext_len;
+	}
 	uint64_t p_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	if(length == 0 || length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
@@ -4231,6 +4273,12 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object Status:  %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), object_status);
 	}
+	if(!moq_stream->got_objects)
+		moq_stream->got_objects = TRUE;
+	moq_stream->last_group_id = group_id;
+	moq_stream->last_subgroup_id = subgroup_id;
+	moq_stream->last_object_id = object_id;
+	moq_stream->last_priority = priority;
 	/* Notify the payload at the application layer */
 	imquic_moq_object object = {
 		.request_id = moq_stream->request_id,
@@ -5480,7 +5528,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 }
 
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
+		uint8_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
 		uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
@@ -5488,12 +5536,23 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 		return 0;
 	}
 	size_t offset = 0;
-	offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
-	offset += imquic_write_varint(subgroup_id, &bytes[offset], blen-offset);
-	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
-	bytes[offset] = priority;
-	offset++;
-	offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
+	if(moq->version >= IMQUIC_MOQ_VERSION_15) {
+		bytes[offset] = flags;
+		offset++;
+	}
+	uint8_t lsb = (flags & 0x03);
+	if(flags & 0x08)
+		offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
+	if(lsb == 0x03)
+		offset += imquic_write_varint(subgroup_id, &bytes[offset], blen-offset);
+	if(flags & 0x04)
+		offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
+	if(flags & 0x10) {
+		bytes[offset] = priority;
+		offset++;
+	}
+	if(flags & 0x20)
+		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_varint(plen, &bytes[offset], blen-offset);
@@ -7348,7 +7407,9 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shto_len = 0;
 		if(valid_pkt) {
-			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize,
+			/* TODO Check what flags we should add */
+			uint8_t flags = 0x03 | 0x04 | 0x08 | 0x10 | 0x20;
+			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize, flags,
 				object->group_id, object->subgroup_id, object->object_id, object->priority,
 				object->object_status, object->payload, object->payload_len,
 				object->extensions, object->extensions_len);
