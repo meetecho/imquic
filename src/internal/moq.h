@@ -127,36 +127,41 @@ typedef enum imquic_moq_data_message_type {
 		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11 = 0xC,			/* Deprecated in v12 */
 		IMQUIC_MOQ_SUBGROUP_HEADER_v11 = 0xD,				/* Deprecated in v12 */
 		/* v12 and beyond */
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT = 0x10,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 = 0x11,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT = 0x12,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID = 0x13,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT = 0x14,
-		IMQUIC_MOQ_SUBGROUP_HEADER = 0x15,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG = 0x18,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG = 0x19,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG = 0x1A,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG = 0x1B,
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG = 0x1C,
-		IMQUIC_MOQ_SUBGROUP_HEADER_EOG = 0x1D,
+		IMQUIC_MOQ_SUBGROUP_HEADER = 0x10,
+			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN = 0x10,
+			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX = 0x1D,
+			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN = 0x30,
+			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX = 0x3D,
+	/* IMQUIC_MOQ_FETCH_HEADER */
 	IMQUIC_MOQ_FETCH_HEADER = 0x5,
 } imquic_moq_data_message_type;
-/*! \brief Helper function to return the imquic_moq_data_message_type value for \c SUBRGOUP_HEADER out of the individual properties.
- * @param version The version of the connection
- * @param subgroup Whether the Subgroup ID field is present
- * @param sgid0 Whether the default value of Subgroup ID is 0, in case the field is missing
- * @param ext Whether there are extensions
- * @param eog Whether there is an End of Group
- * @returns The type name as a string, if valid, or NULL otherwise */
-imquic_moq_data_message_type imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version, gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog);
-/*! \brief Helper function to parse a imquic_moq_data_message_type value for \c SUBRGOUP_HEADER to the individual properties.
+/*! \brief Helper function to check if a type used for \c SUBRGOUP_HEADER is valid.
  * @param[in] version The version of the connection
- * @param[in] type The imquic_moq_data_message_type instance to parse
+ * @param[in] type The type to parse
+ * @returns TRUE if the type is valid, FALSE otherwise */
+gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8_t type);
+/*! \brief Helper function to return the type to use for \c SUBRGOUP_HEADER out of the individual properties.
+ * @param[in] version The version of the connection
+ * @param[in] subgroup Whether the Subgroup ID field is present
+ * @param[in] sgid0 Whether the default value of Subgroup ID is 0, in case the field is missing
+ * @param[in] ext Whether there are extensions
+ * @param[in] eog Whether there is an End of Group
+ * @param[in] eog Whether there is an End of Group
+ * @param[in] priority Whether there is a Publisher Priority (added in v15)
+ * @returns The type as a bitmask flag */
+uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version,
+	gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog, gboolean priority);
+/*! \brief Helper function to parse a type value for \c SUBRGOUP_HEADER to the individual properties.
+ * @param[in] version The version of the connection
+ * @param[in] type The type to parse
  * @param[out] subgroup Output variable to write whether the Subgroup ID field is present
  * @param[out] sgid0 Output variable to write whether the default value of Subgroup ID is 0, in case the field is missing
  * @param[out] ext Output variable to write whether there are extensions
- * @param[out] eog Output variable to write whether there is an End of Group */
-void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, imquic_moq_data_message_type type, gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog);
+ * @param[out] eog Output variable to write whether there is an End of Group
+ * @param[out] priority Output variable to write whether there is a Publisher Priority (added in v15)
+ * @param[out] violation Whether the type has bits set that really shouldn't */
+void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
+	gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog, gboolean *priority, gboolean *violation);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_data_message_type value.
  * @param type The imquic_data_moq_message_type value
  * @param version The version of the connection

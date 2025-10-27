@@ -708,7 +708,24 @@ const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_typ
 	return NULL;
 }
 
-imquic_moq_data_message_type imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version, gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog) {
+gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8_t type) {
+	if(type == IMQUIC_MOQ_FETCH_HEADER)
+		return TRUE;
+	if(version == IMQUIC_MOQ_VERSION_11) {
+		if(type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11 ||
+				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11 ||
+				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_v11)
+			return TRUE;
+	} else {
+		if((type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) ||
+				(version >= IMQUIC_MOQ_VERSION_15 && (type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX)))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version,
+		gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog, gboolean priority) {
 	if(version == IMQUIC_MOQ_VERSION_11) {
 		/* v11 */
 		if(!subgroup && sgid0 && !ext)
@@ -724,32 +741,25 @@ imquic_moq_data_message_type imquic_moq_data_message_type_from_subgroup_header(i
 		return IMQUIC_MOQ_SUBGROUP_HEADER_v11;
 	}
 	/* If we're here, we're on v12 or later */
-	if(!subgroup && sgid0 && !ext && !eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT;
-	else if(!subgroup && sgid0 && ext && !eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0;
-	else if(!subgroup && !sgid0 && !ext && !eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT;
-	else if(!subgroup && !sgid0 && ext && !eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID;
-	else if(subgroup && !ext && !eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT;
-	else if(subgroup && ext && !eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER;
-	else if(!subgroup && sgid0 && !ext && eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG;
-	else if(!subgroup && sgid0 && ext && eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG;
-	else if(!subgroup && !sgid0 && !ext && eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG;
-	else if(!subgroup && !sgid0 && ext && eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG;
-	else if(subgroup && !ext && eog)
-		return IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG;
-	return IMQUIC_MOQ_SUBGROUP_HEADER_EOG;
+	uint8_t type = 0;
+	if(subgroup) {
+		sgid0 = FALSE;
+		type |= 0x04;
+	}
+	if(sgid0)
+		type |= 0x02;
+	if(ext)
+		type |= 0x01;
+	if(eog)
+		type |= 0x08;
+	if(version >= IMQUIC_MOQ_VERSION_15)
+		priority = TRUE;
+	type |= (priority ? 0x10 : 0x30);
+	return type;
 }
 
-void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, imquic_moq_data_message_type type, gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog) {
+void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
+		gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog, gboolean *priority, gboolean *violation) {
 	if(version == IMQUIC_MOQ_VERSION_11) {
 		/* v11 */
 		if(subgroup)
@@ -758,24 +768,39 @@ void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version,
 			*sgid0 = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11);
 		if(ext)
 			*ext = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11 || type == IMQUIC_MOQ_SUBGROUP_HEADER_v11);
+		if(priority)
+			*priority = TRUE;
 	} else {
 		/* v12 and later */
-		if(subgroup) {
-			*subgroup = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT || type == IMQUIC_MOQ_SUBGROUP_HEADER ||
-				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
+		uint8_t base = 0x10;
+		if(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) {
+			base = 0x10;
+		} else if(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX) {
+			if(version < IMQUIC_MOQ_VERSION_15) {
+				/* This range is only allowed starting from v15 */
+				if(violation)
+					*violation = TRUE;
+				return;
+			}
+			base = 0x30;
 		}
-		if(sgid0) {
-			*sgid0 = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 ||
-				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG);
+		uint8_t bitmask = type - base;
+		if(bitmask == 0x06 || bitmask == 0x07) {
+			/* If these bits are set, it's a protocol violation */
+			if(violation)
+				*violation = TRUE;
+			return;
 		}
-		if(ext) {
-			*ext = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0 || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID ||
-				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
-		}
-		if(eog) {
-			*eog = (type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG ||
-				type == IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG || type == IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
-		}
+		if(priority)
+			*priority = (base == 0x10);
+		if(subgroup)
+			*subgroup = (bitmask & 0x04);
+		if(sgid0)
+			*sgid0 = (bitmask & 0x02);
+		if(ext)
+			*ext = (bitmask & 0x01);
+		if(eog)
+			*eog = (bitmask & 0x08);
 	}
 }
 
@@ -794,24 +819,10 @@ const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, 
 			default: break;
 		}
 	} else {
-		switch(type) {
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
-			case IMQUIC_MOQ_SUBGROUP_HEADER:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_EOG:
-				return "SUBGROUP_HEADER";
-			case IMQUIC_MOQ_FETCH_HEADER:
-				return "FETCH_HEADER";
-			default: break;
-		}
+		if(type == IMQUIC_MOQ_FETCH_HEADER)
+			return "FETCH_HEADER";
+		else if(imquic_moq_is_data_message_type_valid(version, type))
+			return "SUBGROUP_HEADER";
 	}
 	return NULL;
 }
@@ -831,24 +842,11 @@ imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_mes
 			default: break;
 		}
 	} else {
-		switch(type) {
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT:
-			case IMQUIC_MOQ_SUBGROUP_HEADER:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_EOG:
-			case IMQUIC_MOQ_SUBGROUP_HEADER_EOG:
-				return IMQUIC_MOQ_USE_SUBGROUP;
-			case IMQUIC_MOQ_FETCH_HEADER:
-				return IMQUIC_MOQ_USE_FETCH;
-			default: break;
-		}
+		if(type == IMQUIC_MOQ_FETCH_HEADER)
+			return IMQUIC_MOQ_USE_FETCH;
+		else if((type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) ||
+				(version >= IMQUIC_MOQ_VERSION_15 && (type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX)))
+			return IMQUIC_MOQ_USE_SUBGROUP;
 	}
 	return -1;
 }
@@ -1354,15 +1352,14 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		if(stream_id != moq->control_stream_id) {
 			/* Not the control stream, make sure it's a supported message */
 			imquic_moq_data_message_type dtype = (imquic_moq_data_message_type)type;
-			if(dtype == IMQUIC_MOQ_FETCH_HEADER ||
-					(moq->version == IMQUIC_MOQ_VERSION_11 && (dtype >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && dtype <= IMQUIC_MOQ_SUBGROUP_HEADER_v11)) ||
-					(moq->version >= IMQUIC_MOQ_VERSION_12 && (dtype >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && dtype <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG))) {
+			if(imquic_moq_is_data_message_type_valid(moq->version, dtype)) {
 				/* Create a new MoQ stream and track it */
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Stream %"SCNu64" will be used for %s\n",
 					imquic_get_connection_name(moq->conn), stream_id, imquic_moq_data_message_type_str(dtype, moq->version));
 				moq_stream = g_malloc0(sizeof(imquic_moq_stream));
 				moq_stream->stream_id = stream_id;
 				moq_stream->type = dtype;
+				moq_stream->priority = 128;	/* FIXME */
 				g_hash_table_insert(moq->streams, imquic_dup_uint64(stream_id), moq_stream);
 			} else {
 				/* TODO Handle failure */
@@ -1521,17 +1518,14 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			offset = 0;
 		} else {
 			/* Data message */
-			if((moq->version == IMQUIC_MOQ_VERSION_11 &&
-						(imquic_moq_data_message_type)type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && (imquic_moq_data_message_type)type <= IMQUIC_MOQ_SUBGROUP_HEADER_v11) ||
-					(moq->version >= IMQUIC_MOQ_VERSION_12 &&
-						((imquic_moq_data_message_type)type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && (imquic_moq_data_message_type)type <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG))) {
-				/* Parse this SUBGROUP_HEADER message */
-				parsed = imquic_moq_parse_subgroup_header(moq, moq_stream, &bytes[offset], blen-offset, (imquic_moq_data_message_type)type, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
-				offset += parsed;
-			} else if((imquic_moq_data_message_type)type == IMQUIC_MOQ_FETCH_HEADER) {
+			if((imquic_moq_data_message_type)type == IMQUIC_MOQ_FETCH_HEADER) {
 				/* Parse this FETCH_HEADER message */
 				parsed = imquic_moq_parse_fetch_header(moq, moq_stream, &bytes[offset], blen-offset, &error);
+				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
+				offset += parsed;
+			} else if(imquic_moq_is_data_message_type_valid(moq->version, type)) {
+				/* Parse this SUBGROUP_HEADER message */
+				parsed = imquic_moq_parse_subgroup_header(moq, moq_stream, &bytes[offset], blen-offset, (imquic_moq_data_message_type)type, &error);
 				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 				offset += parsed;
 			} else {
@@ -1554,19 +1548,18 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		imquic_moq_buffer_append(moq_stream->buffer, bytes + offset, blen - offset);
 		while(moq_stream->buffer && moq_stream->buffer->length > 0) {
 			/* Parse the object we're receiving on that stream */
-			if((moq->version == IMQUIC_MOQ_VERSION_11 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_v11)) ||
-					(moq->version >= IMQUIC_MOQ_VERSION_12 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG))) {
+			if(moq_stream->type == IMQUIC_MOQ_FETCH_HEADER) {
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ][%zu] >> %s object\n",
 					imquic_get_connection_name(moq->conn), offset, imquic_moq_data_message_type_str(moq_stream->type, moq->version));
-				if(imquic_moq_parse_subgroup_header_object(moq, moq_stream, complete, &error) < 0) {
+				if(imquic_moq_parse_fetch_header_object(moq, moq_stream, complete, &error) < 0) {
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Not enough data, trying again later\n",
 						imquic_get_connection_name(moq->conn));
 					break;
 				}
-			} else if(moq_stream->type == IMQUIC_MOQ_FETCH_HEADER) {
+			} else if(imquic_moq_is_data_message_type_valid(moq->version, moq_stream->type)) {
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ][%zu] >> %s object\n",
 					imquic_get_connection_name(moq->conn), offset, imquic_moq_data_message_type_str(moq_stream->type, moq->version));
-				if(imquic_moq_parse_fetch_header_object(moq, moq_stream, complete, &error) < 0) {
+				if(imquic_moq_parse_subgroup_header_object(moq, moq_stream, complete, &error) < 0) {
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Not enough data, trying again later\n",
 						imquic_get_connection_name(moq->conn));
 					break;
@@ -1586,9 +1579,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 	if(moq_stream != NULL && complete) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Media stream %"SCNu64" is complete\n",
 			imquic_get_connection_name(moq->conn), stream_id);
-		if(!moq_stream->closed && (moq_stream->type == IMQUIC_MOQ_FETCH_HEADER ||
-				(moq->version == IMQUIC_MOQ_VERSION_11 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_v11)) ||
-				(moq->version >= IMQUIC_MOQ_VERSION_12 && (moq_stream->type >= IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT && moq_stream->type <= IMQUIC_MOQ_SUBGROUP_HEADER_EOG)))) {
+		if(!moq_stream->closed && imquic_moq_is_data_message_type_valid(moq->version, moq_stream->type)) {
 			/* FIXME Notify an empty payload to signal the end of the stream */
 			imquic_moq_object object = {
 				.request_id = moq_stream->request_id,
@@ -1597,7 +1588,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				.subgroup_id = moq_stream->subgroup_id,
 				.object_id = 0,	/* FIXME */
 				.object_status = IMQUIC_MOQ_NORMAL_OBJECT,
-				.priority = 0,
+				.priority = 128,
 				.payload = NULL,
 				.payload_len = 0,
 				.delivery = imquic_moq_data_message_type_to_delivery(moq_stream->type, moq->version),
@@ -4003,10 +3994,12 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 		imquic_get_connection_name(moq->conn), group_id);
 	uint64_t subgroup_id = 0;
 	/* Starting from v11, the subgroup ID property is optional */
-	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE, is_eog = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, dtype, &has_subgroup, &is_sgid0, &has_ext, &is_eog);
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, ext=%d, eog=%d\n",
-		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_ext, is_eog);
+	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE, is_eog = FALSE, has_priority = FALSE, violation = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, dtype,
+		&has_subgroup, &is_sgid0, &has_ext, &is_eog, &has_priority, &violation);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, ext=%d, eog=%d, pri=%d, viol=%d\n",
+		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_ext, is_eog, has_priority, violation);
+	IMQUIC_MOQ_CHECK_ERR(violation, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid SUBGROUP_HEADER type");
 	if(has_subgroup) {
 		subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
@@ -4016,8 +4009,11 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subgroup ID:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), subgroup_id);
-	uint8_t priority = bytes[offset];
-	offset++;
+	uint8_t priority = 0;
+	if(has_priority) {
+		priority = bytes[offset];
+		offset++;
+	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
 	/* Track these properties */
@@ -4057,8 +4053,8 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	size_t ext_offset = 0, ext_len = 0;
 	/* TODO We can optimize this by only doing it once, when we parse the header */
 	/* TODO Check EOG too */
-	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_subgroup, &is_sgid0, &has_ext, NULL);
+	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE, has_priority = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_subgroup, &is_sgid0, &has_ext, NULL, &has_priority, NULL);
 	if(has_ext) {
 		/* The object contains extensions */
 		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -5476,15 +5472,17 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
 		return 0;
 	}
 	imquic_moq_data_message_type dtype = moq_stream->type;
-	gboolean has_sg = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_sg, NULL, NULL, NULL);
+	gboolean has_sg = FALSE, has_priority = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_sg, NULL, NULL, NULL, &has_priority, NULL);
 	size_t offset = imquic_write_varint(dtype, bytes, blen);
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
 	if(has_sg)
 		offset += imquic_write_varint(subgroup_id, &bytes[offset], blen-offset);
-	bytes[offset] = priority;
-	offset++;
+	if(has_sg) {
+		bytes[offset] = priority;
+		offset++;
+	}
 	return offset;
 }
 
@@ -5501,7 +5499,7 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq
 	/* TODO We can optimize this by only doing it once, when we parse the header */
 	/* TODO Involve EOG too */
 	gboolean has_ext = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_ext, NULL);
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_ext, NULL, NULL, NULL);
 	if(has_ext)
 		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
 	if(payload == NULL)
@@ -7301,7 +7299,13 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			 * since we don't have an API for that, for now we always set the type
 			 * that will allow us to dynamically use them all. This also means we
 			 * currently don't have a way to specify an End-of-Group flag */
-			moq_stream->type = (moq->version == IMQUIC_MOQ_VERSION_11 ? IMQUIC_MOQ_SUBGROUP_HEADER_v11 : IMQUIC_MOQ_SUBGROUP_HEADER_EOG);
+			moq_stream->type = imquic_moq_data_message_type_from_subgroup_header(moq->version,
+				TRUE,	/* We'll explicitly specify the Subgroup ID */
+				FALSE,	/* Whether the default Subgroup ID is 0 (ignored, since we set it) */
+				TRUE,	/* We'll add the extensions block, whether there are extensions or not */
+				TRUE,	/* End-of-Group is set */
+				TRUE);	/* We'll add the Publisher Priority property */
+			moq_stream->priority = 128;	/* FIXME */
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);
 			moq_sub->streams_count++;
@@ -7384,6 +7388,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			/* Create a new stream */
 			moq_stream = g_malloc0(sizeof(imquic_moq_stream));
 			moq_stream->type = IMQUIC_MOQ_FETCH_HEADER;
+			moq_stream->priority = 128;	/* FIXME */
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			moq_sub->stream = moq_stream;
 			moq_sub->streams_count++;
