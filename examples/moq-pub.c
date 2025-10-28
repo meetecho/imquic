@@ -153,7 +153,7 @@ static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_publish_namespace_error_code error_code, const char *reason) {
+static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace: error %d (%s)\n",
 		imquic_get_connection_name(conn), error_code, reason);
 	/* Stop here */
@@ -171,7 +171,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	g_atomic_int_set(&send_objects, 1);
 }
 
-static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_code, const char *reason) {
+static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
@@ -193,14 +193,14 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	if(pub_tns == NULL || strcasecmp(ns, pub_tns) || strcasecmp(name, options.track_name)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace or track\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_TRACK_DOES_NOT_EXIST, "Unknown namespace or track", track_alias);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", track_alias);
 		return;
 	}
 	if(options.publish || g_atomic_int_get(&send_objects)) {
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] We already have a subscriber\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_SUBERR_INTERNAL_ERROR, "We already have a subscriber", track_alias);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "We already have a subscriber", track_alias);
 		return;
 	}
 	/* TODO Check if it matches our published namespace */
@@ -333,7 +333,7 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 			imquic_get_connection_name(moq_conn));
 		/* Send a PUBLISH_DONE */
-		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -373,7 +373,7 @@ static void imquic_demo_send_data(char *text, gboolean last) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 			imquic_get_connection_name(moq_conn));
 		/* Send a PUBLISH_DONE */
-		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
@@ -626,7 +626,7 @@ int main(int argc, char *argv[]) {
 	g_list_free_full(objects, (GDestroyNotify)g_free);
 	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
 	if(g_atomic_int_get(&started) && !g_atomic_int_get(&done_sent))
-		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
+		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
 	if(!options.publish) {
 		imquic_moq_namespace tns[32];	/* FIXME */
 		int i = 0;

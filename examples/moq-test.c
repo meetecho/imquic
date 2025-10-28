@@ -483,7 +483,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 			(range->start.group == largest.group && range->start.object > largest.object) ||
 			(range->end.group == (uint64_t)test[TUPLE_FIELD_START_GROUP] && range->end.object < (uint64_t)test[TUPLE_FIELD_START_OBJECT])) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] FETCH range outside of test range\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_INVALID_RANGE, "FETCH range outside of test range");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "FETCH range outside of test range");
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -535,7 +535,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* TODO Add support for joining FETCH */
-	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_FETCHERR_NOT_SUPPORTED, "Not implemented yet");
+	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not implemented yet");
 }
 
 static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t request_id) {
@@ -646,7 +646,7 @@ static void *imquic_demo_tester_thread(void *data) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 					imquic_get_connection_name(s->sub->conn));
 				/* Send a PUBLISH_DONE */
-				imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
 				send_done = FALSE;
 				break;
 			}
@@ -766,7 +766,7 @@ static void *imquic_demo_tester_thread(void *data) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping delivery thread\n", imquic_get_connection_name(conn));
 	if(send_done && s->sub != NULL) {
 		/* Send a PUBLISH_DONE */
-		imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_SUBDONE_SUBSCRIPTION_ENDED, "Test over");
+		imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Test over");
 	}
 	/* Destroy the subscription and the resources */
 	if(s->sub != NULL) {

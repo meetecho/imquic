@@ -272,7 +272,7 @@ static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t 
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_track_status_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason) {
+static void imquic_demo_track_status_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error querying the track status via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
@@ -318,7 +318,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias) {
+static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias) {
 	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
 		/* Older versions of MoQ passed the track alias in the SUBSCRIBE */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64"/%"SCNu64": error %d (%s)\n",
@@ -336,7 +336,7 @@ static void imquic_demo_subscribe_update_accepted(imquic_connection *conn, uint6
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason) {
+static void imquic_demo_subscribe_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error updating our subscription via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 }
@@ -376,7 +376,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	imquic_moq_accept_publish(conn, request_id, &rparams);
 }
 
-static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason) {
+static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription via ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, streams_count, status_code, reason);
@@ -391,7 +391,7 @@ static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request
 		largest->group, largest->object);
 }
 
-static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason) {
+static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error fetching via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here, unless it was a joining FETCH */
@@ -404,7 +404,7 @@ static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, ui
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_subns_error_code error_code, const char *reason) {
+static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */

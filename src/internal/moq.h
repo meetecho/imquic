@@ -92,7 +92,7 @@ gboolean imquic_moq_is_datagram_message_type_valid(imquic_moq_version version, u
 /*! \brief Helper function to return the imquic_moq_datagram_message_type value
  * for \c OBJECT_DATAGRAM or \c OBJECT_DATAGRAM_STATUS out of the individual properties.
  * @param version The version of the connection
- * @param ext Whether there is a payload
+ * @param payload Whether there is a payload
  * @param ext Whether there are extensions
  * @param eog Whether there is an End of Group
  * @param oid Whether there is an Object ID (ignored before v14)
@@ -147,7 +147,6 @@ gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8
  * @param[in] subgroup Whether the Subgroup ID field is present
  * @param[in] sgid0 Whether the default value of Subgroup ID is 0, in case the field is missing
  * @param[in] ext Whether there are extensions
- * @param[in] eog Whether there is an End of Group
  * @param[in] eog Whether there is an End of Group
  * @param[in] priority Whether there is a Publisher Priority (added in v15)
  * @returns The type as a bitmask flag */
@@ -266,6 +265,34 @@ typedef enum imquic_moq_fetch_type {
  * @param type The imquic_moq_fetch_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_fetch_type_str(imquic_moq_fetch_type type);
+
+/*! \brief MoQ legacy (pre-v15) error codes and translation to/from new ones */
+typedef enum imquic_moq_legacy_error_code {
+	IMQUIC_MOQ_OLDERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_OLDERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_OLDERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_OLDERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_OLDERR_UNINTERESTED = 0x4,
+	IMQUIC_MOQ_OLDERR_TRACK_DOES_NOT_EXIST = 0x4,
+	IMQUIC_MOQ_OLDERR_INVALID_RANGE = 0x5,
+	IMQUIC_MOQ_OLDERR_INVALID_JOINING_REQUEST_ID = 0x7,
+	IMQUIC_MOQ_OLDERR_UNKNOWN_STATUS_IN_RANGE = 0x8,
+	IMQUIC_MOQ_OLDERR_MALFORMED_TRACK = 0x9,
+	IMQUIC_MOQ_OLDERR_MALFORMED_AUTH_TOKEN = 0x10,
+	IMQUIC_MOQ_OLDERR_EXPIRED_AUTH_TOKEN = 0x12,
+} imquic_moq_legacy_error_code;
+/*! \brief Helper to translate a new request error code passed by the
+ * user to a legacy error code, if serializing on an old version of MoQ
+ * @param version The version this connection is using
+ * @param code The new request error code
+ * @returns The associated legacy error code, if available, or a generic internal error otherwise */
+imquic_moq_legacy_error_code imquic_moq_request_error_code_to_legacy(imquic_moq_version version, imquic_moq_request_error_code code);
+/*! \brief Helper to translate a legacy error code parsed by the stack
+ * to a new request error code, if receiving from an old version of MoQ
+ * @param version The version this connection is using
+ * @param code The legacy error code
+ * @returns The associated new request error code, if available, or a generic internal error otherwise */
+imquic_moq_request_error_code imquic_moq_request_error_code_from_legacy(imquic_moq_version version, imquic_moq_legacy_error_code code);
 
 /*! \brief MoQ buffer */
 typedef struct imquic_moq_buffer {
@@ -828,7 +855,7 @@ size_t imquic_moq_add_publish_namespace_ok(imquic_moq_context *moq, uint8_t *byt
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t request_id, imquic_moq_publish_namespace_error_code error, const char *reason);
+	uint64_t request_id, imquic_moq_request_error_code error, const char *reason);
 /*! \brief Helper method to add a \c PUBLISH_NAMESPACE_DONE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -845,7 +872,7 @@ size_t imquic_moq_add_publish_namespace_done(imquic_moq_context *moq, uint8_t *b
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace,
-	imquic_moq_publish_namespace_error_code error, const char *reason);
+	imquic_moq_request_error_code error, const char *reason);
 /*! \brief Helper to add a \c PUBLISH message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -876,7 +903,7 @@ size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_pub_error_code error, const char *reason);
+	imquic_moq_request_error_code error, const char *reason);
 /*! \brief Helper to add a \c SUBSCRIBE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -919,7 +946,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
  * @param track_alias The track alias to put in the message (ignored starting from v12)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_sub_error_code error, const char *reason, uint64_t track_alias);
+	imquic_moq_request_error_code error, const char *reason, uint64_t track_alias);
 /*! \brief Helper method to add an \c UNSUBSCRIBE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -937,7 +964,7 @@ size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_
  * @param reason Verbose description of the status
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_sub_done_code status, uint64_t streams_count, const char *reason);
+	imquic_moq_pub_done_code status, uint64_t streams_count, const char *reason);
 /*! \brief Helper to add a \c SUBSCRIBE_NAMESPACE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -964,7 +991,7 @@ size_t imquic_moq_add_subscribe_namespace_ok(imquic_moq_context *moq, uint8_t *b
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t request_id, imquic_moq_subns_error_code error, const char *reason);
+	uint64_t request_id, imquic_moq_request_error_code error, const char *reason);
 /*! \brief Helper method to add an \c UNSUBSCRIBE_NAMESPACE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1017,7 +1044,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_fetch_error_code error, const char *reason);
+	imquic_moq_request_error_code error, const char *reason);
 /*! \brief Helper to add a \c TRACK_STATUS message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1048,7 +1075,7 @@ size_t imquic_moq_add_track_status_ok(imquic_moq_context *moq, uint8_t *bytes, s
  * @param reason Verbose description of the error, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_track_status_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_sub_error_code error, const char *reason);
+	imquic_moq_request_error_code error, const char *reason);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -1240,11 +1267,11 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE messages */
 	void (* incoming_publish_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_CANCEL messages */
-	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_publish_namespace_error_code error_code, const char *reason);
+	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_ACCEPTED messages */
 	void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_ERROR messages */
-	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_publish_namespace_error_code error_code, const char *reason);
+	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_DONE messages */
 	void (* publish_namespace_done)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH messages */
@@ -1253,22 +1280,22 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ACCEPTED messages */
 	void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ERROR messages */
-	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_error_code error_code, const char *reason);
+	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
-	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason, uint64_t track_alias);
+	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */
 	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about an ACK to a previously sent \c SUBSCRIBE_UPDATE message */
 	void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming errors to a previously \c SUBSCRIBE_UPDATE message */
-	void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason);
+	void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_DONE messages */
-	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_done_code status_code, uint64_t streams_count, const char *reason);
+	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages */
 	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c REQUESTS_BLOCKED messages */
@@ -1278,7 +1305,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_NAMESPACE_ACCEPTED messages */
 	void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_NAMESPACE_ERROR messages */
-	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_subns_error_code error_code, const char *reason);
+	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNSUBSCRIBE_NAMESPACE messages */
 	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */
@@ -1291,14 +1318,14 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c FETCH_ACCEPTED messages */
 	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
-	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_fetch_error_code error_code, const char *reason);
+	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
 	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ACCEPTED messages */
 	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ERROR messages */
-	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_sub_error_code error_code, const char *reason);
+	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming MoQ objects */
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
