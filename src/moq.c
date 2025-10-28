@@ -2150,7 +2150,7 @@ size_t imquic_moq_parse_publish_namespace_ok(imquic_moq_context *moq, uint8_t *b
 		imquic_get_connection_name(moq->conn), request_id);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_ok");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_ok" : "publish_namespace_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
@@ -2201,7 +2201,7 @@ size_t imquic_moq_parse_publish_namespace_error(imquic_moq_context *moq, uint8_t
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "publish_namespace_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error_code));
 		if(reason_str != NULL)
@@ -2554,7 +2554,7 @@ size_t imquic_moq_parse_publish_error(imquic_moq_context *moq, uint8_t *bytes, s
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("publish_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "publish_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(recvd_error_code));
 		if(reason_str != NULL)
@@ -2963,7 +2963,7 @@ size_t imquic_moq_parse_subscribe_error(imquic_moq_context *moq, uint8_t *bytes,
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "subscribe_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version < IMQUIC_MOQ_VERSION_12)
 			json_object_set_new(message, "track_alias", json_integer(track_alias));
@@ -3145,7 +3145,7 @@ size_t imquic_moq_parse_subscribe_namespace_ok(imquic_moq_context *moq, uint8_t 
 		imquic_get_connection_name(moq->conn), request_id);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_namespace_ok");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_ok" : "subscribe_namespace_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
@@ -3196,7 +3196,7 @@ size_t imquic_moq_parse_subscribe_namespace_error(imquic_moq_context *moq, uint8
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_namespace_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "subscribe_namespace_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error_code));
 		if(reason_str != NULL)
@@ -3225,7 +3225,7 @@ size_t imquic_moq_parse_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *
 	uint64_t request_id = 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_15) {
 		request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE_ERROR");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken UNSUBSCRIBE_NAMESPACE");
 		offset += length;
 	}
 	if(moq->version <= IMQUIC_MOQ_VERSION_14) {
@@ -3553,7 +3553,7 @@ size_t imquic_moq_parse_fetch_error(imquic_moq_context *moq, uint8_t *bytes, siz
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("fetch_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "fetch_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(recvd_error_code));
 		if(reason_str != NULL)
@@ -3784,7 +3784,7 @@ size_t imquic_moq_parse_track_status_ok(imquic_moq_context *moq, uint8_t *bytes,
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("track_status_ok");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_ok" : "track_status_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version <= IMQUIC_MOQ_VERSION_14) {
 			json_object_set_new(message, "track_alias", json_integer(track_alias));
@@ -3852,7 +3852,7 @@ size_t imquic_moq_parse_track_status_error(imquic_moq_context *moq, uint8_t *byt
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("track_status_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "track_status_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(recvd_error_code));
 		if(reason_str != NULL)
@@ -4614,7 +4614,7 @@ size_t imquic_moq_add_publish_namespace_ok(imquic_moq_context *moq, uint8_t *byt
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_ok");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_ok" : "publish_namespace_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
@@ -4641,7 +4641,7 @@ size_t imquic_moq_add_publish_namespace_error(imquic_moq_context *moq, uint8_t *
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "publish_namespace_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error));
 		if(reason != NULL)
@@ -4829,7 +4829,7 @@ size_t imquic_moq_add_publish_error(imquic_moq_context *moq, uint8_t *bytes, siz
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "subscribe_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error));
 		if(reason != NULL)
@@ -5019,7 +5019,7 @@ size_t imquic_moq_add_subscribe_error(imquic_moq_context *moq, uint8_t *bytes, s
 		offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "subscribe_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version < IMQUIC_MOQ_VERSION_12)
 			json_object_set_new(message, "track_alias", json_integer(track_alias));
@@ -5112,7 +5112,7 @@ size_t imquic_moq_add_subscribe_namespace_ok(imquic_moq_context *moq, uint8_t *b
 	size_t offset = imquic_write_varint(request_id, bytes, blen);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_namespace_ok");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_ok" : "subscribe_namespace_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, offset, message);
 	}
@@ -5139,7 +5139,7 @@ size_t imquic_moq_add_subscribe_namespace_error(imquic_moq_context *moq, uint8_t
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("subscribe_namespace_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "subscribe_namespace_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error));
 		if(reason != NULL)
@@ -5325,7 +5325,7 @@ size_t imquic_moq_add_fetch_error(imquic_moq_context *moq, uint8_t *bytes, size_
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("fetch_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "fetch_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error));
 		if(reason != NULL)
@@ -5423,7 +5423,7 @@ size_t imquic_moq_add_track_status_ok(imquic_moq_context *moq, uint8_t *bytes, s
 	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("track_status_ok");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_ok" : "track_status_ok");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version <= IMQUIC_MOQ_VERSION_14)
 			json_object_set_new(message, "track_alias", json_integer(track_alias));
@@ -5464,7 +5464,7 @@ size_t imquic_moq_add_track_status_error(imquic_moq_context *moq, uint8_t *bytes
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("track_status_error");
+		json_t *message = imquic_qlog_moq_message_prepare(moq->version >= IMQUIC_MOQ_VERSION_15 ? "request_error" : "track_status_error");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "error_code", json_integer(error));
 		if(reason != NULL)
