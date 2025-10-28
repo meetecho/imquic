@@ -79,42 +79,44 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type, imquic_moq
 
 /*! \brief MoQ datagram messages */
 typedef enum imquic_moq_datagram_message_type {
-	/* OBJECT_DATAGRAM */
-	IMQUIC_MOQ_OBJECT_DATAGRAM = 0x1,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT = 0x0,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG = 0x3,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT = 0x2,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_NOOID = 0x5,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_NOEXT_NOOID = 0x4,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOOID = 0x7,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_EOG_NOEXT_NOOID = 0x6,
-	/* OBJECT_DATAGRAM_STATUS */
+	IMQUIC_MOQ_OBJECT_DATAGRAM = 0x01,
 	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x20,
-		IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT = 0x21,
-			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v13 = 0x5,		/* Deprecated in v14 */
-			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v13 = 0x4,	/* Deprecated in v14 */
-			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_v11 = 0x3,		/* Deprecated in v12 */
-			IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS_NOEXT_v11 = 0x2,	/* Deprecated in v12 */
+		IMQUIC_MOQ_OBJECT_DATAGRAM_RANGE_MIN = 0x00,
+		IMQUIC_MOQ_OBJECT_DATAGRAM_RANGE_MAX = 0x2D,
 } imquic_moq_datagram_message_type;
-/*! \brief Helper function to return the imquic_moq_datagram_message_type value for \c OBJECT_DATAGRAM out of the individual properties.
+/*! \brief Helper function to check if a type used for \c OBJECT_DATAGRAM or \c OBJECT_DATAGRAM_STATUS is valid.
+ * @param[in] version The version of the connection
+ * @param[in] type The type to parse
+ * @returns TRUE if the type is valid, FALSE otherwise */
+gboolean imquic_moq_is_datagram_message_type_valid(imquic_moq_version version, uint8_t type);
+/*! \brief Helper function to return the imquic_moq_datagram_message_type value
+ * for \c OBJECT_DATAGRAM or \c OBJECT_DATAGRAM_STATUS out of the individual properties.
  * @param version The version of the connection
+ * @param ext Whether there is a payload
  * @param ext Whether there are extensions
  * @param eog Whether there is an End of Group
  * @param oid Whether there is an Object ID (ignored before v14)
- * @returns The type name as a string, if valid, or NULL otherwise */
-imquic_moq_datagram_message_type imquic_moq_datagram_message_type_return(imquic_moq_version version, gboolean ext, gboolean eog, gboolean oid);
-/*! \brief Helper function to parse a imquic_moq_datagram_message_type value for \c OBJECT_DATAGRAM to the individual properties.
+ * @param priority Whether there is a Publisher Priority (ignored before v15)
+ * @returns The type as a bitmask flag */
+uint8_t imquic_moq_datagram_message_type_return(imquic_moq_version version,
+	gboolean payload, gboolean ext, gboolean eog, gboolean oid, gboolean priority);
+/*! \brief Helper function to parse a imquic_moq_datagram_message_type value
+ * for \c OBJECT_DATAGRAM or \c OBJECT_DATAGRAM_STATUS to the individual properties.
  * @param[in] version The version of the connection
- * @param[in] type The imquic_moq_datagram_message_type instance to parse
+ * @param[in] type The type to parse
+ * @param[out] payload Output variable to write whether there is a payload
  * @param[out] ext Output variable to write whether there are extensions
  * @param[out] eog Output variable to write whether there is an End of Group
- * @param[out] oid Output variable to write whether there is an Object ID (ignored before v14) */
-void imquic_moq_datagram_message_type_parse(imquic_moq_version version, imquic_moq_datagram_message_type type, gboolean *ext, gboolean *eog, gboolean *oid);
+ * @param[out] oid Output variable to write whether there is an Object ID (ignored before v14)
+ * @param[out] priority Output variable to write whether there is a Publisher Priority (added in v15)
+ * @param[out] violation Whether the type has bits set that really shouldn't */
+void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t type,
+	gboolean *payload, gboolean *ext, gboolean *eog, gboolean *oid, gboolean *priority, gboolean *violation);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_datagram_message_type value.
- * @param type The imquic_data_moq_message_type value
+ * @param type The type value
  * @param version The version of the connection
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_type type, imquic_moq_version version);
+const char *imquic_moq_datagram_message_type_str(uint8_t type, imquic_moq_version version);
 
 /*! \brief MoQ \c STREAM data messages */
 typedef enum imquic_moq_data_message_type {
