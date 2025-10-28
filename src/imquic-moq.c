@@ -128,8 +128,6 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = FALSE;
-	config.qlog_quic = TRUE;
-	config.alpn = "moq-10";
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
