@@ -32,9 +32,9 @@
  *
  * By default, if not specified, the MoQ stack will set the version to
  * \c IMQUIC_MOQ_VERSION_ANY , which means that for clients it will offer
- * all supported versions equal to or higher than v15, while for servers it
- * will accept the first offered among the supported ones (still if equal to or
- * higher than v15); a "legacy" version called \c IMQUIC_MOQ_VERSION_ANY_LEGACY
+ * all supported versions, while for servers it will accept the first
+ * offered among the supported ones, when negotiared via ALPN or
+ * WebTransort protocol; a "legacy" version called \c IMQUIC_MOQ_VERSION_ANY_LEGACY
  * is available, to negotiate any supported version between v11 and v14.
  * The reason for this separation of version negotiation in different
  * groups is due to the incompatibility in the messaging on the wire, which
