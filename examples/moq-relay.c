@@ -207,9 +207,9 @@ static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Removing track %s\n", t->track_name);
 		g_free(t->track_name);
 		if(t->annc && t->annc->pub) {
-			g_hash_table_remove(t->annc->pub->subscriptions_by_id, &t->request_id);
 			if(t->track_alias_valid)
 				g_hash_table_remove(t->annc->pub->subscriptions, &t->track_alias);
+			g_hash_table_remove(t->annc->pub->subscriptions_by_id, &t->request_id);
 		}
 		imquic_mutex_lock(&t->mutex);
 		GList *temp = t->subscriptions;
@@ -240,9 +240,9 @@ static imquic_demo_moq_subscriber *imquic_demo_moq_subscriber_create(imquic_conn
 	imquic_demo_moq_subscriber *sub = g_malloc0(sizeof(imquic_demo_moq_subscriber));
 	sub->conn = conn;
 	sub->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal,
-		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_subscription_destroy);
-	sub->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, NULL);
+	sub->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_subscription_destroy);
 	imquic_mutex_init(&sub->mutex);
 	return sub;
 }
@@ -664,8 +664,8 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 	/* Get rid of the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &request_id);
 	if(s) {
-		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
 		g_hash_table_remove(sub->subscriptions, &s->track_alias);
+		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
 	}
 	imquic_mutex_unlock(&mutex);
 }
@@ -1076,8 +1076,8 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	/* Get rid of the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &request_id);
 	if(s) {
-		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
 		g_hash_table_remove(sub->subscriptions, &s->track_alias);
+		g_hash_table_remove(sub->subscriptions_by_id, &request_id);
 	}
 	imquic_mutex_unlock(&mutex);
 }
@@ -1398,8 +1398,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && s->sub) {
-			g_hash_table_remove(s->sub->subscriptions_by_id, &s->request_id);
 			g_hash_table_remove(s->sub->subscriptions, &s->track_alias);
+			g_hash_table_remove(s->sub->subscriptions_by_id, &s->request_id);
 		}
 		temp = temp->next;
 	}
@@ -1600,7 +1600,7 @@ int main(int argc, char *argv[]) {
 			imquic_mutex_unlock(&mutex);
 			g_usleep(100000);
 		} else {
-			/* Iterate on the fetches and serve the requested objects */
+			/* FIXME BADLY Iterate on the fetches and serve the requested objects */
 			GList *temp = fetches, *next = NULL;
 			while(temp) {
 				imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
@@ -1619,6 +1619,8 @@ int main(int argc, char *argv[]) {
 					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] FETCH delivery %"SCNu64" completed\n",
 						imquic_get_connection_name(s->sub->conn), s->request_id);
 					fetches = g_list_delete_link(fetches, temp);
+					if(s->sub)
+						g_hash_table_remove(s->sub->subscriptions_by_id, &s->request_id);
 				}
 				temp = next;
 			}
