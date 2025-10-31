@@ -127,6 +127,8 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	const char *alpn = imquic_is_connection_webtransport(conn) ?
 		imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn);
 	moq->version = imquic_moq_version_from_alpn(alpn, conn->socket->moq_version);
+	if(alpn == NULL && moq->version == IMQUIC_MOQ_VERSION_ANY)
+		moq->version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
 	IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s][MoQ] MoQ version: %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_moq_version_str(moq->version), alpn);
 	moq->streams = g_hash_table_new_full(g_int64_hash, g_int64_equal,
