@@ -96,7 +96,7 @@ static gboolean moq_is_request_id_valid(imquic_moq_context *moq, uint64_t reques
 		if((moq->is_server && request_id % 2 != 0) || (!moq->is_server && request_id % 2 == 0)) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Request IDs must be %s when sent by a %s\n",
 				imquic_get_connection_name(moq->conn),
-				moq->is_server ? "odd" : "even", moq->is_server ? "server" : "client");
+				!moq->is_server ? "odd" : "even", !moq->is_server ? "server" : "client");
 			return FALSE;
 		}
 		if(request_id != moq->expected_request_id) {
