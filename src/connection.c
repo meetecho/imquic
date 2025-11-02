@@ -154,10 +154,10 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket) {
 	conn->local_params.active_connection_id_limit = 8;
 	conn->local_params.initial_max_streams_bidi = 128;
 	conn->local_params.initial_max_streams_uni = 128;
-	conn->local_params.initial_max_data = 1048576;
-	conn->local_params.initial_max_stream_data_bidi_remote = 1048576;
-	conn->local_params.initial_max_stream_data_bidi_local = 1048576;
-	conn->local_params.initial_max_stream_data_uni = 1048576;
+	conn->local_params.initial_max_data = 104857600;
+	conn->local_params.initial_max_stream_data_bidi_remote = 104857600;
+	conn->local_params.initial_max_stream_data_bidi_local = 104857600;
+	conn->local_params.initial_max_stream_data_uni = 104857600;
 	conn->local_params.max_udp_payload_size = 1472;
 	conn->local_params.max_datagram_frame_size = 65535;
 	/* FIXME Flow control */
