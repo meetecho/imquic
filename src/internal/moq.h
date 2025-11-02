@@ -759,21 +759,6 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
 /** @name Building MoQ messages
  */
 ///@{
-/*! \brief Helper method to put a message header and a payload together
- * @note All the "add" functions for control messages don't set the type
- * in the buffer, since versions of MoQ later than v06 also envision a
- * payload length varint: as such, we prepare the payload first, and
- * prefix the message type (and optionally the payload length) later.
- * @param[in] moq The imquic_moq_context generating the message
- * @param[in] type The ID of the control message to send
- * @param[in] bytes The buffer to add the control message to
- * @param[in] blen The size of the buffer
- * @param[in] poffset Where in the provided buffer we already have the payload
- * @param[in] plen Size of the payload in the buffer
- * @param[out] start Where the final control message starts, in the buffer
- * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_control_message(imquic_moq_context *moq, imquic_moq_message_type type,
-	uint8_t *bytes, size_t blen, size_t poffset, size_t plen, size_t *start);
 /*! \brief Helper method to add a \c CLIENT_SETUP message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1076,6 +1061,13 @@ size_t imquic_moq_add_track_status_ok(imquic_moq_context *moq, uint8_t *bytes, s
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_track_status_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_request_error_code error, const char *reason);
+/*! \brief Helper method to add a \c GOAWAY message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param new_session_uri New uri value to put in the message, if any
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -1172,13 +1164,6 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint8_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
 	uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen);
-/*! \brief Helper method to add a \c GOAWAY message to a buffer
- * @param moq The imquic_moq_context generating the message
- * @param bytes The buffer to add the message to
- * @param blen The size of the buffer
- * @param new_session_uri New uri value to put in the message, if any
- * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri);
 /*! \brief Helper method to add object extensions to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the extensions to
@@ -1397,15 +1382,17 @@ void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_
 /*! \brief Add a \c control_message_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message
+ * @param bytes The content of the message
  * @param length The length of the message
  * @param message The message content */
-void imquic_moq_qlog_control_message_created(imquic_qlog *qlog, uint64_t stream_id, size_t length, json_t *message);
+void imquic_moq_qlog_control_message_created(imquic_qlog *qlog, uint64_t stream_id, uint8_t *bytes, size_t length, json_t *message);
 /*! \brief Add a \c control_message_parsed event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message
+ * @param bytes The content of the message
  * @param length The length of the message
  * @param message The message content */
-void imquic_moq_qlog_control_message_parsed(imquic_qlog *qlog, uint64_t stream_id, size_t length, json_t *message);
+void imquic_moq_qlog_control_message_parsed(imquic_qlog *qlog, uint64_t stream_id, uint8_t *bytes, size_t length, json_t *message);
 /*! \brief Add a \c stream_type_set event
  * @param qlog The imquic_qlog instance to add the event to
  * @param local Whether this is a local or remote stream
