@@ -348,7 +348,8 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			if(!done && !mon->published) {
 				/* Send a PUBLISH_NAMESPACE */
 				mon->published = TRUE;
-				imquic_moq_publish_namespace(mon->conn, imquic_moq_get_next_request_id(conn), tns, NULL);
+				uint64_t request_id = imquic_moq_get_next_request_id(mon->conn);
+				imquic_moq_publish_namespace(mon->conn, request_id, tns, NULL);
 			} else if(done && mon->published) {
 				/* Send a PUBLISH_NAMESPACE_DONE */
 				mon->published = FALSE;
