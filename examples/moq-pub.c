@@ -49,7 +49,7 @@ static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
 static volatile int started = 0, send_objects = 0, done_sent = 0;
-static uint64_t max_request_id = 20;
+static uint64_t max_request_id = 100;
 static imquic_moq_location sub_start = { 0 }, sub_end = { 0 };
 static uint64_t group_id = 0, object_id = 0;
 

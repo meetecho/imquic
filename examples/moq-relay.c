@@ -419,7 +419,7 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, 20);
+	imquic_moq_set_max_request_id(conn, 100);
 }
 
 static uint64_t imquic_demo_incoming_moq_connection(imquic_connection *conn, uint8_t *auth, size_t authlen) {
