@@ -224,8 +224,11 @@ void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	imquic_mutex_unlock(&moq_mutex);
-	if(moq == NULL)
+	if(moq == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Ignoring incoming STREAM data on unknown context\n",
+			imquic_get_connection_name(conn));
 		return;
+	}
 	if(offset == 0 && !moq->has_control_stream) {
 		uint64_t actual_id = 0;
 		gboolean client_initiated = FALSE, bidirectional = FALSE;
