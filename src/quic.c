@@ -2387,7 +2387,8 @@ size_t imquic_payload_add_path_response(imquic_connection *conn, imquic_packet *
 
 size_t imquic_payload_add_connection_close(imquic_connection *conn, imquic_packet *pkt, uint8_t *bytes, size_t blen, imquic_error_code error_code, imquic_frame_type frame_type, const char *reason) {
 	size_t offset = 0;
-	bytes[offset] = frame_type ? IMQUIC_CONNECTION_CLOSE : IMQUIC_CONNECTION_CLOSE_APP;
+	bytes[offset] = (frame_type && frame_type != IMQUIC_CONNECTION_CLOSE_APP) ?
+		IMQUIC_CONNECTION_CLOSE : IMQUIC_CONNECTION_CLOSE_APP;
 	offset++;
 	bytes[offset] = error_code;
 	offset++;
