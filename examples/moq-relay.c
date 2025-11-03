@@ -939,9 +939,9 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		}
 		temp = temp->next;
 	}
+	imquic_mutex_unlock(&track->mutex);
 	/* Check if there's monitors interested in this */
 	imquic_demo_alert_monitors(NULL, track, FALSE);
-	imquic_mutex_unlock(&track->mutex);
 	/* Remove the pending flag */
 	track->pending = FALSE;
 	imquic_mutex_unlock(&mutex);
