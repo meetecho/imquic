@@ -6417,11 +6417,16 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL || !parameters->group_order_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
 	}
 	/* Make sure we can send this */
 	if(!moq_is_request_id_valid(moq, request_id, TRUE)) {
@@ -6469,12 +6474,31 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL || !parameters->forward_set ||
-			!parameters->subscriber_priority_set || !parameters->group_order_set || !parameters->subscription_filter_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->forward_set) {
+		/* Force some defaults */
+		parameters->forward_set = TRUE;
+		parameters->forward = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscriber_priority_set) {
+		/* Force some defaults */
+		parameters->subscriber_priority_set = TRUE;
+		parameters->subscriber_priority = 128;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscription_filter_set) {
+		/* Force some defaults */
+		parameters->subscription_filter_set = TRUE;
+		parameters->subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
@@ -6553,12 +6577,31 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL || !parameters->forward_set ||
-			!parameters->subscriber_priority_set || !parameters->group_order_set || !parameters->subscription_filter_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->forward_set) {
+		/* Force some defaults */
+		parameters->forward_set = TRUE;
+		parameters->forward = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscriber_priority_set) {
+		/* Force some defaults */
+		parameters->subscriber_priority_set = TRUE;
+		parameters->subscriber_priority = 128;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscription_filter_set) {
+		/* Force some defaults */
+		parameters->subscription_filter_set = TRUE;
+		parameters->subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 	}
 	if(parameters && parameters->subscription_filter_set && parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
 			parameters->subscription_filter.end_group > 0 && parameters->subscription_filter.start_location.group > parameters->subscription_filter.end_group) {
@@ -6609,12 +6652,21 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL ||
-			!parameters->expires_set || !parameters->group_order_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->expires_set) {
+		/* Force some defaults */
+		parameters->expires_set = TRUE;
+		parameters->expires = 0;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
@@ -6680,12 +6732,26 @@ int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id, ui
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL || !parameters->subscription_filter_set ||
-		!parameters->subscriber_priority_set || !parameters->forward_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->forward_set) {
+		/* Force some defaults */
+		parameters->forward_set = TRUE;
+		parameters->forward = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscriber_priority_set) {
+		/* Force some defaults */
+		parameters->subscriber_priority_set = TRUE;
+		parameters->subscriber_priority = 128;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscription_filter_set) {
+		/* Force some defaults */
+		parameters->subscription_filter_set = TRUE;
+		parameters->subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
@@ -6976,12 +7042,21 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL ||
-			!parameters->subscriber_priority_set || !parameters->group_order_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscriber_priority_set) {
+		/* Force some defaults */
+		parameters->subscriber_priority_set = TRUE;
+		parameters->subscriber_priority = 128;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
 	}
 	/* Make sure we can send this */
 	if(!moq_is_request_id_valid(moq, request_id, TRUE)) {
@@ -7029,12 +7104,21 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL ||
-			!parameters->subscriber_priority_set || !parameters->group_order_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscriber_priority_set) {
+		/* Force some defaults */
+		parameters->subscriber_priority_set = TRUE;
+		parameters->subscriber_priority = 128;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
 	}
 	/* Make sure we can send this */
 	if(!moq_is_request_id_valid(moq, request_id, TRUE)) {
@@ -7081,11 +7165,16 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, imquic
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL || !parameters->group_order_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
@@ -7171,12 +7260,31 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(moq->version <= IMQUIC_MOQ_VERSION_14 && (parameters == NULL || !parameters->forward_set ||
-			!parameters->subscriber_priority_set || !parameters->group_order_set || !parameters->subscription_filter_set)) {
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && parameters == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments (missing mandatory parameters)\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->forward_set) {
+		/* Force some defaults */
+		parameters->forward_set = TRUE;
+		parameters->forward = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscriber_priority_set) {
+		/* Force some defaults */
+		parameters->subscriber_priority_set = TRUE;
+		parameters->subscriber_priority = 128;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->subscription_filter_set) {
+		/* Force some defaults */
+		parameters->subscription_filter_set = TRUE;
+		parameters->subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 	}
 	if(moq->version < IMQUIC_MOQ_VERSION_13) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't send %s on a connection using %s\n",
@@ -7241,6 +7349,22 @@ int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->expires_set) {
+		/* Force some defaults */
+		parameters->expires_set = TRUE;
+		parameters->expires = 0;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->group_order_set) {
+		/* Force some defaults */
+		parameters->group_order_set = TRUE;
+		parameters->group_order_ascending = TRUE;
+	}
+	if(moq->version <= IMQUIC_MOQ_VERSION_14 && !parameters->largest_object_set) {
+		/* Force some defaults */
+		parameters->largest_object_set = TRUE;
+		parameters->largest_object.group = 0;
+		parameters->largest_object.object = 0;
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
