@@ -1417,12 +1417,16 @@ void imquic_moq_qlog_object_datagram_status_created(imquic_qlog *qlog, imquic_mo
 void imquic_moq_qlog_object_datagram_status_parsed(imquic_qlog *qlog, imquic_moq_object *object);
 /*! \brief Add a \c subgroup_header_created event
  * @param qlog The imquic_qlog instance to add the event to
- * @param stream The stream used for this header */
-void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_stream *stream);
+ * @param stream The stream used for this header
+ * @param bytes The content of the message
+ * @param length The length of the message */
+void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length);
 /*! \brief Add a \c subgroup_header_parsed event
  * @param qlog The imquic_qlog instance to add the event to
- * @param stream The stream used for this header */
-void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream);
+ * @param stream The stream used for this header
+ * @param bytes The content of the message
+ * @param length The length of the message */
+void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length);
 /*! \brief Add a \c subgroup_object_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this object
@@ -1435,12 +1439,16 @@ void imquic_moq_qlog_subgroup_object_created(imquic_qlog *qlog, uint64_t stream_
 void imquic_moq_qlog_subgroup_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
 /*! \brief Add a \c fetch_header_created event
  * @param qlog The imquic_qlog instance to add the event to
- * @param stream The stream used for this header */
-void imquic_moq_qlog_fetch_header_created(imquic_qlog *qlog, imquic_moq_stream *stream);
+ * @param stream The stream used for this header
+ * @param bytes The content of the message
+ * @param length The length of the message */
+void imquic_moq_qlog_fetch_header_created(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length);
 /*! \brief Add a \c fetch_header_parsed event
  * @param qlog The imquic_qlog instance to add the event to
- * @param stream The stream used for this header */
-void imquic_moq_qlog_fetch_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream);
+ * @param stream The stream used for this header
+ * @param bytes The content of the message
+ * @param length The length of the message */
+void imquic_moq_qlog_fetch_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length);
 /*! \brief Add a \c fetch_object_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this object

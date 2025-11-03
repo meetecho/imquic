@@ -4105,7 +4105,7 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 #ifdef HAVE_QLOG
 		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subgroup_header");
-			imquic_moq_qlog_subgroup_header_parsed(moq->conn->qlog, moq_stream);
+			imquic_moq_qlog_subgroup_header_parsed(moq->conn->qlog, moq_stream, bytes, offset);
 		}
 #endif
 	}
@@ -4234,7 +4234,7 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 #ifdef HAVE_QLOG
 		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "fetch_header");
-			imquic_moq_qlog_fetch_header_parsed(moq->conn->qlog, moq_stream);
+			imquic_moq_qlog_fetch_header_parsed(moq->conn->qlog, moq_stream, bytes, offset);
 		}
 #endif
 	}
@@ -7574,7 +7574,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				object->request_id, object->track_alias, object->group_id, object->subgroup_id, object->priority);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
-				imquic_moq_qlog_subgroup_header_created(conn->qlog, moq_stream);
+				imquic_moq_qlog_subgroup_header_created(conn->qlog, moq_stream, buffer, shg_len);
 #endif
 			imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 				buffer, moq_stream->stream_offset, shg_len, FALSE);
@@ -7656,7 +7656,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			size_t sht_len = imquic_moq_add_fetch_header(moq, buffer, bufsize, object->request_id);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
-				imquic_moq_qlog_fetch_header_created(conn->qlog, moq_stream);
+				imquic_moq_qlog_fetch_header_created(conn->qlog, moq_stream, buffer, sht_len);
 #endif
 			imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 				buffer, moq_stream->stream_offset, sht_len, FALSE);
@@ -7894,7 +7894,7 @@ void imquic_moq_qlog_control_message_created(imquic_qlog *qlog, uint64_t stream_
 	json_object_set_new(data, "length", json_integer(length));
 	if(message != NULL)
 		json_object_set_new(data, "message", message);
-	if(bytes != NULL && length > 0)
+	if(qlog->moq_messages && bytes != NULL && length > 0)
 		imquic_qlog_event_add_raw(data, "raw", bytes, length);
 	imquic_qlog_append_event(qlog, event);
 }
@@ -7911,7 +7911,7 @@ void imquic_moq_qlog_control_message_parsed(imquic_qlog *qlog, uint64_t stream_i
 	json_object_set_new(data, "length", json_integer(length));
 	if(message != NULL)
 		json_object_set_new(data, "message", message);
-	if(bytes != NULL && length > 0)
+	if(qlog->moq_messages && bytes != NULL && length > 0)
 		imquic_qlog_event_add_raw(data, "raw", bytes, length);
 	imquic_qlog_append_event(qlog, event);
 }
@@ -7937,8 +7937,10 @@ void imquic_moq_qlog_object_datagram_created(imquic_qlog *qlog, imquic_moq_objec
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 
@@ -7952,8 +7954,10 @@ void imquic_moq_qlog_object_datagram_parsed(imquic_qlog *qlog, imquic_moq_object
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 
@@ -7968,8 +7972,10 @@ void imquic_moq_qlog_object_datagram_status_created(imquic_qlog *qlog, imquic_mo
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 
@@ -7984,12 +7990,14 @@ void imquic_moq_qlog_object_datagram_status_parsed(imquic_qlog *qlog, imquic_moq
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_stream *stream) {
+void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length) {
 	if(qlog == NULL || stream == NULL)
 		return;
 	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_header_created");
@@ -8000,10 +8008,13 @@ void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_strea
 	json_object_set_new(data, "group_id", json_integer(stream->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(stream->subgroup_id));
 	json_object_set_new(data, "publisher_priority", json_integer(stream->priority));
+	/* FIXME Not part of the spec, but may be useful */
+	if(qlog->moq_objects && bytes != NULL && length > 0)
+		imquic_qlog_event_add_raw(data, "raw", bytes, length);
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream) {
+void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length) {
 	if(qlog == NULL || stream == NULL)
 		return;
 	json_t *event = imquic_qlog_event_prepare("moqt:subgroup_header_parsed");
@@ -8014,6 +8025,9 @@ void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream
 	json_object_set_new(data, "group_id", json_integer(stream->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(stream->subgroup_id));
 	json_object_set_new(data, "publisher_priority", json_integer(stream->priority));
+	/* FIXME Not part of the spec, but may be useful */
+	if(qlog->moq_objects && bytes != NULL && length > 0)
+		imquic_qlog_event_add_raw(data, "raw", bytes, length);
 	imquic_qlog_append_event(qlog, event);
 }
 
@@ -8030,8 +8044,10 @@ void imquic_moq_qlog_subgroup_object_created(imquic_qlog *qlog, uint64_t stream_
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 
@@ -8048,28 +8064,36 @@ void imquic_moq_qlog_subgroup_object_parsed(imquic_qlog *qlog, uint64_t stream_i
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_fetch_header_created(imquic_qlog *qlog, imquic_moq_stream *stream) {
+void imquic_moq_qlog_fetch_header_created(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length) {
 	if(qlog == NULL || stream == NULL)
 		return;
 	json_t *event = imquic_qlog_event_prepare("moqt:fetch_header_created");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream->stream_id));
 	json_object_set_new(data, "request_id", json_integer(stream->request_id));
+	/* FIXME Not part of the spec, but may be useful */
+	if(qlog->moq_objects && bytes != NULL && length > 0)
+		imquic_qlog_event_add_raw(data, "raw", bytes, length);
 	imquic_qlog_append_event(qlog, event);
 }
 
-void imquic_moq_qlog_fetch_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream) {
+void imquic_moq_qlog_fetch_header_parsed(imquic_qlog *qlog, imquic_moq_stream *stream, uint8_t *bytes, size_t length) {
 	if(qlog == NULL || stream == NULL)
 		return;
 	json_t *event = imquic_qlog_event_prepare("moqt:fetch_header_parsed");
 	json_t *data = imquic_qlog_event_add_data(event);
 	json_object_set_new(data, "stream_id", json_integer(stream->stream_id));
 	json_object_set_new(data, "request_id", json_integer(stream->request_id));
+	/* FIXME Not part of the spec, but may be useful */
+	if(qlog->moq_objects && bytes != NULL && length > 0)
+		imquic_qlog_event_add_raw(data, "raw", bytes, length);
 	imquic_qlog_append_event(qlog, event);
 }
 
@@ -8085,8 +8109,10 @@ void imquic_moq_qlog_fetch_object_created(imquic_qlog *qlog, uint64_t stream_id,
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 
@@ -8102,8 +8128,10 @@ void imquic_moq_qlog_fetch_object_parsed(imquic_qlog *qlog, uint64_t stream_id, 
 	json_object_set_new(data, "extension_headers_length", json_integer(object->extensions_len));
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
-	if(object->payload_len > 0)
-		imquic_qlog_event_add_raw(data, "object_payload", object->payload, object->payload_len);
+	if(object->payload_len > 0) {
+		imquic_qlog_event_add_raw(data, "object_payload",
+			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
+	}
 	imquic_qlog_append_event(qlog, event);
 }
 

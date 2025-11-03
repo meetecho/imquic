@@ -456,7 +456,10 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 			ne->qlog_quic = config->qlog_quic;
 			ne->qlog_http3 = config->qlog_http3 && ne->webtransport;
 			ne->qlog_roq = config->qlog_roq;
+			ne->qlog_roq_packets = config->qlog_roq && config->qlog_roq_packets;
 			ne->qlog_moq = config->qlog_moq;
+			ne->qlog_moq_messages = config->qlog_moq && config->qlog_moq_messages;
+			ne->qlog_moq_objects = config->qlog_moq && config->qlog_moq_objects;
 			ne->qlog_sequential = config->qlog_sequential;
 			if(!ne->qlog_quic && !ne->qlog_http3 && !ne->qlog_roq && !ne->qlog_moq) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Tracing of at least one of QUIC, HTTP/3, RoQ and MoQ should be enabled, disabling QLOG\n", config->name);

@@ -186,8 +186,14 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_QLOG_HTTP3";
 		case IMQUIC_CONFIG_QLOG_ROQ:
 			return "IMQUIC_CONFIG_QLOG_ROQ";
+		case IMQUIC_CONFIG_QLOG_ROQ_PACKETS:
+			return "IMQUIC_CONFIG_QLOG_ROQ_PACKETS";
 		case IMQUIC_CONFIG_QLOG_MOQ:
 			return "IMQUIC_CONFIG_QLOG_MOQ";
+		case IMQUIC_CONFIG_QLOG_MOQ_MESSAGES:
+			return "IMQUIC_CONFIG_QLOG_MOQ_MESSAGES";
+		case IMQUIC_CONFIG_QLOG_MOQ_OBJECTS:
+			return "IMQUIC_CONFIG_QLOG_MOQ_OBJECTS";
 		case IMQUIC_CONFIG_QLOG_SEQUENTIAL:
 			return "IMQUIC_CONFIG_QLOG_SEQUENTIAL";
 		case IMQUIC_CONFIG_MOQ_VERSION:
@@ -264,10 +270,11 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			config.qlog_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
+		} else if(property == IMQUIC_CONFIG_QLOG_ROQ || property == IMQUIC_CONFIG_QLOG_ROQ_PACKETS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ || property == IMQUIC_CONFIG_QLOG_MOQ_MESSAGES ||
+				property == IMQUIC_CONFIG_QLOG_MOQ_OBJECTS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
@@ -347,10 +354,11 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.qlog_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
+		} else if(property == IMQUIC_CONFIG_QLOG_ROQ || property == IMQUIC_CONFIG_QLOG_ROQ_PACKETS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ || property == IMQUIC_CONFIG_QLOG_MOQ_MESSAGES ||
+				property == IMQUIC_CONFIG_QLOG_MOQ_OBJECTS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating generic endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {

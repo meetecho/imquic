@@ -75,11 +75,15 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 			config.qlog_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
+		} else if(property == IMQUIC_CONFIG_QLOG_ROQ || property == IMQUIC_CONFIG_QLOG_ROQ_PACKETS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
 			config.qlog_moq = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ_MESSAGES) {
+			config.qlog_moq_messages = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ_OBJECTS) {
+			config.qlog_moq_objects = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
@@ -172,11 +176,15 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			config.qlog_quic = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
+		} else if(property == IMQUIC_CONFIG_QLOG_ROQ || property == IMQUIC_CONFIG_QLOG_ROQ_PACKETS) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "%s is ignored when creating MoQ endpoints\n", imquic_config_str(property));
 			va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_MOQ) {
 			config.qlog_moq = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ_MESSAGES) {
+			config.qlog_moq_messages = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_MOQ_OBJECTS) {
+			config.qlog_moq_objects = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_SEQUENTIAL) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {

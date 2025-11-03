@@ -282,9 +282,18 @@ typedef enum imquic_config {
 	/*! \brief Whether to save RoQ events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_ROQ,
+	/*! \brief Whether to save the payload of RoQ packets to QLOG
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_ROQ_PACKETS,
 	/*! \brief Whether to save MoQ events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_MOQ,
+	/*! \brief Whether to save the payload of MoQ control messages to QLOG
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_MOQ_MESSAGES,
+	/*! \brief Whether to save the payload of MoQ objects to QLOG
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_MOQ_OBJECTS,
 	/*! \brief Whether sequential JSON should be used, instead of regular JSON
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_SEQUENTIAL,

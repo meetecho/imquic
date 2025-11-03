@@ -113,24 +113,28 @@ void imquic_roq_qlog_stream_opened(imquic_qlog *qlog, uint64_t stream_id, uint64
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for the packet
  * @param flow_id The RoQ flow ID used in the stream
+ * @param bytes The content of the RTP packet
  * @param length The length of the RTP packet */
-void imquic_roq_qlog_stream_packet_created(imquic_qlog *qlog, uint64_t stream_id, uint64_t flow_id, uint64_t length);
+void imquic_roq_qlog_stream_packet_created(imquic_qlog *qlog, uint64_t stream_id, uint64_t flow_id, uint8_t *bytes, size_t length);
 /*! \brief Add a \c stream_packet_parsed event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for the packet
  * @param flow_id The RoQ flow ID used in the stream
+ * @param bytes The content of the RTP packet
  * @param length The length of the RTP packet */
-void imquic_roq_qlog_stream_packet_parsed(imquic_qlog *qlog, uint64_t stream_id, uint64_t flow_id, uint64_t length);
+void imquic_roq_qlog_stream_packet_parsed(imquic_qlog *qlog, uint64_t stream_id, uint64_t flow_id, uint8_t *bytes, size_t length);
 /*! \brief Add a \c datagram_packet_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param flow_id The RoQ flow ID used in the datagram
+ * @param bytes The content of the RTP packet
  * @param length The length of the RTP packet */
-void imquic_roq_qlog_datagram_packet_created(imquic_qlog *qlog, uint64_t flow_id, uint64_t length);
+void imquic_roq_qlog_datagram_packet_created(imquic_qlog *qlog, uint64_t flow_id, uint8_t *bytes, size_t length);
 /*! \brief Add a \c datagram_packet_parsed event
  * @param qlog The imquic_qlog instance to add the event to
  * @param flow_id The RoQ flow ID used in the datagram
+ * @param bytes The content of the RTP packet
  * @param length The length of the RTP packet */
-void imquic_roq_qlog_datagram_packet_parsed(imquic_qlog *qlog, uint64_t flow_id, uint64_t length);
+void imquic_roq_qlog_datagram_packet_parsed(imquic_qlog *qlog, uint64_t flow_id, uint8_t *bytes, size_t length);
 ///@}
 #endif
 

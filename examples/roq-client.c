@@ -255,6 +255,8 @@ int main(int argc, char *argv[]) {
 			} else if(!strcasecmp(options.qlog_logging[i], "roq")) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging RoQ events\n");
 				qlog_roq = TRUE;
+				if(options.qlog_roq_packets)
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Logging the payload of RoQ RTP packets\n");
 			}
 			i++;
 		}
@@ -287,6 +289,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
 		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_ROQ, qlog_roq,
+		IMQUIC_CONFIG_QLOG_ROQ_PACKETS, options.qlog_roq_packets,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {

@@ -49,7 +49,8 @@ static void imquic_qlog_free(const imquic_refcount *qlog_ref) {
 }
 
 imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server,
-		char *filename, gboolean quic, gboolean http3, gboolean roq, gboolean moq) {
+		char *filename, gboolean quic, gboolean http3, gboolean roq, gboolean roq_packets,
+		gboolean moq, gboolean moq_messages, gboolean moq_objects) {
 	if(id == NULL || filename == NULL)
 		return NULL;
 	if(!quic && !http3 && !roq && !moq) {
@@ -71,7 +72,10 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 	qlog->quic = quic;
 	qlog->http3 = http3;
 	qlog->roq = roq;
+	qlog->roq_packets = roq_packets;
 	qlog->moq = moq;
+	qlog->moq_messages = moq_messages;
+	qlog->moq_objects = moq_objects;
 	/* Initialize the QLOG structure */
 	qlog->root = json_object();
 	json_object_set_new(qlog->root, "file_schema", json_string(sequential ?

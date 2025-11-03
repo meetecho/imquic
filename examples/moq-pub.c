@@ -494,6 +494,10 @@ int main(int argc, char *argv[]) {
 			} else if(!strcasecmp(options.qlog_logging[i], "moq")) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging MoQT events\n");
 				qlog_moq = TRUE;
+				if(options.qlog_moq_messages)
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Logging the payload of MoQT control messages\n");
+				if(options.qlog_moq_objects)
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Logging the payload of MoQT objects\n");
 			}
 			i++;
 		}
@@ -524,6 +528,8 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
 		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
+		IMQUIC_CONFIG_QLOG_MOQ_MESSAGES, options.qlog_moq_messages,
+		IMQUIC_CONFIG_QLOG_MOQ_OBJECTS, options.qlog_moq_objects,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_MOQ_VERSION, moq_version,
 		IMQUIC_CONFIG_DONE, NULL);

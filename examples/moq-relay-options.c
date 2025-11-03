@@ -30,6 +30,8 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "qlog-path", 'Q', 0, G_OPTION_ARG_STRING, &options->qlog_path, "Path to a folder where to save QLOG files for all connections (default=none)", "path" },
 		{ "qlog-logging", 'l', 0, G_OPTION_ARG_STRING_ARRAY, &options->qlog_logging, "Save these events to QLOG (can be called multiple times to save multiple things; default=none)", "quic|http3|moq" },
 		{ "qlog-sequential", 'J', 0, G_OPTION_ARG_NONE, &options->qlog_sequential, "Whether sequential JSON should be used for the QLOG file, instead of regular JSON (default=no)", NULL },
+		{ "qlog-moq-messages", 'y', 0, G_OPTION_ARG_NONE, &options->qlog_moq_messages, "Whether the payload of MoQ control messages should be saved to QLOG file (default=no)", NULL },
+		{ "qlog-moq-objects", 'Y', 0, G_OPTION_ARG_NONE, &options->qlog_moq_objects, "Whether the payload of MoQ objects should be saved to QLOG file (default=no)", NULL },
 		{ "quiet", 'Z', 0, G_OPTION_ARG_NONE, &options->quiet, "If set, don't print about incoming objects on stdout (default=no)", NULL },
 		{ "debug-level", 'd', 0, G_OPTION_ARG_INT, &options->debug_level, "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)", "1-7" },
 		{ "debug-locks", 'L', 0, G_OPTION_ARG_NONE, &options->debug_locks, "Whether to verbosely debug mutex/lock accesses (default=no)", NULL },

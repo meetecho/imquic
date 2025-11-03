@@ -54,7 +54,7 @@ typedef struct imquic_qlog {
 	/*! \brief Whether this is for a client or server connection */
 	gboolean is_server;
 	/*! \brief Whether QUIC and/or HTTP/3 and/or RoQ and/or MoQT events should be saved */
-	gboolean quic, http3, roq, moq;
+	gboolean quic, http3, roq, roq_packets, moq, moq_messages, moq_objects;
 	/*! \brief Jansson JSON instance */
 	json_t *root;
 	/*! \brief Reference to the common fields entry */
@@ -86,10 +86,14 @@ typedef struct imquic_qlog {
  * @param quic Whether QUIC events should be added to the QLOG
  * @param http3 Whether HTTP/3 events should be added to the QLOG
  * @param roq Whether RoQ events should be added to the QLOG
+ * @param roq_packets Whether RoQ packets should be added to the QLOG
  * @param moq Whether MoQT events should be added to the QLOG
+ * @param moq_messages Whether MoQT messages should be added to the QLOG
+ * @param moq_objects Whether MoQT objects should be added to the QLOG
  * @returns A pointer to a new imquic_qlog instance, if successful, or NULL otherwise */
 imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server,
-	char *filename, gboolean quic, gboolean http3, gboolean roq, gboolean moq);
+	char *filename, gboolean quic, gboolean http3, gboolean roq, gboolean roq_packets,
+		gboolean moq, gboolean moq_messages, gboolean moq_objects);
 /*! \brief Set/update the Original Destination Connection ID
  * @param qlog The imquic_qlog instance to update
  * @param odcid The Original Destination Connection ID to write, as a imquic_connection_id instance */
