@@ -454,6 +454,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		}
 		if(ne->qlog_path != NULL) {
 			ne->qlog_quic = config->qlog_quic;
+			ne->qlog_quic_stream = config->qlog_quic_stream;
 			ne->qlog_http3 = config->qlog_http3 && ne->webtransport;
 			ne->qlog_roq = config->qlog_roq;
 			ne->qlog_roq_packets = config->qlog_roq && config->qlog_roq_packets;

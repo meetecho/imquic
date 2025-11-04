@@ -276,6 +276,9 @@ typedef enum imquic_config {
 	/*! \brief Whether to save QUIC events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_QUIC,
+	/*! \brief Whether to save QUIC STREAM payloads to QLOG
+	 * \note This property is ignored if QLOG support was not compiled */
+	IMQUIC_CONFIG_QLOG_QUIC_STREAM,
 	/*! \brief Whether to save HTTP/3 events to QLOG (ignored if not offering WebTransport)
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_HTTP3,

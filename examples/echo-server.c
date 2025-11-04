@@ -163,6 +163,8 @@ int main(int argc, char *argv[]) {
 			if(!strcasecmp(options.qlog_logging[i], "quic")) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
 				qlog_quic = TRUE;
+				if(options.qlog_stream)
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Logging the payload of QUIC STREAM frames\n");
 			} else if(!strcasecmp(options.qlog_logging[i], "http3") && options.webtransport) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging HTTP/3 events\n");
 				qlog_http3 = TRUE;
@@ -191,6 +193,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
+		IMQUIC_CONFIG_QLOG_QUIC_STREAM, options.qlog_stream,
 		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_DONE, NULL);

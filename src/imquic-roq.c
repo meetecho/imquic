@@ -72,6 +72,8 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_QUIC_STREAM) {
+			config.qlog_quic_stream = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {
@@ -169,6 +171,8 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
+		} else if(property == IMQUIC_CONFIG_QLOG_QUIC_STREAM) {
+			config.qlog_quic_stream = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_ROQ) {

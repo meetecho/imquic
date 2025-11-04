@@ -36,6 +36,7 @@ typedef struct demo_options {
 	const char *qlog_path;
 	const char **qlog_logging;
 	gboolean qlog_sequential;
+	gboolean qlog_stream;
 	gboolean qlog_roq_packets;
 	gboolean quiet;
 	int debug_level;

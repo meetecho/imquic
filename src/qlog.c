@@ -49,7 +49,8 @@ static void imquic_qlog_free(const imquic_refcount *qlog_ref) {
 }
 
 imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_server,
-		char *filename, gboolean quic, gboolean http3, gboolean roq, gboolean roq_packets,
+		char *filename, gboolean quic, gboolean quic_stream, gboolean http3,
+		gboolean roq, gboolean roq_packets,
 		gboolean moq, gboolean moq_messages, gboolean moq_objects) {
 	if(id == NULL || filename == NULL)
 		return NULL;
@@ -70,6 +71,7 @@ imquic_qlog *imquic_qlog_create(char *id, gboolean sequential, gboolean is_serve
 	qlog->is_server = is_server;
 	qlog->filename = g_strdup(filename);
 	qlog->quic = quic;
+	qlog->quic_stream = quic_stream;
 	qlog->http3 = http3;
 	qlog->roq = roq;
 	qlog->roq_packets = roq_packets;

@@ -1435,6 +1435,10 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 		json_object_set_new(frame, "offset", json_integer(stream_offset));
 		json_object_set_new(frame, "length", json_integer(stream_length));
 		imquic_qlog_event_add_raw(frame, "raw", NULL, offset + stream_length);
+		if(conn->qlog->quic_stream && stream_length > 0) {
+			/* FIXME Additional info we store to save the STREAM content */
+			imquic_qlog_event_add_raw(frame, "raw-stream", &bytes[offset], stream_length);
+		}
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
@@ -2179,6 +2183,10 @@ size_t imquic_payload_add_stream(imquic_connection *conn, imquic_packet *pkt, ui
 		json_object_set_new(frame, "offset", json_integer(stream_offset));
 		json_object_set_new(frame, "length", json_integer(stream_length));
 		imquic_qlog_event_add_raw(frame, "raw", NULL, offset);
+		if(conn->qlog->quic_stream && stream_length > 0) {
+			/* FIXME Additional info we store to save the STREAM content */
+			imquic_qlog_event_add_raw(frame, "raw-stream", &bytes[offset-stream_length], stream_length);
+		}
 		if(pkt->qlog_frame != NULL)
 			json_decref(pkt->qlog_frame);
 		pkt->qlog_frame = frame;
