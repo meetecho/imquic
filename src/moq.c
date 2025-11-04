@@ -1543,6 +1543,12 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			} else {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported message '%02x'\n",
 					imquic_get_connection_name(moq->conn), type);
+#ifdef HAVE_QLOG
+				if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+					json_t *message = imquic_qlog_moq_message_prepare("unknown");
+					imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, &bytes[offset], plen, message);
+				}
+#endif
 				imquic_moq_buffer_shift(moq->buffer, plen);
 				return -1;
 			}
