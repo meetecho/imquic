@@ -99,6 +99,8 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 		}
 		imquic_moq_set_connection_auth(conn, relay_auth, relay_authlen);
 	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Waiting for MoQ connection to be ready (SETUP)...\n",
+		imquic_get_connection_name(conn));
 }
 
 static void imquic_demo_ready(imquic_connection *conn) {

@@ -292,6 +292,8 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	imquic_moq_set_max_request_id(conn, 1000);	/* FIXME */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Waiting for MoQ connection to be ready (SETUP)...\n",
+		imquic_get_connection_name(conn));
 }
 
 static void imquic_demo_ready(imquic_connection *conn) {
