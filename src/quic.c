@@ -3218,8 +3218,8 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 	imquic_stream *stream = NULL;
 	imquic_buffer_chunk *chunk = NULL;
 	enum ssl_encryption_level_t level = ssl_encryption_application;
-	uint8_t buffer[1200];
-	size_t buf_len = sizeof(buffer) - 10, max_len = 0, size = 0;
+	uint8_t buffer[1200], shlen = 20;
+	size_t buf_len = sizeof(buffer) - shlen, max_len = 0, size = 0;
 	imquic_mutex_lock(&conn->mutex);
 	while(g_queue_get_length(conn->outgoing_data) > 0) {
 		stream_id = g_queue_pop_head(conn->outgoing_data);
@@ -3257,7 +3257,7 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 			if(pkt == NULL)
 				pkt = imquic_packet_create();
 			/* FIXME Check if sending new data could overfloe the flow control limits */
-			max_len = buf_len;
+			max_len = 0;
 			if(stream->out_size + chunk->length > stream->remote_max_data) {
 				/* We can't send everything, we reached the stream flow control limits */
 				size_t diff = stream->remote_max_data - stream->out_size;
@@ -3269,6 +3269,8 @@ int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *de
 				size_t diff = conn->flow_control.remote_max_data - conn->flow_control.out_size;
 				max_len = pkt->frames_size + diff;
 			}
+			if(max_len == 0 || max_len > buf_len)
+				max_len = buf_len;
 			if(chunk->length + pkt->frames_size < max_len) {
 				/* Add the whole STREAM chunk */
 				imquic_buffer_get(stream->out_data);
