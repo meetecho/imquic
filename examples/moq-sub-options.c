@@ -30,7 +30,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "end-group", 'G', 0, G_OPTION_ARG_INT64, &options->end_group, "Group to end at, for Standalone FETCH or when using specific filters in SUBSCRIBE (default=maximum, maximum)", "id" },
 		{ "end-object", 'O', 0, G_OPTION_ARG_INT64, &options->end_object, "Object to end at, for Standalone FETCH or when using specific filters in SUBSCRIBE (default=maximum)", "id" },
 		{ "update-subscribe", 'u', 0, G_OPTION_ARG_INT, &options->update_subscribe, "When using SUSBCRIBE, disable forwarding at first, and send a SUBSCRIBE_UPDATE after a few seconds (default=-1, get objects right away)", "seconds" },
-		{ "media-type", 't', 0, G_OPTION_ARG_STRING, &options->media_type, "Kind of media to subscribe to (default=none)", "none|text|hex|loc|mp4" },
+		{ "payload-type", 't', 0, G_OPTION_ARG_STRING, &options->payload_type, "How to process the payload of incoming objects (default=none)", "none|text|hex|loc|mp4" },
 		{ "target-file", 'T', 0, G_OPTION_ARG_STRING, &options->target_file, "File to save MoQ object payloads to (default=none)", "path" },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },

@@ -32,7 +32,7 @@ typedef struct demo_options {
 	int update_subscribe;
 	const char *fetch;
 	int join_offset;
-	const char *media_type;
+	const char *payload_type;
 	const char *target_file;
 	const char *ip;
 	int port;
