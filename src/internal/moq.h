@@ -243,6 +243,21 @@ typedef struct imquic_moq_setup_parameters {
 	gboolean unknown;
 } imquic_moq_setup_parameters;
 
+/*! \brief Helper mode to parse an extensions buffer to a GList of imquic_moq_object_extension
+ * \note The caller owns the list, and is responsible of freeing it and its content
+ * @param version The version of the connection
+ * @param extensions The buffer containing the extensions data
+ * @param elen The size of the buffer containing the extensions data
+ * @returns A GList instance containing a set of imquic_moq_object_extension, if successful, or NULL if no extensions were found */
+GList *imquic_moq_parse_object_extensions(imquic_moq_version version, uint8_t *extensions, size_t elen);
+/*! \brief Helper mode to craft an extensions buffer out of a GList of imquic_moq_object_extension
+ * @param[in] version The version of the connection
+ * @param[in] extensions The list of extensions to serialize
+ * @param[out] bytes The buffer to write the extensions data to
+ * @param[in] blen The size of the buffer to write to
+ * @returns How many bytes were written, if successful */
+size_t imquic_moq_build_object_extensions(imquic_moq_version version, GList *extensions, uint8_t *bytes, size_t blen);
+
 /*! \brief Group ordering for FETCH
  * \note Only supported since version -07 of the protocol */
 typedef enum imquic_moq_group_order {
@@ -1379,6 +1394,11 @@ void imquic_qlog_moq_message_add_setup_parameters(json_t *message, imquic_moq_se
  * @param name The name the array should have in the message object */
 void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_version version,
 	imquic_moq_request_parameters *parameters, const char *name);
+/*! \brief Helper to add a stringified array of extension headers to a message
+ * @param message The message object to update
+ * @param extensions The list of extensions to convert
+ * @param name The name the array should have in the message object */
+void imquic_qlog_moq_message_add_extensions(json_t *message, GList *extensions, const char *name);
 /*! \brief Add a \c control_message_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message

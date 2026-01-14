@@ -1330,10 +1330,10 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
 	if(!options.quiet) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
 			imquic_get_connection_name(conn), object->request_id, object->track_alias,
 			object->group_id, object->subgroup_id, object->object_id,
-			object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
+			object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	}
 	/* Find the track associated to this subscription */

@@ -22,30 +22,45 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 		new_obj->payload = g_malloc(object->payload_len);
 		memcpy(new_obj->payload, object->payload, object->payload_len);
 	}
-	if(object->extensions_len == 0) {
-		new_obj->extensions = NULL;
-	} else {
-		new_obj->extensions = g_malloc(object->extensions_len);
-		memcpy(new_obj->extensions, object->extensions, object->extensions_len);
+	new_obj->extensions = NULL;
+	if(object->extensions != NULL) {
+		GList *temp = object->extensions;
+		while(temp) {
+			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			imquic_moq_object_extension *new_ext = g_malloc0(sizeof(imquic_moq_object_extension));
+			new_ext->id = ext->id;
+			if(ext->id % 2 == 0) {
+				new_ext->value.number = ext->value.number;
+			} else {
+				new_ext->value.data.length = ext->value.data.length;
+				if(ext->value.data.length > 0) {
+					new_ext->value.data.buffer = g_malloc(ext->value.data.length);
+					memcpy(new_ext->value.data.buffer, ext->value.data.buffer, ext->value.data.length);
+				}
+			}
+			new_obj->extensions = g_list_prepend(new_obj->extensions, new_ext);
+			temp = temp->next;
+		}
+		new_obj->extensions = g_list_reverse(new_obj->extensions);
 	}
 	return new_obj;
+}
+
+/* Helper to destroy an object extension */
+static void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
+	if(extension != NULL) {
+		if(extension->value.data.buffer != NULL)
+			g_free(extension->value.data.buffer);
+		g_free(extension);
+	}
 }
 
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object) {
 	if(object) {
 		g_free(object->payload);
-		g_free(object->extensions);
+		g_list_free_full(object->extensions, (GDestroyNotify)(imquic_moq_object_extension_free));
 		g_free(object);
-	}
-}
-
-/* Helper to destroy an object extension */
-void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
-	if(extension != NULL) {
-		if(extension->value.data.buffer != NULL)
-			g_free(extension->value.data.buffer);
-		g_free(extension);
 	}
 }
 

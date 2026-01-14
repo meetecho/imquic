@@ -607,8 +607,6 @@ static void *imquic_demo_tester_thread(void *data) {
 	uint8_t *obj_p = s->test[TUPLE_FIELD_OBJS_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJS_SIZE]) : NULL;
 	if(obj_p)
 		memset(obj_p, 't', s->test[TUPLE_FIELD_OBJS_SIZE]);
-	uint8_t extensions[256];
-	size_t extensions_len = 0;
 	size_t extensions_count = 0;
 	if(s->test[TUPLE_FIELD_EXT_INT] >= 0)
 		extensions_count++;
@@ -664,8 +662,8 @@ static void *imquic_demo_tester_thread(void *data) {
 					(s->descending && (object_id == 0 || (group_id == (uint64_t)s->test[TUPLE_FIELD_START_GROUP] && object_id <= (uint64_t)s->test[TUPLE_FIELD_START_OBJECT]))))
 				last_object = TRUE;
 		}
+		GList *exts = NULL;
 		if(extensions_count > 0) {
-			GList *exts = NULL;
 			imquic_moq_object_extension numext = { 0 }, dataext = { 0 };
 			if(s->test[TUPLE_FIELD_EXT_INT] >= 0) {
 				/* Add a numeric extension */
@@ -680,8 +678,6 @@ static void *imquic_demo_tester_thread(void *data) {
 				dataext.value.data.length = strlen("moq-test");
 				exts = g_list_append(exts, &dataext);
 			}
-			extensions_len = imquic_moq_build_object_extensions(exts, extensions, sizeof(extensions));
-			g_list_free(exts);
 		}
 		imquic_moq_object object = {
 			.request_id = s->request_id,
@@ -692,8 +688,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			.object_status = 0,
 			.payload = (num_objects == 0) ? obj0_p : obj_p,
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
-			.extensions = (extensions_len > 0) ? extensions : NULL,
-			.extensions_len = extensions_len,
+			.extensions = exts,
 			.delivery = delivery,
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
@@ -703,6 +698,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			last_subgroup_id = object.subgroup_id;
 			last_object_id = object.object_id;
 		}
+		g_list_free(exts);
 		/* Update IDs for the next object */
 		num_objects++;
 		next_group = (num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]);
@@ -720,7 +716,6 @@ static void *imquic_demo_tester_thread(void *data) {
 				object.payload_len = 0;
 				object.payload = NULL;
 				object.extensions = NULL;
-				object.extensions_len = 0;
 				object.end_of_stream = TRUE;
 				if(send_object || last_object)
 					imquic_moq_send_object(conn, &object);

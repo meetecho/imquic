@@ -287,17 +287,15 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 }
 
 static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
-	uint8_t extensions[256];
-	size_t extensions_len = 0;
+	GList *exts = NULL;
+	imquic_moq_object_extension pgidext = { 0 };
+	imquic_moq_object_extension poidext = { 0 };
+	imquic_moq_object_extension numext = { 0 };
+	imquic_moq_object_extension dataext = { 0 };
 	if((first && options.first_group > 0 && group_id == options.first_group) ||
 			(first && options.first_object > 0 && object_id == options.first_object) ||
 			options.extensions) {
 		/* We have extensions to add to the object */
-		GList *exts = NULL;
-		imquic_moq_object_extension pgidext = { 0 };
-		imquic_moq_object_extension poidext = { 0 };
-		imquic_moq_object_extension numext = { 0 };
-		imquic_moq_object_extension dataext = { 0 };
 		if(first && options.first_group > 0 && group_id == options.first_group) {
 			/* Add the Prior Group ID Gap extension */
 			pgidext.id = IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP;
@@ -313,20 +311,19 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		if(options.extensions) {
 			/* Just for fun, we add a couple of fake extensions to the object: a numeric
 			 * extension set to the length of the text, and a data extension with a string */
-			numext.id = 0x6;	/* FIXME */
-			numext.value.number = strlen(text);
-			exts = g_list_append(exts, &numext);
 			dataext.id = 0x7;	/* FIXME */
 			dataext.value.data.buffer = (uint8_t *)"lminiero";
 			dataext.value.data.length = strlen("lminiero");
 			exts = g_list_append(exts, &dataext);
+			numext.id = 0x6;	/* FIXME */
+			numext.value.number = strlen(text);
+			exts = g_list_append(exts, &numext);
 		}
-		extensions_len = imquic_moq_build_object_extensions(exts, extensions, sizeof(extensions));
-		g_list_free(exts);
 	}
 	/* Check if it matches the filter */
 	if(group_id < sub_start.group || (group_id == sub_start.group && object_id < sub_start.object)) {
 		/* Not the time to send the object yet */
+		g_list_free(exts);
 		return;
 	}
 	if(group_id > sub_end.group || (group_id == sub_end.group && object_id > sub_end.object)) {
@@ -338,6 +335,7 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
+		g_list_free(exts);
 		return;
 	} else if(group_id == sub_end.group && object_id == sub_end.object) {
 		last = TRUE;
@@ -352,12 +350,12 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		.object_status = 0,
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
-		.extensions = extensions,
-		.extensions_len = extensions_len,
+		.extensions = exts,
 		.delivery = delivery,
 		.end_of_stream = FALSE
 	};
 	imquic_moq_send_object(moq_conn, &object);
+	g_list_free(exts);
 	if(last && delivery == IMQUIC_MOQ_USE_SUBGROUP) {
 		/* Send an empty object with status "end of X" */
 		object.object_id++;
@@ -365,7 +363,6 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		object.payload_len = 0;
 		object.payload = NULL;
 		object.extensions = NULL;
-		object.extensions_len = 0;
 		object.end_of_stream = TRUE;
 		imquic_moq_send_object(moq_conn, &object);
 	}

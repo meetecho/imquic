@@ -465,10 +465,10 @@ static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint6
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->request_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id,
-		object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
+		object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	if(object->payload == NULL || object->payload_len == 0) {
 		if(object->end_of_stream) {
@@ -481,10 +481,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
-	GList *extensions = NULL;
-	if(object->extensions != NULL && object->extensions_len > 0) {
-		extensions = imquic_moq_parse_object_extensions(object->extensions, object->extensions_len);
-		GList *temp = extensions;
+	if(object->extensions != NULL) {
+		GList *temp = object->extensions;
 		while(payload_type != DEMO_TYPE_LOC && temp) {
 			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
 			const char *ext_name = imquic_moq_extension_type_str(ext->id);
@@ -510,14 +508,14 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	} else if(payload_type == DEMO_TYPE_LOC) {
 		/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
 		 * which uses the MoQ-MI draft: https://datatracker.ietf.org/doc/html/draft-cenzano-moq-media-interop */
-		if(extensions == NULL) {
+		if(object->extensions == NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No extensions, missing LOC info?\n");
 		} else {
 			/* Parse the extensions to get access to the LOC info */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %d extensions\n", g_list_length(extensions));
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %d extensions\n", g_list_length(object->extensions));
 			imquic_demo_media_type media_type = DEMO_MEDIA_NONE;
 			struct imquic_moq_object_extension_data *loc_header = NULL, *loc_extradata = NULL;
-			GList *temp = extensions;
+			GList *temp = object->extensions;
 			while(temp) {
 				imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
 				switch(ext->id) {
@@ -663,7 +661,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			g_atomic_int_inc(&stop);
 		}
 	}
-	g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 }
 
 static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri) {

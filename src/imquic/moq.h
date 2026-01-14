@@ -521,18 +521,6 @@ typedef struct imquic_moq_object_extension {
 		} data;
 	} value;
 } imquic_moq_object_extension;
-/*! \brief Helper mode to parse an extensions buffer to a GList of imquic_moq_object_extension
- * \note The caller owns the list, and is responsible of freeing it and its content
- * @param extensions The buffer containing the extensions data
- * @param elen The size of the buffer containing the extensions data
- * @returns A GList instance containing a set of imquic_moq_object_extension, if successful, or NULL if no extensions were found */
-GList *imquic_moq_parse_object_extensions(uint8_t *extensions, size_t elen);
-/*! \brief Helper mode to craft an extensions buffer out of a GList of imquic_moq_object_extension
- * @param[in] extensions The list of extensions to serialize
- * @param[out] bytes The buffer to write the extensions data to
- * @param[in] blen The size of the buffer to write to
- * @returns How many bytes were written, if successful */
-size_t imquic_moq_build_object_extensions(GList *extensions, uint8_t *bytes, size_t blen);
 
 /*! \brief Known MoQ Object Extension header types
  * \note The library will not try to interpret extensions and their
@@ -574,9 +562,7 @@ typedef struct imquic_moq_object {
 	/*! \brief Size of the MoQ object payload */
 	size_t payload_len;
 	/*! \brief MoQ object extensions, if any */
-	uint8_t *extensions;
-	/*! \brief Size of the MoQ object extensions */
-	size_t extensions_len;
+	GList *extensions;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
 	/*! \brief Whether this signals the end of the stream */
