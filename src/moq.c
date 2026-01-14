@@ -57,6 +57,8 @@ static imquic_moq_version imquic_moq_version_from_alpn(const char *alpn, imquic_
 		return fallback;
 	if(!strcasecmp(alpn, "moq-00"))
 		return IMQUIC_MOQ_VERSION_ANY_LEGACY;
+	else if(!strcasecmp(alpn, "moq-16"))
+		return IMQUIC_MOQ_VERSION_16;
 	else if(!strcasecmp(alpn, "moq-15"))
 		return IMQUIC_MOQ_VERSION_15;
 	else if(!strcasecmp(alpn, "moq-14"))

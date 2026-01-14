@@ -39,8 +39,8 @@
  * The reason for this separation of version negotiation in different
  * groups is due to the incompatibility in the messaging on the wire, which
  * saw a few breaking changes. At the time of writing, this stack
- * supports MoQ versions from v11 ( \c IMQUIC_MOQ_VERSION_11 ) up to v15
- * ( \c IMQUIC_MOQ_VERSION_15 ), but not all versions will be supported
+ * supports MoQ versions from v11 ( \c IMQUIC_MOQ_VERSION_11 ) up to v16
+ * ( \c IMQUIC_MOQ_VERSION_16 ), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
@@ -725,7 +725,7 @@ const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code);
 		IMQUIC_CONFIG_TLS_PASSWORD, cert_pwd,
 		IMQUIC_CONFIG_LOCAL_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_15,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_16,
 		IMQUIC_CONFIG_DONE, NULL);
  \endverbatim
  * to create a QUIC server that will automatically negotiate MoQ over
@@ -758,7 +758,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...);
 		IMQUIC_CONFIG_REMOTE_HOST, "127.0.0.1",
 		IMQUIC_CONFIG_REMOTE_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_15,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_16,
 		IMQUIC_CONFIG_HTTP3_PATH, "/moq",
 		IMQUIC_CONFIG_DONE, NULL);
 
@@ -1030,7 +1030,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_14 = 0xff00000E,
 	/* Draft version -15 */
 	IMQUIC_MOQ_VERSION_15 = 0xff00000F,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_15,
+	/* Draft version -16 */
+	IMQUIC_MOQ_VERSION_16 = 0xff000010,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_16,
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
