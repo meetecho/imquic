@@ -286,10 +286,9 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_send_data(char *text, gboolean last) {
+static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 	uint8_t extensions[256];
 	size_t extensions_len = 0;
-	gboolean first = g_atomic_int_compare_and_exchange(&started, 0, 1);
 	if((first && options.first_group > 0 && group_id == options.first_group) ||
 			(first && options.first_object > 0 && object_id == options.first_object) ||
 			options.extensions) {
@@ -578,11 +577,10 @@ int main(int argc, char *argv[]) {
 	struct tm imquictmresult;
 	time_t imquicltime;
 	int64_t now = g_get_monotonic_time(), before = now;
-	GList *objects = NULL;
 	group_id = options.first_group;
 	object_id = options.first_object;
 	char *seconds = NULL;
-	gboolean last = FALSE;
+	gboolean first = FALSE, last = FALSE;
 	while(!stop) {
 		if(!g_atomic_int_get(&connected)) {
 			before = g_get_monotonic_time();
@@ -605,36 +603,27 @@ int main(int argc, char *argv[]) {
 		imquicltime = time(NULL);
 		localtime_r(&imquicltime, &imquictmresult);
 		strftime(buffer, sizeof(buffer), "%Y-%m-%d %T", &imquictmresult);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", buffer);
+		if(g_atomic_int_get(&send_objects) == 2) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", buffer);
+			first = g_atomic_int_compare_and_exchange(&started, 0, 1);
+		}
 		seconds = &buffer[strlen(buffer)-2];
 		last = !strcasecmp(seconds, "59");
-		if(!strcasecmp(seconds, "00")) {
+		if(first || !strcasecmp(seconds, "00")) {
 			/* Minute wrap, reset the group */
-			g_list_free_full(objects, (GDestroyNotify)g_free);
-			objects = NULL;
 			group_id++;
 			object_id = 0;
+			char s = *seconds;
 			*seconds = '\0';
-			objects = g_list_append(objects, g_strdup(buffer));
 			if(g_atomic_int_get(&send_objects) == 2)
-				imquic_demo_send_data(buffer, FALSE);
-			*seconds = '0';
+				imquic_demo_send_data(buffer, first, FALSE);
+			*seconds = s;
 		}
 		/* Add to the group */
-		if(objects == NULL) {
-			*seconds = '\0';
-			objects = g_list_append(objects, g_strdup(buffer));
-			if(g_atomic_int_get(&send_objects) == 2)
-				imquic_demo_send_data(buffer, last);
-			*seconds = '0';
-		} else {
-			object_id++;
-			objects = g_list_append(objects, g_strdup(seconds));
-			if(g_atomic_int_get(&send_objects) == 2)
-				imquic_demo_send_data(seconds, last);
-		}
+		object_id++;
+		if(g_atomic_int_get(&send_objects) == 2)
+			imquic_demo_send_data(seconds, first, last);
 	}
-	g_list_free_full(objects, (GDestroyNotify)g_free);
 	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
 	if(g_atomic_int_get(&started) && !g_atomic_int_get(&done_sent))
 		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
