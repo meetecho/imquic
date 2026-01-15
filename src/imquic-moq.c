@@ -226,24 +226,46 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 }
 
 /* Helpers */
+static size_t imquic_moq_name_render(uint8_t *data, size_t dlen, char *buffer, size_t blen) {
+	if(data == NULL || dlen == 0 || buffer == NULL || blen == 0)
+		return 0;
+	size_t i = 0, offset = 0;
+	for(i=0; i<dlen; i++) {
+		if((data[i] >= 0x30 && data[i] <= 0x39) ||	/* 0-9 */
+				(data[i] >= 0x41 && data[i] <= 0x5a) ||	/* A-Z */
+				(data[i] >= 0x61 && data[i] <= 0x7a) ||	/* a-z */
+				(data[i] == 0x5f)) {	/* underscore */
+			/* Write as is */
+			buffer[offset] = (char)data[i];
+			offset++;
+		} else {
+			/* Render as .XX (2-digit hex) */
+			g_snprintf(&buffer[offset], blen-offset, ".%02x", data[i]);
+			offset += 3;
+		}
+		if(offset >= blen) {
+			/* Buffer exceeded, return */
+			break;
+		}
+		buffer[offset] = '\0';
+	}
+	return offset;
+}
+
 const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple) {
 	if(tns == NULL)
 		return NULL;
 	*buffer = '\0';
-	char temp[256];
 	size_t offset = 0;
 	while(tns != NULL) {
 		if(blen - offset == 0)
 			goto trunc;
 		if(offset > 0) {
-			buffer[offset] = '/';
+			buffer[offset] = '-';
 			offset++;
 			buffer[offset] = '\0';
 		}
-		g_snprintf(temp, sizeof(temp), "%.*s", (int)tns->length, (tns->buffer ? (char *)tns->buffer : ""));
-		if(blen - offset < strlen(temp))
-			goto trunc;
-		offset = g_strlcat(buffer, temp, blen);
+		offset += imquic_moq_name_render(tns->buffer, tns->length, &buffer[offset], blen-offset);
 		if(offset >= blen)
 			goto trunc;
 		if(!tuple)
@@ -336,12 +358,7 @@ const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen)
 	if(tn == NULL || tn->buffer == 0 || tn->length == 0)
 		return NULL;
 	*buffer = '\0';
-	char temp[256];
-	size_t offset = 0;
-	g_snprintf(temp, sizeof(temp), "%.*s", (int)tn->length, tn->buffer);
-	if(blen - offset < strlen(temp))
-		goto trunc;
-	offset = g_strlcat(buffer, temp, blen);
+	size_t offset = imquic_moq_name_render(tn->buffer, tn->length, buffer, blen);
 	if(offset >= blen)
 		goto trunc;
 	return buffer;

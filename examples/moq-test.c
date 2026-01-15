@@ -314,10 +314,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
 		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64"/%"SCNu64")\n",
 			imquic_get_connection_name(conn), ns, name, request_id, track_alias);
 	} else {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64")\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
 			imquic_get_connection_name(conn), ns, name, request_id);
 	}
 	if(parameters->auth_token_set)
@@ -451,7 +451,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		range->end.object = IMQUIC_MAX_VARINT;
 	else
 		range->end.object--;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s'/'%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s--%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id,
 		parameters->group_order_ascending ? "ascending" : "descending",
 		range->start.group, range->start.object, range->end.group, range->end.object);
