@@ -1259,11 +1259,13 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, error_message); \
 		IMQUIC_MOQ_CHECK_ERR(tns_num == 0 || tns_num > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces"); \
 		offset += length; \
+		uint64_t total_len = 0; \
 		i = 0; \
 		for(i = 0; i < tns_num; i++) { \
 			IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, error_message); \
 			uint64_t tns_len = imquic_read_varint(&bytes[offset], blen-offset, &length); \
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, error_message); \
+			IMQUIC_MOQ_CHECK_ERR(tns_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid track namespace field length"); \
 			offset += length; \
 			if(last && (i == tns_num - 1)) { \
 				IMQUIC_MOQ_CHECK_ERR(tns_len > blen-offset, NULL, 0, 0, error_message); \
@@ -1278,7 +1280,9 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 			tns[i].buffer = tns_len ? &bytes[offset] : NULL; \
 			tns[i].next = (i == tns_num - 1) ? NULL : (i < 31 ? &tns[i+1] : NULL); \
 			offset += tns_len; \
+			total_len += tns_len; \
 		} \
+		IMQUIC_MOQ_CHECK_ERR(total_len > 4096, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid track namespace length"); \
 	} while(0)
 
 #define IMQUIC_MOQ_PARSE_TRACKNAME(error_message, last) \
