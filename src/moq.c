@@ -1005,6 +1005,9 @@ const char *imquic_moq_auth_token_alias_type_str(imquic_moq_auth_token_alias_typ
 }
 
 /* MoQ parameters */
+static int imquic_moq_compare_types(const void *a, const void *b) {
+	return GPOINTER_TO_INT(a) - GPOINTER_TO_INT(b);
+}
 size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 		imquic_moq_setup_parameters *parameters,
 		uint8_t *bytes, size_t blen, uint8_t *params_num) {
@@ -1016,44 +1019,57 @@ size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 		/* No parameters */
 		offset += imquic_write_varint(0, &bytes[offset], blen-offset);
 	} else {
+		uint64_t new_id = 0, last_id = 0;
+		GList *list = NULL;
 		if(parameters->path_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_PATH));
 		if(parameters->max_request_id_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID));
 		if(parameters->max_auth_token_cache_size_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE));
 		if(moq->version >= IMQUIC_MOQ_VERSION_12 && parameters->auth_token_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN));
 		if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->authority_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_AUTHORITY));
 		if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->moqt_implementation_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION));
+		*params_num = g_list_length(list);
 		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
-		if(*params_num > 0) {
-			if(parameters->path_set) {
-				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_SETUP_PARAM_PATH, (uint8_t *)parameters->path, strlen(parameters->path));
+		if(list != NULL) {
+			if(moq->version >= IMQUIC_MOQ_VERSION_16)
+				list = g_list_sort(list, imquic_moq_compare_types);
+			GList *temp = list;
+			while(temp) {
+				new_id = GPOINTER_TO_UINT(temp->data);
+				if(new_id == IMQUIC_MOQ_SETUP_PARAM_PATH) {
+					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint8_t *)parameters->path, strlen(parameters->path));
+				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						parameters->max_request_id);
+				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						parameters->max_auth_token_cache_size);
+				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN) {
+					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						parameters->auth_token, parameters->auth_token_len);
+				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_AUTHORITY) {
+					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint8_t *)parameters->authority, strlen(parameters->authority));
+				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION) {
+					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint8_t *)parameters->moqt_implementation, strlen(parameters->moqt_implementation));
+				}
+				last_id = new_id;
+				temp = temp->next;
 			}
-			if(parameters->max_request_id_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID, parameters->max_request_id);
-			}
-			if(parameters->max_auth_token_cache_size_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE, parameters->max_auth_token_cache_size);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_12 && parameters->auth_token_set) {
-				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN, parameters->auth_token, parameters->auth_token_len);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->authority_set) {
-				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_SETUP_PARAM_AUTHORITY, (uint8_t *)parameters->authority, strlen(parameters->authority));
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_14 && parameters->moqt_implementation_set) {
-				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION, (uint8_t *)parameters->moqt_implementation, strlen(parameters->moqt_implementation));
-			}
+			g_list_free(list);
 		}
 	}
 	return offset;
@@ -1079,97 +1095,109 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		/* No parameters */
 		offset += imquic_write_varint(0, &bytes[offset], blen-offset);
 	} else {
+		uint64_t new_id = 0, last_id = 0;
+		GList *list = NULL;
 		if(parameters->auth_token_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER((moq->version >= IMQUIC_MOQ_VERSION_12 ?
+				IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN : IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN_v11)));
 		if(parameters->delivery_timeout_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
 		if(parameters->max_cache_duration_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->publisher_priority_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->subscriber_priority_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->group_order_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->subscription_filter_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->expires_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_EXPIRES));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->largest_object_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->forward_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->dynamic_groups_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->new_group_request_set)
-			*params_num = *params_num + 1;
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
+		*params_num = g_list_length(list);
 		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
-		if(*params_num > 0) {
-			if(parameters->auth_token_set) {
-				int param = (moq->version >= IMQUIC_MOQ_VERSION_12 ?
-					IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN : IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN_v11);
-				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					param, parameters->auth_token, parameters->auth_token_len);
-			}
-			if(parameters->delivery_timeout_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT, parameters->delivery_timeout);
-			}
-			if(parameters->max_cache_duration_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION, parameters->max_cache_duration);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->publisher_priority_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY, (uint64_t)parameters->publisher_priority);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->subscriber_priority_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY, (uint64_t)parameters->subscriber_priority);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->group_order_set) {
-				uint64_t group_order = parameters->group_order_ascending ? IMQUIC_MOQ_ORDERING_ASCENDING : IMQUIC_MOQ_ORDERING_DESCENDING;
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER, group_order);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->subscription_filter_set) {
-				uint8_t temp[40];
-				size_t tlen = sizeof(temp);
-				size_t toffset = imquic_write_varint(parameters->subscription_filter.type, temp, tlen);
-				if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-						parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-					toffset += imquic_write_varint(parameters->subscription_filter.start_location.group, &temp[toffset], tlen-toffset);
-					toffset += imquic_write_varint(parameters->subscription_filter.start_location.object, &temp[toffset], tlen-toffset);
+		if(list != NULL) {
+			if(moq->version >= IMQUIC_MOQ_VERSION_16)
+				list = g_list_sort(list, imquic_moq_compare_types);
+			GList *temp = list;
+			while(temp) {
+				new_id = GPOINTER_TO_UINT(temp->data);
+				if(new_id == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN || new_id == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN_v11) {
+					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						parameters->auth_token, parameters->auth_token_len);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						parameters->delivery_timeout);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						parameters->max_cache_duration);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint64_t)parameters->publisher_priority);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint64_t)parameters->subscriber_priority);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER) {
+					uint64_t group_order = parameters->group_order_ascending ? IMQUIC_MOQ_ORDERING_ASCENDING : IMQUIC_MOQ_ORDERING_DESCENDING;
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						group_order);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER) {
+					uint8_t temp[40];
+					size_t tlen = sizeof(temp);
+					size_t toffset = imquic_write_varint(parameters->subscription_filter.type, temp, tlen);
+					if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+							parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+						toffset += imquic_write_varint(parameters->subscription_filter.start_location.group, &temp[toffset], tlen-toffset);
+						toffset += imquic_write_varint(parameters->subscription_filter.start_location.object, &temp[toffset], tlen-toffset);
+					}
+					if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE)
+						toffset += imquic_write_varint(parameters->subscription_filter.end_group, &temp[toffset], tlen-toffset);
+					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						temp, toffset);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_EXPIRES) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						parameters->expires);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT) {
+					uint8_t temp[40];
+					size_t tlen = sizeof(temp);
+					size_t toffset = imquic_write_varint(parameters->largest_object.group, temp, tlen);
+					toffset += imquic_write_varint(parameters->largest_object.object, &temp[toffset], tlen-toffset);
+					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						temp, toffset);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_FORWARD) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint64_t)parameters->forward);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint64_t)parameters->dynamic_groups);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST) {
+					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						(uint64_t)parameters->new_group_request);
 				}
-				if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE)
-					toffset += imquic_write_varint(parameters->subscription_filter.end_group, &temp[toffset], tlen-toffset);
-				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER, temp, toffset);
+				last_id = new_id;
+				temp = temp->next;
 			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->expires_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_EXPIRES, parameters->expires);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->largest_object_set) {
-				uint8_t temp[40];
-				size_t tlen = sizeof(temp);
-				size_t toffset = imquic_write_varint(parameters->largest_object.group, temp, tlen);
-				toffset += imquic_write_varint(parameters->largest_object.object, &temp[toffset], tlen-toffset);
-				offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT, temp, toffset);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->forward_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_FORWARD, (uint64_t)parameters->forward);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->dynamic_groups_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS, (uint64_t)parameters->dynamic_groups);
-			}
-			if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->new_group_request_set) {
-				offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
-					IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST, (uint64_t)parameters->new_group_request);
-			}
+			g_list_free(list);
 		}
 	}
 	return offset;
@@ -1726,8 +1754,9 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_setup_parameters parameters = { 0 };
+	uint64_t param = 0;
 	for(i = 0; i<params_num; i++) {
-		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken CLIENT_SETUP");
 	}
 	if(parameters.max_request_id_set) {
@@ -1854,8 +1883,9 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		imquic_get_connection_name(moq->conn), params_num);
 	uint64_t i = 0;
 	imquic_moq_setup_parameters parameters = { 0 };
+	uint64_t param = 0;
 	for(i = 0; i<params_num; i++) {
-		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SERVER_SETUP");
 	}
 	if(parameters.max_request_id_set) {
@@ -1978,10 +2008,10 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, uint8_t *bytes, size
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_request_parameters parameters = { 0 };
-	uint64_t i = 0;
+	uint64_t i = 0, param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_OK");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken REQUEST_OK");
 	}
 #ifdef HAVE_QLOG
@@ -2135,9 +2165,10 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, uint8_t *byte
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_request_parameters parameters = { 0 };
+	uint64_t param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 	}
 #ifdef HAVE_QLOG
@@ -2396,9 +2427,10 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
+	uint64_t param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH");
 	}
 #ifdef HAVE_QLOG
@@ -2512,10 +2544,10 @@ size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, uint8_t *bytes, size
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
-	uint64_t i = 0;
+	uint64_t i = 0, param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_OK");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH_OK");
 	}
 #ifdef HAVE_QLOG
@@ -2690,9 +2722,10 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
+	uint64_t param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
 	}
 #ifdef HAVE_QLOG
@@ -2807,10 +2840,10 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, uint8_t *bytes, 
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
-	uint64_t i = 0;
+	uint64_t i = 0, param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_UPDATE");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken REQUEST_UPDATE");
 	}
 #ifdef HAVE_QLOG
@@ -2916,10 +2949,10 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
-	uint64_t i = 0;
+	uint64_t i = 0, param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_OK");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	}
 #ifdef HAVE_QLOG
@@ -3137,9 +3170,10 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, uint8_t *by
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
 	imquic_moq_request_parameters parameters = { 0 };
+	uint64_t param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
 	}
 #ifdef HAVE_QLOG
@@ -3370,10 +3404,10 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
-	uint64_t i = 0;
+	uint64_t i = 0, param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH");
 	}
 #ifdef HAVE_QLOG
@@ -3522,10 +3556,10 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
-	uint64_t i = 0;
+	uint64_t i = 0, param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH_OK");
 	}
 #ifdef HAVE_QLOG
@@ -3693,9 +3727,10 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, uint8_t *bytes, si
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
+	uint64_t param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken TRACK_STATUS");
 	}
 #ifdef HAVE_QLOG
@@ -3813,10 +3848,10 @@ size_t imquic_moq_parse_track_status_ok(imquic_moq_context *moq, uint8_t *bytes,
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
 		imquic_get_connection_name(moq->conn), params_num);
-	uint64_t i = 0;
+	uint64_t i = 0, param = 0;
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS_OK");
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, error);
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken TRACK_STATUS_OK");
 	}
 #ifdef HAVE_QLOG
@@ -5813,32 +5848,50 @@ size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes,
 }
 
 /* Adding parameters to a buffer */
-size_t imquic_moq_parameter_add_int(imquic_moq_context *moq, uint8_t *bytes, size_t blen, int param, uint64_t number) {
+size_t imquic_moq_parameter_add_int(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		uint64_t param, uint64_t prev, uint64_t number) {
 	if(bytes == NULL || blen == 0) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter %d: invalid arguments\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter %"SCNu64": invalid arguments\n",
 			imquic_get_connection_name(moq->conn), param);
 		return 0;
 	}
 	if(param % 2 != 0) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter %d: type is odd\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter %"SCNu64": type is odd\n",
 			imquic_get_connection_name(moq->conn), param);
 		return 0;
+	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_16) {
+		if(prev > param) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric parameter %"SCNu64": previous parameter %"SCNu64" for delta-encoding is larger\n",
+				imquic_get_connection_name(moq->conn), param, prev);
+			return 0;
+		}
+		param -= prev;
 	}
 	size_t offset = imquic_write_varint(param, &bytes[0], blen);
 	offset += imquic_write_varint(number, &bytes[offset], blen-offset);
 	return offset;
 }
 
-size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen, int param, uint8_t *buf, size_t buflen) {
+size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen) {
 	if(bytes == NULL || blen == 0 || (buflen > 0 && buf == 0) || buflen > UINT16_MAX) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %d: invalid arguments\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %"SCNu64": invalid arguments\n",
 			imquic_get_connection_name(moq->conn), param);
 		return 0;
 	}
 	if(param % 2 != 1) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %d: type is even\n",
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %"SCNu64": type is even\n",
 			imquic_get_connection_name(moq->conn), param);
 		return 0;
+	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_16) {
+		if(prev > param) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %"SCNu64": previous parameter %"SCNu64" for delta-encoding is larger\n",
+				imquic_get_connection_name(moq->conn), param, prev);
+			return 0;
+		}
+		param -= prev;
 	}
 	size_t offset = imquic_write_varint(param, &bytes[0], blen);
 	offset += imquic_write_varint(buflen, &bytes[offset], blen);
@@ -5850,7 +5903,7 @@ size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, si
 }
 
 size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_setup_parameters *params, uint8_t *error) {
+		imquic_moq_setup_parameters *params, uint64_t *param_type, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1) {
@@ -5863,6 +5916,9 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
 	offset += length;
+	if(moq->version >= IMQUIC_MOQ_VERSION_16)
+		type += *param_type;
+	*param_type = type;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_setup_parameter_type_str(type), type);
 	uint64_t len = 0;
@@ -5932,7 +5988,7 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 }
 
 size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_request_parameters *params, uint8_t *error) {
+		imquic_moq_request_parameters *params, uint64_t *param_type, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen == 0) {
@@ -5945,6 +6001,9 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 	uint64_t type = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ request parameter");
 	offset += length;
+	if(moq->version >= IMQUIC_MOQ_VERSION_16)
+		type += *param_type;
+	*param_type = type;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_request_parameter_type_str(type, moq->version), type);
 	uint64_t len = 0;

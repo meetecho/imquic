@@ -310,14 +310,14 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		}
 		if(options.extensions) {
 			/* Just for fun, we add a couple of fake extensions to the object: a numeric
-			 * extension set to the length of the text, and a data extension with a string */
+			 * extension set to the length of the text, and a data extension with a fixed string */
+			numext.id = 0x6;	/* FIXME */
+			numext.value.number = strlen(text);
+			exts = g_list_append(exts, &numext);
 			dataext.id = 0x7;	/* FIXME */
 			dataext.value.data.buffer = (uint8_t *)"lminiero";
 			dataext.value.data.length = strlen("lminiero");
 			exts = g_list_append(exts, &dataext);
-			numext.id = 0x6;	/* FIXME */
-			numext.value.number = strlen(text);
-			exts = g_list_append(exts, &numext);
 		}
 	}
 	/* Check if it matches the filter */
