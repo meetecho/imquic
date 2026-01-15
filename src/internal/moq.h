@@ -384,6 +384,8 @@ typedef struct imquic_moq_context {
 	imquic_mutex mutex;
 	/*! \brief Whether we have established a connection */
 	volatile gint connected;
+	/*! \brief Whether we have received a GOAWAY */
+	volatile gint got_goaway;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
 	volatile gint destroyed;
 	/*! \brief Reference counter */

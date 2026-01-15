@@ -4483,6 +4483,8 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, bytes-3, offset, message);
 	}
 #endif
+	IMQUIC_MOQ_CHECK_ERR(!g_atomic_int_compare_and_exchange(&moq->got_goaway, 0, 1),
+		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Multiple GOAWAY messages received");
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_goaway)
 		moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str);
