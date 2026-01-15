@@ -398,7 +398,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
@@ -922,7 +922,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_new_moq_connection_cb(server, imquic_demo_new_connection);
 	imquic_set_moq_ready_cb(server, imquic_demo_ready);
 	imquic_set_incoming_subscribe_cb(server, imquic_demo_incoming_subscribe);
-	imquic_set_subscribe_updated_cb(server, imquic_demo_subscribe_updated);
+	imquic_set_request_updated_cb(server, imquic_demo_request_updated);
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_standalone_fetch_cb(server, imquic_demo_incoming_standalone_fetch);
 	imquic_set_incoming_joining_fetch_cb(server, imquic_demo_incoming_joining_fetch);

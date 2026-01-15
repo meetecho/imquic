@@ -989,9 +989,9 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id,
+static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id,
 		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription %"SCNu64"\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for request %"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
 	imquic_mutex_lock(&mutex);
@@ -1000,7 +1000,7 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription");
+		imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription");
 		/* TODO We should terminate with a PUBLISH_DONE with code UPDATE_FAILED */
 		return;
 	}
@@ -1011,7 +1011,7 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription");
+		imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription");
 		/* TODO We should terminate with a PUBLISH_DONE with code UPDATE_FAILED */
 		return;
 	}
@@ -1026,7 +1026,7 @@ static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t requ
 		rparams.forward = parameters->forward;
 	}
 	/* Send an acknowledgement back (only supported if we're on v15 or beyond) */
-	imquic_moq_accept_subscribe_update(conn, request_id, &rparams);
+	imquic_moq_accept_request_update(conn, request_id, &rparams);
 	imquic_mutex_unlock(&mutex);
 }
 
@@ -1585,7 +1585,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_subscribe_cb(server, imquic_demo_incoming_subscribe);
 	imquic_set_subscribe_accepted_cb(server, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(server, imquic_demo_subscribe_error);
-	imquic_set_subscribe_updated_cb(server, imquic_demo_subscribe_updated);
+	imquic_set_request_updated_cb(server, imquic_demo_request_updated);
 	imquic_set_publish_done_cb(server, imquic_demo_publish_done);
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_subscribe_namespace_cb(server, imquic_demo_incoming_subscribe_namespace);

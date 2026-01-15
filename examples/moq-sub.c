@@ -283,7 +283,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		track_alias++;
 	}
 	if(!params.forward) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a SUBSCRIBE_UPDATE in %d seconds\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 			imquic_get_connection_name(conn), options.update_subscribe);
 		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
 	}
@@ -383,12 +383,12 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_update_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_request_update_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Our update to a subscription via ID %"SCNu64" was accepted\n",
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
+static void imquic_demo_request_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error updating our subscription via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 }
@@ -420,7 +420,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	rparams.subscription_filter.end_group = end_location_sub.group;
 	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a SUBSCRIBE_UPDATE in %d seconds\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 			imquic_get_connection_name(conn), options.update_subscribe);
 		request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
@@ -832,7 +832,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(options.fetch == NULL && !options.track_status && options.update_subscribe) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send a SUBSCRIBE_UPDATE to actually start streaming after %d seconds (note: ignored for versions earlier than 11)\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send a REQUEST_UPDATE to actually start streaming after %d seconds (note: ignored for versions earlier than 11)\n",
 			options.update_subscribe);
 	}
 
@@ -950,8 +950,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_track_status_error_cb(client, imquic_demo_track_status_error);
 	imquic_set_subscribe_accepted_cb(client, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(client, imquic_demo_subscribe_error);
-	imquic_set_subscribe_update_accepted_cb(client, imquic_demo_subscribe_update_accepted);
-	imquic_set_subscribe_update_error_cb(client, imquic_demo_subscribe_update_error);
+	imquic_set_request_update_accepted_cb(client, imquic_demo_request_update_accepted);
+	imquic_set_request_update_error_cb(client, imquic_demo_request_update_error);
 	imquic_set_incoming_publish_cb(client, imquic_demo_incoming_publish);
 	imquic_set_publish_done_cb(client, imquic_demo_publish_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
@@ -965,7 +965,7 @@ int main(int argc, char *argv[]) {
 
 	while(!stop) {
 		if(update_time > 0 && g_get_monotonic_time() >= update_time) {
-			/* Send a SUBSCRIBE_UPDATE with forward=true */
+			/* Send a REQUEST_UPDATE with forward=true */
 			update_time = 0;
 			/* TODO This should be done for all subscriptions */
 			GList *temp = request_ids;
@@ -986,9 +986,9 @@ int main(int argc, char *argv[]) {
 				uint64_t request_id = *rid, sub_request_id = request_id;
 				if(imquic_moq_get_version(moq_conn) >= IMQUIC_MOQ_VERSION_14)
 					request_id = imquic_moq_get_next_request_id(moq_conn);
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a SUBSCRIBE_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a REQUEST_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
 					imquic_get_connection_name(moq_conn), *rid, request_id);
-				imquic_moq_update_subscribe(moq_conn, request_id, sub_request_id, &params);
+				imquic_moq_update_request(moq_conn, request_id, sub_request_id, &params);
 				temp = temp->next;
 			}
 		}

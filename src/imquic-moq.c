@@ -525,36 +525,36 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
-		void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters)) {
+void imquic_set_request_updated_cb(imquic_endpoint *endpoint,
+		void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.subscribe_updated = subscribe_updated;
+		endpoint->callbacks.moq.request_updated = request_updated;
 	}
 }
 
-void imquic_set_subscribe_update_accepted_cb(imquic_endpoint *endpoint,
-		void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
+void imquic_set_request_update_accepted_cb(imquic_endpoint *endpoint,
+		void (* request_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.subscribe_update_accepted = subscribe_update_accepted;
+		endpoint->callbacks.moq.request_update_accepted = request_update_accepted;
 	}
 }
 
-void imquic_set_subscribe_update_error_cb(imquic_endpoint *endpoint,
-		void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_codes, const char *reason)) {
+void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
+		void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_codes, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.subscribe_update_error = subscribe_update_error;
+		endpoint->callbacks.moq.request_update_error = request_update_error;
 	}
 }
 

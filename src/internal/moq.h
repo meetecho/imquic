@@ -40,7 +40,7 @@ void imquic_moq_deinit(void);
 typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_REQUEST_OK = 0x5,						/* Added in v15 */
 	IMQUIC_MOQ_REQUEST_ERROR = 0x7,						/* Added in v15 */
-	IMQUIC_MOQ_SUBSCRIBE_UPDATE = 0x2,
+	IMQUIC_MOQ_REQUEST_UPDATE = 0x2,
 	IMQUIC_MOQ_SUBSCRIBE = 0x3,
 	IMQUIC_MOQ_SUBSCRIBE_OK = 0x4,
 		IMQUIC_MOQ_SUBSCRIBE_ERROR = 0x5,				/* Deprecated in v15 */
@@ -582,13 +582,13 @@ size_t imquic_moq_parse_publish_error(imquic_moq_context *moq, uint8_t *bytes, s
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse a \c SUBSCRIBE_UPDATE message
+/*! \brief Helper to parse a \c REQUEST_UPDATE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_request_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c SUBSCRIBE_OK message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -916,7 +916,7 @@ size_t imquic_moq_add_publish_error(imquic_moq_context *moq, uint8_t *bytes, siz
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_request_parameters *parameters);
-/*! \brief Helper method to add a \c SUBSCRIBE_UPDATE message to a buffer
+/*! \brief Helper method to add a \c REQUEST_UPDATE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
@@ -924,7 +924,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t 
  * @param sub_request_id The subscription request ID to put in the message (ignored before v14)
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_subscribe_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+size_t imquic_moq_add_request_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
@@ -1288,12 +1288,12 @@ typedef struct imquic_moq_callbacks {
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias);
-	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_UPDATE messages */
-	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
-	/*! \brief Callback function to be notified about an ACK to a previously sent \c SUBSCRIBE_UPDATE message */
-	void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
-	/*! \brief Callback function to be notified about incoming errors to a previously \c SUBSCRIBE_UPDATE message */
-	void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
+	/*! \brief Callback function to be notified about incoming \c REQUEST_UPDATE messages */
+	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
+	/*! \brief Callback function to be notified about an ACK to a previously sent \c REQUEST_UPDATE message */
+	void (* request_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
+	/*! \brief Callback function to be notified about incoming errors to a previously \c REQUEST_UPDATE message */
+	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_DONE messages */
 	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages */

@@ -865,27 +865,24 @@ void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
 void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias));
 /*! \brief Configure the callback function to be notified when an update
- * is received for a \c SUBSCRIBE we previously sent
- * @note Currently unused, considering there are discussions in the MoQ
- * standardization efforts on whether this is actually useful or not,
- * or if it even works at all.
+ * is received for a request (e.g., a \c SUBSCRIBE ) we previously sent
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
-void imquic_set_subscribe_updated_cb(imquic_endpoint *endpoint,
-	void (* subscribe_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters));
+ * @param request_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
+void imquic_set_request_updated_cb(imquic_endpoint *endpoint,
+	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an OK
- * is received for a \c SUBSCRIBE_UPDATE we previously sent
+ * is received for a \c REQUEST_UPDATE we previously sent
  * @note This was only added in v15, and so will never be fired on older versions.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_update_accepted Pointer to the function that will fire when a \c SUBSCRIBE_UPDATE is acknowledged */
-void imquic_set_subscribe_update_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
+ * @param request_update_accepted Pointer to the function that will fire when a \c REQUEST_UPDATE is acknowledged */
+void imquic_set_request_update_accepted_cb(imquic_endpoint *endpoint,
+	void (* request_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when a
- * \c SUBSCRIBE_UPDATE we previously sent was rejected with an error
+ * \c REQUEST_UPDATE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param subscribe_update_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
-void imquic_set_subscribe_update_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason));
+ * @param request_update_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
+void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
+	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1155,7 +1152,7 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias);
-/*! \brief Function to send a \c SUBSCRIBE_UPDATE request
+/*! \brief Function to send a \c REQUEST_UPDATE request
  * \note Version 14 of the draft introduced a new "Subscription Request ID", which means
  * the meaning of \c request_id will change depending on which version the connection is using.
  * @param conn The imquic_connection to send the request on
@@ -1163,18 +1160,18 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
  * @param sub_request_id Unique \c request_id value associated to the subscription to update (ignored before v14)
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_update_subscribe(imquic_connection *conn, uint64_t request_id,
+int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id,
 	uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
-/*! \brief Function to accept an incoming \c SUBSCRIBE_UPDATE request
+/*! \brief Function to accept an incoming \c REQUEST_UPDATE request
  * \note This acknowledgement was only added in v15, which means it will
  * be a no-action if you try to send it when negotiating an older version
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c SUBSCRIBE_UPDATE request
+ * @param request_id The request ID of the original \c REQUEST_UPDATE request
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_accept_subscribe_update(imquic_connection *conn, uint64_t request_id,
+int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
-/*! \brief Function to reject an incoming \c SUBSCRIBE_UPDATE request
+/*! \brief Function to reject an incoming \c REQUEST_UPDATE request
  * \note This error response was only added in v15, which means it will
  * be a no-action if you try to send it when negotiating an older version
  * @param conn The imquic_connection to send the request on
@@ -1182,7 +1179,7 @@ int imquic_moq_accept_subscribe_update(imquic_connection *conn, uint64_t request
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_reject_subscribe_update(imquic_connection *conn, uint64_t request_id,
+int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason);
 /*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
