@@ -672,7 +672,7 @@ typedef enum imquic_moq_request_error_code {
 	/* Others */
 	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,
 	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
-	IMQUIC_MOQ_REQERR_UNKNOWN_STATUS_IN_RANGE = 0x33,
+	IMQUIC_MOQ_REQERR_UNKNOWN_STATUS_IN_RANGE = 0x33,	/* Deprecated in v16 */
 } imquic_moq_request_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
  * @param code The imquic_moq_request_error_code value
