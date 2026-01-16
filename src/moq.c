@@ -378,6 +378,8 @@ const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code
 			return "INVALID_RANGE";
 		case IMQUIC_MOQ_REQERR_MALFORMED_TRACK:
 			return "MALFORMED_TRACK";
+		case IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION:
+			return "DUPLICATE_SUBSCRIPTION";
 		case IMQUIC_MOQ_REQERR_UNINTERESTED:
 			return "UNINTERESTED";
 		case IMQUIC_MOQ_REQERR_PREFIX_OVERLAP:
@@ -420,6 +422,7 @@ imquic_moq_legacy_error_code imquic_moq_request_error_code_to_legacy(imquic_moq_
 			return IMQUIC_MOQ_OLDERR_UNKNOWN_STATUS_IN_RANGE;
 		/* New error codes with no mapping to old ones */
 		case IMQUIC_MOQ_REQERR_PREFIX_OVERLAP:
+		case IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION:
 		default:
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't translate new error code %s (%s) to old error code\n",
 				imquic_moq_request_error_code_str(code), imquic_moq_version_str(version));

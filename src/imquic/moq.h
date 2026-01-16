@@ -666,6 +666,7 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
 	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
 	IMQUIC_MOQ_REQERR_MALFORMED_TRACK = 0x12,
+	IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,
 	/* The following are returned by subscribers */
 	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
 	/* Others */
