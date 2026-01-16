@@ -1105,9 +1105,9 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 				IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN : IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN_v11)));
 		if(parameters->delivery_timeout_set && parameters->delivery_timeout > 0)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
-		if(parameters->max_cache_duration_set)
+		if(parameters->max_cache_duration_set && moq->version <= IMQUIC_MOQ_VERSION_15)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION));
-		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->publisher_priority_set)
+		if(moq->version == IMQUIC_MOQ_VERSION_15 && parameters->publisher_priority_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->subscriber_priority_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
@@ -1121,7 +1121,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->forward_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
-		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->dynamic_groups_set)
+		if(moq->version == IMQUIC_MOQ_VERSION_15 && parameters->dynamic_groups_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS));
 		if(moq->version >= IMQUIC_MOQ_VERSION_15 && parameters->new_group_request_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
@@ -6040,14 +6040,14 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->delivery_timeout);
 		len = length;
-	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION) {
+	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION && moq->version <= IMQUIC_MOQ_VERSION_15) {
 		params->max_cache_duration = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->max_cache_duration_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_cache_duration);
 		len = length;
-	} else if(moq->version >= IMQUIC_MOQ_VERSION_15 && type == IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY) {
+	} else if(moq->version == IMQUIC_MOQ_VERSION_15 && type == IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY) {
 		uint64_t publisher_priority = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || publisher_priority > 255, NULL, 0, 0, "Broken MoQ request parameter");
 		params->publisher_priority = publisher_priority;
@@ -6119,7 +6119,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu8"\n",
 			imquic_get_connection_name(moq->conn), params->forward);
 		len = length;
-	} else if(moq->version >= IMQUIC_MOQ_VERSION_15 && type == IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS) {
+	} else if(moq->version == IMQUIC_MOQ_VERSION_15 && type == IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS) {
 		uint64_t dynamic_groups = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || dynamic_groups > 2, NULL, 0, 0, "Broken MoQ request parameter");
 		params->dynamic_groups = (dynamic_groups > 0);

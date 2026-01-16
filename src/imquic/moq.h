@@ -421,13 +421,17 @@ typedef struct imquic_moq_request_parameters {
 	gboolean delivery_timeout_set;
 	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
 	uint64_t delivery_timeout;
-	/*! \brief Whether the MAX_CACHE_DURATION parameter is set */
+	/*! \brief Whether the MAX_CACHE_DURATION parameter is set
+	 * \note Deprecated in v16, and moved to Track Extensions */
 	gboolean max_cache_duration_set;
-	/*! \brief Value of the MAX_CACHE_DURATION parameter */
+	/*! \brief Value of the MAX_CACHE_DURATION parameter
+	 * \note Deprecated in v16, and moved to Track Extensions */
 	uint64_t max_cache_duration;
-	/*! \brief Whether the PUBLISHER_PRIORITY parameter is set */
+	/*! \brief Whether the PUBLISHER_PRIORITY parameter is set
+	 * \note Deprecated in v16, and moved to Track Extensions */
 	gboolean publisher_priority_set;
-	/*! \brief Value of the PUBLISHER_PRIORITY parameter */
+	/*! \brief Value of the PUBLISHER_PRIORITY parameter
+	 * \note Deprecated in v16, and moved to Track Extensions */
 	uint8_t publisher_priority;
 	/*! \brief Whether the SUBSCRIBER_PRIORITY parameter is set */
 	gboolean subscriber_priority_set;
@@ -453,9 +457,11 @@ typedef struct imquic_moq_request_parameters {
 	gboolean forward_set;
 	/*! \brief Value of the FORWARD parameter */
 	gboolean forward;
-	/*! \brief Whether the DYNAMIC_GROUPS parameter is set */
+	/*! \brief Whether the DYNAMIC_GROUPS parameter is set
+	 * \note Deprecated in v16, and moved to Track Extensions */
 	gboolean dynamic_groups_set;
-	/*! \brief Value of the DYNAMIC_GROUPS parameter */
+	/*! \brief Value of the DYNAMIC_GROUPS parameter
+	 * \note Deprecated in v16, and moved to Track Extensions */
 	gboolean dynamic_groups;
 	/*! \brief Whether the NEW_GROUP_REQUEST parameter is set */
 	gboolean new_group_request_set;
