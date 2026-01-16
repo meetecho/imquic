@@ -386,8 +386,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	rparams.expires_set = TRUE;
 	rparams.expires = 0;
 	rparams.group_order_set = TRUE;
-	rparams.group_order_ascending = TRUE;
-	imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams);
+	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+	imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -453,7 +453,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		range->end.object--;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s--%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id,
-		parameters->group_order_ascending ? "ascending" : "descending",
+		imquic_moq_group_order_str(parameters->group_order),
 		range->start.group, range->start.object, range->end.group, range->end.object);
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
@@ -506,7 +506,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	/* Create a subscription to this track */
 	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, 0);
 	s->fetch = TRUE;
-	s->descending = !parameters->group_order_ascending;
+	s->descending = (parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING);
 	s->range = *range;
 	memcpy(s->test, test, sizeof(test));
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
@@ -515,8 +515,8 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.group_order_set = parameters->group_order_set;
-	rparams.group_order_ascending = parameters->group_order_ascending;
-	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams);
+	rparams.group_order = parameters->group_order;
+	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -533,7 +533,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), (absolute ? "absolute" : "relative"),
 		joining_request_id, request_id, joining_start,
-		parameters->group_order_ascending ? "ascending" : "descending");
+		imquic_moq_group_order_str(parameters->group_order));
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* TODO Add support for joining FETCH */

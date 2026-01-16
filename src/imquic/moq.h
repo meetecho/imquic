@@ -363,6 +363,18 @@ const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen)
  * @returns TRUE if the second track name is part of the secondm, FALSE otherwise */
 gboolean imquic_moq_name_equals(imquic_moq_name *first, imquic_moq_name *second);
 
+/*! \brief Group ordering for tracks
+ * \note Only supported since version -07 of the protocol */
+typedef enum imquic_moq_group_order {
+	IMQUIC_MOQ_ORDERING_ORIGINAL = 0x0,
+	IMQUIC_MOQ_ORDERING_ASCENDING = 0x1,
+	IMQUIC_MOQ_ORDERING_DESCENDING = 0x2,
+} imquic_moq_group_order;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_group_order value.
+ * @param type The imquic_moq_group_order value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_group_order_str(imquic_moq_group_order type);
+
 /*! \brief MoQ filter type, for subscriptions */
 typedef enum imquic_moq_filter_type {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
@@ -440,7 +452,7 @@ typedef struct imquic_moq_request_parameters {
 	/*! \brief Whether the GROUP_ORDER parameter is set */
 	gboolean group_order_set;
 	/*! \brief Value of the GROUP_ORDER parameter */
-	gboolean group_order_ascending;
+	imquic_moq_group_order group_order;
 	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
 	gboolean subscription_filter_set;
 	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
@@ -532,6 +544,16 @@ typedef struct imquic_moq_object_extension {
  * \note The library will not try to interpret extensions and their
  * payload: this is always left up to applications */
 typedef enum imquic_moq_extension_type {
+	/* Delivery Timeout (added in v16) */
+	IMQUIC_MOQ_EXT_DELIVERY_TIMEOUT = 0x02,
+	/* Max Cache Duration (added in v16) */
+	IMQUIC_MOQ_EXT_MAX_CACHE_DURATION = 0x04,
+	/* Default Publisher Priority (added in v16) */
+	IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
+	/* Default Group Order (added in v16) */
+	IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER = 0x22,
+	/* Dynamic Groups (added in v16) */
+	IMQUIC_MOQ_EXT_DYNAMIC_GROUPS = 0x30,
 	/* Prior Group ID Gap */
 	IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP = 0x3C,
 	/* Prior Object ID Gap */
@@ -839,7 +861,7 @@ void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
  * @param incoming_publish Pointer to the function that will handle the incoming \c PUBLISH */
 void imquic_set_incoming_publish_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters));
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -864,7 +886,7 @@ void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_accepted Pointer to the function that will fire when a \c SUBSCRIBE is accepted */
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters));
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -958,7 +980,7 @@ void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
  * @param fetch_accepted Pointer to the function that will fire when an \c FETCH is accepted */
 void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
 	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_location *largest, imquic_moq_request_parameters *parameters));
+		imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions));
 /*! \brief Configure the callback function to be notified when an
  * \c FETCH we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1115,10 +1137,11 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namesp
  * @param tn The imquic_moq_name track name to publish to
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param parameters The parameters to add to the request
+ * @param track_extensions List of track extensions to add, if any (added in v16)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_publish(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters);
+	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 /*! \brief Function to accept an incoming \c PUBLISH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
@@ -1149,9 +1172,10 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
  * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param track_alias The unique \c track_alias value associated to the subscription to accept (ignored before v12)
  * @param parameters The parameters to add to the request
+ * @param track_extensions List of track extensions to add, if any (added in v16)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters);
+	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 /*! \brief Function to reject an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject
@@ -1263,9 +1287,10 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
  * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param largest The largest group/object IDs
  * @param parameters The parameters to add to the request
+ * @param track_extensions List of track extensions to add, if any (added in v16)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_location *largest, imquic_moq_request_parameters *parameters);
+	imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions);
 /*! \brief Function to reject an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject

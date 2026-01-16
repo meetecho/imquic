@@ -22,45 +22,51 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 		new_obj->payload = g_malloc(object->payload_len);
 		memcpy(new_obj->payload, object->payload, object->payload_len);
 	}
-	new_obj->extensions = NULL;
-	if(object->extensions != NULL) {
-		GList *temp = object->extensions;
-		while(temp) {
-			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-			imquic_moq_object_extension *new_ext = g_malloc0(sizeof(imquic_moq_object_extension));
-			new_ext->id = ext->id;
-			if(ext->id % 2 == 0) {
-				new_ext->value.number = ext->value.number;
-			} else {
-				new_ext->value.data.length = ext->value.data.length;
-				if(ext->value.data.length > 0) {
-					new_ext->value.data.buffer = g_malloc(ext->value.data.length);
-					memcpy(new_ext->value.data.buffer, ext->value.data.buffer, ext->value.data.length);
-				}
-			}
-			new_obj->extensions = g_list_prepend(new_obj->extensions, new_ext);
-			temp = temp->next;
-		}
-		new_obj->extensions = g_list_reverse(new_obj->extensions);
-	}
+	new_obj->extensions = imquic_moq_object_extensions_duplicate(object->extensions);
 	return new_obj;
 }
 
-/* Helper to destroy an object extension */
-static void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
-	if(extension != NULL) {
-		if(extension->value.data.buffer != NULL)
-			g_free(extension->value.data.buffer);
-		g_free(extension);
+/* Helper to duplicate a list of extensions */
+GList *imquic_moq_object_extensions_duplicate(GList *extensions) {
+	if(extensions == NULL)
+		return NULL;
+	GList *new_extensions = NULL;
+	GList *temp = extensions;
+	while(temp) {
+		imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+		imquic_moq_object_extension *new_ext = g_malloc0(sizeof(imquic_moq_object_extension));
+		new_ext->id = ext->id;
+		if(ext->id % 2 == 0) {
+			new_ext->value.number = ext->value.number;
+		} else {
+			new_ext->value.data.length = ext->value.data.length;
+			if(ext->value.data.length > 0) {
+				new_ext->value.data.buffer = g_malloc(ext->value.data.length);
+				memcpy(new_ext->value.data.buffer, ext->value.data.buffer, ext->value.data.length);
+			}
+		}
+		new_extensions = g_list_prepend(new_extensions, new_ext);
+		temp = temp->next;
 	}
+	new_extensions = g_list_reverse(new_extensions);
+	return new_extensions;
 }
 
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object) {
 	if(object) {
 		g_free(object->payload);
-		g_list_free_full(object->extensions, (GDestroyNotify)(imquic_moq_object_extension_free));
+		g_list_free_full(object->extensions, (GDestroyNotify)(imquic_moq_object_extension_cleanup));
 		g_free(object);
+	}
+}
+
+/* Helper to destroy an object extension */
+void imquic_moq_object_extension_cleanup(imquic_moq_object_extension *extension) {
+	if(extension != NULL) {
+		if(extension->value.data.buffer != NULL)
+			g_free(extension->value.data.buffer);
+		g_free(extension);
 	}
 }
 

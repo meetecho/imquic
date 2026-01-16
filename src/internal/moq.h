@@ -258,18 +258,6 @@ GList *imquic_moq_parse_object_extensions(imquic_moq_version version, uint8_t *e
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_object_extensions(imquic_moq_version version, GList *extensions, uint8_t *bytes, size_t blen);
 
-/*! \brief Group ordering for FETCH
- * \note Only supported since version -07 of the protocol */
-typedef enum imquic_moq_group_order {
-	IMQUIC_MOQ_ORDERING_ORIGINAL = 0x0,
-	IMQUIC_MOQ_ORDERING_ASCENDING = 0x1,
-	IMQUIC_MOQ_ORDERING_DESCENDING = 0x2,
-} imquic_moq_group_order;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_group_order value.
- * @param type The imquic_moq_group_order value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_group_order_str(imquic_moq_group_order type);
-
 /*! \brief MoQ FETCH types */
 typedef enum imquic_moq_fetch_type {
 	IMQUIC_MOQ_FETCH_STANDALONE = 0x01,
@@ -885,9 +873,11 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
  * @param track_name The track name to put in the message
  * @param track_alias The track alias to put in the message
  * @param parameters The parameters to add, if any
+ * @param track_extensions List of track extensions to add, if any (added in v16)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias,
+	imquic_moq_request_parameters *parameters, GList *track_extensions);
 /*! \brief Helper method to add a \c PUBLISH_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -936,9 +926,10 @@ size_t imquic_moq_add_request_update(imquic_moq_context *moq, uint8_t *bytes, si
  * @param request_id The request ID to put in the message
  * @param track_alias The track alias to put in the message (ignored before v12)
  * @param parameters The parameters to add, if any
+ * @param track_extensions List of track extensions to add, if any (added in v16)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters);
+	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 /*! \brief Helper method to add a \c SUBSCRIBE_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1035,9 +1026,10 @@ size_t imquic_moq_add_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, size
  * @param end_of_track Whether all objects have been published
  * @param end_location End location to add to the message, if needed
  * @param parameters The parameters to add, if any
+ * @param track_extensions List of track extensions to add, if any (added in v16)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	uint8_t end_of_track, imquic_moq_location *end_location, imquic_moq_request_parameters *parameters);
+	uint8_t end_of_track, imquic_moq_location *end_location, imquic_moq_request_parameters *parameters, GList *track_extensions);
 /*! \brief Helper method to add a \c FETCH_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1285,7 +1277,7 @@ typedef struct imquic_moq_callbacks {
 	void (* publish_namespace_done)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH messages */
 	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters);
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ACCEPTED messages */
 	void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ERROR messages */
@@ -1294,7 +1286,7 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters);
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c REQUEST_UPDATE messages */
@@ -1325,7 +1317,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c FETCH_CANCEL messages */
 	void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ACCEPTED messages */
-	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters);
+	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */

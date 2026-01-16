@@ -134,7 +134,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.group_order_set = TRUE;
-		params.group_order_ascending = TRUE;
+		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		params.forward_set = TRUE;
 		params.forward = forward;
 		if(options.auth_info && strlen(options.auth_info) > 0) {
@@ -146,7 +146,18 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias, &params);
+		/* Add a couple of track extensions too (will be ignored on versions older than v16) */
+		GList *exts = NULL;
+		imquic_moq_object_extension default_priority = { 0 };
+		default_priority.id = IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY;
+		default_priority.value.number = 128;
+		exts = g_list_append(exts, &default_priority);
+		imquic_moq_object_extension default_order = { 0 };
+		default_order.id = IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER;
+		default_order.value.number = IMQUIC_MOQ_ORDERING_ASCENDING;
+		exts = g_list_append(exts, &default_order);
+		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias, &params, exts);
+		g_list_free(exts);
 	}
 }
 
@@ -210,7 +221,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* TODO Check priority, filters, forwarding */
-	if(!parameters->group_order_ascending) {
+	if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING) {
 		/* We don't support descending mode yet */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Descending group order unsupported, will send objects in ascending group order\n",
 			imquic_get_connection_name(conn));
@@ -251,12 +262,23 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	rparams.expires_set = TRUE;
 	rparams.expires = 0;
 	rparams.group_order_set = TRUE;
-	rparams.group_order_ascending = TRUE;
+	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 	if(pub_started) {
 		rparams.largest_object_set = TRUE;
 		rparams.largest_object = sub_start;
 	}
-	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams);
+	/* Add a couple of track extensions too (will be ignored on versions older than v16) */
+	GList *exts = NULL;
+	imquic_moq_object_extension default_priority = { 0 };
+	default_priority.id = IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY;
+	default_priority.value.number = 128;
+	exts = g_list_append(exts, &default_priority);
+	imquic_moq_object_extension default_order = { 0 };
+	default_order.id = IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER;
+	default_order.value.number = IMQUIC_MOQ_ORDERING_ASCENDING;
+	exts = g_list_append(exts, &default_order);
+	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, exts);
+	g_list_free(exts);
 	/* Start sending objects */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
