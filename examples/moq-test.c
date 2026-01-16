@@ -327,7 +327,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	char err[256];
 	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
 	if(res != 0) {
-		imquic_moq_reject_subscribe(conn, request_id, res, err, track_alias);
+		imquic_moq_reject_subscribe(conn, request_id, res, err, track_alias, 0);
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -462,7 +462,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	char err[256];
 	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
 	if(res != 0) {
-		imquic_moq_reject_fetch(conn, request_id, res, err);
+		imquic_moq_reject_fetch(conn, request_id, res, err, 0);
 		return;
 	}
 	/* Intersect the test settings with the provided range */
@@ -485,7 +485,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 			(range->start.group == largest.group && range->start.object > largest.object) ||
 			(range->end.group == (uint64_t)test[TUPLE_FIELD_START_GROUP] && range->end.object < (uint64_t)test[TUPLE_FIELD_START_OBJECT])) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] FETCH range outside of test range\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "FETCH range outside of test range");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "FETCH range outside of test range", 0);
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -537,7 +537,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* TODO Add support for joining FETCH */
-	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not implemented yet");
+	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not implemented yet", 0);
 }
 
 static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t request_id) {
