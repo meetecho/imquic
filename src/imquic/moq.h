@@ -326,12 +326,12 @@ const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, si
 /*! \brief Helper to check whether two namespaces are the sames
  * @param first The first namespace to check
  * @param second The second namespace to check
- * @returns TRUE if the second namespace is part of the secondm, FALSE otherwise */
+ * @returns TRUE if the first namespace is equal to the second, FALSE otherwise */
 gboolean imquic_moq_namespace_equals(imquic_moq_namespace *first, imquic_moq_namespace *second);
 /*! \brief Helper to check whether a namespace is contained in another
  * @param parent The namespace parent to check
  * @param child The namespace child to check
- * @returns TRUE if the second namespace is part of the secondm, FALSE otherwise */
+ * @returns TRUE if the child namespace is part of the parent, FALSE otherwise */
 gboolean imquic_moq_namespace_contains(imquic_moq_namespace *parent, imquic_moq_namespace *child);
 /*! \brief Helper to duplicate a namespace
  * \note This will allocate a new buffer, that must be freed with imquic_moq_namespace
@@ -363,8 +363,7 @@ const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen)
  * @returns TRUE if the second track name is part of the secondm, FALSE otherwise */
 gboolean imquic_moq_name_equals(imquic_moq_name *first, imquic_moq_name *second);
 
-/*! \brief Group ordering for tracks
- * \note Only supported since version -07 of the protocol */
+/*! \brief Group ordering for tracks */
 typedef enum imquic_moq_group_order {
 	IMQUIC_MOQ_ORDERING_ORIGINAL = 0x0,
 	IMQUIC_MOQ_ORDERING_ASCENDING = 0x1,
@@ -410,6 +409,18 @@ typedef struct imquic_moq_subscription_filter {
 	/*! \brief End group (depending on filter type) */
 	uint64_t end_group;
 } imquic_moq_subscription_filter;
+
+/*! \brief Subscribe options for namespaces
+ * \note Only supported since version -16 of the protocol */
+typedef enum imquic_moq_subscribe_namespace_options {
+	IMQUIC_MOQ_WANT_PUBLISH = 0x0,
+	IMQUIC_MOQ_WANT_NAMESPACE = 0x1,
+	IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE = 0x2,
+} imquic_moq_subscribe_namespace_options;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_subscribe_namespace_options value.
+ * @param type The imquic_moq_subscribe_namespace_options value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_subscribe_namespace_options_str(imquic_moq_subscribe_namespace_options type);
 
 /*! \brief MoQ request parameters
  * \note This struct is used in the MoQ API signatures even when the
@@ -935,7 +946,8 @@ void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe_namespace Pointer to the function that will handle the incoming \c SUBSCRIBE_NAMESPACE */
 void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
+	void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -954,6 +966,18 @@ void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
  * @param incoming_unsubscribe_namespace Pointer to the function that will handle the incoming \c UNSUBSCRIBE_NAMESPACE */
 void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c NAMESPACE request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_namespace Pointer to the function that will handle the incoming \c NAMESPACE */
+void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
+	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c NAMESPACE_DONE request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_unsubscribe_done Pointer to the function that will handle the incoming \c NAMESPACE_DONE */
+void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
+	void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1234,10 +1258,11 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
+ * @param subscribe_options The subscribe options to add to the request (added in v16, ignored otherwise)
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
@@ -1255,11 +1280,33 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
 int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 /*! \brief Function to send a \c UNSUBSCRIBE_NAMESPACE request
+ * \note Starting in v16, this doesn't actually send a request, but simply
+ * closes the bidirectional STREAM that was created for the subscription
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
- * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request (added in v15, ignored otherwise)
+ * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from (deprecated in v15)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+/*! \brief Function to send a \c NAMESPACE request
+ * \note This was added in v16, and while the request itself doesn't contain
+ * the request ID, we use it to find the subscription and use the right STREAM
+ * Notice the method expects the full track namespace: the stack will strip
+ * the prefix itself, before sending the actual message.
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
+ * @param tns The imquic_moq_namespace namespace this request refers to
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+/*! \brief Function to send a \c NAMESPACE_DONE request
+ * \note This was added in v16, and while the request itself doesn't contain
+ * the request ID, we use it to find the subscription and use the right STREAM.
+ * Notice the method expects the full track namespace: the stack will strip
+ * the prefix itself, before sending the actual message.
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
+ * @param tns The imquic_moq_namespace namespace this request refers to
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription

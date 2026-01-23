@@ -609,7 +609,8 @@ void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
-		void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters)) {
+		void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id,
+			imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -649,6 +650,28 @@ void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
 			return;
 		}
 		endpoint->callbacks.moq.incoming_unsubscribe_namespace = incoming_unsubscribe_namespace;
+	}
+}
+
+void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
+		void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns_suffix)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_namespace = incoming_namespace;
+	}
+}
+
+void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
+		void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns_suffix)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_namespace_done = incoming_namespace_done;
 	}
 }
 

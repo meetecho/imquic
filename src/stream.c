@@ -140,9 +140,12 @@ void imquic_stream_destroy(imquic_stream *stream) {
 /* Reading and writing Stream ID */
 void imquic_parse_stream_id(uint64_t stream_id, uint64_t *id, gboolean *client_initiated, gboolean *bidirectional) {
 	uint64_t bits = stream_id & 0x00000003;
-	*id = stream_id >> 2;
-	*client_initiated = (bits == 0 || bits == 2);
-	*bidirectional = (bits == 0 || bits == 1);
+	if(id)
+		*id = stream_id >> 2;
+	if(client_initiated)
+		*client_initiated = (bits == 0 || bits == 2);
+	if(bidirectional)
+		*bidirectional = (bits == 0 || bits == 1);
 }
 
 uint64_t imquic_build_stream_id(uint64_t id, gboolean client_initiated, gboolean bidirectional) {
