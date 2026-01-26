@@ -723,7 +723,7 @@ void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t 
 	} else {
 		/* v15 and later */
 		if(payload)
-			*payload = (type <= 0x0F);
+			*payload = !(type & 0x20);
 		if(ext)
 			*ext = (type & 0x01);
 		if(eog)
@@ -733,7 +733,7 @@ void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t 
 		if(priority)
 			*priority = !(type & 0x08);
 		if(violation)
-			*violation = (type > 0x2D || (type >= 0x20 && (type & 0x02)));
+			*violation = ((type > 0x0F && type < 0x20) || type > 0x2D || (type >= 0x20 && (type & 0x02)));
 	}
 }
 
