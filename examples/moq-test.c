@@ -712,7 +712,7 @@ static void *imquic_demo_tester_thread(void *data) {
 					object.subgroup_id++;
 				else if(s->test[TUPLE_FIELD_FORWARDING] == 2)
 					object.subgroup_id = object.object_id % 2;
-				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK_AND_GROUP : IMQUIC_MOQ_END_OF_GROUP;
+				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK : IMQUIC_MOQ_END_OF_GROUP;
 				object.payload_len = 0;
 				object.payload = NULL;
 				object.extensions = NULL;
