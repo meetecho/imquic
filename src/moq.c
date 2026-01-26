@@ -905,6 +905,98 @@ imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_mes
 	return -1;
 }
 
+gboolean imquic_moq_is_fetch_serialization_flags_valid(imquic_moq_version version, uint64_t flags) {
+	if(version == IMQUIC_MOQ_VERSION_15) {
+		return (flags < 0x40);
+	} else if(version >= IMQUIC_MOQ_VERSION_16) {
+		if(flags > 128 && flags != (uint64_t)0x8C && flags != (uint64_t)0x10C)
+			return FALSE;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version version,
+		imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean ext,
+		gboolean datagram, gboolean end_ne_range, gboolean end_uk_range) {
+	if(end_ne_range) {
+		/* Ignore everything else */
+		return (uint64_t)0x8C;
+	} else if(end_uk_range) {
+		/* Ignore everything else */
+		return (uint64_t)0x10C;
+	}
+	/* If we're here, we're writing a bitmask of a single byte */
+	uint8_t flags = subgroup;
+	if(oid)
+		flags |= 0x04;
+	if(group)
+		flags |= 0x08;
+	if(priority)
+		flags |= 0x10;
+	if(ext)
+		flags |= 0x20;
+	if(datagram)
+		flags |= 0x40;
+	return (uint64_t)flags;
+}
+
+void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint64_t flags,
+		imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *ext,
+		gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation) {
+	/* For versions previous than v15, we return some defaults */
+	if(version < IMQUIC_MOQ_VERSION_15) {
+		if(subgroup)
+			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
+		if(oid)
+			*oid = TRUE;
+		if(group)
+			*group = TRUE;
+		if(priority)
+			*priority = TRUE;
+		if(ext)
+			*ext = TRUE;
+		return;
+	}
+	/* Make sure the provided flags are valid, or return a protocol violation */
+	if(!imquic_moq_is_fetch_serialization_flags_valid(version, flags)) {
+		if(*violation)
+			*violation = TRUE;
+		return;
+	}
+	if(flags == (uint64_t)0x8C || flags == (uint64_t)0x10C) {
+		if(end_ne_range)
+			*end_ne_range = (flags == (uint64_t)0x8C);
+		if(end_uk_range)
+			*end_uk_range = (flags == (uint64_t)0x10C);
+		return;
+	}
+	/* If we're here, we're parsing a bitmask of a single byte */
+	uint8_t flags8 = (uint8_t)flags;
+	uint8_t lsb = flags8 & 0x03;
+	if(*subgroup) {
+		if(lsb == 0x00)
+			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_ZERO;
+		if(lsb == 0x01)
+			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_PREVIOUS;
+		if(lsb == 0x02)
+			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_PLUS_ONE;
+		else
+			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
+	}
+	if(oid)
+		*oid = (flags8 & 0x04);
+	if(group)
+		*group = (flags8 & 0x08);
+	if(priority)
+		*priority = (flags8 & 0x10);
+	if(ext)
+		*ext = (flags8 & 0x20);
+	if(datagram)
+		*datagram = (flags8 & 0x40);
+}
+
+
 const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type type) {
 	switch(type) {
 		case IMQUIC_MOQ_SETUP_PARAM_PATH:
@@ -2121,8 +2213,8 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
 		return 0;
-	IMQUIC_MOQ_CHECK_ERR((moq->version >= IMQUIC_MOQ_VERSION_16 && (moq_stream == NULL ||
-			moq_stream->namespace_publisher || !g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2))),
+	IMQUIC_MOQ_CHECK_ERR((moq->version >= IMQUIC_MOQ_VERSION_16 && moq_stream != NULL &&
+			(moq_stream->namespace_publisher || !g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2))),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of REQUEST_OK for SUBSCRIBE_NAMESPACE");
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -2191,8 +2283,8 @@ size_t imquic_moq_parse_request_error(imquic_moq_context *moq, imquic_moq_stream
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
 		return 0;
-	IMQUIC_MOQ_CHECK_ERR((moq->version >= IMQUIC_MOQ_VERSION_16 && (moq_stream == NULL ||
-			moq_stream->namespace_publisher || !g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2))),
+	IMQUIC_MOQ_CHECK_ERR((moq->version >= IMQUIC_MOQ_VERSION_16 && moq_stream != NULL &&
+			(moq_stream->namespace_publisher || !g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2))),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of REQUEST_ERROR for SUBSCRIBE_NAMESPACE");
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -4604,15 +4696,25 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	uint8_t length = 0;
 	/* Since v15, FETCH objects are prefixed by serialization flags
 	 * that are supposed to optimize what will and will not be there */
-	uint8_t flags = 0xFF, lsb = flags & 0x03;
-	if(moq->version >= IMQUIC_MOQ_VERSION_15) {
+	uint64_t flags = 0;
+	if(moq->version == IMQUIC_MOQ_VERSION_15) {
 		flags = bytes[offset];
 		offset++;
+	} else if(moq->version >= IMQUIC_MOQ_VERSION_16) {
+		flags = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		if(length == 0 || length >= blen-offset)
+			return -1;	/* Not enough data, try again later */
+		offset += length;
 	}
 	if(length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
+	imquic_moq_fetch_subgroup_type subgroup_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
+	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_ext = FALSE,
+		is_datagram = FALSE, end_ne_range = FALSE, end_uk_range = FALSE, violation = FALSE;
+	imquic_moq_parse_fetch_serialization_flags(moq->version, flags,
+		&subgroup_type, &has_oid, &has_group, &has_priority, &has_ext, &is_datagram, &end_ne_range, &end_uk_range, &violation);
 	uint64_t group_id = 0;
-	if(flags & 0x08) {
+	if(has_group) {
 		group_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
@@ -4623,21 +4725,21 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		group_id = moq_stream->group_id;
 	}
 	uint64_t subgroup_id = 0;
-	if(lsb == 0x03) {
+	if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_ID) {
 		subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
 		offset += length;
 	} else {
-		/* TODO The subgroup ID references a previous object */
+		/* The subgroup ID references a previous object */
 		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
-		if(lsb == 0x01)
+		if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_PREVIOUS)
 			subgroup_id = moq_stream->subgroup_id;
-		else if(lsb == 0x02)
+		else if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_PLUS_ONE)
 			subgroup_id = moq_stream->subgroup_id + 1;
 	}
 	uint64_t object_id = 0;
-	if(flags & 0x08) {
+	if(has_oid) {
 		object_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
@@ -4648,7 +4750,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		object_id = moq_stream->last_object_id + 1;
 	}
 	uint8_t priority = 0;
-	if(flags & 0x10) {
+	if(has_priority) {
 		priority = bytes[offset];
 		offset++;
 	} else {
@@ -4657,7 +4759,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		priority = moq_stream->last_priority;
 	}
 	size_t ext_offset = 0, ext_len = 0;
-	if(flags & 0x20) {
+	if(has_ext) {
 		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
@@ -6152,7 +6254,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 }
 
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint8_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
+		uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
 		uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
@@ -6160,22 +6262,27 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 		return 0;
 	}
 	size_t offset = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_15) {
+	imquic_moq_fetch_subgroup_type subgroup_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
+	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_ext = FALSE, is_datagram = FALSE;
+	imquic_moq_parse_fetch_serialization_flags(moq->version, flags,
+		&subgroup_type, &has_oid, &has_group, &has_priority, &has_ext, &is_datagram, NULL, NULL, NULL);
+	if(moq->version == IMQUIC_MOQ_VERSION_15) {
 		bytes[offset] = flags;
 		offset++;
+	} else if(moq->version >= IMQUIC_MOQ_VERSION_16) {
+		offset += imquic_write_varint(flags, &bytes[offset], blen-offset);
 	}
-	uint8_t lsb = (flags & 0x03);
-	if(flags & 0x08)
+	if(has_group)
 		offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
-	if(lsb == 0x03)
+	if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_ID && !is_datagram)
 		offset += imquic_write_varint(subgroup_id, &bytes[offset], blen-offset);
-	if(flags & 0x04)
+	if(has_oid)
 		offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
-	if(flags & 0x10) {
+	if(has_priority) {
 		bytes[offset] = priority;
 		offset++;
 	}
-	if(flags & 0x20)
+	if(has_ext)
 		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
 	if(payload == NULL)
 		plen = 0;
@@ -8352,8 +8459,15 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shto_len = 0;
 		if(valid_pkt) {
-			/* TODO Check what flags we should add */
-			uint8_t flags = 0x03 | 0x04 | 0x08 | 0x10 | 0x20;
+			/* TODO Compute which flags we should use, rather than hardcoding them */
+			uint64_t flags = imquic_moq_generate_fetch_serialization_flags(moq->version,
+				IMQUIC_MOQ_FETCH_SUBGROUP_ID,	/* We write the Subgroup ID */
+				TRUE,	/* We write the Object ID */
+				TRUE,	/* We write the Group ID */
+				TRUE,	/* We write the Priority */
+				TRUE,	/* We add extensions */
+				FALSE,	/* We assume Forwarding Preference is not DATAGRAM */
+				FALSE, FALSE);	/* We don't use the "end of range" flags */
 			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize, flags,
 				object->group_id, object->subgroup_id, object->object_id, object->priority,
 				object->object_status, object->payload, object->payload_len,

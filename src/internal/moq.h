@@ -177,6 +177,47 @@ const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, 
  * @returns The associated imquic_moq_delivery mode, if successful, or -1 otherwise */
 imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_message_type type, imquic_moq_version version);
 
+/*! \brief MoQ \c FETCH subgroup flags */
+typedef enum imquic_moq_fetch_subgroup_type {
+	IMQUIC_MOQ_FETCH_SUBGROUP_ZERO = 0x00,
+	IMQUIC_MOQ_FETCH_SUBGROUP_PREVIOUS = 0x01,
+	IMQUIC_MOQ_FETCH_SUBGROUP_PLUS_ONE = 0x02,
+	IMQUIC_MOQ_FETCH_SUBGROUP_ID = 0x03,
+} imquic_moq_fetch_subgroup_type;
+/*! \brief Helper function to check if serialization flags used for \c FETCH are valid.
+ * @param[in] version The version of the connection
+ * @param[in] flags The flags to parse
+ * @returns TRUE if the type is valid, FALSE otherwise */
+gboolean imquic_moq_is_fetch_serialization_flags_valid(imquic_moq_version version, uint64_t flags);
+/*! \brief Helper function to return the serialization flags to use for \c FETCH out of the individual properties.
+ * @param[in] version The version of the connection
+ * @param[in] subgroup The type of subgroup
+ * @param[in] sgid0 Whether the default value of Subgroup ID is the same as before, in case the field is missing
+ * @param[in] oid Whether the Object ID field is present
+ * @param[in] group Whether the Group ID field is present
+ * @param[in] priority Whether the Publisher field is present
+ * @param[in] ext Whether there are extensions
+ * @param[in] datagram Whether the forwarding preference is Datagram
+ * @param[in] end_ne_range Whether this is the end of a non-existent range (ignores all other properties)
+ * @param[in] end_uk_range Whether this is the end of an unknown range (ignores all other properties)
+ * @returns The serialization flags as an integer */
+uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version version,
+	imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean ext,
+	gboolean datagram, gboolean end_ne_range, gboolean end_uk_range);
+/*! \brief Helper function to parse serialozation flags for \c FETCH to the individual properties.
+ * @param[in] version The version of the connection
+ * @param[in] flags The serialization flags to parse
+ * @param[out] subgroup Output variable to write the type of subgroup
+ * @param[out] oid Output variable to write whether the Object ID field is present
+ * @param[out] group Output variable to write whether the Group ID field is present
+ * @param[out] priority Output variable to write whether there is a Publisher Priority (added in v15)
+ * @param[out] ext Output variable to write whether there are extensions
+ * @param[out] datagram Output variable to write whether the forwarding preference is Datagram
+ * @param[out] violation Whether the type has bits set that really shouldn't */
+void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint64_t flags,
+	imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *ext,
+	gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation);
+
 /*! \brief MoQ setup parameter types */
 typedef enum imquic_moq_setup_parameter_type {
 	IMQUIC_MOQ_SETUP_PARAM_PATH = 0x01,
@@ -1210,7 +1251,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param elen The size of the object extensions buffer
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint8_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
+	uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
 	uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen);
 /*! \brief Helper method to add object extensions to a buffer
  * @param moq The imquic_moq_context generating the message
