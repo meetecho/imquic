@@ -658,26 +658,35 @@ int imquic_parse_transport_parameters(imquic_connection *conn, uint8_t *bytes, s
  * @param conn The imquic_connection to send the message on
  * @param level The encryption level at which the message should be sent
  * @param src The source Connection ID, if any
- * @param dest The destinatiob Connection ID, if any
+ * @param dest The destination Connection ID, if any
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_send_ack(imquic_connection *conn, enum ssl_encryption_level_t level, imquic_connection_id *src, imquic_connection_id *dest);
 /*! \brief Helper method to generate one or more packets containing one or more \c CRYPTO frames and send them
  * @note This may include a few other frames too, in case the stack thinks they're needed
  * @param conn The imquic_connection to send the message(s) on
  * @param src The source Connection ID, if any
- * @param dest The destinatiob Connection ID, if any
+ * @param dest The destination Connection ID, if any
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *src, imquic_connection_id *dest);
 /*! \brief Helper method to generate a packet containing a \c PING and send it
  * @note This may include a few other frames too, in case the stack thinks they're neede
  * @param conn The imquic_connection to send the message on
- * @param dest The destinatiob Connection ID, if any
+ * @param dest The destination Connection ID, if any
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_send_keepalive(imquic_connection *conn, imquic_connection_id *dest);
+/*! \brief Helper method to generate a packet containing a \c RESET_STREAM and send it
+ * @note This may include a few other frames too, in case the stack thinks they're neede
+ * @param conn The imquic_connection to send the message on
+ * @param dest The destination Connection ID, if any
+ * @param stream_id The Stream ID
+ * @param error_code Error code to report in the frame
+ * @param final_size Final size to report in the frame
+ * @returns 0 in case of success, or a negative integer otherwise */
+int imquic_send_reset_stream(imquic_connection *conn, imquic_connection_id *dest, uint64_t stream_id, uint64_t error_code, uint64_t final_size);
 /*! \brief Helper method to generate a packet containing more flow control credits and send it
  * @note This may include a few other frames too, in case the stack thinks they're neede
  * @param conn The imquic_connection to send the message on
- * @param dest The destinatiob Connection ID, if any
+ * @param dest The destination Connection ID, if any
  * @param type The frame to send, specifying which credits to grant
  * @param stream_id The ID of the stream the credits apply to
  * @returns 0 in case of success, or a negative integer otherwise */
@@ -685,7 +694,7 @@ int imquic_send_credits(imquic_connection *conn, imquic_connection_id *dest, imq
 /*! \brief Helper method to generate a packet containing a request for more flow control credits and send it
  * @note This may include a few other frames too, in case the stack thinks they're neede
  * @param conn The imquic_connection to send the message on
- * @param dest The destinatiob Connection ID, if any
+ * @param dest The destination Connection ID, if any
  * @param type The frame to send, specifying which credits to ask for
  * @param stream_id The ID of the stream the credits apply to
  * @returns 0 in case of success, or a negative integer otherwise */
@@ -693,13 +702,13 @@ int imquic_send_blocked(imquic_connection *conn, imquic_connection_id *dest, imq
 /*! \brief Helper method to generate one or more packets containing one or more \c STREAM frames and send them
  * @note This may include a few other frames too, in case the stack thinks they're neede
  * @param conn The imquic_connection to send the message(s) on
- * @param dest The destinatiob Connection ID, if any
+ * @param dest The destination Connection ID, if any
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_send_pending_stream(imquic_connection *conn, imquic_connection_id *dest);
 /*! \brief Helper method to generate one or more packets containing one or more \c DATAGRAM frames and send them
  * @note This may include a few other frames too, in case the stack thinks they're neede
  * @param conn The imquic_connection to send the message(s) on
- * @param dest The destinatiob Connection ID, if any
+ * @param dest The destination Connection ID, if any
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_send_pending_datagram(imquic_connection *conn, imquic_connection_id *dest);
 /*! \brief Helper method to generate a packet containing a \c CONNECTION_CLOSE and send it

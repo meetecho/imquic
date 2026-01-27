@@ -264,6 +264,40 @@ void imquic_moq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
 	imquic_moq_parse_message(moq, 0, bytes, length, FALSE, TRUE);
 }
 
+void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_id, uint64_t error_code) {
+	/* We got a RESET_STREAM */
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	imquic_mutex_unlock(&moq_mutex);
+	if(moq == NULL)
+		return;
+	imquic_mutex_lock(&moq->mutex);
+	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams, &stream_id);
+	if(moq_stream == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Got RESET_STREAM for unknown STREAM %"SCNu64": %"SCNu64" (%s)\n",
+			imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
+		imquic_mutex_unlock(&moq->mutex);
+		return;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Got RESET_STREAM for STREAM %"SCNu64": %"SCNu64" (%s)\n",
+		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
+	if(moq->version < IMQUIC_MOQ_VERSION_16 || !moq_stream->subscribe_namespace) {
+		/* FIXME Not the SUBSCRIBE_NAMESPACE stream, we ignore it for now */
+		imquic_mutex_unlock(&moq->mutex);
+		return;
+	}
+	/* If we got here, a SUBSCRIBE_NAMESPACE bidirectional STREAM was closed */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ]   -- Getting rid of SUBSCRBE_NAMESPACE '%"SCNu64"'\n",
+		imquic_get_connection_name(conn), moq_stream->request_id);
+	gboolean notify = moq_stream->namespace_publisher;
+	uint64_t request_id = moq_stream->request_id;
+	g_hash_table_remove(moq->tns_subscriptions_by_id, &moq_stream->request_id);
+	g_hash_table_remove(moq->streams, &moq_stream->stream_id);	/* */
+	imquic_mutex_unlock(&moq->mutex);
+	if(notify && moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_unsubscribe_namespace)
+		moq->conn->socket->callbacks.moq.incoming_unsubscribe_namespace(moq->conn, request_id, NULL);
+}
+
 void imquic_moq_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	imquic_mutex_lock(&moq_mutex);
@@ -492,6 +526,25 @@ const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code) {
 			return "Malformed Track";
 		case IMQUIC_MOQ_PUBDONE_UPDATE_FAILED:
 			return "Update Failed";
+		default: break;
+	}
+	return NULL;
+}
+
+const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code) {
+	switch(code) {
+		case IMQUIC_MOQ_RESET_INTERNAL_ERROR:
+			return "Internal Error";
+		case IMQUIC_MOQ_RESET_CANCELLED:
+			return "Cancelled";
+		case IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT:
+			return "Delivery Timeout";
+		case IMQUIC_MOQ_RESET_SESSION_CLOSED:
+			return "Session Closed";
+		case IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS:
+			return "Unknown Object Status";
+		case IMQUIC_MOQ_RESET_MALFORMED_TRACK:
+			return "Malformed Track";
 		default: break;
 	}
 	return NULL;
@@ -1874,7 +1927,7 @@ done:
 	if(moq_stream != NULL && complete) {
 		if(moq_stream->subscribe_namespace) {
 			/* The SUBSCRIBE_NAMESPACE dedicated bidirectional STREAM has been closed */
-			gboolean notify = !moq_stream->namespace_publisher;
+			gboolean notify = moq_stream->namespace_publisher;
 			uint64_t request_id = moq_stream->request_id;
 			imquic_mutex_lock(&moq->mutex);
 			g_hash_table_remove(moq->tns_subscriptions_by_id, &moq_stream->request_id);
@@ -7720,9 +7773,10 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_i
 			imquic_refcount_decrease(&moq->ref);
 			return -1;
 		}
-		/* TODO Close the STREAM (are we missing an API for FIN?) */
+		/* Reset the STREAM */
+		imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 		g_hash_table_remove(moq->tns_subscriptions_by_id, &request_id);
-		g_hash_table_remove(moq->streams, &moq_stream->stream_id);	/* FIXME */
+		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 		imquic_refcount_decrease(&moq->ref);
 		return 0;
@@ -7760,7 +7814,6 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 		imquic_mutex_unlock(&moq->mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state\n",
 			imquic_get_connection_name(conn));
-		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
 	imquic_mutex_unlock(&moq->mutex);

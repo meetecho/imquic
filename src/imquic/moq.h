@@ -732,6 +732,20 @@ typedef enum imquic_moq_pub_done_code {
  * @param code The imquic_moq_pub_done_code value
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code);
+
+/*! \brief RESET_STREAM error codes */
+typedef enum imquic_moq_reset_stream_code {
+	IMQUIC_MOQ_RESET_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_RESET_CANCELLED = 0x1,
+	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
+	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
+	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x4,
+	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
+} imquic_moq_reset_stream_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_reset_stream_code value.
+ * @param code The imquic_moq_reset_stream_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 ///@}
 
 /** @name MoQ endpoints management

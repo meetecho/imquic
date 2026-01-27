@@ -92,6 +92,8 @@ typedef struct imquic_network_endpoint {
 		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete);
 	/*! \brief Callback to invoke when new \c DATAGRAM data is available on one of the connections handled by this endpoint */
 	void (* datagram_incoming)(imquic_connection *conn, uint8_t *bytes, uint64_t length);
+	/*! \brief Callback to invoke when a \c RESET_STREAM arrives on one of the connections handled by this endpoint */
+	void (* reset_stream_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
 	/*! \brief Callback to invoke when new one of the connections handled by this endpoint is closed */
 	void (* connection_gone)(imquic_connection *conn);
 	/*! \brief Callback to invoke when a client connection attempt fails */

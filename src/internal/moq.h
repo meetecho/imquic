@@ -1441,6 +1441,11 @@ void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
  * @param bytes The new data that is available
  * @param length Size of the new data */
 void imquic_moq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint64_t length);
+/*! \brief Callback the core invokes when there's an incoming \c RESET_STREAM
+ * @param conn The imquic_connection instance for which new \c RESET_STREAM is available
+ * @param stream_id The ID of the stream that was reset
+ * @param error_code The error code that was received */
+void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
 /*! \brief Callback the core invokes when an existing MoQ connection is not available anymore
  * @param conn The imquic_connection instance that is now gone */
 void imquic_moq_connection_gone(imquic_connection *conn);

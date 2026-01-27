@@ -118,6 +118,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	server->new_connection = imquic_moq_new_connection;
 	server->stream_incoming = imquic_moq_stream_incoming;
 	server->datagram_incoming = imquic_moq_datagram_incoming;
+	server->reset_stream_incoming = imquic_moq_reset_stream_incoming;
 	server->connection_gone = imquic_moq_connection_gone;
 	return server;
 }
@@ -221,6 +222,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	client->new_connection = imquic_moq_new_connection;
 	client->stream_incoming = imquic_moq_stream_incoming;
 	client->datagram_incoming = imquic_moq_datagram_incoming;
+	client->reset_stream_incoming = imquic_moq_reset_stream_incoming;
 	client->connection_gone = imquic_moq_connection_gone;
 	return client;
 }
