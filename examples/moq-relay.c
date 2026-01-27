@@ -61,11 +61,12 @@ typedef struct imquic_demo_moq_published_namespace {
 	imquic_demo_moq_publisher *pub;
 	char *track_namespace;
 	imquic_moq_namespace *tns;
+	gboolean announced;
 	GHashTable *tracks;
 	imquic_mutex mutex;
 } imquic_demo_moq_published_namespace;
 static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub,
-	const char *track_namespace, imquic_moq_namespace *tns);
+	const char *track_namespace, imquic_moq_namespace *tns, gboolean announced);
 static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_published_namespace *annc);
 
 typedef struct imquic_demo_moq_track {
@@ -163,11 +164,12 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
 	}
 }
 static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub,
-		const char *track_namespace, imquic_moq_namespace *tns) {
+		const char *track_namespace, imquic_moq_namespace *tns, gboolean announced) {
 	imquic_demo_moq_published_namespace *annc = g_malloc0(sizeof(imquic_demo_moq_published_namespace));
 	annc->pub = pub;
 	annc->track_namespace = g_strdup(track_namespace);
 	annc->tns = imquic_moq_namespace_duplicate(tns);
+	annc->announced = announced;
 	annc->tracks = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_track_destroy);
 	imquic_mutex_init(&annc->mutex);
@@ -352,7 +354,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 	while(temp) {
 		mon = (imquic_demo_moq_monitor *)temp->data;
 		if(mon->conn) {
-			if(mon->subscribe_options == IMQUIC_MOQ_WANT_NAMESPACE || mon->subscribe_options == IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE) {
+			if(annc->announced && (mon->subscribe_options == IMQUIC_MOQ_WANT_NAMESPACE || mon->subscribe_options == IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE)) {
 				/* The subscriber wants to be notified about new namespaces */
 				if(!done && !mon->published) {
 					/* Send a PUBLISH_NAMESPACE or a NAMESPACE, depending on the version */
@@ -502,7 +504,7 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 		g_hash_table_insert(publishers, conn, pub);
 	}
 	/* Let's keep track of it */
-	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_published_namespace_create(pub, ns, tns);
+	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_published_namespace_create(pub, ns, tns, TRUE);
 	g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 	g_hash_table_insert(namespaces, g_strdup(ns), annc);
 	/* Check if there's monitors interested in this */
@@ -521,7 +523,7 @@ static void imquic_demo_incoming_publish_namespace_cancel(imquic_connection *con
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
-	if(annc == NULL) {
+	if(annc == NULL || !annc->announced) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
@@ -549,7 +551,7 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_m
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
-	if(annc == NULL) {
+	if(annc == NULL || !annc->announced) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
@@ -582,7 +584,9 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
-	/* We also treat an incoming PUBLISH as an PUBLISH_NAMESPACE for that namespace */
+	/* FIXME To handle the track, we create a new namespace locally if it doesn't
+	 * exist, but starting from v16 we also make sure not to treat this PUBLISH as a
+	 * PUBLISH_NAMESPACE for that namespace, as the draft says we shouldn't do that */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
 	if(annc == NULL) {
@@ -594,7 +598,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 			g_hash_table_insert(publishers, conn, pub);
 		}
 		/* Let's keep track of it */
-		annc = imquic_demo_moq_published_namespace_create(pub, ns, tns);
+		annc = imquic_demo_moq_published_namespace_create(pub, ns, tns, (imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_16));
 		g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 		g_hash_table_insert(namespaces, g_strdup(ns), annc);
 	}
@@ -842,6 +846,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		/* FIXME Should we return an error? */
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Already subscribed with ID %"SCNu64"\n", request_id);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "Already subscribed", track_alias, 0);
 		return;
 	}
 	if(imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_12) {

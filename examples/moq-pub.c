@@ -213,7 +213,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] We already have a subscriber\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "We already have a subscriber", track_alias, 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", track_alias, 0);
 		return;
 	}
 	/* TODO Check if it matches our published namespace */
