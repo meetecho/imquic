@@ -725,7 +725,7 @@ typedef enum imquic_moq_pub_done_code {
 	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
 	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x5,
 	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x6,
-	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x7,
+	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
 	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
 } imquic_moq_pub_done_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_pub_done_code value.
