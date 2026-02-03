@@ -322,6 +322,11 @@ void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_st
  * @param conn The imquic_connection instance that owns the stream to flush
  * @param stream_id ID of the stream to flush */
 void imquic_connection_flush_stream(imquic_connection *conn, uint64_t stream_id);
+/*! \brief Helper to reset a stream, sending a \c RESET_STREAM
+ * @param conn The imquic_connection instance that owns the stream to reset
+ * @param stream_id ID of the stream to reset
+ * @param error_code The error code to add to the frame */
+void imquic_connection_reset_stream(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
 /*! \brief Helpers to close connections
  * @param conn The imquic_connection instance to close
  * @param error_code The error code to send back in the \c CONNECTION_CLOSE frame

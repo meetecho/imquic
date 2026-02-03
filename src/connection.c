@@ -662,6 +662,37 @@ void imquic_connection_flush_stream(imquic_connection *conn, uint64_t stream_id)
 	imquic_loop_wakeup();
 }
 
+/* Helper to reset a STREAM */
+void imquic_connection_reset_stream(imquic_connection *conn, uint64_t stream_id, uint64_t error_code) {
+	if(conn == NULL)
+		return;
+	imquic_mutex_lock(&conn->mutex);
+	imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+	if(stream == NULL || !stream->can_send) {
+		imquic_mutex_unlock(&conn->mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't close stream, no such stream %"SCNu64"\n",
+			imquic_get_connection_name(conn), stream_id);
+		return;
+	}
+	imquic_refcount_increase(&stream->ref);
+	imquic_mutex_unlock(&conn->mutex);
+	imquic_mutex_lock(&stream->mutex);
+	if(stream->out_state >= IMQUIC_STREAM_RESET) {
+		imquic_mutex_unlock(&stream->mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't prepare RESET_STREAM for %"SCNu64" (alreayd sent?)\n",
+			imquic_get_connection_name(conn), stream_id);
+	} else {
+		imquic_stream_mark_complete(stream, FALSE);
+		stream->out_state = IMQUIC_STREAM_RESET;
+		imquic_mutex_unlock(&stream->mutex);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Closing stream %"SCNu64" (RESET_STREAM)\n",
+			imquic_get_connection_name(conn), stream_id);
+		imquic_send_reset_stream(conn, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid),
+			stream_id, error_code, stream->out_finalsize);
+	}
+	imquic_refcount_decrease(&stream->ref);
+}
+
 /* Helpers to close connections */
 void imquic_connection_close(imquic_connection *conn, uint64_t error_code, uint64_t frame_type, const char *reason) {
 	/* FIXME Send a CONNECTION CLOSE (01c) */

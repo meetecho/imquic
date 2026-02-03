@@ -464,6 +464,17 @@ void imquic_set_datagram_incoming_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_reset_stream_cb(imquic_endpoint *endpoint,
+		void (* reset_stream_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code)) {
+	if(endpoint != NULL) {
+		if(endpoint->internal_callbacks) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't seq QUIC callback when using specific protocol handler\n");
+		} else {
+			endpoint->reset_stream_incoming = reset_stream_incoming;
+		}
+	}
+}
+
 void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
 		void (* connection_gone)(imquic_connection *conn)) {
 	if(endpoint != NULL) {

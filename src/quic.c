@@ -1221,6 +1221,9 @@ size_t imquic_payload_parse_reset_stream(imquic_connection *conn, imquic_packet 
 		json_array_append_new(pkt->qlog_frames, frame);
 	}
 #endif
+	/* Pass the data to the application callback */
+	if(conn->socket->reset_stream_incoming)
+		conn->socket->reset_stream_incoming(conn, stream_id, error);
 	return offset;
 }
 
@@ -3002,6 +3005,42 @@ int imquic_send_keepalive(imquic_connection *conn, imquic_connection_id *dest) {
 #ifdef HAVE_QLOG
 	if(conn->qlog != NULL && conn->qlog->quic)
 		frame->qlog_frame = imquic_qlog_prepare_packet_frame("ping");
+#endif
+	pkt->frames = g_list_append(pkt->frames, frame);
+	pkt->frames_size += frame->size;
+	if(imquic_serialize_packet(conn, pkt) < 0) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error serializing packet\n",
+			imquic_get_connection_name(conn));
+		imquic_packet_destroy(pkt);
+		return -1;
+	}
+	/* Send the message */
+	imquic_send_packet(conn, pkt);
+	return 0;
+}
+
+int imquic_send_reset_stream(imquic_connection *conn, imquic_connection_id *dest, uint64_t stream_id, uint64_t error_code, uint64_t final_size) {
+	if(conn == NULL || g_atomic_int_get(&conn->destroyed))
+		return -1;
+	imquic_packet *pkt = imquic_packet_create();
+	enum ssl_encryption_level_t level = ssl_encryption_application;
+	imquic_packet_short_init(pkt, (conn->new_remote_cid.len ? &conn->new_remote_cid : &conn->remote_cid));
+	pkt->level = level;
+	pkt->packet_number = conn->pkn[pkt->level];
+	conn->pkn[pkt->level]++;
+	/* Add a RESET_STREAM frame */
+	uint8_t buffer[40];
+	size_t max_len = sizeof(buffer);
+	size_t size = imquic_payload_add_reset_stream(conn, pkt, buffer, max_len, stream_id, error_code, final_size);
+	imquic_frame *frame = imquic_frame_create(IMQUIC_RESET_STREAM, buffer, size);
+#ifdef HAVE_QLOG
+	if(conn->qlog != NULL && conn->qlog->quic) {
+		frame->qlog_frame = imquic_qlog_prepare_packet_frame("reset_stream");
+		json_object_set_new(frame->qlog_frame, "stream_id", json_integer(stream_id));
+		json_object_set_new(frame->qlog_frame, "error_code", json_integer(error_code));
+		json_object_set_new(frame->qlog_frame, "final_size", json_integer(final_size));
+		imquic_qlog_event_add_raw(frame->qlog_frame, "raw", NULL, frame->size);
+	}
 #endif
 	pkt->frames = g_list_append(pkt->frames, frame);
 	pkt->frames_size += frame->size;

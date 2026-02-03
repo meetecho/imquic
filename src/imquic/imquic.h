@@ -427,6 +427,12 @@ void imquic_set_stream_incoming_cb(imquic_endpoint *endpoint,
  * @param datagram_incoming Pointer to the function that will be invoked on the new DATAGRAM data */
 void imquic_set_datagram_incoming_cb(imquic_endpoint *endpoint,
 	void (* datagram_incoming)(imquic_connection *conn, uint8_t *bytes, uint64_t length));
+/*! \brief Configure the callback function to be notified about incoming
+ * RESET_STREAM messages on an existing connection handled by this endpoint.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param reset_stream_incoming Pointer to the function that will be invoked on the new RESET_STREAM */
+void imquic_set_reset_stream_cb(imquic_endpoint *endpoint,
+	void (* reset_stream_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code));
 /*! \brief Configure the callback function to be notified when an existing connection
  * handled by this endpoint has been closed/shut down.
  * @note This is a good place to release the last reference to the connection

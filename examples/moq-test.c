@@ -314,10 +314,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
 		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64"/%"SCNu64")\n",
 			imquic_get_connection_name(conn), ns, name, request_id, track_alias);
 	} else {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s'/'%s' (ID %"SCNu64")\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
 			imquic_get_connection_name(conn), ns, name, request_id);
 	}
 	if(parameters->auth_token_set)
@@ -327,7 +327,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	char err[256];
 	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
 	if(res != 0) {
-		imquic_moq_reject_subscribe(conn, request_id, res, err, track_alias);
+		imquic_moq_reject_subscribe(conn, request_id, res, err, track_alias, 0);
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -386,8 +386,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	rparams.expires_set = TRUE;
 	rparams.expires = 0;
 	rparams.group_order_set = TRUE;
-	rparams.group_order_ascending = TRUE;
-	imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams);
+	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+	imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -398,7 +398,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
@@ -451,9 +451,9 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		range->end.object = IMQUIC_MAX_VARINT;
 	else
 		range->end.object--;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s'/'%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s--%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id,
-		parameters->group_order_ascending ? "ascending" : "descending",
+		imquic_moq_group_order_str(parameters->group_order),
 		range->start.group, range->start.object, range->end.group, range->end.object);
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
@@ -462,7 +462,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	char err[256];
 	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
 	if(res != 0) {
-		imquic_moq_reject_fetch(conn, request_id, res, err);
+		imquic_moq_reject_fetch(conn, request_id, res, err, 0);
 		return;
 	}
 	/* Intersect the test settings with the provided range */
@@ -485,7 +485,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 			(range->start.group == largest.group && range->start.object > largest.object) ||
 			(range->end.group == (uint64_t)test[TUPLE_FIELD_START_GROUP] && range->end.object < (uint64_t)test[TUPLE_FIELD_START_OBJECT])) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] FETCH range outside of test range\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "FETCH range outside of test range");
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "FETCH range outside of test range", 0);
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -506,7 +506,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	/* Create a subscription to this track */
 	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, 0);
 	s->fetch = TRUE;
-	s->descending = !parameters->group_order_ascending;
+	s->descending = (parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING);
 	s->range = *range;
 	memcpy(s->test, test, sizeof(test));
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
@@ -515,8 +515,8 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.group_order_set = parameters->group_order_set;
-	rparams.group_order_ascending = parameters->group_order_ascending;
-	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams);
+	rparams.group_order = parameters->group_order;
+	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -533,11 +533,11 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), (absolute ? "absolute" : "relative"),
 		joining_request_id, request_id, joining_start,
-		parameters->group_order_ascending ? "ascending" : "descending");
+		imquic_moq_group_order_str(parameters->group_order));
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* TODO Add support for joining FETCH */
-	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not implemented yet");
+	imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not implemented yet", 0);
 }
 
 static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t request_id) {
@@ -607,8 +607,6 @@ static void *imquic_demo_tester_thread(void *data) {
 	uint8_t *obj_p = s->test[TUPLE_FIELD_OBJS_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJS_SIZE]) : NULL;
 	if(obj_p)
 		memset(obj_p, 't', s->test[TUPLE_FIELD_OBJS_SIZE]);
-	uint8_t extensions[256];
-	size_t extensions_len = 0;
 	size_t extensions_count = 0;
 	if(s->test[TUPLE_FIELD_EXT_INT] >= 0)
 		extensions_count++;
@@ -664,8 +662,8 @@ static void *imquic_demo_tester_thread(void *data) {
 					(s->descending && (object_id == 0 || (group_id == (uint64_t)s->test[TUPLE_FIELD_START_GROUP] && object_id <= (uint64_t)s->test[TUPLE_FIELD_START_OBJECT]))))
 				last_object = TRUE;
 		}
+		GList *exts = NULL;
 		if(extensions_count > 0) {
-			GList *exts = NULL;
 			imquic_moq_object_extension numext = { 0 }, dataext = { 0 };
 			if(s->test[TUPLE_FIELD_EXT_INT] >= 0) {
 				/* Add a numeric extension */
@@ -680,8 +678,6 @@ static void *imquic_demo_tester_thread(void *data) {
 				dataext.value.data.length = strlen("moq-test");
 				exts = g_list_append(exts, &dataext);
 			}
-			extensions_len = imquic_moq_build_object_extensions(exts, extensions, sizeof(extensions));
-			g_list_free(exts);
 		}
 		imquic_moq_object object = {
 			.request_id = s->request_id,
@@ -692,8 +688,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			.object_status = 0,
 			.payload = (num_objects == 0) ? obj0_p : obj_p,
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
-			.extensions = (extensions_len > 0) ? extensions : NULL,
-			.extensions_len = extensions_len,
+			.extensions = exts,
 			.delivery = delivery,
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
@@ -703,6 +698,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			last_subgroup_id = object.subgroup_id;
 			last_object_id = object.object_id;
 		}
+		g_list_free(exts);
 		/* Update IDs for the next object */
 		num_objects++;
 		next_group = (num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]);
@@ -716,11 +712,10 @@ static void *imquic_demo_tester_thread(void *data) {
 					object.subgroup_id++;
 				else if(s->test[TUPLE_FIELD_FORWARDING] == 2)
 					object.subgroup_id = object.object_id % 2;
-				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK_AND_GROUP : IMQUIC_MOQ_END_OF_GROUP;
+				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK : IMQUIC_MOQ_END_OF_GROUP;
 				object.payload_len = 0;
 				object.payload = NULL;
 				object.extensions = NULL;
-				object.extensions_len = 0;
 				object.end_of_stream = TRUE;
 				if(send_object || last_object)
 					imquic_moq_send_object(conn, &object);
@@ -927,7 +922,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_new_moq_connection_cb(server, imquic_demo_new_connection);
 	imquic_set_moq_ready_cb(server, imquic_demo_ready);
 	imquic_set_incoming_subscribe_cb(server, imquic_demo_incoming_subscribe);
-	imquic_set_subscribe_updated_cb(server, imquic_demo_subscribe_updated);
+	imquic_set_request_updated_cb(server, imquic_demo_request_updated);
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_standalone_fetch_cb(server, imquic_demo_incoming_standalone_fetch);
 	imquic_set_incoming_joining_fetch_cb(server, imquic_demo_incoming_joining_fetch);

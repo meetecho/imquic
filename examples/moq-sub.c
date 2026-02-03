@@ -204,7 +204,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		params.forward = TRUE;
 		if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0))
 			params.forward = FALSE;
-		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), tns, &params);
+		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), tns, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
 		return;
 	} else if(options.track_status && moq_version < IMQUIC_MOQ_VERSION_13) {
 		/* Version is too old, we can't: stop here */
@@ -217,7 +217,9 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	fparams.subscriber_priority_set = TRUE;
 	fparams.subscriber_priority = 128;
 	fparams.group_order_set = TRUE;
-	fparams.group_order_ascending = options.fetch ? !strcasecmp(options.fetch, "ascending") : TRUE;
+	fparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+	if(options.fetch && !strcasecmp(options.fetch, "descending"))
+		fparams.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
 	/* Check if we need to request forwarding right away, or if we'll ask send an update later */
 	params.forward_set = TRUE;
 	params.forward = TRUE;
@@ -226,7 +228,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
 	params.group_order_set = TRUE;
-	params.group_order_ascending = TRUE;
+	params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 	params.subscription_filter_set = TRUE;
 	params.subscription_filter.type = filter_type;
 	params.subscription_filter.start_location = start_location;
@@ -239,12 +241,12 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		const char *track_name = options.track_name[i];
 		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
 			/* Older versions of MoQ passed the track alias in the SUBSCRIBE */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s'/'%s' (%s), using ID %"SCNu64"/%"SCNu64"\n",
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s--%s' (%s), using ID %"SCNu64"/%"SCNu64"\n",
 				imquic_get_connection_name(conn),
 				((options.fetch != NULL && options.join_offset < 0) ? "Fetching" : "Subscribing"),
 				ns, track_name, imquic_demo_payload_type_str(payload_type), request_id, track_alias);
 		} else {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s'/'%s' (%s), using ID %"SCNu64"\n",
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s--%s' (%s), using ID %"SCNu64"\n",
 				imquic_get_connection_name(conn),
 				((options.fetch != NULL && options.join_offset < 0) ? "Fetching" : "Subscribing"),
 				ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
@@ -283,14 +285,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		track_alias++;
 	}
 	if(!params.forward) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a SUBSCRIBE_UPDATE in %d seconds\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 			imquic_get_connection_name(conn), options.update_subscribe);
 		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
 	}
 }
 
 static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
-	/* We received an publish_namespace */
+	/* We received an PUBLISH_NAMESPACE (older MoQ version) */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace: '%s'\n",
@@ -300,17 +302,33 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 }
 
 static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_moq_namespace *tns) {
-	/* We received an publish_namespace_done */
+	/* We received an PUBLISH_NAMESPACE_DONE (older MoQ version) */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace done: '%s'\n",
 		imquic_get_connection_name(conn), ns);
 }
 
+static void imquic_demo_incoming_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns_suffix) {
+	/* We received a NAMESPACE (newer MoQ version) */
+	char buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns_suffix, buffer, sizeof(buffer), TRUE);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New namespace: '%s'\n",
+		imquic_get_connection_name(conn), ns);
+}
+
+static void imquic_demo_incoming_namespace_done(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns_suffix) {
+	/* We received a NAMESPACE_DONE (newer MoQ version) */
+	char buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns_suffix, buffer, sizeof(buffer), TRUE);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace done: '%s'\n",
+		imquic_get_connection_name(conn), ns);
+}
+
 static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Track status %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), request_id, parameters->expires,
-		parameters->group_order_ascending ? "ascending" : "descending");
+		imquic_moq_group_order_str(parameters->group_order));
 	if(imquic_moq_get_version(conn) <= IMQUIC_MOQ_VERSION_14) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
 				imquic_get_connection_name(conn), track_alias);
@@ -324,17 +342,19 @@ static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t 
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_track_status_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
+static void imquic_demo_track_status_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error querying the track status via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
+static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+		imquic_moq_request_parameters *parameters, GList *track_extensions) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order, %d extensions)\n",
 		imquic_get_connection_name(conn), request_id, parameters->expires,
-		parameters->group_order_ascending ? "ascending" : "descending");
+		imquic_moq_group_order_str(parameters->group_order),
+		g_list_length(track_extensions));
 	if(imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_12) {
 		/* Starting from v12, the publisher always chooses the track_alias */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
@@ -344,6 +364,21 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
+	}
+	if(track_extensions != NULL) {
+		GList *temp = track_extensions;
+		while(temp) {
+			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			const char *ext_name = imquic_moq_extension_type_str(ext->id);
+			if(ext->id % 2 == 0) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
+					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
+					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
+			}
+			temp = temp->next;
+		}
 	}
 	if(options.fetch != NULL && options.join_offset >= 0) {
 		/* Send a Joining Fetch referencing this subscription */
@@ -361,7 +396,8 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		fparams.subscriber_priority_set = TRUE;
 		fparams.subscriber_priority = 128;
 		fparams.group_order_set = TRUE;
-		fparams.group_order_ascending = options.fetch ? !strcasecmp(options.fetch, "ascending") : TRUE;
+		if(options.fetch && !strcasecmp(options.fetch, "descending"))
+			fparams.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
 		uint64_t fetch_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending Joining Fetch for subscription %"SCNu64", using ID %"SCNu64" (offset=%d)\n",
 			imquic_get_connection_name(conn), request_id, fetch_request_id, options.join_offset);
@@ -370,7 +406,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias) {
+static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval) {
 	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
 		/* Older versions of MoQ passed the track alias in the SUBSCRIBE */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64"/%"SCNu64": error %d (%s)\n",
@@ -383,28 +419,43 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_subscribe_update_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_request_update_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Our update to a subscription via ID %"SCNu64" was accepted\n",
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
+static void imquic_demo_request_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error updating our subscription via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters) {
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s'/'%s' (ID %"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, request_id, track_alias);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d extensions)\n",
+		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_extensions));
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
+	if(track_extensions != NULL) {
+		GList *temp = track_extensions;
+		while(temp) {
+			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			const char *ext_name = imquic_moq_extension_type_str(ext->id);
+			if(ext->id % 2 == 0) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
+					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
+					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
+			}
+			temp = temp->next;
+		}
+	}
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
@@ -413,14 +464,14 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	rparams.subscriber_priority_set = TRUE;
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
-	rparams.group_order_ascending = TRUE;
+	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 	rparams.subscription_filter_set = TRUE;
 	rparams.subscription_filter.type = filter_type;
 	rparams.subscription_filter.start_location = start_location;
 	rparams.subscription_filter.end_group = end_location_sub.group;
 	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a SUBSCRIBE_UPDATE in %d seconds\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 			imquic_get_connection_name(conn), options.update_subscribe);
 		request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
@@ -436,14 +487,30 @@ static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_i
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64")\n",
+static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest,
+		imquic_moq_request_parameters *parameters, GList *track_extensions) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64"; %d extensions)\n",
 		imquic_get_connection_name(conn), request_id,
-		parameters->group_order_ascending ? "ascending" : "descending",
-		largest->group, largest->object);
+		imquic_moq_group_order_str(parameters->group_order),
+		largest->group, largest->object, g_list_length(track_extensions));
+	if(track_extensions != NULL) {
+		GList *temp = track_extensions;
+		while(temp) {
+			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+			const char *ext_name = imquic_moq_extension_type_str(ext->id);
+			if(ext->id % 2 == 0) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
+					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
+					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
+			}
+			temp = temp->next;
+		}
+	}
 }
 
-static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
+static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error fetching via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here, unless it was a joining FETCH */
@@ -456,7 +523,7 @@ static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, ui
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
+static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
@@ -465,10 +532,10 @@ static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint6
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%zu bytes, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->request_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id,
-		object->payload_len, object->extensions_len, imquic_moq_delivery_str(object->delivery),
+		object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	if(object->payload == NULL || object->payload_len == 0) {
 		if(object->end_of_stream) {
@@ -481,10 +548,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
-	GList *extensions = NULL;
-	if(object->extensions != NULL && object->extensions_len > 0) {
-		extensions = imquic_moq_parse_object_extensions(object->extensions, object->extensions_len);
-		GList *temp = extensions;
+	if(object->extensions != NULL) {
+		GList *temp = object->extensions;
 		while(payload_type != DEMO_TYPE_LOC && temp) {
 			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
 			const char *ext_name = imquic_moq_extension_type_str(ext->id);
@@ -510,14 +575,14 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	} else if(payload_type == DEMO_TYPE_LOC) {
 		/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
 		 * which uses the MoQ-MI draft: https://datatracker.ietf.org/doc/html/draft-cenzano-moq-media-interop */
-		if(extensions == NULL) {
+		if(object->extensions == NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No extensions, missing LOC info?\n");
 		} else {
 			/* Parse the extensions to get access to the LOC info */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %d extensions\n", g_list_length(extensions));
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %d extensions\n", g_list_length(object->extensions));
 			imquic_demo_media_type media_type = DEMO_MEDIA_NONE;
 			struct imquic_moq_object_extension_data *loc_header = NULL, *loc_extradata = NULL;
-			GList *temp = extensions;
+			GList *temp = object->extensions;
 			while(temp) {
 				imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
 				switch(ext->id) {
@@ -646,7 +711,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		params.subscriber_priority_set = TRUE;
 		params.subscriber_priority = TRUE;
 		params.group_order_set = TRUE;
-		params.group_order_ascending = TRUE;
+		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		params.forward_set = TRUE;
 		params.forward = TRUE;
 		params.subscription_filter_set = TRUE;
@@ -663,7 +728,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			g_atomic_int_inc(&stop);
 		}
 	}
-	g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
 }
 
 static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri) {
@@ -835,7 +899,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(options.fetch == NULL && !options.track_status && options.update_subscribe) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send a SUBSCRIBE_UPDATE to actually start streaming after %d seconds (note: ignored for versions earlier than 11)\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send a REQUEST_UPDATE to actually start streaming after %d seconds (note: ignored for versions earlier than 11)\n",
 			options.update_subscribe);
 	}
 
@@ -949,12 +1013,14 @@ int main(int argc, char *argv[]) {
 	imquic_set_moq_ready_cb(client, imquic_demo_ready);
 	imquic_set_incoming_publish_namespace_cb(client, imquic_demo_incoming_publish_namespace);
 	imquic_set_publish_namespace_done_cb(client, imquic_demo_publish_namespace_done);
+	imquic_set_incoming_namespace_cb(client, imquic_demo_incoming_namespace);
+	imquic_set_incoming_namespace_done_cb(client, imquic_demo_incoming_namespace_done);
 	imquic_set_track_status_accepted_cb(client, imquic_demo_track_status_accepted);
 	imquic_set_track_status_error_cb(client, imquic_demo_track_status_error);
 	imquic_set_subscribe_accepted_cb(client, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(client, imquic_demo_subscribe_error);
-	imquic_set_subscribe_update_accepted_cb(client, imquic_demo_subscribe_update_accepted);
-	imquic_set_subscribe_update_error_cb(client, imquic_demo_subscribe_update_error);
+	imquic_set_request_update_accepted_cb(client, imquic_demo_request_update_accepted);
+	imquic_set_request_update_error_cb(client, imquic_demo_request_update_error);
 	imquic_set_incoming_publish_cb(client, imquic_demo_incoming_publish);
 	imquic_set_publish_done_cb(client, imquic_demo_publish_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
@@ -968,7 +1034,7 @@ int main(int argc, char *argv[]) {
 
 	while(!stop) {
 		if(update_time > 0 && g_get_monotonic_time() >= update_time) {
-			/* Send a SUBSCRIBE_UPDATE with forward=true */
+			/* Send a REQUEST_UPDATE with forward=true */
 			update_time = 0;
 			/* TODO This should be done for all subscriptions */
 			GList *temp = request_ids;
@@ -989,9 +1055,9 @@ int main(int argc, char *argv[]) {
 				uint64_t request_id = *rid, sub_request_id = request_id;
 				if(imquic_moq_get_version(moq_conn) >= IMQUIC_MOQ_VERSION_14)
 					request_id = imquic_moq_get_next_request_id(moq_conn);
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a SUBSCRIBE_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a REQUEST_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
 					imquic_get_connection_name(moq_conn), *rid, request_id);
-				imquic_moq_update_subscribe(moq_conn, request_id, sub_request_id, &params);
+				imquic_moq_update_request(moq_conn, request_id, sub_request_id, &params);
 				temp = temp->next;
 			}
 		}
