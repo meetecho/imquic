@@ -96,44 +96,6 @@ static void imquic_keylog_cb(const SSL *ssl, const char *line) {
 		fflush(keylog_file);
 	}
 }
-static int imquic_tls_load_keys(const char *server_pem, const char *server_key, const char *password,
-		X509 **certificate, EVP_PKEY **private_key) {
-	FILE *f = fopen(server_pem, "r");
-	if(f == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error opening certificate file (%s)\n", g_strerror(errno));
-		goto error;
-	}
-	*certificate = PEM_read_X509(f, NULL, NULL, NULL);
-	if(*certificate == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "PEM_read_X509 failed\n");
-		goto error;
-	}
-	fclose(f);
-	f = fopen(server_key, "r");
-	if(f == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error opening key file (%s)\n", g_strerror(errno));
-		goto error;
-	}
-	*private_key = PEM_read_PrivateKey(f, NULL, NULL, (void *)password);
-	if(*private_key == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "PEM_read_PrivateKey failed\n");
-		goto error;
-	}
-	fclose(f);
-	/* Done */
-	return 0;
-
-error:
-	if(*certificate) {
-		X509_free(*certificate);
-		*certificate = NULL;
-	}
-	if(*private_key) {
-		EVP_PKEY_free(*private_key);
-		*private_key = NULL;
-	}
-	return -1;
-}
 static const char *h3_alpn = "h3";
 static int imquic_select_alpn(SSL *ssl, const unsigned char **out, unsigned char *outlen,
 		const unsigned char *in, unsigned int inlen, void *arg) {
@@ -259,31 +221,27 @@ imquic_tls *imquic_tls_create(gboolean is_server, const char *server_pem, const 
 		SSL_CTX_set_mode(tls->ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
 		SSL_CTX_set_alpn_select_cb(tls->ssl_ctx, imquic_select_alpn, NULL);
 	}
+	tls->key_pwd = password ? g_strdup(password) : NULL;
 	if(server_pem != NULL && server_key != NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "Using certificate file '%s'\n", server_pem);
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "Using key file '%s'\n", server_key);
-		if(imquic_tls_load_keys(server_pem, server_key, password, &tls->ssl_cert, &tls->ssl_key) != 0) {
-			imquic_tls_destroy(tls);
-			return NULL;
-		}
-		if(SSL_CTX_use_certificate(tls->ssl_ctx, tls->ssl_cert) == 0) {
+		if(SSL_CTX_use_certificate_chain_file(tls->ssl_ctx, server_pem) == 0) {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Certificate error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 			imquic_tls_destroy(tls);
 			return NULL;
 		}
-		if(SSL_CTX_use_PrivateKey(tls->ssl_ctx, tls->ssl_key) == 0) {
+		if(SSL_CTX_use_PrivateKey_file(tls->ssl_ctx, server_key, SSL_FILETYPE_PEM) == 0) {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Certificate key error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 			imquic_tls_destroy(tls);
 			return NULL;
 		}
+		if(tls->key_pwd != NULL)
+			SSL_CTX_set_default_passwd_cb_userdata(tls->ssl_ctx, tls->key_pwd);
 		if(SSL_CTX_check_private_key(tls->ssl_ctx) == 0) {
 			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Certificate check error (%s)\n", ERR_reason_error_string(ERR_get_error()));
 			imquic_tls_destroy(tls);
 			return NULL;
 		}
-	} else {
-		tls->ssl_cert = NULL;
-		tls->ssl_key = NULL;
 	}
 	/* Done */
 	return tls;
@@ -336,12 +294,9 @@ SSL *imquic_tls_new_ssl(imquic_tls *tls) {
 void imquic_tls_destroy(imquic_tls *tls) {
 	if(tls == NULL)
 		return;
-	if(tls->ssl_cert != NULL)
-		X509_free(tls->ssl_cert);
-	if(tls->ssl_key != NULL)
-		EVP_PKEY_free(tls->ssl_key);
 	if(tls->ssl_ctx != NULL)
 		SSL_CTX_free(tls->ssl_ctx);
+	g_free(tls->key_pwd);
 	g_free(tls->ticket_file);
 	g_free(tls);
 }

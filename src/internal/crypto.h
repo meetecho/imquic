@@ -49,10 +49,8 @@ typedef struct imquic_tls {
 	gboolean is_server;
 	/*! \brief TLS context */
 	SSL_CTX *ssl_ctx;
-	/*! \brief Certificate */
-	X509 *ssl_cert;
-	/*! \brief Key */
-	EVP_PKEY *ssl_key;
+	/*! \brief Key password, if needed */
+	char *key_pwd;
 	/*! \brief Whether early data should be supported */
 	gboolean early_data;
 	/*! \brief File to use for session tickets, when doing early data */
