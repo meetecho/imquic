@@ -122,6 +122,9 @@ struct imquic_connection {
 	gboolean have_params;
 	/*! \brief Initial Connection ID */
 	imquic_connection_id initial_cid;
+	/*! \brief Client Initial Connection ID as a string
+	 * \note This is only meant for debugging purposes, e.g., QLOG correlation */
+	char client_initial_cid_str[41];
 	/*! \brief Local and remote Connection ID */
 	imquic_connection_id local_cid, remote_cid;
 	/*! \brief New remote Connection ID
@@ -204,7 +207,7 @@ struct imquic_connection {
 	/*! \brief Whether an ALPN has been negotiated */
 	gboolean alpn_negotiated;
 	/*! \brief Whether this connection has been established */
-	gboolean connected;
+	gboolean connected, established;
 	/*! \brief Networking instance for this connection */
 	imquic_network_endpoint *socket;
 	/*! \brief Network address of the peer */
@@ -227,6 +230,8 @@ struct imquic_connection {
 	/*! \brief QLOG instance, if any */
 	imquic_qlog *qlog;
 #endif
+	/*! \brief User data associated to the connection (opaque to the library) */
+	void *user_data;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection should be closed */

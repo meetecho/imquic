@@ -65,6 +65,8 @@ typedef struct imquic_configuration {
 	const char *cert_key;
 	/*! \brief Password needed to access the certificate for TLS, if any */
 	const char *cert_pwd;
+	/*! \brief Whether we should disable verification of the remote certificate */
+	gboolean cert_no_verify;
 	/*! \brief Whether early data should be supported */
 	gboolean early_data;
 	/*! \brief File to use for session tickets, when doing early data */

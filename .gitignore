@@ -7,6 +7,7 @@ imquic-moq-sub
 imquic-moq-chat
 imquic-moq-test
 imquic-moq-relay
+imquic-moq-interop-test
 
 version.c
 docs/html/

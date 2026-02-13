@@ -162,6 +162,8 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_TLS_KEY";
 		case IMQUIC_CONFIG_TLS_PASSWORD:
 			return "IMQUIC_CONFIG_TLS_PASSWORD";
+		case IMQUIC_CONFIG_TLS_NO_VERIFY:
+			return "IMQUIC_CONFIG_TLS_NO_VERIFY";
 		case IMQUIC_CONFIG_EARLY_DATA:
 			return "IMQUIC_CONFIG_EARLY_DATA";
 		case IMQUIC_CONFIG_TICKET_FILE:
@@ -247,6 +249,8 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			config.cert_key = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_PASSWORD) {
 			config.cert_pwd = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_TLS_NO_VERIFY) {
+			config.cert_no_verify = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_EARLY_DATA) {
 			config.early_data = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {
@@ -313,7 +317,6 @@ imquic_client *imquic_create_client(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = FALSE;
-	config.qlog_quic = TRUE;
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
@@ -336,6 +339,8 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.cert_key = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_PASSWORD) {
 			config.cert_pwd = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_TLS_NO_VERIFY) {
+			config.cert_no_verify = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_EARLY_DATA) {
 			config.early_data = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {
@@ -475,6 +480,12 @@ void imquic_set_reset_stream_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_connection_failed_cb(imquic_endpoint *endpoint,
+		void (* connection_failed)(void *user_data)) {
+	if(endpoint != NULL && !endpoint->is_server)
+		endpoint->connection_failed = connection_failed;
+}
+
 void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
 		void (* connection_gone)(imquic_connection *conn)) {
 	if(endpoint != NULL) {
@@ -487,7 +498,7 @@ void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
 }
 
 /* FIXME Interacting with connections */
-int  imquic_send_on_stream(imquic_connection *conn, uint64_t stream_id,
+int imquic_send_on_stream(imquic_connection *conn, uint64_t stream_id,
 		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
 	if(conn == NULL)
 		return -1;
@@ -517,6 +528,19 @@ const char *imquic_get_connection_wt_protocol(imquic_connection *conn) {
 
 const char *imquic_get_connection_name(imquic_connection *conn) {
 	return (const char *)(conn ? conn->name : NULL);
+}
+
+const char *imquic_get_client_initial_connection_id(imquic_connection *conn) {
+	return (const char *)(conn ? conn->client_initial_cid_str : NULL);
+}
+
+void imquic_set_connection_user_data(imquic_connection *conn, void *user_data) {
+	if(conn)
+		conn->user_data = user_data;
+}
+
+void *imquic_get_connection_user_data(imquic_connection *conn) {
+	return (conn ? conn->user_data : NULL);
 }
 
 int imquic_new_stream_id(imquic_connection *conn, gboolean bidirectional, uint64_t *stream_id) {

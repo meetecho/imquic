@@ -38,7 +38,7 @@ endif
 
 if ENABLE_MOQ_EXAMPLES
 
-bin_PROGRAMS += imquic-moq-relay imquic-moq-pub imquic-moq-sub imquic-moq-test
+bin_PROGRAMS += imquic-moq-relay imquic-moq-pub imquic-moq-sub imquic-moq-test imquic-moq-interop-test
 
 imquic_moq_relay_SOURCES = \
 	moq-relay.c \
@@ -103,6 +103,23 @@ imquic_moq_test_CFLAGS = \
 	-I ../src \
 	$(NULL)
 imquic_moq_test_LDADD = \
+	$(IMQUIC_LIBS) \
+	$(IMQUIC_MANUAL_LIBS) \
+	-L../src/.libs -limquic \
+	$(NULL)
+
+imquic_moq_interop_test_SOURCES = \
+	moq-interop-test.c \
+	moq-interop-test-options.c \
+	moq-interop-test-options.h \
+	moq-utils.c \
+	moq-utils.h
+imquic_moq_interop_test_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(IMQUIC_CFLAGS) \
+	-I ../src \
+	$(NULL)
+imquic_moq_interop_test_LDADD = \
 	$(IMQUIC_LIBS) \
 	$(IMQUIC_MANUAL_LIBS) \
 	-L../src/.libs -limquic \

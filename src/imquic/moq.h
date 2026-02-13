@@ -987,7 +987,7 @@ void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c NAMESPACE_DONE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_unsubscribe_done Pointer to the function that will handle the incoming \c NAMESPACE_DONE */
+ * @param incoming_namespace_done Pointer to the function that will handle the incoming \c NAMESPACE_DONE */
 void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
 	void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's

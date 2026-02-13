@@ -148,8 +148,10 @@ void imquic_network_endpoint_remove_connection(imquic_network_endpoint *ne, imqu
 	if(lock_mutex)
 		imquic_mutex_lock(&ne->mutex);
 	if(g_hash_table_lookup(ne->connections, conn)) {
-		if(ne->connection_gone)
+		if(conn->established && ne->connection_gone)
 			ne->connection_gone(conn);
+		else if(!conn->is_server && !conn->established && ne->connection_failed)
+			ne->connection_failed(ne->user_data);
 		g_hash_table_remove(ne->connections, conn);
 	}
 	if(lock_mutex)
@@ -173,8 +175,10 @@ void imquic_network_endpoint_destroy(imquic_network_endpoint *ne) {
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			imquic_connection *conn = (imquic_connection *)value;
 			imquic_connection_close(conn, 0, 0, NULL);
-			if(ne->connection_gone)
+			if(conn->established && ne->connection_gone)
 				ne->connection_gone(conn);
+			else if(!conn->is_server && !conn->established && ne->connection_failed)
+				ne->connection_failed(ne->user_data);
 			g_hash_table_iter_remove(&iter);
 		}
 		imquic_mutex_unlock(&ne->mutex);
@@ -345,7 +349,7 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		}
 	}
 	/* Initialize the TLS stack */
-	imquic_tls *tls = imquic_tls_create(config->is_server, config->cert_pem, config->cert_key, config->cert_pwd);
+	imquic_tls *tls = imquic_tls_create(config->is_server, config->cert_pem, config->cert_key, config->cert_pwd, !config->cert_no_verify);
 	if(tls == NULL)
 		return NULL;
 	if(config->early_data)

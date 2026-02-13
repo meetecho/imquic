@@ -76,6 +76,13 @@ static void imquic_demo_datagram_incoming(imquic_connection *conn, uint8_t *byte
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len - 1, (char *)(bytes + 1));
 }
 
+static void imquic_demo_connection_failed(void *user_data) {
+	/* Connection failed */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Connection failed\n");
+	/* Stop here */
+	g_atomic_int_inc(&stop);
+}
+
 static void imquic_demo_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection gone\n", imquic_get_connection_name(conn));
@@ -192,6 +199,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
 		IMQUIC_CONFIG_TLS_PASSWORD, options.cert_pwd,
+		IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
 		IMQUIC_CONFIG_LOCAL_BIND, options.ip,
 		IMQUIC_CONFIG_LOCAL_PORT, options.port,
 		IMQUIC_CONFIG_REMOTE_HOST, options.remote_host,
@@ -217,6 +225,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_new_connection_cb(client, imquic_demo_new_connection);
 	imquic_set_stream_incoming_cb(client, imquic_demo_stream_incoming);
 	imquic_set_datagram_incoming_cb(client, imquic_demo_datagram_incoming);
+	imquic_set_connection_failed_cb(client, imquic_demo_connection_failed);
 	imquic_set_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);
 
