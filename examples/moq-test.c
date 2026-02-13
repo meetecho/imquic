@@ -882,6 +882,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
 		IMQUIC_CONFIG_TLS_PASSWORD, options.cert_pwd,
+		IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
 		IMQUIC_CONFIG_LOCAL_BIND, options.ip,
 		IMQUIC_CONFIG_LOCAL_PORT, options.port,
 		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,

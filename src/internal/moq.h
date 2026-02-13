@@ -192,7 +192,6 @@ gboolean imquic_moq_is_fetch_serialization_flags_valid(imquic_moq_version versio
 /*! \brief Helper function to return the serialization flags to use for \c FETCH out of the individual properties.
  * @param[in] version The version of the connection
  * @param[in] subgroup The type of subgroup
- * @param[in] sgid0 Whether the default value of Subgroup ID is the same as before, in case the field is missing
  * @param[in] oid Whether the Object ID field is present
  * @param[in] group Whether the Group ID field is present
  * @param[in] priority Whether the Publisher field is present
@@ -213,6 +212,8 @@ uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version versio
  * @param[out] priority Output variable to write whether there is a Publisher Priority (added in v15)
  * @param[out] ext Output variable to write whether there are extensions
  * @param[out] datagram Output variable to write whether the forwarding preference is Datagram
+ * @param[out] end_ne_range Output variable to write whether this is the end of a non-existent range
+ * @param[out] end_uk_range Output variable to write whether this is the end of an unknown range
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint64_t flags,
 	imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *ext,
@@ -859,6 +860,7 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
  * \note This message was only added in v15, and consolidates most OK
  * messages that existed until then
  * @param moq The imquic_moq_context generating the message
+ * @param moq_stream The imquic_moq_stream instance the message is for
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
@@ -870,6 +872,7 @@ size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq
  * \note This message was only added in v15, and consolidates all
  * error messages that existed until then
  * @param moq The imquic_moq_context generating the message
+ * @param moq_stream The imquic_moq_stream instance the message is for
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message

@@ -249,6 +249,8 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_TLS_KEY,
 	/*! \brief TLS certificate password to use, if any (string) */
 	IMQUIC_CONFIG_TLS_PASSWORD,
+	/*! \brief Whether we should disable the verification of the peer certificate (boolean) */
+	IMQUIC_CONFIG_TLS_NO_VERIFY,
 	/*! \brief Whether early data should be supported (boolean) */
 	IMQUIC_CONFIG_EARLY_DATA,
 	/*! \brief If early data is supported, path to file to write/read the session ticket to/from (client only) */
@@ -433,6 +435,14 @@ void imquic_set_datagram_incoming_cb(imquic_endpoint *endpoint,
  * @param reset_stream_incoming Pointer to the function that will be invoked on the new RESET_STREAM */
 void imquic_set_reset_stream_cb(imquic_endpoint *endpoint,
 	void (* reset_stream_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code));
+/*! \brief Configure the callback function to be notified when an attemp
+ * to establish a connection failed, e.g., because the server is unreachable.
+ * @note Considering the application never received a connection instance
+ * when this event happens, only the provided opaque application data is passed
+ * @param endpoint The imquic_endpoint (imquic_client only) to configure
+ * @param connection_failed Pointer to the function that will be invoked when a connection fails */
+void imquic_set_connection_failed_cb(imquic_endpoint *endpoint,
+	void (* connection_failed)(void *user_data));
 /*! \brief Configure the callback function to be notified when an existing connection
  * handled by this endpoint has been closed/shut down.
  * @note This is a good place to release the last reference to the connection
@@ -463,6 +473,21 @@ const char *imquic_get_connection_wt_protocol(imquic_connection *conn);
  * @param conn The imquic_connection to query
  * @returns The display name, if successful, or NULL otherwise */
 const char *imquic_get_connection_name(imquic_connection *conn);
+/*! \brief Helper function to get the client initial connection ID from a connection
+ * @param conn The imquic_connection to query
+ * @returns The ID as a string, if successful, or NULL otherwise */
+const char *imquic_get_client_initial_connection_id(imquic_connection *conn);
+/*! \brief Helper function to associate some opaque application user data to a connection
+ * @note The library does nothing with this pointer, apart keeping track of
+ * it and returning it when invoking imquic_get_connection_user_data
+ * @param conn The imquic_connection to update
+ * @param user_data Opaque pointer with the data to associate to the connection */
+void imquic_set_connection_user_data(imquic_connection *conn, void *user_data);
+/*! \brief Helper function to retrieve the opaque application user data associated to a connection
+ * @param conn The imquic_connection to query
+ * @param user_data Opaque pointer with the data to associate to the connection
+ * @returns The user data pointer, if available, or NULL otherwise */
+void *imquic_get_connection_user_data(imquic_connection *conn);
 /*! \brief Helper method to ask for the next usable locally originated stream ID on this connection
  * @param[in] conn The imquic_connection to query
  * @param[in] bidirectional Whether the new stream should be bidirectional
