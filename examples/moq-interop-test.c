@@ -137,7 +137,6 @@ static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint6
 	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval);
-static void imquic_moq_interop_connection_failed(void *user_data);
 static void imquic_moq_interop_connection_gone(imquic_connection *conn);
 
 /* Main */
@@ -154,7 +153,6 @@ int main(int argc, char *argv[]) {
 	}
 	/* We need to only output TAP 14, so disable all imquic logging */
 	imquic_set_log_level(IMQUIC_LOG_NONE);
-	//~ imquic_set_log_level(IMQUIC_LOG_INFO);
 
 	/* Prepare a list of all supported tests */
 	imquic_moq_interop_test_context setup_only = { 0 };
@@ -413,7 +411,6 @@ static imquic_moq_interop_client *imquic_moq_interop_client_create(imquic_moq_in
 	}
 	imquic_set_new_moq_connection_cb(mc->client, imquic_moq_interop_new_connection);
 	imquic_set_moq_ready_cb(mc->client, imquic_moq_interop_ready);
-	imquic_set_connection_failed_cb(mc->client, imquic_moq_interop_connection_failed);
 	imquic_set_moq_connection_gone_cb(mc->client, imquic_moq_interop_connection_gone);
 	if(publisher) {
 		imquic_set_publish_namespace_accepted_cb(mc->client, imquic_moq_interop_publish_namespace_accepted);
@@ -579,12 +576,6 @@ static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t
 		g_atomic_int_set(&test->done, 1);
 	}
 	/* TODO Other tests */
-}
-
-static void imquic_moq_interop_connection_failed(void *user_data) {
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)user_data;
-	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-	g_atomic_int_set(&test->done, 1);
 }
 
 static void imquic_moq_interop_connection_gone(imquic_connection *conn) {
