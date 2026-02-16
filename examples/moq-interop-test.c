@@ -100,6 +100,7 @@ typedef struct imquic_moq_interop_test_context {
 	volatile int done, success;
 	char *pub_connection_id, *sub_connection_id,
 		*expected, *received, *message;
+	GList *subtests;
 } imquic_moq_interop_test_context;
 static void imquic_moq_interop_test_context_cleanup(imquic_moq_interop_test_context *test) {
 	if(test != NULL) {
@@ -110,6 +111,7 @@ static void imquic_moq_interop_test_context_cleanup(imquic_moq_interop_test_cont
 		g_free(test->expected);
 		g_free(test->received);
 		g_free(test->message);
+		g_list_free_full(test->subtests, (GDestroyNotify)g_free);
 	}
 }
 
@@ -366,6 +368,22 @@ static int imquic_moq_interop_perform_test(imquic_moq_interop_test_context *test
 	if(ret >= 0)
 		ret = g_atomic_int_get(&test->success) ? 0 : 1;
 	/* Print the results */
+	if(test->subtests != NULL) {
+		/* We have subtests too */
+		g_print("# Subtests: %s\n", imquic_moq_interop_test_str(test->name));
+		g_print("    1..%d\n", g_list_length(test->subtests));
+		GList *temp = test->subtests;
+		int step = 0;
+		while(temp) {
+			step++;
+			char *text = (char *)temp->data;
+			if(*text == '!')
+				g_print("    not ok %d - %s\n", step, text+1);
+			else
+				g_print("    ok %d - %s\n", step, text);
+			temp = temp->next;
+		}
+	}
 	g_print("%s %d - %s\n", (ret == 0 ? "ok" : "not ok"), test_num,
 		imquic_moq_interop_test_str(test->name));
 	if(ret != 0 || verbose) {
@@ -454,6 +472,16 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		test->pub_connection_id = g_strdup(imquic_get_client_initial_connection_id(conn));
 	else if(!client->publisher && test->sub_connection_id == NULL)
 		test->sub_connection_id = g_strdup(imquic_get_client_initial_connection_id(conn));
+	if(verbose) {
+		/* Add a sub-step */
+		char step[100];
+		if(test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE || test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
+			g_snprintf(step, sizeof(step), "%s connected", (client->publisher ? "publisher" : "subscriber"));
+		} else {
+			g_snprintf(step, sizeof(step), "client connected");
+		}
+		test->subtests = g_list_append(test->subtests, g_strdup(step));
+	}
 	if(test->name == IMQUIC_INTEROP_SETUP_ONLY) {
 		/* We're done */
 		g_atomic_int_set(&test->success, 1);
@@ -471,6 +499,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		tns[1].length = strlen("interop");
 		tns[1].next = NULL;
 		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], NULL);
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("publisher announced namespace"));
 	} else if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR) {
 		/* Subscribe to a non-existing track */
 		imquic_moq_namespace tns[2];
@@ -485,6 +515,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.length = strlen("test-track")
 		};
 		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), 0, &tns[0], &tn, NULL);
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to non-existing track"));
 	} else if((test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
 			test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) && !client->publisher) {
 		/* Subscribe to the test track */
@@ -500,6 +532,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.length = strlen("test-track")
 		};
 		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), 0, &tns[0], &tn, NULL);
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to track"));
 		if(test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
 			/* FIXME We should wait 500ms to start the publisher in this scenario */
 			imquic_start_endpoint(test->publisher->client);
@@ -513,6 +547,8 @@ static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *con
 	/* Depending on the test, we may or may not be done */
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
+	if(verbose)
+		test->subtests = g_list_append(test->subtests, g_strdup("publisher received ok to announced namespace"));
 	if(test->name == IMQUIC_INTEROP_ANNOUNCE_ONLY) {
 		/* We're done */
 		g_atomic_int_set(&test->success, 1);
@@ -526,8 +562,15 @@ static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *con
 		tns[1].buffer = (uint8_t *)"interop";
 		tns[1].length = strlen("interop");
 		tns[1].next = NULL;
-		if(imquic_moq_publish_namespace_done(conn, &tns[0]) == 0)
+		int ret = imquic_moq_publish_namespace_done(conn, &tns[0]);
+		if(ret == 0) {
 			g_atomic_int_set(&test->success, 1);
+			if(verbose)
+				test->subtests = g_list_append(test->subtests, g_strdup("publisher sent namespace done"));
+		} else {
+			if(verbose)
+				test->subtests = g_list_append(test->subtests, g_strdup("!publisher sent namespace done"));
+		}
 		/* We're done */
 		g_atomic_int_set(&test->done, 1);
 	} else if(test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE) {
@@ -542,8 +585,12 @@ static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, 
 	/* Depending on the test, we may or may not be done */
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-	if(test->name == IMQUIC_INTEROP_ANNOUNCE_ONLY) {
+	if(test->name == IMQUIC_INTEROP_ANNOUNCE_ONLY || test->name == IMQUIC_INTEROP_PUBLISH_NAMESPACE_DONE) {
 		/* We're done */
+		test->expected = g_strdup("REQUEST_OK");
+		test->received = g_strdup("REQUEST_ERROR");
+		char message[200];
+		g_snprintf(message, sizeof(message), "Error code %d (%s)", error_code, reason ? reason : "??");
 		g_atomic_int_set(&test->done, 1);
 	}
 	/* TODO Other tests */
@@ -554,9 +601,13 @@ static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint6
 	/* Depending on the test, we may or may not be done */
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
+	if(verbose)
+		test->subtests = g_list_append(test->subtests, g_strdup("publisher received subscribe"));
 	if(test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE) {
 		/* Accept the subscription */
 		imquic_moq_accept_subscribe(conn, request_id, 0, NULL, NULL);
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("publisher accepted subscribe"));
 	}
 }
 
@@ -567,10 +618,16 @@ static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint6
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
 	if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR) {
 		/* We're done */
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("!subscriber received ok to subscription"));
+		test->expected = g_strdup("REQUEST_ERROR");
+		test->received = g_strdup("SUBSCRIBE_OK");
 		g_atomic_int_set(&test->done, 1);
 	} else if(test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
 			test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
 		/* We're done */
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("subscriber received ok to subscription"));
 		g_atomic_int_set(&test->success, 1);
 		g_atomic_int_set(&test->done, 1);
 	}
@@ -582,6 +639,8 @@ static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t
 	/* Depending on the test, we may or may not be done */
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
+	if(verbose)
+		test->subtests = g_list_append(test->subtests, g_strdup("subscriber received error to subscription"));
 	if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR ||
 			test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
 			test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
