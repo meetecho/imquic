@@ -368,19 +368,20 @@ static int imquic_moq_interop_perform_test(imquic_moq_interop_test_context *test
 	/* Print the results */
 	g_print("%s %d - %s\n", (ret == 0 ? "ok" : "not ok"), test_num,
 		imquic_moq_interop_test_str(test->name));
-	/* Write the YAML summary */
-	g_print("  ---\n");
-	g_print("  duration_ms: %"SCNi64"\n", ((now-start)/1000));
-	if(test->expected != NULL)
-		g_print("  expected: %s\n", test->expected);
-	if(test->received != NULL)
-		g_print("  received: %s\n", test->received);
-	if(test->message != NULL)
-		g_print("  message: %s\n", test->message);
-	if(test->connection_id != NULL)
-		g_print("  connection_id: %s\n", test->connection_id);
-	/* TODO connection_id, message, expected, received */
-	g_print("  ---\n");
+	if(ret != 0) {
+		/* Write the YAML summary */
+		g_print("  ---\n");
+		g_print("  duration_ms: %"SCNi64"\n", ((now-start)/1000));
+		if(test->expected != NULL)
+			g_print("  expected: %s\n", test->expected);
+		if(test->received != NULL)
+			g_print("  received: %s\n", test->received);
+		if(test->message != NULL)
+			g_print("  message: %s\n", test->message);
+		if(test->connection_id != NULL)
+			g_print("  connection_id: %s\n", test->connection_id);
+		g_print("  ---\n");
+	}
 	if(ret < 0)
 		g_print("Bail out! Timeout trying to connect\n");
 
