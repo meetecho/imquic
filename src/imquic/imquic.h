@@ -485,7 +485,6 @@ const char *imquic_get_client_initial_connection_id(imquic_connection *conn);
 void imquic_set_connection_user_data(imquic_connection *conn, void *user_data);
 /*! \brief Helper function to retrieve the opaque application user data associated to a connection
  * @param conn The imquic_connection to query
- * @param user_data Opaque pointer with the data to associate to the connection
  * @returns The user data pointer, if available, or NULL otherwise */
 void *imquic_get_connection_user_data(imquic_connection *conn);
 /*! \brief Helper method to ask for the next usable locally originated stream ID on this connection
