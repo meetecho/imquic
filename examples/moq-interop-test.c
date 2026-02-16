@@ -98,13 +98,15 @@ typedef struct imquic_moq_interop_test_context {
 	imquic_moq_interop_client *publisher, *subscriber;
 	int64_t timeout;
 	volatile int done, success;
-	char *connection_id, *expected, *received, *message;
+	char *pub_connection_id, *sub_connection_id,
+		*expected, *received, *message;
 } imquic_moq_interop_test_context;
 static void imquic_moq_interop_test_context_cleanup(imquic_moq_interop_test_context *test) {
 	if(test != NULL) {
 		imquic_moq_interop_client_destroy(test->publisher);
 		imquic_moq_interop_client_destroy(test->subscriber);
-		g_free(test->connection_id);
+		g_free(test->pub_connection_id);
+		g_free(test->sub_connection_id);
 		g_free(test->expected);
 		g_free(test->received);
 		g_free(test->message);
@@ -366,7 +368,7 @@ static int imquic_moq_interop_perform_test(imquic_moq_interop_test_context *test
 	/* Print the results */
 	g_print("%s %d - %s\n", (ret == 0 ? "ok" : "not ok"), test_num,
 		imquic_moq_interop_test_str(test->name));
-	if(ret != 0) {
+	if(ret != 0 || verbose) {
 		/* Write the YAML summary */
 		g_print("  ---\n");
 		g_print("  duration_ms: %"SCNi64"\n", ((now-start)/1000));
@@ -376,8 +378,18 @@ static int imquic_moq_interop_perform_test(imquic_moq_interop_test_context *test
 			g_print("  received: %s\n", test->received);
 		if(test->message != NULL)
 			g_print("  message: %s\n", test->message);
-		if(test->connection_id != NULL)
-			g_print("  connection_id: %s\n", test->connection_id);
+		if(test->pub_connection_id != NULL) {
+			if(test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE || test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE)
+				g_print("  publisher_connection_id: %s\n", test->pub_connection_id);
+			else
+				g_print("  connection_id: %s\n", test->pub_connection_id);
+		}
+		if(test->sub_connection_id != NULL) {
+			if(test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE || test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE)
+				g_print("  subscriber_connection_id: %s\n", test->sub_connection_id);
+			else
+				g_print("  connection_id: %s\n", test->sub_connection_id);
+		}
 		g_print("  ---\n");
 	}
 	if(ret < 0)
@@ -438,8 +450,10 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 	/* Depending on the test, we may or may not be done */
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-	if(test->connection_id == NULL)
-		test->connection_id = g_strdup(imquic_get_client_initial_connection_id(conn));
+	if(client->publisher && test->pub_connection_id == NULL)
+		test->pub_connection_id = g_strdup(imquic_get_client_initial_connection_id(conn));
+	else if(!client->publisher && test->sub_connection_id == NULL)
+		test->sub_connection_id = g_strdup(imquic_get_client_initial_connection_id(conn));
 	if(test->name == IMQUIC_INTEROP_SETUP_ONLY) {
 		/* We're done */
 		g_atomic_int_set(&test->success, 1);
