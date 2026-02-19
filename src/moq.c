@@ -212,18 +212,17 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		size_t cs_len = imquic_moq_add_client_setup(moq, buffer, blen, versions, &parameters);
 		g_list_free(versions);
 		imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
-			buffer, moq->control_stream_offset, cs_len, FALSE);
-		moq->control_stream_offset += cs_len;
+			buffer, cs_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	}
 }
 
 void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
+		uint8_t *bytes, uint64_t length, gboolean complete) {
 	/* Got incoming data via STREAM */
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] [STREAM-%"SCNu64"] Got data: %"SCNu64"--%"SCNu64" (%s)\n",
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] [STREAM-%"SCNu64"] Got data: %"SCNu64" bytes (%s)\n",
 		imquic_get_connection_name(conn),
-		stream_id, offset, offset+length, (complete ? "complete" : "not complete"));
+		stream_id, length, (complete ? "complete" : "not complete"));
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	imquic_mutex_unlock(&moq_mutex);
@@ -232,7 +231,7 @@ void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
 			imquic_get_connection_name(conn));
 		return;
 	}
-	if(offset == 0 && !moq->has_control_stream) {
+	if(!moq->has_control_stream) {
 		uint64_t actual_id = 0;
 		gboolean client_initiated = FALSE, bidirectional = FALSE;
 		imquic_parse_stream_id(stream_id, &actual_id, &client_initiated, &bidirectional);
@@ -2106,8 +2105,7 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	size_t buflen = sizeof(buffer);
 	size_t ss_len = imquic_moq_add_server_setup(moq, buffer, buflen, moq->version, &s_parameters);
 	imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, ss_len, FALSE);
-	moq->control_stream_offset += ss_len;
+		buffer, ss_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	g_atomic_int_set(&moq->connected, 1);
 	/* Notify the application the session is ready */
@@ -6722,8 +6720,7 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
 		size_t blen = sizeof(buffer);
 		size_t ms_len = imquic_moq_add_max_request_id(moq, buffer, blen, max_request_id);
 		imquic_connection_send_on_stream(conn, moq->control_stream_id,
-			buffer, moq->control_stream_offset, ms_len, FALSE);
-		moq->control_stream_offset += ms_len;
+			buffer, ms_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	}
 	/* Done */
@@ -6952,8 +6949,7 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, i
 	size_t blen = sizeof(buffer);
 	size_t ann_len = imquic_moq_add_publish_namespace(moq, buffer, blen, request_id, tns, parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, ann_len, FALSE);
-	moq->control_stream_offset += ann_len;
+		buffer, ann_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -6982,8 +6978,7 @@ int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t reques
 		ann_len = imquic_moq_add_request_ok(moq, NULL, buffer, blen, request_id, parameters);
 	}
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, ann_len, FALSE);
-	moq->control_stream_offset += ann_len;
+		buffer, ann_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7013,8 +7008,7 @@ int imquic_moq_reject_publish_namespace(imquic_connection *conn, uint64_t reques
 		ann_len = imquic_moq_add_request_error(moq, NULL, buffer, blen, request_id, error_code, reason, retry_interval);
 	}
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, ann_len, FALSE);
-	moq->control_stream_offset += ann_len;
+		buffer, ann_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7037,8 +7031,7 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namesp
 	size_t blen = sizeof(buffer);
 	size_t ann_len = imquic_moq_add_publish_namespace_done(moq, buffer, blen, tns);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, ann_len, FALSE);
-	moq->control_stream_offset += ann_len;
+		buffer, ann_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7102,8 +7095,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 	sb_len = imquic_moq_add_publish(moq, buffer, blen,
 		request_id, tns, tn, track_alias, parameters, track_extensions);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7168,8 +7160,7 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
 	size_t sb_len = 0;
 	sb_len = imquic_moq_add_publish_ok(moq, buffer, blen, request_id, parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7204,8 +7195,7 @@ int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
 		sb_len = imquic_moq_add_request_error(moq, NULL, buffer, blen, request_id, error_code, reason, retry_interval);
 	}
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7281,8 +7271,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 	sb_len = imquic_moq_add_subscribe(moq, buffer, blen,
 		request_id, track_alias, tns, tn, parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7333,8 +7322,7 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
 	size_t sb_len = imquic_moq_add_subscribe_ok(moq, buffer, blen,
 		request_id, track_alias, parameters, track_extensions);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7363,8 +7351,7 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
 		sb_len = imquic_moq_add_request_error(moq, NULL, buffer, blen, request_id, error_code, reason, retry_interval);
 	}
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7425,8 +7412,7 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 	size_t su_len = imquic_moq_add_request_update(moq, buffer, blen,
 		request_id, sub_request_id, parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, su_len, FALSE);
-	moq->control_stream_offset += su_len;
+		buffer, su_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7457,8 +7443,7 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
 	size_t blen = sizeof(buffer);
 	size_t sb_len = imquic_moq_add_request_ok(moq, NULL, buffer, blen, request_id, parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7489,8 +7474,7 @@ int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_i
 	size_t blen = sizeof(buffer);
 	size_t sb_len = imquic_moq_add_request_error(moq, NULL, buffer, blen, request_id, error_code, reason, retry_interval);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7513,8 +7497,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	size_t blen = sizeof(buffer);
 	size_t sb_len = imquic_moq_add_unsubscribe(moq, buffer, blen, request_id);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7550,8 +7533,7 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 	size_t sd_len = imquic_moq_add_publish_done(moq, buffer, blen,
 		request_id, status_code, streams_count, reason);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sd_len, FALSE);
-	moq->control_stream_offset += sd_len;
+		buffer, sd_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7624,14 +7606,12 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_unlock(&moq->mutex);
 		/* Send on the dedicated bidirectional STREAM */
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-			buffer, moq_stream->stream_offset, sb_len, FALSE);
-		moq_stream->stream_offset += sb_len;
+			buffer, sb_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
 	} else {
 		/* Older MoQ version, use the control stream */
 		imquic_connection_send_on_stream(conn, moq->control_stream_id,
-			buffer, moq->control_stream_offset, sb_len, FALSE);
-		moq->control_stream_offset += sb_len;
+			buffer, sb_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	}
 	/* Done */
@@ -7678,14 +7658,12 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
 	if(moq_stream != NULL) {
 		/* Send on the dedicated bidirectional STREAM */
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-			buffer, moq_stream->stream_offset, sb_len, FALSE);
-		moq_stream->stream_offset += sb_len;
+			buffer, sb_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
 	} else {
 		/* Older MoQ version, use the control stream */
 		imquic_connection_send_on_stream(conn, moq->control_stream_id,
-			buffer, moq->control_stream_offset, sb_len, FALSE);
-		moq->control_stream_offset += sb_len;
+			buffer, sb_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	}
 	/* Done */
@@ -7733,14 +7711,12 @@ int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t requ
 	if(moq_stream != NULL) {
 		/* Send on the dedicated bidirectional STREAM */
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-			buffer, moq_stream->stream_offset, sb_len, FALSE);
-		moq_stream->stream_offset += sb_len;
+			buffer, sb_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
 	} else {
 		/* Older MoQ version, use the control stream */
 		imquic_connection_send_on_stream(conn, moq->control_stream_id,
-			buffer, moq->control_stream_offset, sb_len, FALSE);
-		moq->control_stream_offset += sb_len;
+			buffer, sb_len, FALSE);
 		imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	}
 	/* Done */
@@ -7786,8 +7762,7 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_i
 	size_t blen = sizeof(buffer);
 	size_t sb_len = imquic_moq_add_unsubscribe_namespace(moq, buffer, blen, request_id, tns);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7827,8 +7802,7 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 	size_t nn_len = imquic_moq_add_namespace(moq, moq_stream, buffer, blen, tns_suffix);
 	/* Send on the dedicated bidirectional STREAM */
 	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-		buffer, moq_stream->stream_offset, nn_len, FALSE);
-	moq_stream->stream_offset += nn_len;
+		buffer, nn_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7869,8 +7843,7 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	size_t nn_len = imquic_moq_add_namespace_done(moq, moq_stream, buffer, blen, tns_suffix);
 	/* Send on the dedicated bidirectional STREAM */
 	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-		buffer, moq_stream->stream_offset, nn_len, FALSE);
-	moq_stream->stream_offset += nn_len;
+		buffer, nn_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7931,8 +7904,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		tns, tn,
 		range, parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, f_len, FALSE);
-	moq->control_stream_offset += f_len;
+		buffer, f_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -7993,8 +7965,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 		NULL,	/* Ignored, as the fetch range is only used for Standalone Fetch */
 		parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, f_len, FALSE);
-	moq->control_stream_offset += f_len;
+		buffer, f_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8034,8 +8005,7 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, imquic
 		largest,	/* Largest location */
 		parameters, track_extensions);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, f_len, FALSE);
-	moq->control_stream_offset += f_len;
+		buffer, f_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8064,8 +8034,7 @@ int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
 		f_len = imquic_moq_add_request_error(moq, NULL, buffer, blen, request_id, error_code, reason, retry_interval);
 	}
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, f_len, FALSE);
-	moq->control_stream_offset += f_len;
+		buffer, f_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8088,8 +8057,7 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id) {
 	size_t blen = sizeof(buffer);
 	size_t f_len = imquic_moq_add_fetch_cancel(moq, buffer, blen, request_id);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, f_len, FALSE);
-	moq->control_stream_offset += f_len;
+		buffer, f_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8172,8 +8140,7 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 	sb_len = imquic_moq_add_track_status(moq, buffer, blen,
 		request_id, tns, tn, parameters);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, sb_len, FALSE);
-	moq->control_stream_offset += sb_len;
+		buffer, sb_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8231,8 +8198,7 @@ int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
 		tso_len = imquic_moq_add_request_ok(moq, NULL, buffer, blen, request_id, parameters);
 	}
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, tso_len, FALSE);
-	moq->control_stream_offset += tso_len;
+		buffer, tso_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8266,8 +8232,7 @@ int imquic_moq_reject_track_status(imquic_connection *conn, uint64_t request_id,
 		tsr_len = imquic_moq_add_request_error(moq, NULL, buffer, blen, request_id, error_code, reason, retry_interval);
 	}
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, tsr_len, FALSE);
-	moq->control_stream_offset += tsr_len;
+		buffer, tsr_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8289,8 +8254,7 @@ int imquic_moq_requests_blocked(imquic_connection *conn) {
 	size_t blen = sizeof(buffer);
 	size_t r_len = imquic_moq_add_requests_blocked(moq, buffer, blen, moq->max_request_id);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, r_len, FALSE);
-	moq->control_stream_offset += r_len;
+		buffer, r_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8312,8 +8276,7 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri) {
 	size_t blen = sizeof(buffer);
 	size_t g_len = imquic_moq_add_goaway(moq, buffer, blen, uri);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
-		buffer, moq->control_stream_offset, g_len, FALSE);
-	moq->control_stream_offset += g_len;
+		buffer, g_len, FALSE);
 	imquic_connection_flush_stream(moq->conn, moq->control_stream_id);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
@@ -8422,8 +8385,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				imquic_moq_qlog_subgroup_header_created(conn->qlog, moq_stream, buffer, shg_len);
 #endif
 			imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-				buffer, moq_stream->stream_offset, shg_len, FALSE);
-			moq_stream->stream_offset += shg_len;
+				buffer, shg_len, FALSE);
 		} else {
 			imquic_mutex_unlock(&moq->mutex);
 		}
@@ -8455,9 +8417,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 #endif
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-			buffer, moq_stream->stream_offset, shgo_len,
+			buffer, shgo_len,
 			(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_GROUP));
-		moq_stream->stream_offset += shgo_len;
 		imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
 		if(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_GROUP) {
 			imquic_mutex_lock(&moq->mutex);
@@ -8504,8 +8465,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				imquic_moq_qlog_fetch_header_created(conn->qlog, moq_stream, buffer, sht_len);
 #endif
 			imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-				buffer, moq_stream->stream_offset, sht_len, FALSE);
-			moq_stream->stream_offset += sht_len;
+				buffer, sht_len, FALSE);
 		} else {
 			imquic_mutex_unlock(&moq->mutex);
 		}
@@ -8531,9 +8491,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 #endif
 		}
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
-			buffer, moq_stream->stream_offset, shto_len,
+			buffer, shto_len,
 			(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_TRACK));
-		moq_stream->stream_offset += shto_len;
 		imquic_connection_flush_stream(moq->conn, moq_stream->stream_id);
 		if(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_TRACK) {
 			imquic_mutex_lock(&moq->mutex);

@@ -89,7 +89,7 @@ typedef struct imquic_network_endpoint {
 	void (* new_connection)(imquic_connection *conn, void *user_data);
 	/*! \brief Callback to invoke when new \c STREAM data is available on one of the connections handled by this endpoint */
 	void (* stream_incoming)(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete);
+		uint8_t *bytes, uint64_t length, gboolean complete);
 	/*! \brief Callback to invoke when new \c DATAGRAM data is available on one of the connections handled by this endpoint */
 	void (* datagram_incoming)(imquic_connection *conn, uint8_t *bytes, uint64_t length);
 	/*! \brief Callback to invoke when a \c RESET_STREAM arrives on one of the connections handled by this endpoint */

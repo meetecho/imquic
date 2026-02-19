@@ -48,17 +48,17 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 }
 
 static void imquic_demo_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
+		uint8_t *bytes, uint64_t length, gboolean complete) {
 	/* Got incoming data via STREAM */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] [STREAM-%"SCNu64"] Got data: %"SCNu64"--%"SCNu64" (%s)\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] [STREAM-%"SCNu64"] Got data: %"SCNu64" bytes (%s)\n",
 		imquic_get_connection_name(conn),
-		stream_id, offset, offset+length, (complete ? "complete" : "not complete"));
+		stream_id, length, (complete ? "complete" : "not complete"));
 	if(length > 0) {
 		int len = length;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len, (char *)(bytes));
 	}
 	/* FIXME Send it back */
-	imquic_send_on_stream(conn, stream_id, bytes, offset, length, complete);
+	imquic_send_on_stream(conn, stream_id, bytes, length, complete);
 }
 
 static void imquic_demo_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint64_t length) {

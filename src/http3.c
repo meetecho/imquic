@@ -359,7 +359,20 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 		/* TODO Handle QPACK decoder messages */
 	} else if(!stream->bidirectional && h3c->webtransport) {
 		/* Got WebTransport data on a unidirectional stream */
-		imquic_connection_notify_stream_incoming(conn, stream, chunk->data, chunk->offset, chunk->length);
+		uint8_t *data = chunk->data;
+		size_t length = chunk->length;
+		if(chunk->offset < stream->skip_in) {
+			/* We need to skip some bytes and shift the offset/length */
+			size_t diff = stream->skip_in - chunk->offset;
+			if(diff >= length) {
+				data = NULL;
+				length = 0;
+			} else {
+				data += diff;
+				length -= diff;
+			}
+		}
+		imquic_connection_notify_stream_incoming(conn, stream, data, length);
 	} else if(stream->bidirectional) {
 		if(!h3c->webtransport || stream->stream_id == h3c->request_stream) {
 			/* Request */
@@ -374,7 +387,20 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 			imquic_http3_parse_request(h3c, stream, chunk->data + p_offset, chunk->length - p_offset);
 		} else {
 			/* Got WebTransport data on a bidirectional stream */
-			imquic_connection_notify_stream_incoming(conn, stream, chunk->data, chunk->offset, chunk->length);
+			uint8_t *data = chunk->data;
+			size_t length = chunk->length;
+			if(chunk->offset < stream->skip_in) {
+				/* We need to skip some bytes and shift the offset/length */
+				size_t diff = stream->skip_in - chunk->offset;
+				if(diff >= length) {
+					data = NULL;
+					length = 0;
+				} else {
+					data += diff;
+					length -= diff;
+				}
+			}
+			imquic_connection_notify_stream_incoming(conn, stream, data, length);
 		}
 	}
 }
@@ -802,7 +828,7 @@ void imquic_http3_check_send_connect(imquic_http3_connection *h3c) {
 			if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
 				imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, stream_id, "request");
 #endif
-			imquic_connection_send_on_stream(h3c->conn, stream_id, buffer, 0, offset, FALSE);
+			imquic_connection_send_on_stream(h3c->conn, stream_id, buffer, offset, FALSE);
 			imquic_connection_flush_stream(h3c->conn, stream_id);
 			h3c->conn->wakeup = TRUE;
 			imquic_loop_wakeup();
@@ -839,21 +865,21 @@ int imquic_http3_prepare_settings(imquic_http3_connection *h3c) {
 		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->local_control_stream, s_offset - 3, frame);
 	}
 #endif
-	imquic_connection_send_on_stream(h3c->conn, h3c->local_control_stream, settings, 0, s_offset, FALSE);
+	imquic_connection_send_on_stream(h3c->conn, h3c->local_control_stream, settings, s_offset, FALSE);
 	imquic_connection_new_stream_id(h3c->conn, FALSE, &h3c->local_qpack_encoder_stream);
 #ifdef HAVE_QLOG
 	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
 		imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, h3c->local_qpack_encoder_stream, "qpack_encode");
 #endif
 	settings[0] = IMQUIC_HTTP3_QPACK_ENCODER_STREAM;
-	imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_encoder_stream, settings, 0, 1, FALSE);
+	imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_encoder_stream, settings, 1, FALSE);
 	imquic_connection_new_stream_id(h3c->conn, FALSE, &h3c->local_qpack_decoder_stream);
 #ifdef HAVE_QLOG
 	if(h3c->conn->qlog != NULL && h3c->conn->qlog->http3)
 		imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, h3c->local_qpack_decoder_stream, "qpack_decode");
 #endif
 	settings[0] = IMQUIC_HTTP3_QPACK_DECODER_STREAM;
-	imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_decoder_stream, settings, 0, 1, FALSE);
+	imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_decoder_stream, settings, 1, FALSE);
 	imquic_connection_flush_stream(h3c->conn, h3c->local_control_stream);
 	imquic_connection_flush_stream(h3c->conn, h3c->local_qpack_encoder_stream);
 	imquic_connection_flush_stream(h3c->conn, h3c->local_qpack_decoder_stream);

@@ -55,6 +55,9 @@ imquic_buffer *imquic_buffer_create(uint64_t stream_id);
  * @param buf The imquic_buffer instance to destroy */
 void imquic_buffer_destroy(imquic_buffer *buf);
 
+/*! \brief Helper method to get the current size of the buffer, so the current offset
+ * @returns The current offset of the buffer */
+uint64_t imquic_buffer_get_size(imquic_buffer *buf);
 /*! \brief Helper method to add new data to the buffer at a specific offset, as a new chunk
  * @note In case the new data overlaps data already in the buffer, the new data is truncated accordingly to fit
  * @param buf The imquic_buffer instance to add data to

@@ -157,11 +157,11 @@ void imquic_roq_new_connection(imquic_connection *conn, void *user_data) {
 }
 
 void imquic_roq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
+		uint8_t *bytes, uint64_t length, gboolean complete) {
 	/* Got incoming data via STREAM */
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][RoQ] [STREAM-%"SCNu64"] Got data: %"SCNu64"--%"SCNu64" (%s)\n",
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][RoQ] [STREAM-%"SCNu64"] Got data: %"SCNu64" bytes (%s)\n",
 		imquic_get_connection_name(conn),
-		stream_id, offset, offset+length, (complete ? "complete" : "not complete"));
+		stream_id, length, (complete ? "complete" : "not complete"));
 	imquic_mutex_lock(&roq_mutex);
 	imquic_roq_endpoint *endpoint = g_hash_table_lookup(roq_sessions, conn);
 	imquic_mutex_unlock(&roq_mutex);
@@ -244,6 +244,7 @@ static imquic_roq_stream *imquic_roq_stream_create(imquic_connection *conn, imqu
 	imquic_roq_stream *roq_stream = g_malloc0(sizeof(imquic_roq_stream));
 	imquic_connection_new_stream_id(conn, FALSE, &roq_stream->stream_id);
 	roq_stream->flow_id = flow_id;
+	roq_stream->new_stream = TRUE;
 	imquic_refcount_init(&roq_stream->ref, imquic_roq_stream_free);
 	g_hash_table_insert(endpoint->stream_flows_out, imquic_uint64_dup(flow_id), roq_stream);
 #ifdef HAVE_QLOG
@@ -292,9 +293,10 @@ size_t imquic_roq_send_rtp(imquic_connection *conn, imquic_roq_multiplexing mult
 		}
 		imquic_refcount_increase(&roq_stream->ref);
 		imquic_mutex_unlock(&endpoint->mutex);
-		if(roq_stream->offset == 0) {
+		if(roq_stream->new_stream) {
 			/* Write the flow ID first */
 			offset = imquic_varint_write(flow_id, outgoing, outlen);
+			roq_stream->new_stream = FALSE;
 		}
 		offset += imquic_varint_write(blen, outgoing + offset, outlen-offset);
 		memcpy(outgoing + offset, bytes, blen);
@@ -303,8 +305,7 @@ size_t imquic_roq_send_rtp(imquic_connection *conn, imquic_roq_multiplexing mult
 		if(conn->qlog != NULL && conn->qlog->roq)
 			imquic_roq_qlog_stream_packet_created(conn->qlog, roq_stream->stream_id, flow_id, bytes, blen);
 #endif
-		imquic_send_on_stream(conn, roq_stream->stream_id, outgoing, roq_stream->offset, offset, close_stream);
-		roq_stream->offset += offset;
+		imquic_send_on_stream(conn, roq_stream->stream_id, outgoing, offset, close_stream);
 		imquic_mutex_lock(&endpoint->mutex);
 		if(close_stream)
 			g_hash_table_remove(endpoint->stream_flows_out, &flow_id);

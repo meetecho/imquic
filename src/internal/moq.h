@@ -394,8 +394,6 @@ typedef struct imquic_moq_context {
 	gboolean has_control_stream;
 	/*! \brief ID of the control stream */
 	uint64_t control_stream_id;
-	/*! \brief Current offset of the control stream on the way out */
-	uint64_t control_stream_offset;
 	/*! \brief QUIC streams handled by the stack */
 	GHashTable *streams;
 	/*! \brief Subscriptions this connection will send objects to, indexed by track_alias */
@@ -456,8 +454,6 @@ typedef struct imquic_moq_stream {
 	imquic_moq_object_status object_status;
 	/*! \brief Publisher priority */
 	uint8_t priority;
-	/*! \brief Current stream offset */
-	uint64_t stream_offset;
 	/*! \brief Buffer to process incoming messages/objects */
 	imquic_moq_buffer *buffer;
 	/*! \brief Whether we got at least an object on this stream */
@@ -1434,11 +1430,10 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data);
  * @param conn The imquic_connection instance for which new \c STREAM data is available
  * @param stream_id The QUIC Stream ID for which new data is available
  * @param bytes The new data that is available
- * @param offset The offset in the stream this new data should be put in
  * @param length Size of the new data
  * @param complete Whether this data marks the end of this \c STREAM */
 void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-	uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete);
+	uint8_t *bytes, uint64_t length, gboolean complete);
 /*! \brief Callback the core invokes when there's new incoming data on a \c DATAGRAM
  * @param conn The imquic_connection instance for which new \c DATAGRAM data is available
  * @param bytes The new data that is available

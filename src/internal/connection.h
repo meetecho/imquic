@@ -305,12 +305,11 @@ int imquic_connection_send_on_datagram(imquic_connection *conn, uint8_t *bytes, 
  * @param[in] conn The imquic_connection to send data on
  * @param[in] stream_id The QUIC stream to use for sending data
  * @param[in] bytes Buffer containing the data to send
- * @param[in] offset Offset value to put in the outgoing STREAM fragment
  * @param[in] length Size of the buffer of data
  * @param[in] complete Whether this (offset+length) is the end of the STREAM data
  * @returns 0 if successful, a negative integer otherwise */
 int imquic_connection_send_on_stream(imquic_connection *conn, uint64_t stream_id,
-	uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete);
+	uint8_t *bytes, uint64_t length, gboolean complete);
 /*! \brief Helper to notify incoming \c DATAGRAM data to the application
  * @param conn The imquic_connection instance to notify the event for
  * @param data Buffer containing the new data
@@ -320,9 +319,8 @@ void imquic_connection_notify_datagram_incoming(imquic_connection *conn, uint8_t
  * @param conn The imquic_connection instance to notify the event for
  * @param stream The imquic_stream that originated the new data to notify about
  * @param data Buffer containing the new data
- * @param offset Offset in the overall \c STREAM this data is positioned at
  * @param length Size of the new data buffer */
-void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_stream *stream, uint8_t *data, uint64_t offset, uint64_t length);
+void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_stream *stream, uint8_t *data, uint64_t length);
 /*! \brief Helper to flush a stream, in order to send data right away
  * @param conn The imquic_connection instance that owns the stream to flush
  * @param stream_id ID of the stream to flush */

@@ -1495,7 +1495,7 @@ size_t imquic_payload_parse_stream(imquic_connection *conn, imquic_packet *pkt, 
 			imquic_http3_process_stream_data(conn, stream, chunk, new_stream);
 		} else {
 			/* Pass the data to the application callback */
-			imquic_connection_notify_stream_incoming(conn, stream, chunk->data, chunk->offset, chunk->length);
+			imquic_connection_notify_stream_incoming(conn, stream, chunk->data, chunk->length);
 		}
 		imquic_buffer_chunk_free(chunk);
 		imquic_mutex_lock(&stream->mutex);

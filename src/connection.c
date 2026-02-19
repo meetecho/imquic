@@ -551,7 +551,7 @@ int imquic_connection_new_stream_id(imquic_connection *conn, gboolean bidirectio
 		size_t plen = sizeof(prefix);
 		size_t offset = imquic_write_varint(stream->bidirectional ? IMQUIC_HTTP3_WEBTRANSPORT_STREAM : IMQUIC_HTTP3_WEBTRANSPORT_UNI_STREAM, prefix, plen);
 		offset += imquic_write_varint(0, &prefix[offset], plen-offset);	/* FIXME Should we expose session ID? */
-		imquic_connection_send_on_stream(conn, stream->stream_id, prefix, 0, offset, FALSE);
+		imquic_connection_send_on_stream(conn, stream->stream_id, prefix, offset, FALSE);
 		stream->skip_out = offset;
 	}
 	return 0;
@@ -580,7 +580,7 @@ int imquic_connection_send_on_datagram(imquic_connection *conn, uint8_t *bytes, 
 
 /* Helper to send data on a STREAM */
 int imquic_connection_send_on_stream(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
+		uint8_t *bytes, uint64_t length, gboolean complete) {
 	if(conn == NULL)
 		return -1;
 	/* FIXME Queue on the outgoing buffer of the stream */
@@ -594,7 +594,7 @@ int imquic_connection_send_on_stream(imquic_connection *conn, uint64_t stream_id
 	}
 	imquic_refcount_increase(&stream->ref);
 	imquic_mutex_unlock(&conn->mutex);
-	offset += stream->skip_out;
+	size_t offset = imquic_buffer_get_size(stream->out_data);
 	if(!imquic_stream_can_send(stream, offset, length, TRUE)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Can't send data on stream %"SCNu64"\n",
 			imquic_get_connection_name(conn), stream_id);
@@ -603,7 +603,7 @@ int imquic_connection_send_on_stream(imquic_connection *conn, uint64_t stream_id
 	}
 	imquic_mutex_lock(&stream->mutex);
 	if(bytes != NULL)
-		imquic_buffer_put(stream->out_data, bytes, offset, length);
+		imquic_buffer_append(stream->out_data, bytes, length);
 	if(complete)
 		imquic_stream_mark_complete(stream, FALSE);
 	imquic_mutex_unlock(&stream->mutex);
@@ -622,31 +622,13 @@ void imquic_connection_notify_datagram_incoming(imquic_connection *conn, uint8_t
 }
 
 /* Helper to notify incoming STREAM data to the application */
-void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_stream *stream, uint8_t *data, uint64_t offset, uint64_t length) {
-	if(conn == NULL || conn->socket == NULL || stream == NULL)
+void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_stream *stream, uint8_t *data, uint64_t length) {
+	if(conn == NULL || conn->socket == NULL || conn->socket->stream_incoming == NULL ||
+			stream == NULL || ((data == NULL || length == 0) && stream->in_state != IMQUIC_STREAM_COMPLETE))
 		return;
-	if(conn->socket->stream_incoming == NULL)
-		return;
-	if(stream->skip_in > 0 && data != NULL && length > 0) {
-		if(offset >= stream->skip_in) {
-			/* We're past the initial skipped data, just fix the offset */
-			offset -= stream->skip_in;
-		} else {
-			/* We need to skip some bytes and shift the offset/length */
-			size_t diff = stream->skip_in - offset;
-			if(diff >= length) {
-				/* This is all data we can skip */
-				return;
-			}
-			data += diff;
-			length -= diff;
-			if(length == 0)
-				data = NULL;
-		}
-	}
 	/* Notify the data */
-	conn->socket->stream_incoming(conn, stream->stream_id, data,
-		offset, length,	(stream->in_state == IMQUIC_STREAM_COMPLETE));
+	conn->socket->stream_incoming(conn, stream->stream_id,
+		data, length, (stream->in_state == IMQUIC_STREAM_COMPLETE));
 }
 
 /* Helper to flush a stream */

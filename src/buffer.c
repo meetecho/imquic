@@ -47,6 +47,13 @@ void imquic_buffer_chunk_free(imquic_buffer_chunk *chunk) {
 }
 
 /* Helpers to add or get from the buffer */
+uint64_t imquic_buffer_get_size(imquic_buffer *buf) {
+	GList *last = buf ? g_list_last(buf->chunks) : NULL;
+	imquic_buffer_chunk *last_chunk = (imquic_buffer_chunk *)(last ? last->data : NULL);
+	uint64_t offset = last_chunk ? (last_chunk->offset + last_chunk->length) : buf->base_offset;
+	return offset;
+}
+
 uint64_t imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, uint64_t length) {
 	if(buf == NULL || length == 0 || (length > 0 && data == NULL))
 		return 0;
@@ -109,9 +116,7 @@ uint64_t imquic_buffer_put(imquic_buffer *buf, uint8_t *data, uint64_t offset, u
 uint64_t imquic_buffer_append(imquic_buffer *buf, uint8_t *data, uint64_t length) {
 	if(buf == NULL || length == 0 || (length > 0 && data == NULL))
 		return 0;
-	GList *last = g_list_last(buf->chunks);
-	imquic_buffer_chunk *last_chunk = (imquic_buffer_chunk *)(last ? last->data : NULL);
-	uint64_t offset = last_chunk ? (last_chunk->offset + last_chunk->length) : buf->base_offset;
+	uint64_t offset = imquic_buffer_get_size(buf);
 	/* Always appending, easy enough */
 	buf->chunks = g_list_append(buf->chunks, imquic_buffer_chunk_create(data, offset, length));
 	return 0;

@@ -49,15 +49,15 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	const char *text = options.text ? options.text : "ciao";
 	uint64_t stream_id = 0;
 	imquic_new_stream_id(conn, TRUE, &stream_id);
-	imquic_send_on_stream(conn, stream_id, (uint8_t *)text, 0, strlen(text), TRUE);
+	imquic_send_on_stream(conn, stream_id, (uint8_t *)text, strlen(text), TRUE);
 }
 
 static void imquic_demo_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
+		uint8_t *bytes, uint64_t length, gboolean complete) {
 	/* Got incoming data via STREAM */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] [STREAM-%"SCNu64"] Got data: %"SCNu64"--%"SCNu64" (%s)\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] [STREAM-%"SCNu64"] Got data: %"SCNu64" bytes (%s)\n",
 		imquic_get_connection_name(conn),
-		stream_id, offset, offset+length, (complete ? "complete" : "not complete"));
+		stream_id, length, (complete ? "complete" : "not complete"));
 	if(length > 0) {
 		int len = length;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len, (char *)(bytes));

@@ -448,7 +448,7 @@ void imquic_set_new_connection_cb(imquic_endpoint *endpoint,
 
 void imquic_set_stream_incoming_cb(imquic_endpoint *endpoint,
 		void (* stream_incoming)(imquic_connection *conn, uint64_t stream_id,
-			uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete)) {
+			uint8_t *bytes, uint64_t length, gboolean complete)) {
 	if(endpoint != NULL) {
 		if(endpoint->internal_callbacks) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't seq QUIC callback when using specific protocol handler\n");
@@ -499,10 +499,10 @@ void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
 
 /* FIXME Interacting with connections */
 int imquic_send_on_stream(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete) {
+		uint8_t *bytes, uint64_t length, gboolean complete) {
 	if(conn == NULL)
 		return -1;
-	if(imquic_connection_send_on_stream(conn, stream_id, bytes, offset, length, complete) < 0)
+	if(imquic_connection_send_on_stream(conn, stream_id, bytes, length, complete) < 0)
 		return -1;
 	imquic_connection_flush_stream(conn, stream_id);
 	return 0;

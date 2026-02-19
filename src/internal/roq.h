@@ -49,8 +49,8 @@ typedef struct imquic_roq_stream {
 	uint64_t stream_id;
 	/*! \brief RoQ Flow ID */
 	uint64_t flow_id;
-	/*! \brief Offset in the QUIC STREAM where to write the next packet */
-	uint64_t offset;
+	/*! \brief Whether this is a new stream */
+	gboolean new_stream;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
 	volatile gint destroyed;
 	/*! \brief Reference counter */
@@ -80,11 +80,10 @@ void imquic_roq_new_connection(imquic_connection *conn, void *user_data);
  * @param conn The imquic_connection instance for which new \c STREAM data is available
  * @param stream_id The QUIC Stream ID for which new data is available
  * @param bytes The new data that is available
- * @param offset The offset in the stream this new data should be put in
  * @param length Size of the new data
  * @param complete Whether this data marks the end of this \c STREAM */
 void imquic_roq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
-	uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete);
+	uint8_t *bytes, uint64_t length, gboolean complete);
 /*! \brief Callback the core invokes when there's new incoming data on a \c DATAGRAM
  * @param conn The imquic_connection instance for which new \c DATAGRAM data is available
  * @param bytes The new data that is available

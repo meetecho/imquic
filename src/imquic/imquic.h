@@ -422,7 +422,7 @@ void imquic_set_new_connection_cb(imquic_endpoint *endpoint,
  * @param stream_incoming Pointer to the function that will be invoked on the new STREAM data */
 void imquic_set_stream_incoming_cb(imquic_endpoint *endpoint,
 	void (* stream_incoming)(imquic_connection *conn, uint64_t stream_id,
-		uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete));
+		uint8_t *bytes, uint64_t length, gboolean complete));
 /*! \brief Configure the callback function to be notified about incoming DATAGRAM
  * data on an existing connection handled by this endpoint.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -501,12 +501,11 @@ int imquic_new_stream_id(imquic_connection *conn, gboolean bidirectional, uint64
  * @param[in] conn The imquic_connection to send data on
  * @param[in] stream_id The QUIC stream to use for sending data
  * @param[in] bytes Buffer containing the data to send
- * @param[in] offset Offset value to put in the outgoing STREAM fragment
  * @param[in] length Size of the buffer of data
  * @param[in] complete Whether this (offset+length) is the end of the STREAM data
  * @returns 0 if successful, a negative integer otherwise */
 int imquic_send_on_stream(imquic_connection *conn, uint64_t stream_id,
-	uint8_t *bytes, uint64_t offset, uint64_t length, gboolean complete);
+	uint8_t *bytes, uint64_t length, gboolean complete);
 /*! \brief Helper method to send data on a QUIC DATAGRAM
  * @note Datagrams support must have been negotiated on the connection.
  * Notice that this method will queue the data for delivery, but not send
