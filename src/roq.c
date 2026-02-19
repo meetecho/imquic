@@ -165,7 +165,7 @@ void imquic_roq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
 	imquic_mutex_lock(&roq_mutex);
 	imquic_roq_endpoint *endpoint = g_hash_table_lookup(roq_sessions, conn);
 	imquic_mutex_unlock(&roq_mutex);
-	if(endpoint == NULL)
+	if(endpoint == NULL || length == 0)
 		return;
 	/* Do we know the flow ID already? */
 	uint8_t parsed = 0;
