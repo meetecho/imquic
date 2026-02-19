@@ -43,8 +43,8 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
-static char pub_tns_buffer[256];
-static const char *pub_tns = NULL;
+static char pub_tns_buffer[256], pub_tn_buffer[256];
+static const char *pub_tns = NULL, *pub_tn = NULL;
 static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
@@ -98,10 +98,15 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		i++;
 	}
 	pub_tns = imquic_moq_namespace_str(tns, pub_tns_buffer, sizeof(pub_tns_buffer), TRUE);
+	imquic_moq_name tn = {
+		.buffer = (uint8_t *)options.track_name,
+		.length = strlen(options.track_name)
+	};
+	pub_tn = imquic_moq_track_str(&tn, pub_tn_buffer, sizeof(pub_tn_buffer));
 	if(!options.publish) {
 		/* We use PUBLISH_NAMESPACE + incoming SUBSCRIBE */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), options.track_name);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), pub_tn);
 		/* Check if we need to prepare an auth token */
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
@@ -123,11 +128,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			g_atomic_int_inc(&stop);
 			return;
 		}
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, options.track_name);
-		imquic_moq_name tn = {
-			.buffer = (uint8_t *)options.track_name,
-			.length = strlen(options.track_name)
-		};
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, pub_tn);
 		moq_request_id = imquic_moq_get_next_request_id(conn);
 		gboolean forward = FALSE;
 		/* Check if we need to prepare an auth token */
@@ -204,7 +205,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
 			imquic_get_connection_name(conn), ns, name, request_id);
 	}
-	if(pub_tns == NULL || strcasecmp(ns, pub_tns) || strcasecmp(name, options.track_name)) {
+	if(pub_tns == NULL || strcasecmp(ns, pub_tns) || strcasecmp(name, pub_tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace or track\n", imquic_get_connection_name(conn));
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", track_alias, 0);
 		return;
@@ -294,6 +295,13 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s\n", imquic_get_connection_name(conn), uri);
+	/* Stop here */
+	g_atomic_int_inc(&stop);
+}
+
+static void imquic_demo_connection_failed(void *user_data) {
+	/* Connection failed */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Connection failed\n");
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -536,6 +544,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
 		IMQUIC_CONFIG_TLS_PASSWORD, options.cert_pwd,
+		IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
 		IMQUIC_CONFIG_LOCAL_BIND, options.ip,
 		IMQUIC_CONFIG_LOCAL_PORT, options.port,
 		IMQUIC_CONFIG_REMOTE_HOST, options.remote_host,
@@ -588,6 +597,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_subscribe_cb(client, imquic_demo_incoming_subscribe);
 	imquic_set_incoming_unsubscribe_cb(client, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
+	imquic_set_connection_failed_cb(client, imquic_demo_connection_failed);
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);
 

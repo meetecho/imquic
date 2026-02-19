@@ -52,6 +52,8 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 			config.cert_key = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_PASSWORD) {
 			config.cert_pwd = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_TLS_NO_VERIFY) {
+			config.cert_no_verify = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_EARLY_DATA) {
 			config.early_data = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {
@@ -128,7 +130,6 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 	imquic_configuration config = { 0 };
 	config.name = name;
 	config.is_server = FALSE;
-	config.qlog_quic = TRUE;
 	int property = va_arg(args, int);
 	if(property != IMQUIC_CONFIG_INIT) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "First argument is not IMQUIC_CONFIG_INIT\n");
@@ -151,6 +152,8 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 			config.cert_key = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_PASSWORD) {
 			config.cert_pwd = va_arg(args, char *);
+		} else if(property == IMQUIC_CONFIG_TLS_NO_VERIFY) {
+			config.cert_no_verify = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_EARLY_DATA) {
 			config.early_data = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_TICKET_FILE) {

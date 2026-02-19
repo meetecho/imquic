@@ -422,6 +422,8 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 			conn->remote_cid.len = pkt->source.len;
 			if(pkt->source.len > 0)
 				memcpy(conn->remote_cid.id, pkt->source.id, pkt->source.len);
+			imquic_connection_id_str((imquic_connection_id *)&conn->remote_cid.id,
+				conn->client_initial_cid_str, sizeof(conn->client_initial_cid_str));
 			if(imquic_derive_initial_secret(&conn->keys[ssl_encryption_initial],
 					conn->remote_cid.id, conn->remote_cid.len, FALSE) < 0) {
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error deriving initial secret\n", imquic_get_connection_name(conn));
@@ -572,6 +574,8 @@ int imquic_parse_packet(imquic_network_endpoint *socket, imquic_network_address 
 
 		/* Unprotect the header */
 		if(conn->just_started) {
+			imquic_connection_id_str((imquic_connection_id *)&pkt->destination.id,
+				conn->client_initial_cid_str, sizeof(conn->client_initial_cid_str));
 			if(pkt->is_protected && imquic_derive_initial_secret(&conn->keys[ssl_encryption_initial],
 					pkt->destination.id, pkt->destination.len, conn->is_server) < 0) {
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "Error deriving initial secret\n");
@@ -2981,6 +2985,7 @@ int imquic_send_pending_crypto(imquic_connection *conn, imquic_connection_id *sr
 				if(conn->http3 != NULL) {
 					/* FIXME If this is an HTTP/3 connection, wait for a SETTINGS */
 				} else if(conn->socket->new_connection) {
+					conn->established = TRUE;
 					conn->socket->new_connection(conn, conn->socket->user_data);
 				}
 			}
@@ -3960,6 +3965,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 					/* FIXME If this is an HTTP/3 connection, send a SETTINGS */
 					imquic_http3_prepare_settings(conn->http3);
 				} else if(conn->socket->new_connection) {
+					conn->established = TRUE;
 					conn->socket->new_connection(conn, conn->socket->user_data);
 				}
 			}
@@ -4056,6 +4062,8 @@ int imquic_start_quic_client(imquic_network_endpoint *socket) {
 	uint64_t dest_id = imquic_random_uint64();
 	conn->initial_cid.len = sizeof(dest_id);
 	memcpy(conn->initial_cid.id, &dest_id, conn->initial_cid.len);
+	imquic_connection_id_str((imquic_connection_id *)&conn->initial_cid,
+		conn->client_initial_cid_str, sizeof(conn->client_initial_cid_str));
 	conn->remote_cid.len = sizeof(dest_id);
 	memcpy(conn->remote_cid.id, &dest_id, conn->remote_cid.len);
 #ifdef HAVE_QLOG

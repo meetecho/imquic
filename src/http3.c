@@ -556,6 +556,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 		/* Done */
 		if(error_code >= 200 && error_code < 300) {
 			h3c->webtransport = TRUE;
+			h3c->conn->established = TRUE;
 			if(h3c->conn->socket->new_connection)
 				h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
 		} else {
@@ -595,6 +596,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 			imquic_loop_wakeup();
 			if(error_code == 200) {
 				h3c->webtransport = TRUE;
+				h3c->conn->established = TRUE;
 				if(h3c->conn->socket->new_connection)
 					h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
 			}

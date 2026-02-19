@@ -189,7 +189,7 @@ void imquic_tls_deinit(void) {
 }
 
 /* TLS context management */
-imquic_tls *imquic_tls_create(gboolean is_server, const char *server_pem, const char *server_key, const char *password) {
+imquic_tls *imquic_tls_create(gboolean is_server, const char *server_pem, const char *server_key, const char *password, gboolean verify) {
 	if(is_server && (server_pem == NULL || server_key == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Missing certificate/key for server TLS stack\n");
 		return NULL;
@@ -199,7 +199,7 @@ imquic_tls *imquic_tls_create(gboolean is_server, const char *server_pem, const 
 	tls->ssl_ctx = SSL_CTX_new(is_server ? TLS_server_method() : TLS_client_method());
 	SSL_CTX_set_keylog_callback(tls->ssl_ctx, imquic_keylog_cb);
 	SSL_CTX_set_default_verify_paths(tls->ssl_ctx);
-	SSL_CTX_set_verify(tls->ssl_ctx, SSL_VERIFY_NONE, NULL);
+	SSL_CTX_set_verify(tls->ssl_ctx, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, NULL);
 	SSL_CTX_set_min_proto_version(tls->ssl_ctx, TLS1_3_VERSION);
 	SSL_CTX_set_max_proto_version(tls->ssl_ctx, TLS1_3_VERSION);
 	SSL_CTX_set_quic_method(tls->ssl_ctx, &imquic_quic_method);

@@ -61,8 +61,9 @@ typedef struct imquic_tls {
  * @param server_pem Path to the certificate file
  * @param server_key Path to the certificate key
  * @param password Certificate password, if any
+ * @param verify Whether we should verify the peer certificate
  * @returns A pointer to a new imquic_tls instance, if successful, or NULL otherwise */
-imquic_tls *imquic_tls_create(gboolean is_server, const char *server_pem, const char *server_key, const char *password);
+imquic_tls *imquic_tls_create(gboolean is_server, const char *server_pem, const char *server_key, const char *password, gboolean verify);
 /*! \brief Enable early data on an existing TLS context
  * @param tls The imquic_tls context to enable early data on
  * @param ticket_file The file to write/read the ticket to/from
