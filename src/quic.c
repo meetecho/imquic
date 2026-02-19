@@ -3965,6 +3965,7 @@ void imquic_check_incoming_crypto(imquic_connection *conn) {
 					/* FIXME If this is an HTTP/3 connection, send a SETTINGS */
 					imquic_http3_prepare_settings(conn->http3);
 				} else if(conn->socket->new_connection) {
+					conn->established = TRUE;
 					conn->socket->new_connection(conn, conn->socket->user_data);
 				}
 			}
