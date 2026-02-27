@@ -18,6 +18,7 @@
 #include "imquic/roq.h"
 #include "internal/roq.h"
 #include "internal/connection.h"
+#include "internal/buffer.h"
 
 /* Collection of sessions */
 static GHashTable *roq_sessions = NULL;
@@ -61,15 +62,12 @@ void imquic_roq_deinit(void) {
 
 /* Buffered packet, in case it's needed */
 typedef struct imquic_roq_packet {
-	uint8_t *buffer;
-	size_t offset;
-	size_t length;
-	size_t size;
+	imquic_buffer *buffer;
 	uint64_t rtp_len;
 } imquic_roq_packet;
 static void imquic_roq_packet_free(imquic_roq_packet *pkt) {
 	if(pkt) {
-		g_free(pkt->buffer);
+		imquic_buffer_destroy(pkt->buffer);
 		g_free(pkt);
 	}
 }
@@ -80,12 +78,8 @@ static int imquic_roq_buffer_data(imquic_roq_endpoint *endpoint, uint64_t flow_i
 	if(pkt == NULL) {
 		/* Add a new buffered packet from the data we received */
 		pkt = g_malloc(sizeof(*pkt));
-		pkt->buffer = g_malloc(blen);
-		pkt->offset = 0;
-		pkt->length = blen;
-		pkt->size = blen;
+		pkt->buffer = imquic_buffer_create(bytes, blen);
 		pkt->rtp_len = 0;
-		memcpy(pkt->buffer, bytes, blen);
 		g_hash_table_insert(endpoint->packets, imquic_uint64_dup(stream_id), pkt);
 #ifdef HAVE_QLOG
 		if(endpoint->conn != NULL && endpoint->conn->qlog != NULL && endpoint->conn->qlog->roq)
@@ -93,44 +87,33 @@ static int imquic_roq_buffer_data(imquic_roq_endpoint *endpoint, uint64_t flow_i
 #endif
 	} else if(blen > 0) {
 		/* Append the data */
-		if(blen > (pkt->size - pkt->length)) {
-			pkt->size += blen - (pkt->size - pkt->length);
-			pkt->buffer = g_realloc(pkt->buffer, pkt->size);
+		imquic_buffer_append(pkt->buffer, bytes, blen);
+	}
+	while(pkt->buffer->length > 0) {
+		uint8_t parsed = 0;
+		if(pkt->rtp_len == 0) {
+			pkt->rtp_len = imquic_varint_read(pkt->buffer->bytes, pkt->buffer->length, &parsed);
+			if(parsed == 0)
+				break;
+			imquic_buffer_shift(pkt->buffer, parsed);
 		}
-		memcpy(pkt->buffer + pkt->length, bytes, blen);
-		pkt->length += blen;
-	}
-	uint8_t parsed = 0;
-	if(pkt->rtp_len == 0) {
-		pkt->rtp_len = imquic_varint_read(pkt->buffer + pkt->offset, pkt->length - pkt->offset, &parsed);
-		pkt->offset += parsed;
-	}
-	if(pkt->rtp_len <= (pkt->length - pkt->offset)) {
-		/* We have enough data for an RTP packet, notify the application */
+		if(pkt->rtp_len <= pkt->buffer->length) {
+			/* We have enough data for an RTP packet, notify the application */
 #ifdef HAVE_QLOG
-		if(endpoint->conn && endpoint->conn->qlog != NULL && endpoint->conn->qlog->roq)
-			imquic_roq_qlog_stream_packet_parsed(endpoint->conn->qlog, stream_id, flow_id, pkt->buffer + pkt->offset, pkt->rtp_len);
+			if(endpoint->conn && endpoint->conn->qlog != NULL && endpoint->conn->qlog->roq)
+				imquic_roq_qlog_stream_packet_parsed(endpoint->conn->qlog, stream_id, flow_id, pkt->buffer->bytes, pkt->rtp_len);
 #endif
-		if(pkt->rtp_len > 0 && endpoint->conn && endpoint->conn->socket && endpoint->conn->socket->callbacks.roq.rtp_incoming) {
-			endpoint->conn->socket->callbacks.roq.rtp_incoming(endpoint->conn,
-				IMQUIC_ROQ_STREAM, flow_id, pkt->buffer + pkt->offset, pkt->rtp_len);
-		}
-		/* Move on */
-		pkt->offset += pkt->rtp_len;
-		pkt->rtp_len = 0;
-		if((pkt->length - pkt->offset) <= 8) {
-			/* We're done for now (there may not be enough room for the RTP packet length) */
-			pkt->length -= pkt->offset;
-			pkt->offset = 0;
+			if(pkt->rtp_len > 0 && endpoint->conn && endpoint->conn->socket && endpoint->conn->socket->callbacks.roq.rtp_incoming) {
+				endpoint->conn->socket->callbacks.roq.rtp_incoming(endpoint->conn,
+					IMQUIC_ROQ_STREAM, flow_id, pkt->buffer->bytes, pkt->rtp_len);
+			}
+			/* Move on */
+			imquic_buffer_shift(pkt->buffer, pkt->rtp_len);
+			pkt->rtp_len = 0;
 		} else {
-			/* There's more data to process, shift the buffer */
-			pkt->length -= pkt->offset;
-			memmove(pkt->buffer, pkt->buffer + pkt->offset, pkt->length);
-			pkt->offset = 0;
-			return imquic_roq_buffer_data(endpoint, flow_id, stream_id, NULL, 0);
+			/* We'll need more data before we can process this packet */
+			break;
 		}
-	} else {
-		/* We'll need more data before we can process this packet */
 	}
 	return 0;
 }

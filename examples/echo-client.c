@@ -47,9 +47,25 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	/* Send our text */
 	const char *text = options.text ? options.text : "ciao";
-	uint64_t stream_id = 0;
-	imquic_new_stream_id(conn, TRUE, &stream_id);
-	imquic_send_on_stream(conn, stream_id, (uint8_t *)text, strlen(text), TRUE);
+	if(options.bidi) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending '%s' on a bidirectional STREAM\n",
+			imquic_get_connection_name(conn), text);
+		uint64_t stream_id = 0;
+		imquic_new_stream_id(conn, TRUE, &stream_id);
+		imquic_send_on_stream(conn, stream_id, (uint8_t *)text, strlen(text), TRUE);
+	}
+	if(options.uni) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending '%s' on a unidirectional STREAM\n",
+			imquic_get_connection_name(conn), text);
+		uint64_t stream_id = 0;
+		imquic_new_stream_id(conn, FALSE, &stream_id);
+		imquic_send_on_stream(conn, stream_id, (uint8_t *)text, strlen(text), TRUE);
+	}
+	if(options.datagram) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending '%s' on a DATAGRAM\n",
+			imquic_get_connection_name(conn), text);
+		imquic_send_on_datagram(conn, (uint8_t *)text, strlen(text));
+	}
 }
 
 static void imquic_demo_stream_incoming(imquic_connection *conn, uint64_t stream_id,
@@ -65,15 +81,13 @@ static void imquic_demo_stream_incoming(imquic_connection *conn, uint64_t stream
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", bytes[i]);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 	}
-	if(complete)
-		g_atomic_int_inc(&stop);
 }
 
 static void imquic_demo_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint64_t length) {
 	/* Got incoming data via DATAGRAM */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] [DATAGRAM] Got data: %"SCNu64"\n", imquic_get_connection_name(conn), length);
 	int len = length;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len - 1, (char *)(bytes + 1));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %.*s\n", len, (char *)bytes);
 }
 
 static void imquic_demo_connection_failed(void *user_data) {
@@ -178,8 +192,6 @@ int main(int argc, char *argv[]) {
 			if(!strcasecmp(options.qlog_logging[i], "quic")) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
 				qlog_quic = TRUE;
-				if(options.qlog_stream)
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Logging the payload of QUIC STREAM frames\n");
 			} else if(!strcasecmp(options.qlog_logging[i], "http3") && options.webtransport) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging HTTP/3 events\n");
 				qlog_http3 = TRUE;
@@ -187,6 +199,16 @@ int main(int argc, char *argv[]) {
 			i++;
 		}
 	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send the following text: '%s'\n",
+		options.text ? options.text : "ciao");
+	if(!options.bidi && !options.uni && !options.datagram)
+		options.bidi = TRUE;
+	if(options.bidi)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- On a bidirectional STREAM\n");
+	if(options.uni)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- On a unidirectional STREAM\n");
+	if(options.datagram)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- On a DATAGRAM\n");
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
 	/* Initialize the library and create a server */
@@ -198,7 +220,6 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
-		IMQUIC_CONFIG_TLS_PASSWORD, options.cert_pwd,
 		IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
 		IMQUIC_CONFIG_LOCAL_BIND, options.ip,
 		IMQUIC_CONFIG_LOCAL_PORT, options.port,
@@ -214,7 +235,6 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_HTTP3_PATH, options.path,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
-		IMQUIC_CONFIG_QLOG_QUIC_STREAM, options.qlog_stream,
 		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_DONE, NULL);

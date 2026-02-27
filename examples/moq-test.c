@@ -854,8 +854,6 @@ int main(int argc, char *argv[]) {
 			if(!strcasecmp(options.qlog_logging[i], "quic")) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
 				qlog_quic = TRUE;
-				if(options.qlog_stream)
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Logging the payload of QUIC STREAM frames\n");
 			} else if(!strcasecmp(options.qlog_logging[i], "http3") && options.webtransport) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging HTTP/3 events\n");
 				qlog_http3 = TRUE;
@@ -881,7 +879,6 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
-		IMQUIC_CONFIG_TLS_PASSWORD, options.cert_pwd,
 		IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
 		IMQUIC_CONFIG_LOCAL_BIND, options.ip,
 		IMQUIC_CONFIG_LOCAL_PORT, options.port,
@@ -889,7 +886,6 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
 		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
 		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
-		IMQUIC_CONFIG_QLOG_QUIC_STREAM, options.qlog_stream,
 		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
 		IMQUIC_CONFIG_QLOG_MOQ, qlog_moq,
 		IMQUIC_CONFIG_QLOG_MOQ_MESSAGES, options.qlog_moq_messages,

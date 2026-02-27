@@ -14,7 +14,7 @@
 #include <stdint.h>
 
 #include "internal/http3.h"
-#include "internal/quic.h"
+#include "internal/connection.h"
 #include "internal/utils.h"
 #include "internal/version.h"
 #include "imquic/debug.h"
@@ -96,7 +96,7 @@ imquic_http3_connection *imquic_http3_connection_create(imquic_connection *conn,
 	h3c->is_server = conn->is_server;
 	h3c->wt_protocols = wt_protocols ? g_strdupv(wt_protocols) : NULL;
 	h3c->buffers = g_hash_table_new_full(g_int64_hash, g_int64_equal,
-		(GDestroyNotify)g_free, (GDestroyNotify)imquic_buffer_chunk_free);
+		(GDestroyNotify)g_free, (GDestroyNotify)imquic_buffer_destroy);
 	imquic_refcount_init(&h3c->ref, imquic_http3_connection_free);
 	return h3c;
 }
@@ -112,18 +112,16 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *str
 		return -1;
 	/* We'll need a temporary chunk that we'll index by stream, to be used as a
 	 * buffer in case, e.g., a request is spread across multiple STREAM frames*/
-	imquic_buffer_chunk *h3c_chunk = g_hash_table_lookup(h3c->buffers, &stream->stream_id);
+	imquic_buffer *h3c_chunk = g_hash_table_lookup(h3c->buffers, &stream->stream_id);
 	if(h3c_chunk == NULL) {
 		/* New buffer */
-		h3c_chunk = imquic_buffer_chunk_create(bytes, 0, blen);
+		h3c_chunk = imquic_buffer_create(bytes, blen);
 		g_hash_table_insert(h3c->buffers, imquic_uint64_dup(stream->stream_id), h3c_chunk);
 	} else {
 		/* Append data to existing buffer */
-		h3c_chunk->data = g_realloc(h3c_chunk->data, h3c_chunk->length + blen);
-		memcpy(h3c_chunk->data + h3c_chunk->length, bytes, blen);
-		h3c_chunk->length += blen;
+		imquic_buffer_append(h3c_chunk, bytes, blen);
 	}
-	bytes = h3c_chunk->data;
+	bytes = h3c_chunk->bytes;
 	blen = h3c_chunk->length;
 	/* TODO Store those settings somewhere */
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Parsing SETTINGS (%zu bytes)\n",
@@ -288,8 +286,8 @@ const char *imquic_http3_error_code_str(imquic_http3_error_code type) {
 }
 
 /* Processing incoming data */
-void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *stream, imquic_buffer_chunk *chunk, gboolean new_stream) {
-	if(conn == NULL || conn->http3 == NULL || stream == NULL || chunk == NULL)
+void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *stream, uint8_t *bytes, size_t blen, gboolean new_stream) {
+	if(conn == NULL || conn->http3 == NULL || stream == NULL || bytes == NULL || blen == 0)
 		return;
 	imquic_http3_connection *h3c = conn->http3;
 	if(new_stream) {
@@ -298,7 +296,7 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Stream '%"SCNu64"' is %s initiated and %s\n", stream->actual_id,
 			stream->client_initiated ? "client" : "server", stream->bidirectional ? "bidirectional" : "unidirectional");
 	}
-	uint8_t *payload = chunk->data;
+	uint8_t *payload = bytes;
 	size_t p_offset = 0;
 	uint8_t length = 0;
 	if(new_stream && !h3c->webtransport && !stream->bidirectional &&
@@ -306,7 +304,7 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 			stream->stream_id != h3c->remote_qpack_encoder_stream &&
 			stream->stream_id != h3c->remote_qpack_decoder_stream) {
 		/* We don't know what this unidirectional stream is yet, check the type */
-		uint64_t stream_type = imquic_read_varint(&payload[p_offset], chunk->length-p_offset, &length);
+		uint64_t stream_type = imquic_read_varint(&payload[p_offset], blen-p_offset, &length);
 		p_offset += length;
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- %s '%"SCNu64"'\n", imquic_http3_stream_type_str(stream_type), stream->stream_id);
 		if(stream_type == IMQUIC_HTTP3_CONTROL_STREAM) {
@@ -335,10 +333,10 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 				h3c->qpack = imquic_qpack_context_create(4096);
 		}
 	} else if(new_stream && h3c->webtransport) {
-		uint64_t frame_type = imquic_read_varint(&payload[p_offset], chunk->length-p_offset, &length);
+		uint64_t frame_type = imquic_read_varint(&payload[p_offset], blen-p_offset, &length);
 		p_offset += length;
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- %s '%"SCNu64"'\n", imquic_http3_frame_type_str(frame_type), stream->stream_id);
-		uint64_t session_id = imquic_read_varint(&payload[p_offset], chunk->length-p_offset, &length);
+		uint64_t session_id = imquic_read_varint(&payload[p_offset], blen-p_offset, &length);
 		p_offset += length;
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Session ID: %"SCNu64"\n", session_id);
 		/* We'll need to skip these initial bytes when handling the data */
@@ -347,29 +345,30 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 	/* Now we should know what it is */
 	if(!stream->bidirectional && stream->stream_id == h3c->remote_control_stream) {
 		/* Control stream */
-		imquic_http3_parse_settings(h3c, stream, chunk->data + p_offset, chunk->length - p_offset);
+		imquic_http3_parse_settings(h3c, stream, bytes + p_offset, blen - p_offset);
 	} else if(!stream->bidirectional && stream->stream_id == h3c->remote_qpack_encoder_stream) {
 		/* QPACK encoder */
-		if(chunk->length > p_offset) {
-			ssize_t bread = imquic_qpack_decode(h3c->qpack, chunk->data + p_offset, chunk->length - p_offset);
+		if(blen > p_offset) {
+			ssize_t bread = imquic_qpack_decode(h3c->qpack, bytes + p_offset, blen - p_offset);
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] QPACK decoded %zd/%zd bytes\n",
-				imquic_get_connection_name(conn), bread, chunk->length - p_offset);
+				imquic_get_connection_name(conn), bread, blen - p_offset);
 		}
 	} else if(!stream->bidirectional && stream->stream_id == h3c->remote_qpack_decoder_stream) {
 		/* TODO Handle QPACK decoder messages */
 	} else if(!stream->bidirectional && h3c->webtransport) {
 		/* Got WebTransport data on a unidirectional stream */
-		uint8_t *data = chunk->data;
-		size_t length = chunk->length;
-		if(chunk->offset < stream->skip_in) {
+		uint8_t *data = bytes;
+		size_t length = blen;
+		if(stream->skip_in > 0) {
 			/* We need to skip some bytes and shift the offset/length */
-			size_t diff = stream->skip_in - chunk->offset;
-			if(diff >= length) {
+			if(stream->skip_in >= length) {
+				stream->skip_in -= length;
 				data = NULL;
 				length = 0;
 			} else {
-				data += diff;
-				length -= diff;
+				data += stream->skip_in;
+				length -= stream->skip_in;
+				stream->skip_in = 0;
 			}
 		}
 		imquic_connection_notify_stream_incoming(conn, stream, data, length);
@@ -384,20 +383,21 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 					imquic_http3_qlog_stream_type_set(h3c->conn->qlog, FALSE, h3c->request_stream, "request");
 #endif
 			}
-			imquic_http3_parse_request(h3c, stream, chunk->data + p_offset, chunk->length - p_offset);
+			imquic_http3_parse_request(h3c, stream, bytes + p_offset, blen - p_offset);
 		} else {
 			/* Got WebTransport data on a bidirectional stream */
-			uint8_t *data = chunk->data;
-			size_t length = chunk->length;
-			if(chunk->offset < stream->skip_in) {
+			uint8_t *data = bytes;
+			size_t length = blen;
+			if(stream->skip_in > 0) {
 				/* We need to skip some bytes and shift the offset/length */
-				size_t diff = stream->skip_in - chunk->offset;
-				if(diff >= length) {
+				if(stream->skip_in >= length) {
+					stream->skip_in -= length;
 					data = NULL;
 					length = 0;
 				} else {
-					data += diff;
-					length -= diff;
+					data += stream->skip_in;
+					length -= stream->skip_in;
+					stream->skip_in = 0;
 				}
 			}
 			imquic_connection_notify_stream_incoming(conn, stream, data, length);
@@ -411,18 +411,16 @@ int imquic_http3_parse_request(imquic_http3_connection *h3c, imquic_stream *stre
 		return -1;
 	/* We'll need a temporary chunk that we'll index by stream, to be used as a
 	 * buffer in case, e.g., a request is spread across multiple STREAM frames*/
-	imquic_buffer_chunk *h3c_chunk = g_hash_table_lookup(h3c->buffers, &stream->stream_id);
+	imquic_buffer *h3c_chunk = g_hash_table_lookup(h3c->buffers, &stream->stream_id);
 	if(h3c_chunk == NULL) {
 		/* New buffer */
-		h3c_chunk = imquic_buffer_chunk_create(bytes, 0, blen);
+		h3c_chunk = imquic_buffer_create(bytes, blen);
 		g_hash_table_insert(h3c->buffers, imquic_uint64_dup(stream->stream_id), h3c_chunk);
 	} else {
 		/* Append data to existing buffer */
-		h3c_chunk->data = g_realloc(h3c_chunk->data, h3c_chunk->length + blen);
-		memcpy(h3c_chunk->data + h3c_chunk->length, bytes, blen);
-		h3c_chunk->length += blen;
+		imquic_buffer_append(h3c_chunk, bytes, blen);
 	}
-	bytes = h3c_chunk->data;
+	bytes = h3c_chunk->bytes;
 	blen = h3c_chunk->length;
 	/* This could be a request or a response */
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Parsing HTTP/3 request\n",
@@ -458,11 +456,8 @@ int imquic_http3_parse_request(imquic_http3_connection *h3c, imquic_stream *stre
 		offset += res;
 		/* Frame parsed, update the buffer */
 		blen -= offset;
-		if(blen > 0) {
-			memmove(h3c_chunk->data, h3c_chunk->data + offset, blen);
-			h3c_chunk->length = blen;
-			bytes = h3c_chunk->data;
-		}
+		if(blen > 0)
+			imquic_buffer_shift(h3c_chunk, blen);
 		offset = 0;
 	}
 	/* Done */
@@ -587,8 +582,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 				h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
 		} else {
 			/* Something went wrong, close the connection */
-			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR,
-				IMQUIC_CONNECTION_CLOSE_APP, "CONNECT error");
+			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR, "CONNECT error");
 		}
 	} else {
 		/* Check if the WebTransport protocol negotiation worked */
@@ -609,17 +603,10 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 		size_t es_len = 0, rs_len = 0;
 		if(imquic_http3_prepare_headers_response(h3c, error_code, wt_protocol, es, &es_len, rs, &rs_len) == 0) {
 			/* FIXME Prepare the necessary STREAM payload(s) */
-			if(es_len > 0) {
-				imquic_stream *enc_stream = g_hash_table_lookup(h3c->conn->streams, &h3c->local_qpack_encoder_stream);
-				if(enc_stream)
-					imquic_buffer_append(enc_stream->out_data, es, es_len);
-				g_queue_push_tail(h3c->conn->outgoing_data, imquic_dup_uint64(h3c->local_qpack_encoder_stream));
-			}
+			if(es_len > 0)
+				imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_encoder_stream, es, es_len, FALSE);
 			if(rs_len > 0)
-				imquic_buffer_append(stream->out_data, rs, rs_len);
-			g_queue_push_tail(h3c->conn->outgoing_data, imquic_dup_uint64(stream->stream_id));
-			h3c->conn->wakeup = TRUE;
-			imquic_loop_wakeup();
+				imquic_connection_send_on_stream(h3c->conn, stream->stream_id, rs, rs_len, FALSE);
 			if(error_code == 200) {
 				h3c->webtransport = TRUE;
 				h3c->conn->established = TRUE;
@@ -629,8 +616,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 		}
 		if(error_code != 200) {
 			/* Something went wrong, close the connection */
-			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR,
-				IMQUIC_CONNECTION_CLOSE_APP, "CONNECT error");
+			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR, "CONNECT error");
 		}
 	}
 	return blen;
@@ -808,14 +794,8 @@ void imquic_http3_check_send_connect(imquic_http3_connection *h3c) {
 		size_t es_len = 0, rs_len = 0, offset = 0;
 		if(imquic_http3_prepare_headers_request(h3c, es, &es_len, rs, &rs_len) == 0) {
 			/* FIXME Prepare the necessary STREAM payload(s) */
-			if(es_len > 0) {
-				imquic_stream *enc_stream = g_hash_table_lookup(h3c->conn->streams, &h3c->local_qpack_encoder_stream);
-				if(enc_stream)
-					imquic_buffer_append(enc_stream->out_data, es, es_len);
-				g_queue_push_tail(h3c->conn->outgoing_data, imquic_dup_uint64(h3c->local_qpack_encoder_stream));
-				//~ memcpy(&buffer[offset], es, es_len);
-				//~ offset += es_len;
-			}
+			if(es_len > 0)
+				imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_encoder_stream, es, es_len, FALSE);
 			if(rs_len > 0) {
 				memcpy(&buffer[offset], rs, rs_len);
 				offset += rs_len;
@@ -829,9 +809,6 @@ void imquic_http3_check_send_connect(imquic_http3_connection *h3c) {
 				imquic_http3_qlog_stream_type_set(h3c->conn->qlog, TRUE, stream_id, "request");
 #endif
 			imquic_connection_send_on_stream(h3c->conn, stream_id, buffer, offset, FALSE);
-			imquic_connection_flush_stream(h3c->conn, stream_id);
-			h3c->conn->wakeup = TRUE;
-			imquic_loop_wakeup();
 		}
 	}
 }
@@ -880,9 +857,6 @@ int imquic_http3_prepare_settings(imquic_http3_connection *h3c) {
 #endif
 	settings[0] = IMQUIC_HTTP3_QPACK_DECODER_STREAM;
 	imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_decoder_stream, settings, 1, FALSE);
-	imquic_connection_flush_stream(h3c->conn, h3c->local_control_stream);
-	imquic_connection_flush_stream(h3c->conn, h3c->local_qpack_encoder_stream);
-	imquic_connection_flush_stream(h3c->conn, h3c->local_qpack_decoder_stream);
 	/* Done */
 	h3c->settings_sent = TRUE;
 	if(!h3c->is_server)

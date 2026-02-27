@@ -17,10 +17,11 @@
 #include <stdint.h>
 #include <sys/socket.h>
 
+#include <picoquic.h>
+
 #include "../imquic/imquic.h"
 #include "configuration.h"
 #include "loop.h"
-#include "crypto.h"
 #include "moq.h"
 #include "roq.h"
 #include "refcount.h"
@@ -65,8 +66,10 @@ typedef struct imquic_network_endpoint {
 	imquic_network_address local_address;
 	/*! \brief Remote address of the peer (clients only) */
 	imquic_network_address remote_address;
-	/*! \brief TLS stack */
-	imquic_tls *tls;
+	/* Picoquic context */
+	picoquic_quic_t *qc;
+	/* Picoquic timer */
+	struct imquic_source *timer;
 	/*! \brief SNI the client will use */
 	char *sni;
 	/*! \brief Whether raw QUIC should be supported */
@@ -80,7 +83,7 @@ typedef struct imquic_network_endpoint {
 	/*! \brief In case WebTransport is used, array of protocols to negotiate */
 	char **wt_protocols;
 	/*! \brief List of connections handled by this socket (may be more than one for servers) */
-	GHashTable *connections;
+	GHashTable *connections, *connections_by_cnx;
 	/*! \brief Number of connections handled by this socket (may be more than one for servers) */
 	uint64_t conns_num;
 	/*! \brief Whether this endpoint has internal generic callbacks (true for the native RoQ and MoQ stacks) */
@@ -111,8 +114,8 @@ typedef struct imquic_network_endpoint {
 	char *qlog_path;
 	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */
 	gboolean qlog_sequential;
-	/*! \brief Whether QUIC and/or HTTP/3 and/or RoQ and/or MoQT events should be saved to QLOG, if supported */
-	gboolean qlog_quic, qlog_quic_stream, qlog_http3,
+	/*! \brief Whether HTTP/3 and/or RoQ and/or MoQT events should be saved to QLOG, if supported */
+	gboolean qlog_quic, qlog_http3,
 		qlog_roq, qlog_roq_packets,
 		qlog_moq, qlog_moq_messages, qlog_moq_objects;
 	/*! brief MoQ version to negotiare, if any */
@@ -132,6 +135,11 @@ typedef struct imquic_network_endpoint {
  * @param config The imquic_configuration object to use to configure and create the new endpoint
  * @returns A pointer to a new imquic_network_endpoint instance, if successful, or NULL otherwise */
 imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *config);
+
+/*! \brief Helper method to start an endpoint (whether it's a client or a server)
+ * @param ne The imquic_network_endpoint instance to start
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_network_endpoint_start(imquic_network_endpoint *ne);
 /*! \brief Helper to add a new connection to the list of connections originated by this endpoint
  * @param ne The imquic_network_endpoint instance to add the connection to
  * @param conn The imquic_connection instance to add to the endpoint
@@ -142,18 +150,16 @@ void imquic_network_endpoint_add_connection(imquic_network_endpoint *ne, imquic_
  * @param conn The imquic_connection instance to remove from the endpoint
  * @param lock_mutex Whether the endpoint mutex should be used to protect the action (to avoid double locks) */
 void imquic_network_endpoint_remove_connection(imquic_network_endpoint *ne, imquic_connection *conn, gboolean lock_mutex);
+/*" \brief Callback function, triggered when there's packets to send on
+ * one of the connections managed by this network endpoint
+ * @param ne The imquic_network_endpoint instance to send packets for
+ * @returns Always G_SOURCE_REMOVE, since a timer is recreated every time */
+int imquic_network_send_packet(imquic_network_endpoint *ne);
 /*! \brief Helper to shutdown an existing endpoint
  * @param ne The imquic_network_endpoint instance to shut down */
 void imquic_network_endpoint_shutdown(imquic_network_endpoint *ne);
 /*! \brief Helper to destroy an existing endpoint instance
  * @param ne The imquic_network_endpoint instance to destroy */
 void imquic_network_endpoint_destroy(imquic_network_endpoint *ne);
-
-/*! \brief Helper to send data on a connection
- * @param conn The imquic_connection instance to send the data on
- * @param bytes The data to send
- * @param blen the size of the data to send
- * @returns 0 in case of success, a negative integer otherwise */
-int imquic_network_send(imquic_connection *conn, uint8_t *bytes, size_t blen);
 
 #endif

@@ -178,9 +178,10 @@ void imquic_http3_connection_destroy(imquic_http3_connection *h3c);
 /*! \brief Callback invoked by the core when there's incoming \c STREAM data to process on an existing connection
  * @param conn The imquic_connection instance the data has been received on
  * @param stream The imquic_stream instance in the connection the data has been received on
- * @param chunk The imquic_buffer_chunk instance containing the new data
+ * @param bytes Data to process
+ * @param blen Size of the data to process
  * @param new_stream Whether this data opened a new stream  */
-void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *stream, imquic_buffer_chunk *chunk, gboolean new_stream);
+void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *stream, uint8_t *bytes, size_t blen, gboolean new_stream);
 
 /** @name Parsing HTTP/3 messages
  */

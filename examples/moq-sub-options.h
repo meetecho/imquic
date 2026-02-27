@@ -44,13 +44,11 @@ typedef struct demo_options {
 	const char *path;
 	const char *cert_pem;
 	const char *cert_key;
-	const char *cert_pwd;
 	const char *ticket_file;
 	const char *secrets_log;
 	const char *qlog_path;
 	const char **qlog_logging;
 	gboolean qlog_sequential;
-	gboolean qlog_stream;
 	gboolean qlog_moq_messages;
 	gboolean qlog_moq_objects;
 	int debug_level;

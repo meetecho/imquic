@@ -113,13 +113,6 @@ uint64_t imquic_read_pfxint(uint8_t n, uint8_t *bytes, size_t blen, uint8_t *len
 uint8_t imquic_write_pfxint(uint64_t number, uint8_t n, uint8_t *bytes, size_t blen);
 ///@}
 
-/*! \brief Helper method to reconstruct a full QUIC packet number
- * @param largest The largest packet number received so far at this encryption level
- * @param pn_pkt The received packet number
- * @param p_len How many bytes the received packet number used as a variable size integer
- * @returns The full reconstructed packet number */
-uint64_t imquic_full_packet_number(uint64_t largest, uint64_t pn_pkt, uint8_t p_len);
-
 /*! \brief Helper method mostly used for debugging: prints the content of a hex buffer
  * @param level Log level at which this should be printed
  * @param buf Buffer whose content need to be printed

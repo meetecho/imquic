@@ -12,11 +12,10 @@
 #include "internal/configuration.h"
 #include "internal/quic.h"
 #include "internal/loop.h"
-#include "internal/crypto.h"
+#include "internal/connection.h"
 #include "internal/buffer.h"
 #include "internal/qlog.h"
 #include "internal/utils.h"
-#include "internal/listmap.h"
 #include "internal/version.h"
 /* Protocols */
 #include "internal/http3.h"
@@ -44,10 +43,8 @@ int imquic_init(const char *secrets_log) {
 		return -1;
 	}
 	IMQUIC_LOG(IMQUIC_LOG_VERB, "Initializing imquic\n");
-	/* Initialize the QUIC stack itself */
-	imquic_quic_init();
-	/* Initialize the TLS code */
-	imquic_tls_init(secrets_log);
+	/* Initialize the QUIC stack */
+	imquic_quic_init(secrets_log);
 	/* Initialize the network stack */
 	imquic_network_init();
 	/* Register the protocols the library supports natively */
@@ -160,8 +157,6 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_TLS_CERT";
 		case IMQUIC_CONFIG_TLS_KEY:
 			return "IMQUIC_CONFIG_TLS_KEY";
-		case IMQUIC_CONFIG_TLS_PASSWORD:
-			return "IMQUIC_CONFIG_TLS_PASSWORD";
 		case IMQUIC_CONFIG_TLS_NO_VERIFY:
 			return "IMQUIC_CONFIG_TLS_NO_VERIFY";
 		case IMQUIC_CONFIG_EARLY_DATA:
@@ -184,8 +179,6 @@ const char *imquic_config_str(imquic_config type) {
 			return "IMQUIC_CONFIG_QLOG_PATH";
 		case IMQUIC_CONFIG_QLOG_QUIC:
 			return "IMQUIC_CONFIG_QLOG_QUIC";
-		case IMQUIC_CONFIG_QLOG_QUIC_STREAM:
-			return "IMQUIC_CONFIG_QLOG_QUIC_STREAM";
 		case IMQUIC_CONFIG_QLOG_HTTP3:
 			return "IMQUIC_CONFIG_QLOG_HTTP3";
 		case IMQUIC_CONFIG_QLOG_ROQ:
@@ -247,8 +240,6 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			config.cert_pem = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_KEY) {
 			config.cert_key = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_TLS_PASSWORD) {
-			config.cert_pwd = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_NO_VERIFY) {
 			config.cert_no_verify = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_EARLY_DATA) {
@@ -274,8 +265,6 @@ imquic_server *imquic_create_server(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_QUIC_STREAM) {
-			config.qlog_quic_stream = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_ROQ || property == IMQUIC_CONFIG_QLOG_ROQ_PACKETS) {
@@ -337,8 +326,6 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.cert_pem = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_KEY) {
 			config.cert_key = va_arg(args, char *);
-		} else if(property == IMQUIC_CONFIG_TLS_PASSWORD) {
-			config.cert_pwd = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_TLS_NO_VERIFY) {
 			config.cert_no_verify = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_EARLY_DATA) {
@@ -361,8 +348,6 @@ imquic_client *imquic_create_client(const char *name, ...) {
 			config.qlog_path = va_arg(args, char *);
 		} else if(property == IMQUIC_CONFIG_QLOG_QUIC) {
 			config.qlog_quic = va_arg(args, gboolean);
-		} else if(property == IMQUIC_CONFIG_QLOG_QUIC_STREAM) {
-			config.qlog_quic_stream = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_HTTP3) {
 			config.qlog_http3 = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_QLOG_ROQ || property == IMQUIC_CONFIG_QLOG_ROQ_PACKETS) {
@@ -416,13 +401,12 @@ void imquic_start_endpoint(imquic_endpoint *endpoint) {
 	if(endpoint && g_atomic_int_compare_and_exchange(&endpoint->started, 0, 1)) {
 		if(endpoint->is_server) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Starting server\n", endpoint->name);
-			imquic_loop_poll_endpoint(endpoint);
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connecting to remote endpoint\n", endpoint->name);
-			imquic_loop_poll_endpoint(endpoint);
-			/* Start the QUIC stack */
-			imquic_start_quic_client(endpoint);
 		}
+		imquic_loop_poll_endpoint(endpoint);
+		/* Start the QUIC stack */
+		imquic_network_endpoint_start(endpoint);
 	}
 }
 
@@ -504,7 +488,6 @@ int imquic_send_on_stream(imquic_connection *conn, uint64_t stream_id,
 		return -1;
 	if(imquic_connection_send_on_stream(conn, stream_id, bytes, length, complete) < 0)
 		return -1;
-	imquic_connection_flush_stream(conn, stream_id);
 	return 0;
 }
 
@@ -531,7 +514,7 @@ const char *imquic_get_connection_name(imquic_connection *conn) {
 }
 
 const char *imquic_get_client_initial_connection_id(imquic_connection *conn) {
-	return (const char *)(conn ? conn->client_initial_cid_str : NULL);
+	return (const char *)(conn ? conn->initial_cid_str : NULL);
 }
 
 void imquic_set_connection_user_data(imquic_connection *conn, void *user_data) {
@@ -549,7 +532,7 @@ int imquic_new_stream_id(imquic_connection *conn, gboolean bidirectional, uint64
 
 void imquic_close_connection(imquic_connection *conn, uint64_t error, const char *reason) {
 	/* FIXME */
-	imquic_connection_close(conn, error, 0, reason);
+	imquic_connection_close(conn, error, reason);
 }
 
 /* References */
@@ -563,13 +546,9 @@ void imquic_connection_unref(imquic_connection *conn) {
 		imquic_refcount_decrease(&conn->ref);
 }
 
-/* Reading and writing Stream ID */
+/* Parsing Stream ID */
 void imquic_stream_id_parse(uint64_t stream_id, uint64_t *id, gboolean *client_initiated, gboolean *bidirectional) {
 	imquic_parse_stream_id(stream_id, id, client_initiated, bidirectional);
-}
-
-uint64_t imquic_stream_id_build(uint64_t id, gboolean client_initiated, gboolean bidirectional) {
-	return imquic_build_stream_id(id, client_initiated, bidirectional);
 }
 
 /* Reading and writing variable size integers */

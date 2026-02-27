@@ -16,13 +16,13 @@
 /*! \brief Struct containing the parsed command line options */
 typedef struct demo_options {
 	const char *text;
+	gboolean bidi, uni, datagram;
 	const char *ip;
 	int port;
 	const char *remote_host;
 	int remote_port;
 	const char *cert_pem;
 	const char *cert_key;
-	const char *cert_pwd;
 	const char *ticket_file;
 	const char *secrets_log;
 	const char *sni;
@@ -34,7 +34,6 @@ typedef struct demo_options {
 	const char *qlog_path;
 	const char **qlog_logging;
 	gboolean qlog_sequential;
-	gboolean qlog_stream;
 	int debug_level;
 	gboolean debug_locks;
 	gboolean debug_refcounts;

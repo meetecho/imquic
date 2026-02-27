@@ -51,3 +51,5 @@ imquic.pc
 .idea
 
 .vscode
+
+picoquic/

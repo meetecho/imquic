@@ -32,8 +32,8 @@
  * "Protocols/TLS" section of Wireshark will allow you to see the QUIC
  * exchanges as unencrypted, for debugging purposes.
  *
- * When you're done with
- * the application, a call to \ref imquic_deinit will take care of the cleanup.
+ * When you're done with the application, a call to \ref imquic_deinit
+ * will take care of the cleanup.
  *
  * You can configure the logging level of the library with a call to
  * \ref imquic_set_log_level. The logging level can be tweaked dynamically,
@@ -67,14 +67,16 @@
  *
  * -# creating a QUIC server or client;
  * -# configuring the callback functions for relevant events;
- * -# starting the endpoint (waiting for connections, or initiating one);
+ * -# starting the endpoint (waiting for connections for servers, or
+ * initiating one for clients);
  * -# when a connection is available, add a reference the connection
  * object, and performing the application logic (e.g., exchanging messages);
  * -# programmatically send data, if needed, and/or reacting to incoming one;
  * -# when a connection is notified as being closed, remove the previously
  * obtained reference to the connection and, if needed, perform any
  * application level cleanup (taking into account that, for server endpoints,
- * more connections may arrive in the future).
+ * more connections may arrive in the future);
+ * -# when you're done, shutdown the QUIC server or client.
  *
  * In a nutshell, this summarizes a typical usage of the library, and
  * specifically the one we've used in all of our demo examples. Of course,
@@ -87,7 +89,7 @@
  * will create a client endpoint instead. Both use a variable argument
  * approach to dictate what these endpoints should be like, specifically
  * using a sequence of \ref imquic_config key/value properties started with
- * a \c IMQUIC_CONFIG_INIT and ended by a \c IMQUIC_CONFIG_DONE .
+ * a \ref IMQUIC_CONFIG_INIT and ended by a \ref IMQUIC_CONFIG_DONE .
  *
  * <div class="alert alert-warning">
  * <b>Note Well:</b> no matter what ALPN is negotiated, these functions
@@ -140,6 +142,30 @@
  * if you didn't increase it in the first place, e.g., if the connection
  * was never established and so this callback was invoked to notify you
  * that the connection failed.
+ *
+ * Notice that, if you enabled QLOG for one of your endpoints, the output
+ * may differ depending on what you wanted to track. In fact, QUIC QLOG
+ * files are produced by picoquic, while application layer QLOG files
+ * (HTTP/3, RoQ, MoQ) are created by imquic itself (assuming that support
+ * for QLOG was built in). As such, while the associated files will be
+ * saved to the same folder (\ref IMQUIC_CONFIG_QLOG_PATH), the files
+ * will follow different naming conventions:
+ *
+ * -# <b>QUIC</b>: <code>&lt;INITIAL-CONNECTION-ID&gt;.server.qlog</code> (for
+ * servers) and <code>&lt;INITIAL-CONNECTION-ID&gt;.client.qlog</code>
+ * (for clients);
+ * -# <b>HTTP/3, RoQ, MoQ</b>: <code>&lt;INITIAL-CONNECTION-ID&gt;.server.imquic.(s)qlog</code> (for
+ * servers) and <code>&lt;INITIAL-CONNECTION-ID&gt;.client.imquic.(s)qlog</code>
+ * (for clients).
+ *
+ * As such, the files will have a similar convention (both will start with
+ * the initial connection ID and an indication of whether the file was
+ * created by a server endpoint or a client), but QLOG files associated to
+ * the application layers will also include the \c imquic label in the
+ * filename. Besides, since application layers can also be logged to
+ * sequential QLOG files (\ref IMQUIC_CONFIG_QLOG_SEQUENTIAL), the
+ * extension of those may be either <code>.qlog</code> (contained JSON
+ * files) or <code>.sqlog</code> (sequential JSON).
  */
 
 #ifndef IMQUIC_IMQUIC_H
@@ -247,8 +273,6 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_TLS_CERT,
 	/*! \brief TLS certificate key to use, if any (file path) */
 	IMQUIC_CONFIG_TLS_KEY,
-	/*! \brief TLS certificate password to use, if any (string) */
-	IMQUIC_CONFIG_TLS_PASSWORD,
 	/*! \brief Whether we should disable the verification of the peer certificate (boolean) */
 	IMQUIC_CONFIG_TLS_NO_VERIFY,
 	/*! \brief Whether early data should be supported (boolean) */
@@ -270,7 +294,7 @@ typedef enum imquic_config {
 	 * that this is ignored for RoQ and MoQ endpoints, as the primitives
 	 * for version negotiation are used there to automatically set this */
 	IMQUIC_CONFIG_WT_PROTOCOLS,
-	/*! \brief Save a QLOG file to this path
+	/*! \brief Path to a folder where to save QLOG files to this path
 	 * \note For servers, this will need to be a folder, and not a specific
 	 * filename, as servers will handle multiple connections. This property
 	 * is ignored (apart from a warning) if QLOG support was not compiled */
@@ -278,9 +302,6 @@ typedef enum imquic_config {
 	/*! \brief Whether to save QUIC events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_QUIC,
-	/*! \brief Whether to save QUIC STREAM payloads to QLOG
-	 * \note This property is ignored if QLOG support was not compiled */
-	IMQUIC_CONFIG_QLOG_QUIC_STREAM,
 	/*! \brief Whether to save HTTP/3 events to QLOG (ignored if not offering WebTransport)
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_HTTP3,
