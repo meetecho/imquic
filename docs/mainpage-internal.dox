@@ -85,20 +85,19 @@
  *
  * \subsection logging Logging
  *
- * The library currently only logs to stdout, and can log messages with
- * different levels of debugging. Specifically, when a debugging level
- * is configured in the application, only messages that have an associated
- * level lower than the configured level will be displayed on the logs.
- * By default, this value is \c IMQUIC_LOG_VERB but a different level
- * can be configured at any given time via \ref imquic_set_log_level.
+ * The library can log messages with different levels of debugging.
+ * Specifically, when a debugging level is configured in the application,
+ * only messages that have an associated level lower than (or equal to)
+ * the configured level will be displayed on the logs. By default, this
+ * value is \ref IMQUIC_LOG_VERB, but a different level can be configured
+ * at any given time via \ref imquic_set_log_level.
  *
- * <div class="alert alert-warning">
- * <b>Note:</b> In the future, we should expand on the logging functionality,
- * e.g., to allow logging to be done to file instead, and/or allow
- * applications to provide their own logging function, so that whatever
- * the library generates can be printed within the context of the logging
- * mechanism the application is based upon.
- * </div>
+ * By default the library writes its logs on the standard output. To
+ * change this behaviour (e.g., to customize the format of the logs, log
+ * to file, or integrate imquic logging in the logs already generated
+ * by the container application), a function called \ref imquic_set_log_function
+ * is available, which for each log line routes the log level, the format
+ * string and the text to write to the application.
  *
  * \subsection versioning Versioning
  *

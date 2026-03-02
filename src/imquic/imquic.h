@@ -38,11 +38,13 @@
  * You can configure the logging level of the library with a call to
  * \ref imquic_set_log_level. The logging level can be tweaked dynamically,
  * which means you can make that part configurable in your application,
- * if you so prefer. The library comes with a few macros to allow you
- * to log messages at different debugging levels: \c IMQUIC_PRINT will
- * always print the message, while \c IMQUIC_LOG will only show the message
+ * if you so prefer. Out of the box, the library comes with a few macros
+ * to allow you to log messages at different debugging levels: \ref IMQUIC_PRINT
+ * will always print the message, while \ref IMQUIC_LOG will only show the message
  * if the log level associated to the message is lower or equal to the
- * configured log level. Check debug.h for details.
+ * configured log level. Check debug.h for details. You can configure
+ * your own logging function using \ref imquic_set_log_function. If
+ * you don't, or pass \c NULL , the library will log to standard output.
  *
  * Versioning information can be obtained with different methods:
  * \ref imquic_get_version returns a synthetic numeric version, that's
@@ -236,6 +238,11 @@ const char *imquic_get_build_sha(void);
  * @note See debug.h for valid levels. The default is IMQUIC_LOG_VERB (5)
  * @param level Debugging level to use */
 void imquic_set_log_level(int level);
+/*! \brief Set the log callback function for the library: if missing or
+ * NULL, the library will print its log lines directly on standard output
+ * @param log_cb Log callback function to configure */
+void imquic_set_log_function(void (* log_cb)(int level, const char *format, ...)
+	G_GNUC_PRINTF(2, 3));
 ///@}
 
 /** @name QLOG
@@ -341,7 +348,7 @@ const char *imquic_config_str(imquic_config type);
 /*! \brief Method to create a new QUIC server, using variable arguments to dictate
  * what the server should do (e.g., port to bind to, ALPN, etc.). Variable
  * arguments are in the form of a sequence of name-value started with
- * a \c IMQUIC_CONFIG_INIT and ended by a \c IMQUIC_CONFIG_DONE , e.g.:
+ * a \c IMQUIC_CONFIG_INIT and ended by a \ref IMQUIC_CONFIG_DONE , e.g.:
  \verbatim
 	imquic_server *server = imquic_create_server("echo-server",
 		IMQUIC_CONFIG_INIT,
@@ -368,7 +375,7 @@ imquic_server *imquic_create_server(const char *name, ...);
 /*! \brief Method to create a new QUIC client, using variable arguments to dictate
  * what the client should do (e.g., address to connect to, ALPN, etc.). Variable
  * arguments are in the form of a sequence of name-value started with
- * a \c IMQUIC_CONFIG_INIT and ended by a \c IMQUIC_CONFIG_DONE , e.g.:
+ * a \ref IMQUIC_CONFIG_INIT and ended by a \ref IMQUIC_CONFIG_DONE , e.g.:
  \verbatim
 	imquic_client *client = imquic_create_client("echo-client",
 		IMQUIC_CONFIG_INIT,

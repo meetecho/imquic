@@ -25,6 +25,7 @@
 /* Logging */
 int imquic_log_level = IMQUIC_LOG_VERB;
 gboolean imquic_log_timestamps = FALSE;
+void (* imquic_log_function)(int level, const char *format, ...) = NULL;
 gboolean imquic_log_colors = TRUE;
 gboolean imquic_lock_debug = FALSE;
 gboolean imquic_refcount_debug = FALSE;
@@ -124,6 +125,10 @@ void imquic_set_log_level(int level) {
 	else if(level > IMQUIC_LOG_MAX)
 		level = IMQUIC_LOG_MAX;
 	imquic_log_level = level;
+}
+
+void imquic_set_log_function(void (* log_cb)(int level, const char *format, ...)) {
+	imquic_log_function = log_cb;
 }
 
 /* QLOG */
