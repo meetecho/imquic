@@ -498,16 +498,6 @@ const char *imquic_get_connection_name(imquic_connection *conn);
  * @param conn The imquic_connection to query
  * @returns The ID as a string, if successful, or NULL otherwise */
 const char *imquic_get_client_initial_connection_id(imquic_connection *conn);
-/*! \brief Helper function to associate some opaque application user data to a connection
- * @note The library does nothing with this pointer, apart keeping track of
- * it and returning it when invoking imquic_get_connection_user_data
- * @param conn The imquic_connection to update
- * @param user_data Opaque pointer with the data to associate to the connection */
-void imquic_set_connection_user_data(imquic_connection *conn, void *user_data);
-/*! \brief Helper function to retrieve the opaque application user data associated to a connection
- * @param conn The imquic_connection to query
- * @returns The user data pointer, if available, or NULL otherwise */
-void *imquic_get_connection_user_data(imquic_connection *conn);
 /*! \brief Helper method to ask for the next usable locally originated stream ID on this connection
  * @param[in] conn The imquic_connection to query
  * @param[in] bidirectional Whether the new stream should be bidirectional

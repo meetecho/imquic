@@ -517,15 +517,6 @@ const char *imquic_get_client_initial_connection_id(imquic_connection *conn) {
 	return (const char *)(conn ? conn->initial_cid_str : NULL);
 }
 
-void imquic_set_connection_user_data(imquic_connection *conn, void *user_data) {
-	if(conn)
-		conn->user_data = user_data;
-}
-
-void *imquic_get_connection_user_data(imquic_connection *conn) {
-	return (conn ? conn->user_data : NULL);
-}
-
 int imquic_new_stream_id(imquic_connection *conn, gboolean bidirectional, uint64_t *stream_id) {
 	return imquic_connection_new_stream_id(conn, bidirectional, stream_id);
 }

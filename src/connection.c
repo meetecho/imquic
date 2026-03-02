@@ -222,6 +222,17 @@ void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_st
 		data, length, (stream->in_state == IMQUIC_STREAM_COMPLETE));
 }
 
+/* Helper to notify about the connection being gone */
+void imquic_connection_notify_gone(imquic_connection *conn) {
+	if(conn == NULL || conn->socket == NULL || !g_atomic_int_compare_and_exchange(&conn->notified_close, 0, 1))
+		return;
+	/* Notify the event */
+	if(conn->established && conn->socket->connection_gone)
+		conn->socket->connection_gone(conn);
+	else if(!conn->is_server && !conn->established && conn->socket->connection_failed)
+		conn->socket->connection_failed(conn->socket->user_data);
+}
+
 /* Helper to reset a STREAM */
 void imquic_connection_reset_stream(imquic_connection *conn, uint64_t stream_id, uint64_t error_code) {
 	if(conn == NULL)
@@ -267,8 +278,9 @@ void imquic_connection_close(imquic_connection *conn, uint64_t error_code, const
 	event->error_code = error_code;
 	g_async_queue_push(conn->queued_events, event);
 	imquic_loop_wakeup();
-	while(!g_atomic_int_get(&conn->closed))
-		g_usleep(50000);
+	int64_t started = g_get_monotonic_time();
+	while(!g_atomic_int_get(&conn->closed) && ((g_get_monotonic_time()-started) < 100000))
+		g_usleep(10000);
 }
 
 /* Create an event */

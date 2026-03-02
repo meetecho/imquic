@@ -77,6 +77,8 @@ static const char *imquic_moq_interop_test_str(imquic_moq_interop_test test) {
 }
 
 /* Test client structure */
+static GHashTable *connections = NULL;
+static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
 typedef struct imquic_moq_interop_client {
 	void *test;
 	imquic_client *client;
@@ -85,6 +87,10 @@ typedef struct imquic_moq_interop_client {
 } imquic_moq_interop_client;
 static void imquic_moq_interop_client_destroy(imquic_moq_interop_client *mc) {
 	if(mc != NULL) {
+		imquic_mutex_lock(&mutex);
+		if(mc->conn != NULL)
+			g_hash_table_remove(connections, mc->conn);
+		imquic_mutex_unlock(&mutex);
 		imquic_shutdown_endpoint(mc->client);
 		g_free(mc);
 	}
@@ -130,6 +136,7 @@ static imquic_moq_interop_client *imquic_moq_interop_client_create(imquic_moq_in
 
 /* Callbacks */
 static void imquic_moq_interop_new_connection(imquic_connection *conn, void *user_data);
+static void imquic_moq_interop_connection_failed(void *user_data);
 static void imquic_moq_interop_ready(imquic_connection *conn);
 static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
@@ -192,6 +199,9 @@ int main(int argc, char *argv[]) {
 	subscribe_before_announce.subscriber_first = TRUE;
 	subscribe_before_announce.timeout = 3*G_USEC_PER_SEC + (G_USEC_PER_SEC/2);
 	all_tests = g_list_append(all_tests, &subscribe_before_announce);
+
+	/* Track connections */
+	connections = g_hash_table_new(NULL, NULL);
 
 	/* Only print the list, if that's what's asked of us */
 	int ret = 0;
@@ -301,6 +311,9 @@ int main(int argc, char *argv[]) {
 			/* FIXME Fatal error */
 			break;
 		}
+		/* Wait a bit before moving on, give time to the previous stack to clean up */
+		g_usleep(500000);
+		/* Next test */
 		temp = temp->next;
 	}
 
@@ -309,6 +322,7 @@ done:
 	demo_options_destroy();
 	g_list_free(tests);
 	g_list_free(all_tests);
+	g_hash_table_unref(connections);
 	g_free(host);
 	g_free(path);
 	exit(ret);
@@ -348,7 +362,7 @@ static int imquic_moq_interop_perform_test(imquic_moq_interop_test_context *test
 		imquic_start_endpoint(test->publisher->client);
 	}
 
-	/* TODO */
+	/* Check the output */
 	int ret = 0;
 	int64_t start = g_get_monotonic_time(), now = start, deadline = now + test->timeout;
 	while(!g_atomic_int_get(&stop) && !g_atomic_int_get(&test->done)) {
@@ -440,6 +454,7 @@ static imquic_moq_interop_client *imquic_moq_interop_client_create(imquic_moq_in
 		return NULL;
 	}
 	imquic_set_new_moq_connection_cb(mc->client, imquic_moq_interop_new_connection);
+	imquic_set_connection_failed_cb(mc->client, imquic_moq_interop_connection_failed);
 	imquic_set_moq_ready_cb(mc->client, imquic_moq_interop_ready);
 	imquic_set_moq_connection_gone_cb(mc->client, imquic_moq_interop_connection_gone);
 	if(publisher) {
@@ -459,14 +474,26 @@ static void imquic_moq_interop_new_connection(imquic_connection *conn, void *use
 	if(client != NULL) {
 		client->conn = conn;
 		imquic_connection_ref(conn);
-		imquic_set_connection_user_data(conn, user_data);
+		imquic_mutex_lock(&mutex);
+		g_hash_table_insert(connections, conn, client);
+		imquic_mutex_unlock(&mutex);
 	}
 	imquic_moq_set_max_request_id(conn, max_request_id);
 }
 
+static void imquic_moq_interop_connection_failed(void *user_data) {
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)user_data;
+	if(client != NULL) {
+		imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
+		g_atomic_int_set(&test->done, 1);
+	}
+}
+
 static void imquic_moq_interop_ready(imquic_connection *conn) {
 	/* Depending on the test, we may or may not be done */
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
+	imquic_mutex_lock(&mutex);
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
+	imquic_mutex_unlock(&mutex);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
 	if(client->publisher && test->pub_connection_id == NULL)
 		test->pub_connection_id = g_strdup(imquic_get_client_initial_connection_id(conn));
@@ -545,7 +572,9 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_request_parameters *parameters) {
 	/* Depending on the test, we may or may not be done */
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
+	imquic_mutex_lock(&mutex);
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
+	imquic_mutex_unlock(&mutex);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
 	if(verbose)
 		test->subtests = g_list_append(test->subtests, g_strdup("publisher received ok to announced namespace"));
@@ -583,10 +612,14 @@ static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *con
 static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	/* Depending on the test, we may or may not be done */
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
+	imquic_mutex_lock(&mutex);
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
+	imquic_mutex_unlock(&mutex);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
 	if(test->name == IMQUIC_INTEROP_ANNOUNCE_ONLY || test->name == IMQUIC_INTEROP_PUBLISH_NAMESPACE_DONE) {
 		/* We're done */
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("!publisher received ok to announced namespace"));
 		test->expected = g_strdup("REQUEST_OK");
 		test->received = g_strdup("REQUEST_ERROR");
 		char message[200];
@@ -599,7 +632,9 @@ static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, 
 static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
 		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* Depending on the test, we may or may not be done */
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
+	imquic_mutex_lock(&mutex);
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
+	imquic_mutex_unlock(&mutex);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
 	if(verbose)
 		test->subtests = g_list_append(test->subtests, g_strdup("publisher received subscribe"));
@@ -614,12 +649,14 @@ static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint6
 static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint64_t request_id,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
 	/* Depending on the test, we may or may not be done */
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
+	imquic_mutex_lock(&mutex);
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
+	imquic_mutex_unlock(&mutex);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
 	if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR) {
 		/* We're done */
 		if(verbose)
-			test->subtests = g_list_append(test->subtests, g_strdup("!subscriber received ok to subscription"));
+			test->subtests = g_list_append(test->subtests, g_strdup("!subscriber received error to subscription"));
 		test->expected = g_strdup("REQUEST_ERROR");
 		test->received = g_strdup("SUBSCRIBE_OK");
 		g_atomic_int_set(&test->done, 1);
@@ -637,13 +674,15 @@ static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint6
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval) {
 	/* Depending on the test, we may or may not be done */
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
+	imquic_mutex_lock(&mutex);
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
+	imquic_mutex_unlock(&mutex);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-	if(verbose)
-		test->subtests = g_list_append(test->subtests, g_strdup("subscriber received error to subscription"));
 	if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR ||
 			test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
 			test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("subscriber received error to subscription"));
 		/* We're done */
 		g_atomic_int_set(&test->success, 1);
 		g_atomic_int_set(&test->done, 1);
@@ -652,7 +691,12 @@ static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t
 }
 
 static void imquic_moq_interop_connection_gone(imquic_connection *conn) {
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)imquic_get_connection_user_data(conn);
-	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-	g_atomic_int_set(&test->done, 1);
+	imquic_mutex_lock(&mutex);
+	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
+	if(client != NULL) {
+		imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
+		g_atomic_int_set(&test->done, 1);
+	}
+	g_hash_table_remove(connections, conn);
+	imquic_mutex_unlock(&mutex);
 }

@@ -331,17 +331,13 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 			if(g_atomic_int_get(&conn->closing)) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed (%"SCNu64"/%"SCNu64")\n",
 					name, local_reason, local_application_reason);
-			} else {
+			} else if(g_atomic_int_compare_and_exchange(&conn->closed, 0, 1)) {
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed by peer (%"SCNu64"/%"SCNu64")\n",
 					name, remote_reason, remote_application_reason);
 			}
-			if(g_atomic_int_compare_and_exchange(&conn->closed, 0, 1)) {
-				if(conn->established && endpoint->connection_gone)
-					endpoint->connection_gone(conn);
-				else if(!conn->is_server && !conn->established && endpoint->connection_failed)
-					endpoint->connection_failed(endpoint->user_data);
-				}
-			}
+			g_atomic_int_set(&conn->closed, 1);
+			imquic_connection_notify_gone(conn);
+		}
 	}
 	imquic_quic_next_step(endpoint);
 	return 0;

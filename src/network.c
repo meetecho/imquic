@@ -127,6 +127,8 @@ static void imquic_network_endpoint_free(const imquic_refcount *ne_ref) {
 	g_hash_table_unref(ne->connections_by_cnx);
 	if(ne->fd > -1)
 		close(ne->fd);
+	if(ne->qc != NULL)
+		picoquic_free(ne->qc);
 	g_free(ne);
 }
 
@@ -171,6 +173,10 @@ void imquic_network_endpoint_remove_connection(imquic_network_endpoint *ne, imqu
 		return;
 	if(lock_mutex)
 		imquic_mutex_lock(&ne->mutex);
+	if(g_hash_table_lookup(ne->connections, conn)) {
+		imquic_connection_notify_gone(conn);
+		g_hash_table_remove(ne->connections, conn);
+	}
 	if(conn->piconn != NULL)
 		g_hash_table_remove(ne->connections_by_cnx, conn->piconn);
 	if(lock_mutex)
@@ -194,10 +200,9 @@ void imquic_network_endpoint_destroy(imquic_network_endpoint *ne) {
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			imquic_connection *conn = (imquic_connection *)value;
 			imquic_connection_close(conn, 0, NULL);
+			imquic_connection_notify_gone(conn);
 			g_hash_table_iter_remove(&iter);
 		}
-		if(ne->qc != NULL)
-			picoquic_free(ne->qc);
 		imquic_mutex_unlock(&ne->mutex);
 		imquic_refcount_decrease(&ne->ref);
 	}

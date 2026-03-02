@@ -77,14 +77,10 @@ struct imquic_connection {
 	/*! \brief QLOG instance, if any */
 	imquic_qlog *qlog;
 #endif
-	/*! \brief User data associated to the connection (opaque to the library) */
-	void *user_data;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
-	/*! \brief Whether this connection should be closed */
-	gboolean should_close;
 	/*! \brief Whether this connection is being closed or has been closed */
-	volatile gint closing, closed;
+	volatile gint closing, closed, notified_close;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
 	volatile gint destroyed;
 	/*! \brief Reference counter */
@@ -142,6 +138,9 @@ void imquic_connection_notify_datagram_incoming(imquic_connection *conn, uint8_t
  * @param data Buffer containing the new data
  * @param length Size of the new data buffer */
 void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_stream *stream, uint8_t *data, uint64_t length);
+/*! \brief Helper to notify about the connection being gone
+ * @param conn The imquic_connection instance to notify the event for */
+void imquic_connection_notify_gone(imquic_connection *conn);
 /*! \brief Helper to reset a stream, sending a \c RESET_STREAM
  * @param conn The imquic_connection instance that owns the stream to reset
  * @param stream_id ID of the stream to reset
