@@ -276,6 +276,8 @@ void imquic_connection_close(imquic_connection *conn, uint64_t error_code, const
 	/* FIXME picoquic doesn't allow us to provide a reason? */
 	imquic_connection_event *event = imquic_connection_event_create(IMQUIC_CONNECTION_EVENT_CLOSE_CONN);
 	event->error_code = error_code;
+	if(reason != NULL)
+		event->reason = g_strdup(reason);
 	g_async_queue_push(conn->queued_events, event);
 	imquic_loop_wakeup();
 	int64_t started = g_get_monotonic_time();
