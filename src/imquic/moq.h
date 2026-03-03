@@ -28,23 +28,23 @@
  * instead; likewise, a \ref imquic_create_moq_client variant exists for creating
  * MoQ clients too. These MoQ specific endpoint constructors are also
  * where you specify the \ref imquic_moq_version to negotiate. via the
- * \c IMQUIC_CONFIG_MOQ_VERSION constructor flag.
+ * \ref IMQUIC_CONFIG_MOQ_VERSION constructor flag.
  *
  * By default, if not specified, the MoQ stack will set the version to
- * \c IMQUIC_MOQ_VERSION_ANY , which means that for clients it will offer
+ * \ref IMQUIC_MOQ_VERSION_ANY , which means that for clients it will offer
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
- * WebTransort protocol; a "legacy" version called \c IMQUIC_MOQ_VERSION_ANY_LEGACY
+ * WebTransort protocol; a "legacy" version called \ref IMQUIC_MOQ_VERSION_ANY_LEGACY
  * is available, to negotiate any supported version between v11 and v14.
  * The reason for this separation of version negotiation in different
  * groups is due to the incompatibility in the messaging on the wire, which
  * saw a few breaking changes. At the time of writing, this stack
- * supports MoQ versions from v11 ( \c IMQUIC_MOQ_VERSION_11 ) up to v16
- * ( \c IMQUIC_MOQ_VERSION_16 ), but not all versions will be supported
+ * supports MoQ versions from v11 (\ref IMQUIC_MOQ_VERSION_11) up to v16
+ * (\ref IMQUIC_MOQ_VERSION_16), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
- * depending on which version you decide to negotiate. The \c IMQUIC_MOQ_VERSION_MIN
- * and \c IMQUIC_MOQ_VERSION_MAX defines can be used to programmatically
+ * depending on which version you decide to negotiate. The \ref IMQUIC_MOQ_VERSION_MIN
+ * and \ref IMQUIC_MOQ_VERSION_MAX defines can be used to programmatically
  * check the minimum and maximum supported versions.
  *
  * Speaking of callbacks, considering the library needs to take care

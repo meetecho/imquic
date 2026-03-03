@@ -18,6 +18,7 @@
 extern int imquic_log_level;
 extern gboolean imquic_log_timestamps;
 extern gboolean imquic_log_colors;
+extern void (* imquic_log_function)(int level, const char *format, ...);
 
 #define IMQUIC_MAX_VARINT (((uint64_t)1 << 62) - 1)
 
@@ -85,31 +86,45 @@ static const char *imquic_log_prefix[] = {
  */
 ///@{
 /*! \brief Simple wrapper to g_print/printf */
-#define IMQUIC_PRINT g_print
+#define IMQUIC_PRINT(format, ...) \
+do { \
+	if(imquic_log_function == NULL) { \
+		g_print(format, \
+			##__VA_ARGS__); \
+	} else { \
+		imquic_log_function(IMQUIC_LOG_NONE, format, \
+			##__VA_ARGS__); \
+	} \
+} while (0)
 /*! \brief Logger based on different levels, which can either be displayed
  * or not according to the configuration of the server.
  * The format must be a string literal. */
 #define IMQUIC_LOG(level, format, ...) \
 do { \
 	if (level > IMQUIC_LOG_NONE && level <= IMQUIC_LOG_MAX && level <= imquic_log_level) { \
-		char imquic_log_ts[64] = ""; \
-		char imquic_log_src[128] = ""; \
-		if (imquic_log_timestamps) { \
-			struct tm imquictmresult; \
-			time_t imquicltime = time(NULL); \
-			localtime_r(&imquicltime, &imquictmresult); \
-			strftime(imquic_log_ts, sizeof(imquic_log_ts), \
-			         "[%a %b %e %T %Y] ", &imquictmresult); \
+		if(imquic_log_function == NULL) { \
+			char imquic_log_ts[64] = ""; \
+			char imquic_log_src[128] = ""; \
+			if (imquic_log_timestamps) { \
+				struct tm imquictmresult; \
+				time_t imquicltime = time(NULL); \
+				localtime_r(&imquicltime, &imquictmresult); \
+				strftime(imquic_log_ts, sizeof(imquic_log_ts), \
+						 "[%a %b %e %T %Y] ", &imquictmresult); \
+			} \
+			if (level == IMQUIC_LOG_FATAL || level == IMQUIC_LOG_ERR || level == IMQUIC_LOG_DBG) { \
+				snprintf(imquic_log_src, sizeof(imquic_log_src), \
+						 "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
+			} \
+			g_print("%s%s%s" format, \
+					imquic_log_ts, \
+					imquic_log_prefix[level | ((int)imquic_log_colors << 3)], \
+					imquic_log_src, \
+					##__VA_ARGS__); \
+		} else { \
+			imquic_log_function(level, format, \
+				##__VA_ARGS__); \
 		} \
-		if (level == IMQUIC_LOG_FATAL || level == IMQUIC_LOG_ERR || level == IMQUIC_LOG_DBG) { \
-			snprintf(imquic_log_src, sizeof(imquic_log_src), \
-			         "[%s:%s:%d] ", __FILE__, __FUNCTION__, __LINE__); \
-		} \
-		g_print("%s%s%s" format, \
-		        imquic_log_ts, \
-		        imquic_log_prefix[level | ((int)imquic_log_colors << 3)], \
-		        imquic_log_src, \
-		        ##__VA_ARGS__); \
 	} \
 } while (0)
 ///@}

@@ -32,17 +32,19 @@
  * "Protocols/TLS" section of Wireshark will allow you to see the QUIC
  * exchanges as unencrypted, for debugging purposes.
  *
- * When you're done with
- * the application, a call to \ref imquic_deinit will take care of the cleanup.
+ * When you're done with the application, a call to \ref imquic_deinit
+ * will take care of the cleanup.
  *
  * You can configure the logging level of the library with a call to
  * \ref imquic_set_log_level. The logging level can be tweaked dynamically,
  * which means you can make that part configurable in your application,
- * if you so prefer. The library comes with a few macros to allow you
- * to log messages at different debugging levels: \c IMQUIC_PRINT will
- * always print the message, while \c IMQUIC_LOG will only show the message
+ * if you so prefer. Out of the box, the library comes with a few macros
+ * to allow you to log messages at different debugging levels: \ref IMQUIC_PRINT
+ * will always print the message, while \ref IMQUIC_LOG will only show the message
  * if the log level associated to the message is lower or equal to the
- * configured log level. Check debug.h for details.
+ * configured log level. Check debug.h for details. You can configure
+ * your own logging function using \ref imquic_set_log_function. If
+ * you don't, or pass \c NULL , the library will log to standard output.
  *
  * Versioning information can be obtained with different methods:
  * \ref imquic_get_version returns a synthetic numeric version, that's
@@ -67,14 +69,16 @@
  *
  * -# creating a QUIC server or client;
  * -# configuring the callback functions for relevant events;
- * -# starting the endpoint (waiting for connections, or initiating one);
+ * -# starting the endpoint (waiting for connections for servers, or
+ * initiating one for clients);
  * -# when a connection is available, add a reference the connection
  * object, and performing the application logic (e.g., exchanging messages);
  * -# programmatically send data, if needed, and/or reacting to incoming one;
  * -# when a connection is notified as being closed, remove the previously
  * obtained reference to the connection and, if needed, perform any
  * application level cleanup (taking into account that, for server endpoints,
- * more connections may arrive in the future).
+ * more connections may arrive in the future);
+ * -# when you're done, shutdown the QUIC server or client.
  *
  * In a nutshell, this summarizes a typical usage of the library, and
  * specifically the one we've used in all of our demo examples. Of course,
@@ -87,7 +91,7 @@
  * will create a client endpoint instead. Both use a variable argument
  * approach to dictate what these endpoints should be like, specifically
  * using a sequence of \ref imquic_config key/value properties started with
- * a \c IMQUIC_CONFIG_INIT and ended by a \c IMQUIC_CONFIG_DONE .
+ * a \ref IMQUIC_CONFIG_INIT and ended by a \ref IMQUIC_CONFIG_DONE .
  *
  * <div class="alert alert-warning">
  * <b>Note Well:</b> no matter what ALPN is negotiated, these functions
@@ -140,6 +144,30 @@
  * if you didn't increase it in the first place, e.g., if the connection
  * was never established and so this callback was invoked to notify you
  * that the connection failed.
+ *
+ * Notice that, if you enabled QLOG for one of your endpoints, the output
+ * may differ depending on what you wanted to track. In fact, QUIC QLOG
+ * files are produced by picoquic, while application layer QLOG files
+ * (HTTP/3, RoQ, MoQ) are created by imquic itself (assuming that support
+ * for QLOG was built in). As such, while the associated files will be
+ * saved to the same folder (\ref IMQUIC_CONFIG_QLOG_PATH), the files
+ * will follow different naming conventions:
+ *
+ * -# <b>QUIC</b>: <code>&lt;INITIAL-CONNECTION-ID&gt;.server.qlog</code> (for
+ * servers) and <code>&lt;INITIAL-CONNECTION-ID&gt;.client.qlog</code>
+ * (for clients);
+ * -# <b>HTTP/3, RoQ, MoQ</b>: <code>&lt;INITIAL-CONNECTION-ID&gt;.server.imquic.(s)qlog</code> (for
+ * servers) and <code>&lt;INITIAL-CONNECTION-ID&gt;.client.imquic.(s)qlog</code>
+ * (for clients).
+ *
+ * As such, the files will have a similar convention (both will start with
+ * the initial connection ID and an indication of whether the file was
+ * created by a server endpoint or a client), but QLOG files associated to
+ * the application layers will also include the \c imquic label in the
+ * filename. Besides, since application layers can also be logged to
+ * sequential QLOG files (\ref IMQUIC_CONFIG_QLOG_SEQUENTIAL), the
+ * extension of those may be either <code>.qlog</code> (contained JSON
+ * files) or <code>.sqlog</code> (sequential JSON).
  */
 
 #ifndef IMQUIC_IMQUIC_H
@@ -210,6 +238,11 @@ const char *imquic_get_build_sha(void);
  * @note See debug.h for valid levels. The default is IMQUIC_LOG_VERB (5)
  * @param level Debugging level to use */
 void imquic_set_log_level(int level);
+/*! \brief Set the log callback function for the library: if missing or
+ * NULL, the library will print its log lines directly on standard output
+ * @param log_cb Log callback function to configure */
+void imquic_set_log_function(void (* log_cb)(int level, const char *format, ...)
+	G_GNUC_PRINTF(2, 3));
 ///@}
 
 /** @name QLOG
@@ -247,8 +280,6 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_TLS_CERT,
 	/*! \brief TLS certificate key to use, if any (file path) */
 	IMQUIC_CONFIG_TLS_KEY,
-	/*! \brief TLS certificate password to use, if any (string) */
-	IMQUIC_CONFIG_TLS_PASSWORD,
 	/*! \brief Whether we should disable the verification of the peer certificate (boolean) */
 	IMQUIC_CONFIG_TLS_NO_VERIFY,
 	/*! \brief Whether early data should be supported (boolean) */
@@ -270,7 +301,7 @@ typedef enum imquic_config {
 	 * that this is ignored for RoQ and MoQ endpoints, as the primitives
 	 * for version negotiation are used there to automatically set this */
 	IMQUIC_CONFIG_WT_PROTOCOLS,
-	/*! \brief Save a QLOG file to this path
+	/*! \brief Path to a folder where to save QLOG files to this path
 	 * \note For servers, this will need to be a folder, and not a specific
 	 * filename, as servers will handle multiple connections. This property
 	 * is ignored (apart from a warning) if QLOG support was not compiled */
@@ -278,9 +309,6 @@ typedef enum imquic_config {
 	/*! \brief Whether to save QUIC events to QLOG
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_QUIC,
-	/*! \brief Whether to save QUIC STREAM payloads to QLOG
-	 * \note This property is ignored if QLOG support was not compiled */
-	IMQUIC_CONFIG_QLOG_QUIC_STREAM,
 	/*! \brief Whether to save HTTP/3 events to QLOG (ignored if not offering WebTransport)
 	 * \note This property is ignored if QLOG support was not compiled */
 	IMQUIC_CONFIG_QLOG_HTTP3,
@@ -320,7 +348,7 @@ const char *imquic_config_str(imquic_config type);
 /*! \brief Method to create a new QUIC server, using variable arguments to dictate
  * what the server should do (e.g., port to bind to, ALPN, etc.). Variable
  * arguments are in the form of a sequence of name-value started with
- * a \c IMQUIC_CONFIG_INIT and ended by a \c IMQUIC_CONFIG_DONE , e.g.:
+ * a \c IMQUIC_CONFIG_INIT and ended by a \ref IMQUIC_CONFIG_DONE , e.g.:
  \verbatim
 	imquic_server *server = imquic_create_server("echo-server",
 		IMQUIC_CONFIG_INIT,
@@ -347,7 +375,7 @@ imquic_server *imquic_create_server(const char *name, ...);
 /*! \brief Method to create a new QUIC client, using variable arguments to dictate
  * what the client should do (e.g., address to connect to, ALPN, etc.). Variable
  * arguments are in the form of a sequence of name-value started with
- * a \c IMQUIC_CONFIG_INIT and ended by a \c IMQUIC_CONFIG_DONE , e.g.:
+ * a \ref IMQUIC_CONFIG_INIT and ended by a \ref IMQUIC_CONFIG_DONE , e.g.:
  \verbatim
 	imquic_client *client = imquic_create_client("echo-client",
 		IMQUIC_CONFIG_INIT,
@@ -477,16 +505,6 @@ const char *imquic_get_connection_name(imquic_connection *conn);
  * @param conn The imquic_connection to query
  * @returns The ID as a string, if successful, or NULL otherwise */
 const char *imquic_get_client_initial_connection_id(imquic_connection *conn);
-/*! \brief Helper function to associate some opaque application user data to a connection
- * @note The library does nothing with this pointer, apart keeping track of
- * it and returning it when invoking imquic_get_connection_user_data
- * @param conn The imquic_connection to update
- * @param user_data Opaque pointer with the data to associate to the connection */
-void imquic_set_connection_user_data(imquic_connection *conn, void *user_data);
-/*! \brief Helper function to retrieve the opaque application user data associated to a connection
- * @param conn The imquic_connection to query
- * @returns The user data pointer, if available, or NULL otherwise */
-void *imquic_get_connection_user_data(imquic_connection *conn);
 /*! \brief Helper method to ask for the next usable locally originated stream ID on this connection
  * @param[in] conn The imquic_connection to query
  * @param[in] bidirectional Whether the new stream should be bidirectional

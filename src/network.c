@@ -53,7 +53,6 @@ void imquic_network_deinit(void) {
 	/* Nothing here, for the moment */
 }
 
-
 /* Network address stringification */
 char *imquic_network_address_str(imquic_network_address *address, char *output, size_t outlen, gboolean add_port) {
 	if(address == NULL || output == NULL || outlen == 0)
@@ -125,10 +124,36 @@ static void imquic_network_endpoint_free(const imquic_refcount *ne_ref) {
 	g_strfreev(ne->wt_protocols);
 	g_free(ne->qlog_path);
 	g_hash_table_unref(ne->connections);
-	imquic_tls_destroy(ne->tls);
+	g_hash_table_unref(ne->connections_by_cnx);
 	if(ne->fd > -1)
 		close(ne->fd);
+	if(ne->qc != NULL)
+		picoquic_free(ne->qc);
 	g_free(ne);
+}
+
+/* Network endpoint management */
+int imquic_network_endpoint_start(imquic_network_endpoint *ne) {
+	if(ne == NULL)
+		return -1;
+	imquic_quic_next_step(ne);
+	if(ne->is_server) {
+		/* Nothing else to do, wait for connections */
+		return 0;
+	}
+	/* FIXME Start the client connection */
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Creating new connection\n", ne->name);
+	imquic_connection *conn = imquic_connection_create(ne, NULL);
+	if(conn == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error creating client connection\n", ne->name);
+		return -1;
+	}
+	int ret = picoquic_start_client_cnx(conn->piconn);
+	if(ret != 0) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error starting client connection: %d\n", ne->name, ret);
+		return -1;
+	}
+	return 0;
 }
 
 void imquic_network_endpoint_add_connection(imquic_network_endpoint *ne, imquic_connection *conn, gboolean lock_mutex) {
@@ -138,6 +163,7 @@ void imquic_network_endpoint_add_connection(imquic_network_endpoint *ne, imquic_
 		imquic_mutex_lock(&ne->mutex);
 	//~ imquic_refcount_increase(&conn->ref);
 	g_hash_table_insert(ne->connections, conn, conn);
+	g_hash_table_insert(ne->connections_by_cnx, conn->piconn, conn);
 	if(lock_mutex)
 		imquic_mutex_unlock(&ne->mutex);
 }
@@ -148,12 +174,11 @@ void imquic_network_endpoint_remove_connection(imquic_network_endpoint *ne, imqu
 	if(lock_mutex)
 		imquic_mutex_lock(&ne->mutex);
 	if(g_hash_table_lookup(ne->connections, conn)) {
-		if(conn->established && ne->connection_gone)
-			ne->connection_gone(conn);
-		else if(!conn->is_server && !conn->established && ne->connection_failed)
-			ne->connection_failed(ne->user_data);
+		imquic_connection_notify_gone(conn);
 		g_hash_table_remove(ne->connections, conn);
 	}
+	if(conn->piconn != NULL)
+		g_hash_table_remove(ne->connections_by_cnx, conn->piconn);
 	if(lock_mutex)
 		imquic_mutex_unlock(&ne->mutex);
 }
@@ -174,11 +199,8 @@ void imquic_network_endpoint_destroy(imquic_network_endpoint *ne) {
 		g_hash_table_iter_init(&iter, ne->connections);
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			imquic_connection *conn = (imquic_connection *)value;
-			imquic_connection_close(conn, 0, 0, NULL);
-			if(conn->established && ne->connection_gone)
-				ne->connection_gone(conn);
-			else if(!conn->is_server && !conn->established && ne->connection_failed)
-				ne->connection_failed(ne->user_data);
+			imquic_connection_close(conn, 0, NULL);
+			imquic_connection_notify_gone(conn);
 			g_hash_table_iter_remove(&iter);
 		}
 		imquic_mutex_unlock(&ne->mutex);
@@ -205,8 +227,6 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Missing remote host/port\n", config->name);
 		return NULL;
 	}
-	if(config->sni == NULL)
-		config->sni = "localhost";	/* FIXME */
 	if(config->alpn == NULL && config->raw_quic) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Missing ALPN\n", config->name);
 		return NULL;
@@ -348,18 +368,13 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 			return NULL;
 		}
 	}
-	/* Initialize the TLS stack */
-	imquic_tls *tls = imquic_tls_create(config->is_server, config->cert_pem, config->cert_key, config->cert_pwd, !config->cert_no_verify);
-	if(tls == NULL)
-		return NULL;
-	if(config->early_data)
-		imquic_tls_enable_early_data(tls, config->ticket_file);
+	if(config->sni == NULL)
+		config->sni = config->remote_host;	/* FIXME */
 	/* Create a socket */
 	int quic_fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
 	if(quic_fd == -1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Cannot create socket... %d (%s)\n",
 			config->name, errno, g_strerror(errno));
-		imquic_tls_destroy(tls);
 		return NULL;
 	}
 	int v6only = 0;
@@ -367,7 +382,6 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] setsockopt on socket failed... %d (%s)\n",
 			config->name, errno, g_strerror(errno));
 		close(quic_fd);
-		imquic_tls_destroy(tls);
 		return NULL;
 	}
 	size_t addrlen = (family == AF_INET ? sizeof(address) : sizeof(address6));
@@ -375,32 +389,19 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Binding to port %"SCNu16" failed... %d (%s)\n",
 			config->name, config->local_port, errno, g_strerror(errno));
 		close(quic_fd);
-		imquic_tls_destroy(tls);
 		return NULL;
 	}
 	uint16_t port = imquic_get_fd_port(quic_fd);
+	config->local_port = port;
 	char ip[NI_MAXHOST] = { 0 };
 	if(family == AF_INET) {
 		getnameinfo((const struct sockaddr *)&address, sizeof(address),
 			ip, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Bound to %s:%"SCNu16"\n", config->name, ip, port);
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Bound to %s:%"SCNu16"\n", config->name, ip, port);
 	} else {
 		getnameinfo((const struct sockaddr *)&address6, sizeof(address6),
 			ip, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Bound to [%s]:%"SCNu16"\n", config->name, ip, port);
-	}
-	if(!config->is_server) {
-		/* FIXME We should get rid of the connect() call for clients, here,
-		 * as it would make connection migration impossible in the future */
-		if(connect(quic_fd, (struct sockaddr *)&remote.addr, remote.addrlen) < 0) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Error connecting to %s... %d (%s)\n",
-				config->name, imquic_network_address_str(&remote, ip, sizeof(ip), TRUE), errno, g_strerror(errno));
-			close(quic_fd);
-			imquic_tls_destroy(tls);
-			return NULL;
-		}
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connected socket to remote address %s\n",
-			config->name, imquic_network_address_str(&remote, ip, sizeof(ip), TRUE));
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Bound to [%s]:%"SCNu16"\n", config->name, ip, port);
 	}
 	/* Create a source to have this endpoint handled by the network loop */
 	imquic_network_endpoint *ne = g_malloc0(sizeof(imquic_network_endpoint));
@@ -419,7 +420,6 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		memcpy(&ne->remote_address, &remote, sizeof(remote));
 		ne->remote_port = config->remote_port;
 	}
-	ne->tls = tls;
 	ne->sni = g_strdup(config->sni);
 	if(config->raw_quic) {
 		ne->raw_quic = TRUE;
@@ -431,34 +431,37 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 			ne->h3_path = g_strdup(config->h3_path);
 		ne->wt_protocols = config->wt_protocols ? g_strsplit(config->wt_protocols, ",", -1) : NULL;
 	}
-	if(config->qlog_path != NULL) {
+	/* Check if we need to generate QLOG files */
 #ifndef HAVE_QLOG
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG support not compiled, ignoring\n", config->name);
-#else
-		/* Make sure that it's a folder, if this is a server, or a file if a client */
+	if(config->qlog_path != NULL && (config->qlog_http3 || config->qlog_roq || config->qlog_moq)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG support for application layers (HTTP/3, RoQ, MoQ) not compiled, ignoring\n", config->name);
+		config->qlog_http3 = FALSE;
+		config->qlog_roq = FALSE;
+		config->qlog_moq = FALSE;
+	}
+#endif
+	if(config->qlog_path != NULL && !config->qlog_quic && !config->qlog_http3 && !config->qlog_roq && !config->qlog_moq) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG folder provided but no protocols specified, ignoring\n", config->name);
+		config->qlog_path = NULL;
+	}
+	if(config->qlog_path != NULL) {
+		/* QLOG support is split in two parts: for QUIC QLOG, we rely on
+		 * what picoquic provides; for other layers under our direct control
+		 * (HTTP/3, MoQ, RoQ) we create QLOG files ourselves instead. In
+		 * both cases, make sure we received a folder and that it exists */
 		struct stat s;
 		int err = stat(config->qlog_path, &s);
-		if(config->is_server) {
-			if(err == -1) {
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder (%d: %s), ignoring\n",
-					config->name, config->qlog_path, errno, g_strerror(errno));
-			} else if(!S_ISDIR(s.st_mode)) {
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder, ignoring\n",
-					config->name, config->qlog_path);
-			} else {
-				ne->qlog_path = g_strdup(config->qlog_path);
-			}
+		if(err == -1) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder (%d: %s), ignoring\n",
+				config->name, config->qlog_path, errno, g_strerror(errno));
+		} else if(!S_ISDIR(s.st_mode)) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is not a valid folder, ignoring\n",
+				config->name, config->qlog_path);
 		} else {
-			if(err == 0 && S_ISDIR(s.st_mode)) {
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG path '%s' is a folder, ignoring\n",
-					config->name, config->qlog_path);
-			} else {
-				ne->qlog_path = g_strdup(config->qlog_path);
-			}
+			ne->qlog_path = g_strdup(config->qlog_path);
 		}
 		if(ne->qlog_path != NULL) {
 			ne->qlog_quic = config->qlog_quic;
-			ne->qlog_quic_stream = config->qlog_quic_stream;
 			ne->qlog_http3 = config->qlog_http3 && ne->webtransport;
 			ne->qlog_roq = config->qlog_roq;
 			ne->qlog_roq_packets = config->qlog_roq && config->qlog_roq_packets;
@@ -466,41 +469,48 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 			ne->qlog_moq_messages = config->qlog_moq && config->qlog_moq_messages;
 			ne->qlog_moq_objects = config->qlog_moq && config->qlog_moq_objects;
 			ne->qlog_sequential = config->qlog_sequential;
-			if(!ne->qlog_quic && !ne->qlog_http3 && !ne->qlog_roq && !ne->qlog_moq) {
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Tracing of at least one of QUIC, HTTP/3, RoQ and MoQ should be enabled, disabling QLOG\n", config->name);
+			if(!config->qlog_quic && !ne->qlog_http3 && !ne->qlog_roq && !ne->qlog_moq) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No protocol tracing was enabled or detected, disabling QLOG\n", config->name);
 				g_free(ne->qlog_path);
 				ne->qlog_path = NULL;
+			} else if(config->qlog_quic && config->qlog_sequential && !ne->qlog_http3 && !ne->qlog_roq && !ne->qlog_moq) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Sequential QLOG files not supported for QUIC\n", config->name);
 			}
 		}
-#endif
 	}
 	ne->connections = g_hash_table_new_full(NULL, NULL,
 		NULL, (GDestroyNotify)imquic_connection_destroy);
+	ne->connections_by_cnx = g_hash_table_new(NULL, NULL);
 	ne->user_data = config->user_data;
 	imquic_mutex_init(&ne->mutex);
 	imquic_refcount_init(&ne->ref, imquic_network_endpoint_free);
+	/* Create the picoquic context */
+	if(imquic_quic_create_context(ne, config) < 0) {
+		imquic_network_endpoint_destroy(ne);
+		return NULL;
+	}
 	/* Done */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Endpoint created\n", config->name);
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Endpoint created\n", config->name);
 	return ne;
 }
 
-/* Helper to send data */
-int imquic_network_send(imquic_connection *conn, uint8_t *bytes, size_t blen) {
-	if(conn == NULL || conn->socket == NULL || conn->socket->fd < 0 || bytes == NULL || blen == 0)
-		return -1;
-	int sent = 0;
-	if(conn->is_server) {
-		sent = sendto(conn->socket->fd, bytes, blen, 0,
-			(struct sockaddr *)&conn->peer.addr, conn->peer.addrlen);
-	} else {
-		/* FIXME For clients we're using connect() on the socket, so we need
-		 * to use send() instead of sendto() or OSX will complain about it */
-		sent = send(conn->socket->fd, bytes, blen, 0);
+/* Callback fired when we have packets to send on a connection */
+int imquic_network_send_packet(imquic_network_endpoint *ne) {
+	IMQUIC_LOG(IMQUIC_LOG_DBG, "[%s] Callback fired\n", ne->name);
+	uint8_t buffer[4096];
+	size_t blen = 0;
+	struct sockaddr_storage to = {0}, from = {0};
+	int if_index = 0, ret = 0;
+	while((ret = picoquic_prepare_next_packet(ne->qc, picoquic_current_time(),
+			buffer, sizeof(buffer), &blen, &to, &from, &if_index, NULL, NULL)) == 0 && blen > 0) {
+		int sent = sendto(ne->fd, buffer, blen, 0, (struct sockaddr *)&to, sizeof(to));
+		if(sent < 0) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
+		} else {
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, blen);
+		}
 	}
-	if(sent < 0) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Sent %d/%zu bytes\n", sent, blen);
-	}
-	return sent;
+	imquic_quic_next_step(ne);
+	return G_SOURCE_REMOVE;
 }
+

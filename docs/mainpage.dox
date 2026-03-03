@@ -10,7 +10,7 @@
  * as well as an overview on \ref changelog.
  *
  * \par An open source QUIC library tailored for media
- * imquic was specifically written to study, explore and prototype the
+ * imquic was initially written mainly to study, explore and prototype the
  * delivery of real-time media on top of QUIC, as a potential alternative,
  * or complement, to what WebRTC provides (e.g., via the
  * <a href="https://janus.conf.meetecho.com">Janus WebRTC Server</a>).
@@ -21,9 +21,19 @@
  * <a href="https://www.meetecho.com/blog/quic-journey/">QUIC intro</a>,
  * a <a href="https://www.meetecho.com/blog/roq-n-roll/">RoQ devblog</a>
  * and <a href="https://www.meetecho.com/blog/roq-n-roll/">one on MoQ</a>.
+ * A blog post <a href="https://www.meetecho.com/blog/imquic/">introducing the library</a>
+ * is available as well, although some things changed since then.
  * The imquic repo also comes with a few \ref examples that
  * demonstrate the usage of all those protocols in different roles and
  * scenarios.
+ *
+ * Although initially imquic used a QUIC stack written from the grounds up,
+ * mainly for the purpose of studying the nitty gritty details of the
+ * QUIC protocol, imquic now leverages the well known and reliable
+ * <a href="https://www.privateoctopus.com/picoquic/">picoquic</a>
+ * library to provide the QUIC foundation. WebTransport and other application
+ * protocols are then scaffolded on top of those foundations, all while
+ * providing a simple API to developers.
  *
  * While you can write your own RoQ and MoQ parsers on top of the raw
  * imquic QUIC functionality, the library also provides an internal
@@ -186,8 +196,8 @@ ldd src/.libs/libimquic.so | grep asan
  *
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
- * - \b quictls: https://quictls.github.io/ (QUIC TLS)
- *
+ * - \b picoquic: https://github.com/private-octopus/picoquic
+ * - \b Jansson: https://github.com/akheron/jansson (optional; QLOG support)
  */
 
 /*! \page license License

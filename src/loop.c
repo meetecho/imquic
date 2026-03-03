@@ -24,6 +24,7 @@
 #include "internal/loop.h"
 #include "internal/network.h"
 #include "internal/quic.h"
+#include "internal/connection.h"
 #include "imquic/debug.h"
 
 /* Resources */
@@ -50,13 +51,13 @@ typedef struct imquic_network_source {
 static void imquic_network_endpoint_receive(imquic_network_endpoint *ne) {
 	if(ne == NULL || ne->fd == -1)
 		return;
-	char buffer[4906];
+	uint8_t buffer[4906];
 	imquic_network_address sender = { 0 };
 	sender.addrlen = sizeof(sender.addr);
 	int len = recvfrom(ne->fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&sender.addr, &sender.addrlen);
 	if(len > 0) {
-		/* Invoke the callback function for parsing the QUIC message */
-		imquic_process_message(ne, &sender, (uint8_t *)buffer, (size_t)len);
+		IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Received %d bytes\n", ne->name, len);
+		imquic_quic_incoming_packet(ne, buffer, len, &sender);
 	}
 }
 static gboolean imquic_network_source_prepare(GSource *source, gint *timeout) {
@@ -67,6 +68,7 @@ static gboolean imquic_network_source_dispatch(GSource *source, GSourceFunc call
 	imquic_network_source *ns = (imquic_network_source *)source;
 	/* Receive the packet */
 	imquic_network_endpoint_receive(ns->ne);
+	imquic_quic_next_step(ns->ne);
 	return G_SOURCE_CONTINUE;
 }
 static void imquic_network_source_finalize(GSource *source) {
@@ -94,11 +96,18 @@ typedef struct imquic_connection_source {
 } imquic_connection_source;
 static gboolean imquic_connection_source_prepare(GSource *source, gint *timeout) {
 	imquic_connection_source *cs = (imquic_connection_source *)source;
-	return g_atomic_int_get(&cs->conn->wakeup);
+	return (g_async_queue_length(cs->conn->queued_events) > 0);
 }
 static gboolean imquic_connection_source_dispatch(GSource *source, GSourceFunc callback, gpointer user_data) {
 	imquic_connection_source *cs = (imquic_connection_source *)source;
-	return imquic_handle_event(cs->conn);
+	int ret = G_SOURCE_CONTINUE;
+	imquic_connection_event *event = NULL;
+	while((event = g_async_queue_try_pop(cs->conn->queued_events)) != NULL) {
+		if(imquic_quic_queued_event(cs->conn, event) == G_SOURCE_REMOVE)
+			ret = G_SOURCE_REMOVE;
+	}
+	imquic_quic_next_step(cs->conn->socket);
+	return ret;
 }
 static void imquic_connection_source_finalize(GSource *source) {
 	imquic_connection_source *cs = (imquic_connection_source *)source;

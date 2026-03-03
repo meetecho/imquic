@@ -19,8 +19,6 @@ libimquic_la_SOURCES = \
 	internal/connection.h \
 	stream.c \
 	internal/stream.h \
-	crypto.c \
-	internal/crypto.h \
 	error.c \
 	internal/error.h \
 	buffer.c \
@@ -33,8 +31,6 @@ libimquic_la_SOURCES = \
 	internal/qlog.h \
 	utils.c \
 	internal/utils.h \
-	listmap.c \
-	internal/listmap.h \
 	http3.c \
 	internal/http3.h \
 	qpack.c \
@@ -55,19 +51,17 @@ libimquic_la_SOURCES = \
 	internal/version.h
 libimquic_la_CFLAGS = \
 	$(AM_CFLAGS) \
+	$(PICOQUIC_CFLAGS) \
 	$(IMQUIC_CFLAGS) \
-	$(QUICTLS_CFLAGS) \
-	$(BORINGSSL_CFLAGS) \
 	$(JANSSON_CFLAGS) \
 	$(NULL)
 libimquic_la_LDFLAGS = \
 	-version-info $(IMQUIC_VERSION_SO) \
 	$(NULL)
 libimquic_la_LIBADD = \
+	$(PICOQUIC_LIBS) \
 	$(IMQUIC_LIBS) \
 	$(IMQUIC_MANUAL_LIBS) \
-	$(QUICTLS_LIBS) \
-	$(BORINGSSL_LIBS) \
 	$(JANSSON_LIBS) \
 	$(NULL)
 

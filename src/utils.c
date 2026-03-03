@@ -189,33 +189,6 @@ uint8_t imquic_write_pfxint(uint64_t number, uint8_t n, uint8_t *bytes, size_t b
 	return res;
 }
 
-/* FIXME Reconstructing a full packet number */
-uint64_t imquic_full_packet_number(uint64_t largest, uint64_t pn_pkt, uint8_t p_len) {
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "%"SCNu64", %"SCNu64", %"SCNu8"\n", largest, pn_pkt, p_len);
-	/* https://datatracker.ietf.org/doc/html/rfc9000#section-a.3 */
-	//~ uint64_t expected = largest + 1;
-	//~ uint64_t pn_win = (uint64_t)1 << p_len;
-	//~ uint64_t pn_hwin = pn_win / 2;
-	//~ uint64_t pn_mask = pn_win - 1;
-	//~ IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- l=%"SCNu64", w=%"SCNu64", hw=%"SCNu64", m=%"SCNu64"\n", expected, pn_win, pn_hwin, pn_mask);
-	//~ uint64_t candidate_pn = (expected & ~pn_mask) | pn_pkt;
-	//~ IMQUIC_LOG(IMQUIC_LOG_HUGE, "  -- candidate=%"SCNu64"\n", candidate_pn);
-	//~ if((candidate_pn <= (expected - pn_hwin)) && (candidate_pn < (((uint64_t)1 << 62) - pn_win)))
-		//~ return candidate_pn + pn_win;
-	//~ if((candidate_pn > (expected + pn_hwin)) && candidate_pn >= pn_win)
-		//~ return candidate_pn - pn_win;
-	//~ return candidate_pn;
-	uint64_t k = largest + 1;
-	uint64_t u = k & ~((G_GUINT64_CONSTANT(1) << p_len) - 1);
-	uint64_t a = u | pn_pkt;
-	uint64_t b = (u + (G_GUINT64_CONSTANT(1) << p_len)) | pn_pkt;
-	uint64_t a1 = k < a ? a - k : k - a;
-	uint64_t b1 = k < b ? b - k : k - b;
-	if(a1 < b1)
-		return a;
-	return b;
-}
-
 /* Debugging: printing the content of a hex buffer */
 void imquic_print_hex(int level, uint8_t *buf, size_t buflen) {
 	IMQUIC_LOG(level, "\t");

@@ -36,11 +36,6 @@ typedef struct imquic_source {
 	GSource parent;
 } imquic_source;
 
-/*! \brief Events meant for connections */
-typedef struct imquic_connection_event {
-	/* \todo Refactor the event loop */
-} imquic_connection_event;
-
 /** @name Adding sources to the loop
  */
 ///@{

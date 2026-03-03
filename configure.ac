@@ -1,4 +1,4 @@
-AC_INIT([imquic],[0.0.1],[https://github.com/meetecho/imquic],[imquic],[https://imquic.conf.meetecho.com])
+AC_INIT([imquic],[0.0.2],[https://github.com/meetecho/imquic],[imquic],[https://imquic.conf.meetecho.com])
 AC_LANG(C)
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
@@ -72,55 +72,43 @@ IMQUIC_VERSION_MAJOR=0
 AC_SUBST(IMQUIC_VERSION_MAJOR)
 IMQUIC_VERSION_MINOR=0
 AC_SUBST(IMQUIC_VERSION_MINOR)
-IMQUIC_VERSION_PATCH=1
+IMQUIC_VERSION_PATCH=2
 AC_SUBST(IMQUIC_VERSION_PATCH)
-IMQUIC_VERSION_STRING="0.0.1"
+IMQUIC_VERSION_STRING="0.0.2"
 AC_SUBST(IMQUIC_VERSION_STRING)
 IMQUIC_VERSION_RELEASE="alpha"
 AC_SUBST(IMQUIC_VERSION_RELEASE)
-IMQUIC_VERSION_SO="0:0:0"
+IMQUIC_VERSION_SO="0:1:0"
 AC_SUBST(IMQUIC_VERSION_SO)
 
 glib_version=2.34
-
-AC_ARG_ENABLE([boringssl],
-              [AS_HELP_STRING([--enable-boringssl],
-                              [Use BoringSSL instead of OpenSSL])],
-              [
-                case "${enableval}" in
-                  yes) boringssl_dir=/opt/boringssl ;;
-                  no)  boringssl_dir= ;;
-                  *) boringssl_dir=${enableval} ;;
-                esac
-              ],
-              [boringssl_dir=])
+ssl_version=1.1.1
 
 PKG_CHECK_MODULES([IMQUIC],[
 	glib-2.0 >= $glib_version
+	libssl >= $ssl_version
+	libcrypto
 ])
 
-IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version"
+IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, libssl >= $ssl_version, libcrypto"
 IMQUIC_PACKAGES_PRIVATE=""
 
 IMQUIC_MANUAL_LIBS="${IMQUIC_MANUAL_LIBS} -lm"
 AC_SUBST(IMQUIC_MANUAL_LIBS)
 
-AS_IF([test "x${boringssl_dir}" != "x"],
-      [echo "Trying to use BoringSSL instead of quictls...";
-       AC_MSG_NOTICE([BoringSSL directory is ${boringssl_dir}])
-       CFLAGS="$CFLAGS -I${boringssl_dir}/include";
-       BORINGSSL_CFLAGS="-I${boringssl_dir}/include";
-       AC_SUBST(BORINGSSL_CFLAGS)
-       BORINGSSL_LIBS="-lstdc++ -L${boringssl_dir}/lib64 -lssl -lcrypto";
-       AC_SUBST(BORINGSSL_LIBS)
-       AC_CHECK_HEADERS([${boringssl_dir}/include/openssl/opensslconf.h],
-                        [AC_DEFINE(IMQUIC_BORINGSSL)],
-                        [AC_MSG_ERROR([BoringSSL headers not found in ${boringssl_dir}])])
-      ],
-      [
-       PKG_CHECK_MODULES([QUICTLS],[openssl+quictls])
-      ])
-AM_CONDITIONAL([ENABLE_BORINGSSL], [test "x${boringssl_dir}" != "x"])
+ROOT_FOLDER=$(cd $srcdir && pwd)
+PICOQUIC_DIR="$ROOT_FOLDER/picoquic"
+PICOTLS_DIR="$PICOQUIC_DIR/_deps/picotls-build/"
+PICOQUIC_CFLAGS="-I$PICOQUIC_DIR/picoquic -I$PICOQUIC_DIR/loglib"
+AC_SUBST(PICOQUIC_CFLAGS)
+PICOQUIC_LIBS="-L$PICOQUIC_DIR -L$PICOTLS_DIR -lpicohttp-core -lpicoquic-log -lpicoquic-core -lpicotls-core -lpicotls-minicrypto -lpicotls-fusion -lpicotls-openssl"
+AC_SUBST(PICOQUIC_LIBS)
+AC_CHECK_HEADERS([${PICOQUIC_DIR}/picoquic/picoquic.h],
+                 [],
+	             [AC_MSG_ERROR([picoquic headers not found in ${PICOQUIC_DIR}. See README.md for installation instructions])])
+AC_CHECK_FILE([${PICOQUIC_DIR}/libpicoquic-core.a],
+              [],
+	          [AC_MSG_ERROR([picoquic not found in ${PICOQUIC_DIR}. See README.md for installation instructions])])
 
 AC_ARG_ENABLE([qlog],
               [AS_HELP_STRING([--enable-qlog],
@@ -224,9 +212,6 @@ AC_OUTPUT
 
 echo
 echo "Compiler:      $CC"
-AM_COND_IF([ENABLE_BORINGSSL],
-	[echo "Encryption:    BoringSSL"],
-	[echo "Encryption:    quictls"])
 AM_COND_IF([ENABLE_QLOG],
 	[echo "QLOG Support:  yes"],
 	[echo "QLOG Support:  no"])

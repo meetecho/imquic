@@ -16,7 +16,6 @@
 
 #include <glib.h>
 
-#include "buffer.h"
 #include "refcount.h"
 
 /*! \brief Stream states */
@@ -45,19 +44,11 @@ typedef struct imquic_stream {
 	gboolean client_initiated, bidirectional;
 	/*! \brief Whether the stream can send and receive data */
 	gboolean can_send, can_receive;
-	/*! \brief Size of stream incoming and outgoing data so far (for flow control) */
-	uint64_t in_size, out_size;
-	/*! \brief Stream incoming and outgoing final size (for flow control) */
-	uint64_t in_finalsize, out_finalsize;
 	/*! \brief Stream incoming and outgoing state */
 	imquic_stream_state in_state, out_state;
 	/*! \brief Number of bytes to skip, when dealing with offsets (e.g., to hide
 	 * the shifted offsets when a protocol is encapsulated on a WebTransport */
-	size_t skip_in, skip_out;
-	/*! \brief Incoming and outgoing buffers */
-	imquic_buffer *in_data, *out_data;
-	/*! \brief Flow control state for this stream */
-	uint64_t local_max_data, remote_max_data;
+	size_t skip_in;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
@@ -70,24 +61,6 @@ typedef struct imquic_stream {
  * @param is_server Whether the endpoint this stream is added to is a server
  * @returns A pointer to a new imquic_stream instance, if successful, or NULL otherwise */
 imquic_stream *imquic_stream_create(uint64_t stream_id, gboolean is_server);
-/*! \brief Helper method to check whether an endpoint can send data on this stream
- * @note This checks characteristics of the stream (e.g., client-originated,
- * bidirectional, etc.), the stream state, and whether a stream is complete
- * @param stream The imquic_stream instance to check
- * @param offset Offset in the stream from where the new data would be sent
- * @param length Length of the data that would be sent
- * @param verbose Whether details on the checks should be logged in a verbose way with warnings
- * @returns TRUE if data can be sent, FALSE otherwise */
-gboolean imquic_stream_can_send(imquic_stream *stream, uint64_t offset, uint64_t length, gboolean verbose);
-/*! \brief Helper method to check whether an endpoint can receive data on this stream
- * @note This checks characteristics of the stream (e.g., client-originated,
- * bidirectional, etc.), the stream state, and whether a stream is complete
- * @param stream The imquic_stream instance to check
- * @param offset Offset in the stream from where the new data would be received
- * @param length Length of the data that would be received
- * @param verbose Whether details on the checks should be logged in a verbose way with warnings
- * @returns TRUE if data can be received, FALSE otherwise */
-gboolean imquic_stream_can_receive(imquic_stream *stream, uint64_t offset, uint64_t length, gboolean verbose);
 /*! \brief Helper method to mark a stream as complete in one direction
  * @note This may end up marking the stream as complete in general,
  * depending on the stream state or the unidirectional nature of the stream

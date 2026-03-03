@@ -19,7 +19,6 @@ typedef struct demo_options {
 	int port;
 	const char *cert_pem;
 	const char *cert_key;
-	const char *cert_pwd;
 	const char *secrets_log;
 	gboolean raw_quic;
 	const char **alpn;
@@ -29,7 +28,6 @@ typedef struct demo_options {
 	const char *qlog_path;
 	const char **qlog_logging;
 	gboolean qlog_sequential;
-	gboolean qlog_stream;
 	int debug_level;
 	gboolean debug_locks;
 	gboolean debug_refcounts;

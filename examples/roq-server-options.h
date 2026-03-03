@@ -21,13 +21,11 @@ typedef struct demo_options {
 	gboolean webtransport;
 	const char *cert_pem;
 	const char *cert_key;
-	const char *cert_pwd;
 	gboolean early_data;
 	const char *secrets_log;
 	const char *qlog_path;
 	const char **qlog_logging;
 	gboolean qlog_sequential;
-	gboolean qlog_stream;
 	gboolean qlog_roq_packets;
 	gboolean quiet;
 	gboolean echo;

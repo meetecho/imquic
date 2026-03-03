@@ -56,15 +56,13 @@ typedef struct imquic_configuration {
 	/*! \brief Whether sequential JSON should be used for the QLOG file, instead of regular JSON  */
 	gboolean qlog_sequential;
 	/*! \brief Whether QUIC and/or HTTP/3 and/or RoQ and/or MoQT events should be saved to QLOG, if supported */
-	gboolean qlog_quic, qlog_quic_stream, qlog_http3,
+	gboolean qlog_quic, qlog_http3,
 		qlog_roq, qlog_roq_packets,
 		qlog_moq, qlog_moq_messages, qlog_moq_objects;
 	/*! \brief Path to the certificate file to use for TLS */
 	const char *cert_pem;
 	/*! \brief Path to the key file to use for TLS */
 	const char *cert_key;
-	/*! \brief Password needed to access the certificate for TLS, if any */
-	const char *cert_pwd;
 	/*! \brief Whether we should disable verification of the remote certificate */
 	gboolean cert_no_verify;
 	/*! \brief Whether early data should be supported */
