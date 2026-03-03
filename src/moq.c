@@ -35,6 +35,10 @@
 static GHashTable *moq_sessions = NULL;
 static imquic_mutex moq_mutex = IMQUIC_MUTEX_INITIALIZER;
 
+/* MoQ's flavour of varint (introduced in v17) */
+uint64_t imquic_read_moqint(uint8_t *bytes, size_t blen, uint8_t *length);
+uint8_t imquic_write_moqint(uint64_t number, uint8_t *bytes, size_t blen);
+
 /* Initialization */
 static void imquic_moq_context_destroy(imquic_moq_context *moq);
 static void imquic_moq_context_free(const imquic_refcount *moq_ref);
@@ -8421,6 +8425,140 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
 	g_free(buffer);
+	return 0;
+}
+
+/* Reading and writing MoQ's flavour of variable size integers */
+uint64_t imquic_read_moqint(uint8_t *bytes, size_t blen, uint8_t *length) {
+	if(length)
+		*length = 0;
+	if(bytes == NULL || blen == 0)
+		return 0;
+	if(bytes[0] == 0xFC) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid moqint code point\n");
+		return 0;
+	}
+	/* Check how many bytes we need */
+	uint8_t len = 0;
+	uint64_t res = 0;
+	if((bytes[0] >> 7) == 0) {
+		len = 1;
+		res = bytes[0];
+		goto done;
+	} else if((bytes[0] >> 6) == 0x02) {
+		len = 2;
+	} else if((bytes[0] >> 5) == 0x06) {
+		len = 3;
+	} else if((bytes[0] >> 4) == 0x0E) {
+		len = 4;
+	} else if((bytes[0] >> 3) == 0x1E) {
+		len = 5;
+	} else if((bytes[0] >> 2) == 0x3E) {
+		len = 6;
+	} else if((bytes[0]) == 0xFE) {
+		len = 8;
+	} else if((bytes[0]) == 0xFF) {
+		len = 9;
+	}
+	if(len == 0 || len > blen) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid moqint (%"SCNu8" > %zu)\n", len, blen);
+		return 0;
+	}
+	if(len < 8) {
+		uint8_t temp = bytes[0] << len;
+		res = temp >> len;
+	}
+	for(uint8_t i=1; i<len; i++) {
+		res = (res << 8) + bytes[i];
+	}
+done:
+	if(length)
+		*length = len;
+	return res;
+}
+
+uint8_t imquic_write_moqint(uint64_t number, uint8_t *bytes, size_t blen) {
+	if(blen < 1)
+		return 0;
+	if(number <= 127) {
+		/* Let's use one byte */
+		*bytes = number;
+		return 1;
+	} else if(number <= 16383) {
+		/* Let's use two bytes */
+		if(blen < 2) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 2 bytes)\n", number);
+			return 0;
+		}
+		uint16_t num = number;
+		num = g_htons(num);
+		memcpy(bytes, &num, sizeof(num));
+		*bytes += 1 << 7;
+		return 2;
+	} else if(number <= 2097151) {
+		/* Let's use three bytes */
+		if(blen < 3) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 3 bytes)\n", number);
+			return 0;
+		}
+		uint32_t num = number;
+		num = g_htonl(num);
+		memcpy(bytes, ((uint8_t*)&num) + 1, 3);
+		*bytes += 3 << 6;
+		return 3;
+	} else if(number <= 268435455) {
+		/* Let's use four bytes */
+		if(blen < 4) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 4 bytes)\n", number);
+			return 0;
+		}
+		uint32_t num = number;
+		num = g_htonl(num);
+		memcpy(bytes, &num, sizeof(num));
+		*bytes += 7 << 5;
+		return 4;
+	} else if(number <= 34359738367) {
+		/* Let's use five bytes */
+		if(blen < 5) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 5 bytes)\n", number);
+			return 0;
+		}
+		number = htonll(number);
+		memcpy(bytes, ((uint8_t*)&number) + 3, 5);
+		*bytes += 15 << 4;
+		return 5;
+	} else if(number <= 4398046511103) {
+		/* Let's use six bytes */
+		if(blen < 6) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 6 bytes)\n", number);
+			return 0;
+		}
+		number = htonll(number);
+		memcpy(bytes, ((uint8_t*)&number) + 2, 6);
+		*bytes += 31 << 3;
+		return 6;
+	} else if(number <= 72057594037927935) {
+		/* Let's use eight bytes */
+		if(blen < 8) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 8 bytes)\n", number);
+			return 0;
+		}
+		number = htonll(number);
+		memcpy(bytes, &number, sizeof(number));
+		*bytes = 0xFE;
+		return 8;
+	} else {
+		/* Let's use nine bytes */
+		if(blen < 9) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 9 bytes)\n", number);
+			return 0;
+		}
+		number = htonll(number);
+		memcpy(bytes + 1, &number, sizeof(number));
+		*bytes = 0xFF;
+		return 9;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_WARN, "Didn't write moqint '%"SCNu64"'\n", number);
 	return 0;
 }
 
