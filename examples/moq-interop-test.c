@@ -143,11 +143,11 @@ static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *con
 static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint64_t request_id,
 	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 static void imquic_moq_interop_connection_gone(imquic_connection *conn);
 
 /* Main */
@@ -541,7 +541,7 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
-		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), 0, &tns[0], &tn, NULL);
+		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), &tns[0], &tn, NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to non-existing track"));
 	} else if((test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
@@ -558,7 +558,7 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
-		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), 0, &tns[0], &tn, NULL);
+		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), &tns[0], &tn, NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to track"));
 		if(test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
@@ -630,7 +630,7 @@ static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, 
 }
 
 static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
-		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* Depending on the test, we may or may not be done */
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
@@ -672,7 +672,7 @@ static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint6
 }
 
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval) {
+		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	/* Depending on the test, we may or may not be done */
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);

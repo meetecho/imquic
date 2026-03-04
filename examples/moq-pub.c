@@ -122,12 +122,6 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], &params);
 	} else {
 		/* We use PUBLISH */
-		if(moq_version < IMQUIC_MOQ_VERSION_12) {
-			/* Version is too old, we can't: stop here */
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
-			g_atomic_int_inc(&stop);
-			return;
-		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, pub_tn);
 		moq_request_id = imquic_moq_get_next_request_id(conn);
 		gboolean forward = FALSE;
@@ -192,29 +186,23 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64"/%"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id, track_alias);
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id);
-	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, request_id);
 	if(pub_tns == NULL || strcasecmp(ns, pub_tns) || strcasecmp(name, pub_tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace or track\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", track_alias, 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", 0);
 		return;
 	}
 	if(options.publish || g_atomic_int_get(&send_objects)) {
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] We already have a subscriber\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", track_alias, 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", 0);
 		return;
 	}
 	/* TODO Check if it matches our published namespace */
@@ -256,8 +244,6 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Accept the subscription */
 	moq_request_id = request_id;
-	if(moq_version < IMQUIC_MOQ_VERSION_12)
-		moq_track_alias = track_alias;
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.expires_set = TRUE;
@@ -453,11 +439,9 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled (ticket file '%s')\n", options.ticket_file);
 	if(options.moq_version != NULL) {
 		if(!strcasecmp(options.moq_version, "any")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 11 and %d\n", IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and %d\n",
+				IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE, IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY;
-		} else if(!strcasecmp(options.moq_version, "legacy")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
-			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
@@ -495,11 +479,6 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' extension)\n", options.first_object);
 	if(options.publish) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
-		if(moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12) {
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
-			ret = 1;
-			goto done;
-		}
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64", if a version higher or equal than 12 is negotiated\n",
 		options.track_alias);

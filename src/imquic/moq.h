@@ -34,12 +34,8 @@
  * \ref IMQUIC_MOQ_VERSION_ANY , which means that for clients it will offer
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
- * WebTransort protocol; a "legacy" version called \ref IMQUIC_MOQ_VERSION_ANY_LEGACY
- * is available, to negotiate any supported version between v11 and v14.
- * The reason for this separation of version negotiation in different
- * groups is due to the incompatibility in the messaging on the wire, which
- * saw a few breaking changes. At the time of writing, this stack
- * supports MoQ versions from v11 (\ref IMQUIC_MOQ_VERSION_11) up to v17
+ * WebTransort protocol. At the time of writing, this stack
+ * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v17
  * (\ref IMQUIC_MOQ_VERSION_17), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
@@ -410,8 +406,7 @@ typedef struct imquic_moq_subscription_filter {
 	uint64_t end_group;
 } imquic_moq_subscription_filter;
 
-/*! \brief Subscribe options for namespaces
- * \note Only supported since version -16 of the protocol */
+/*! \brief Subscribe options for namespaces */
 typedef enum imquic_moq_subscribe_namespace_options {
 	IMQUIC_MOQ_WANT_PUBLISH = 0x0,
 	IMQUIC_MOQ_WANT_NAMESPACE = 0x1,
@@ -423,10 +418,7 @@ typedef enum imquic_moq_subscribe_namespace_options {
 const char *imquic_moq_subscribe_namespace_options_str(imquic_moq_subscribe_namespace_options type);
 
 /*! \brief MoQ request parameters
- * \note This struct is used in the MoQ API signatures even when the
- * negotiated version of MoQ is lower than v15, that is when most of
- * the properties below were fields in the messages themselves, rather
- * than parameters as they are now. The library takes care of the
+ * \note The library takes care of the
  * serialization/deserialization process automatically, so you can
  * refer to this struct from an application perspective, and the
  * library will take care of the rest. Notice that not all of these
@@ -444,18 +436,6 @@ typedef struct imquic_moq_request_parameters {
 	gboolean delivery_timeout_set;
 	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
 	uint64_t delivery_timeout;
-	/*! \brief Whether the MAX_CACHE_DURATION parameter is set
-	 * \note Deprecated in v16, and moved to Track Extensions */
-	gboolean max_cache_duration_set;
-	/*! \brief Value of the MAX_CACHE_DURATION parameter
-	 * \note Deprecated in v16, and moved to Track Extensions */
-	uint64_t max_cache_duration;
-	/*! \brief Whether the PUBLISHER_PRIORITY parameter is set
-	 * \note Deprecated in v16, and moved to Track Extensions */
-	gboolean publisher_priority_set;
-	/*! \brief Value of the PUBLISHER_PRIORITY parameter
-	 * \note Deprecated in v16, and moved to Track Extensions */
-	uint8_t publisher_priority;
 	/*! \brief Whether the SUBSCRIBER_PRIORITY parameter is set */
 	gboolean subscriber_priority_set;
 	/*! \brief Value of the SUBSCRIBER_PRIORITY parameter */
@@ -480,12 +460,6 @@ typedef struct imquic_moq_request_parameters {
 	gboolean forward_set;
 	/*! \brief Value of the FORWARD parameter */
 	gboolean forward;
-	/*! \brief Whether the DYNAMIC_GROUPS parameter is set
-	 * \note Deprecated in v16, and moved to Track Extensions */
-	gboolean dynamic_groups_set;
-	/*! \brief Value of the DYNAMIC_GROUPS parameter
-	 * \note Deprecated in v16, and moved to Track Extensions */
-	gboolean dynamic_groups;
 	/*! \brief Whether the NEW_GROUP_REQUEST parameter is set */
 	gboolean new_group_request_set;
 	/*! \brief Value of the NEW_GROUP_REQUEST parameter */
@@ -519,8 +493,6 @@ const char *imquic_moq_delivery_str(imquic_moq_delivery type);
 typedef enum imquic_moq_object_status {
 	/*! \brief Normal object */
 	IMQUIC_MOQ_NORMAL_OBJECT = 0x0,
-	/*! \brief Object doesn't exist (deprecated in v16) */
-	IMQUIC_MOQ_OBJECT_DOESNT_EXIST = 0x1,
 	/*! \brief End of group */
 	IMQUIC_MOQ_END_OF_GROUP = 0x3,
 	/*! \brief End of track */
@@ -553,15 +525,15 @@ typedef struct imquic_moq_object_extension {
  * \note The library will not try to interpret extensions and their
  * payload: this is always left up to applications */
 typedef enum imquic_moq_extension_type {
-	/* Delivery Timeout (added in v16) */
+	/* Delivery Timeout */
 	IMQUIC_MOQ_EXT_DELIVERY_TIMEOUT = 0x02,
-	/* Max Cache Duration (added in v16) */
+	/* Max Cache Duration */
 	IMQUIC_MOQ_EXT_MAX_CACHE_DURATION = 0x04,
-	/* Default Publisher Priority (added in v16) */
+	/* Default Publisher Priority */
 	IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
-	/* Default Group Order (added in v16) */
+	/* Default Group Order */
 	IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER = 0x22,
-	/* Dynamic Groups (added in v16) */
+	/* Dynamic Groups */
 	IMQUIC_MOQ_EXT_DYNAMIC_GROUPS = 0x30,
 	/* Prior Group ID Gap */
 	IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP = 0x3C,
@@ -709,7 +681,6 @@ typedef enum imquic_moq_request_error_code {
 	/* Others */
 	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,
 	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
-	IMQUIC_MOQ_REQERR_UNKNOWN_STATUS_IN_RANGE = 0x33,	/* Deprecated in v16 */
 } imquic_moq_request_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
  * @param code The imquic_moq_request_error_code value
@@ -902,7 +873,7 @@ void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe Pointer to the function that will handle the incoming \c SUBSCRIBE */
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was accepted
@@ -915,7 +886,7 @@ void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
 void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval));
+	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
 /*! \brief Configure the callback function to be notified when an update
  * is received for a request (e.g., a \c SUBSCRIBE ) we previously sent
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -924,7 +895,6 @@ void imquic_set_request_updated_cb(imquic_endpoint *endpoint,
 	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an OK
  * is received for a \c REQUEST_UPDATE we previously sent
- * @note This was only added in v15, and so will never be fired on older versions.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param request_update_accepted Pointer to the function that will fire when a \c REQUEST_UPDATE is acknowledged */
 void imquic_set_request_update_accepted_cb(imquic_endpoint *endpoint,
@@ -1035,7 +1005,7 @@ void imquic_set_incoming_track_status_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param track_status_accepted Pointer to the function that will fire when a \c TRACK_STATUS is accepted */
 void imquic_set_track_status_accepted_cb(imquic_endpoint *endpoint,
-	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters));
+	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when a
  * \c TRACK_STATUS we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1067,18 +1037,8 @@ void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
 typedef enum imquic_moq_version {
 	/* Base */
 	IMQUIC_MOQ_VERSION_BASE = 0xff000000,
-	/* Draft version -11 */
-	IMQUIC_MOQ_VERSION_MIN = 0xff00000B,
-	IMQUIC_MOQ_VERSION_11 = 0xff00000B,
-	/* Draft version -12 */
-	IMQUIC_MOQ_VERSION_12 = 0xff00000C,
-	/* Draft version -13 */
-	IMQUIC_MOQ_VERSION_13 = 0xff00000D,
-	/* Draft version -14 */
-	IMQUIC_MOQ_VERSION_14 = 0xff00000E,
-	/* Draft version -15 */
-	IMQUIC_MOQ_VERSION_15 = 0xff00000F,
 	/* Draft version -16 */
+	IMQUIC_MOQ_VERSION_MIN = 0xff000010,
 	IMQUIC_MOQ_VERSION_16 = 0xff000010,
 	/* Draft version -17 */
 	IMQUIC_MOQ_VERSION_17 = 0xff000011,
@@ -1086,9 +1046,6 @@ typedef enum imquic_moq_version {
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
-	/* Any version between v11 and v14: for client, it means offer all those versions;
-	 * for servers, it means accept the first supported offered version */
-	IMQUIC_MOQ_VERSION_ANY_LEGACY = 0xff0000fe
 } imquic_moq_version;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_version property.
  * @param version The imquic_moq_version property
@@ -1150,7 +1107,7 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, i
 /*! \brief Function to accept an incoming \c PUBLISH_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c PUBLISH_NAMESPACE request
- * @param parameters The parameters to add to the request (ignored before v15)
+ * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
@@ -1159,7 +1116,7 @@ int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t reques
  * @param request_id The request ID of the original \c PUBLISH_NAMESPACE request
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_publish_namespace(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
@@ -1175,7 +1132,7 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namesp
  * @param tn The imquic_moq_name track name to publish to
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param parameters The parameters to add to the request
- * @param track_extensions List of track extensions to add, if any (added in v16)
+ * @param track_extensions List of track extensions to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_publish(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn,
@@ -1191,26 +1148,25 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
  * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 /*! \brief Function to send a \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription
- * @param track_alias A unique numeric identifier to associate to the track in this subscription (ignored starting from v12)
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
  * @param tn The imquic_moq_name track name to subscribe to
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
- * @param track_alias The unique \c track_alias value associated to the subscription to accept (ignored before v12)
+ * @param track_alias The unique \c track_alias value associated to the subscription to accept
  * @param parameters The parameters to add to the request
- * @param track_extensions List of track extensions to add, if any (added in v16)
+ * @param track_extensions List of track extensions to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
 	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
@@ -1219,24 +1175,19 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
  * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param track_alias The unique \c track_alias value associated to the subscription to reject (ignored starting from v12)
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 /*! \brief Function to send a \c REQUEST_UPDATE request
- * \note Version 14 of the draft introduced a new "Subscription Request ID", which means
- * the meaning of \c request_id will change depending on which version the connection is using.
  * @param conn The imquic_connection to send the request on
  * @param request_id Unique \c request_id value (before v14, this is associated to the subscription to update)
- * @param sub_request_id Unique \c request_id value associated to the subscription to update (ignored before v14)
+ * @param sub_request_id Unique \c request_id value associated to the subscription to update
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id,
 	uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c REQUEST_UPDATE request
- * \note This acknowledgement was only added in v15, which means it will
- * be a no-action if you try to send it when negotiating an older version
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c REQUEST_UPDATE request
  * @param parameters The parameters to add to the request
@@ -1244,13 +1195,11 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id,
 int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
 /*! \brief Function to reject an incoming \c REQUEST_UPDATE request
- * \note This error response was only added in v15, which means it will
- * be a no-action if you try to send it when negotiating an older version
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
@@ -1272,7 +1221,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
- * @param subscribe_options The subscribe options to add to the request (added in v16, ignored otherwise)
+ * @param subscribe_options The subscribe options to add to the request
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
@@ -1280,7 +1229,7 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 /*! \brief Function to accept an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
- * @param parameters The parameters to add to the request (ignored before v15)
+ * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
@@ -1289,7 +1238,7 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
@@ -1297,13 +1246,12 @@ int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t requ
  * \note Starting in v16, this doesn't actually send a request, but simply
  * closes the bidirectional STREAM that was created for the subscription
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request (added in v15, ignored otherwise)
- * @param tns The imquic_moq_namespace namespace to unsubscribe notifications from (deprecated in v15)
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a \c NAMESPACE request
- * \note This was added in v16, and while the request itself doesn't contain
- * the request ID, we use it to find the subscription and use the right STREAM
+ * \note While the request itself doesn't contain the request ID, we use
+ * it to find the subscription and use the right STREAM.
  * Notice the method expects the full track namespace: the stack will strip
  * the prefix itself, before sending the actual message.
  * @param conn The imquic_connection to send the request on
@@ -1312,8 +1260,8 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_i
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 /*! \brief Function to send a \c NAMESPACE_DONE request
- * \note This was added in v16, and while the request itself doesn't contain
- * the request ID, we use it to find the subscription and use the right STREAM.
+ * \note While the request itself doesn't contain the request ID, we use
+ * it to find the subscription and use the right STREAM.
  * Notice the method expects the full track namespace: the stack will strip
  * the prefix itself, before sending the actual message.
  * @param conn The imquic_connection to send the request on
@@ -1348,7 +1296,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
  * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param largest The largest group/object IDs
  * @param parameters The parameters to add to the request
- * @param track_extensions List of track extensions to add, if any (added in v16)
+ * @param track_extensions List of track extensions to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions);
@@ -1357,7 +1305,7 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
  * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
@@ -1367,8 +1315,6 @@ int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a \c TRACK_STATUS request
- * \note Due to considerable changes between v12 and v13 on \c TRACK_STATUS ,
- * support for this request is disabled in versions earlier than v13.
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this request
  * @param tns The imquic_moq_namespace namespace the track to track_status to belongs to
@@ -1378,23 +1324,18 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
 int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c TRACK_STATUS request
- * \note Due to considerable changes between v12 and v13 on \c TRACK_STATUS ,
- * support for this request is disabled in versions earlier than v13.
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to query
- * @param track_alias The unique \c track_alias value associated to the subscription to query (ignored after v15)
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters);
+	imquic_moq_request_parameters *parameters);
 /*! \brief Function to reject an incoming \c TRACK_STATUS request
- * @note Due to considerable changes between v12 and v13 on \c TRACK_STATUS ,
- * support for this request is disabled in versions earlier than v13
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_track_status(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);

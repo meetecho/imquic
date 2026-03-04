@@ -4,7 +4,7 @@
  * \brief  Media Over QUIC (MoQ) stack (headers)
  * \details Implementation of the Media Over QUIC (MoQ) stack as part
  * of the library itself. At the time of writing, this implements (most
- * of) versions from -06 to to -12 of the protocol.
+ * of) versions from -16 to to -17 of the protocol.
  *
  * \note This is the internal implementation of MoQ in the library. You're
  * still free to only use imquic as the underlying QUIC/WebTransport library,
@@ -39,40 +39,30 @@ void imquic_moq_deinit(void);
 
 /*! \brief MoQ messages */
 typedef enum imquic_moq_message_type {
-	IMQUIC_MOQ_REQUEST_OK = 0x5,						/* Added in v15 */
-	IMQUIC_MOQ_REQUEST_ERROR = 0x7,						/* Added in v15 */
+	IMQUIC_MOQ_REQUEST_OK = 0x5,
+	IMQUIC_MOQ_REQUEST_ERROR = 0x7,
 	IMQUIC_MOQ_REQUEST_UPDATE = 0x2,
 	IMQUIC_MOQ_SUBSCRIBE = 0x3,
 	IMQUIC_MOQ_SUBSCRIBE_OK = 0x4,
-		IMQUIC_MOQ_SUBSCRIBE_ERROR = 0x5,				/* Deprecated in v15 */
 	IMQUIC_MOQ_PUBLISH_NAMESPACE = 0x6,
-		IMQUIC_MOQ_PUBLISH_NAMESPACE_OK = 0x7,			/* Deprecated in v15 */
-		IMQUIC_MOQ_PUBLISH_NAMESPACE_ERROR = 0x8,		/* Deprecated in v15 */
 	IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE = 0x9,
 	IMQUIC_MOQ_UNSUBSCRIBE = 0xa,
 	IMQUIC_MOQ_PUBLISH_DONE = 0xb,
 	IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL = 0xc,
 	IMQUIC_MOQ_TRACK_STATUS = 0xd,
-		IMQUIC_MOQ_TRACK_STATUS_OK = 0xe,				/* Deprecated in v15 */
-		IMQUIC_MOQ_TRACK_STATUS_ERROR = 0xf,			/* Deprecated in v15 */
 	IMQUIC_MOQ_GOAWAY = 0x10,
 	IMQUIC_MOQ_SUBSCRIBE_NAMESPACE = 0x11,
-		IMQUIC_MOQ_SUBSCRIBE_NAMESPACE_OK = 0x12,		/* Deprecated in v15 */
-		IMQUIC_MOQ_SUBSCRIBE_NAMESPACE_ERROR = 0x13,	/* Deprecated in v15 */
-	IMQUIC_MOQ_UNSUBSCRIBE_NAMESPACE = 0x14,			/* Deprecated in v16 */
-	IMQUIC_MOQ_NAMESPACE = 0x8,							/* Added in v16 */
-	IMQUIC_MOQ_NAMESPACE_DONE = 0xe,					/* Added in v16 */
+	IMQUIC_MOQ_NAMESPACE = 0x8,
+	IMQUIC_MOQ_NAMESPACE_DONE = 0xe,
 	IMQUIC_MOQ_MAX_REQUEST_ID = 0x15,
 	IMQUIC_MOQ_REQUESTS_BLOCKED = 0x1A,
 	IMQUIC_MOQ_FETCH = 0x16,
 	IMQUIC_MOQ_FETCH_CANCEL = 0x17,
 	IMQUIC_MOQ_FETCH_OK = 0x18,
-		IMQUIC_MOQ_FETCH_ERROR = 0x19,					/* Deprecated in v15 */
 	IMQUIC_MOQ_CLIENT_SETUP = 0x20,
 	IMQUIC_MOQ_SERVER_SETUP = 0x21,
 	IMQUIC_MOQ_PUBLISH = 0x1D,
 	IMQUIC_MOQ_PUBLISH_OK = 0x1E,
-		IMQUIC_MOQ_PUBLISH_ERROR = 0x1F,				/* Deprecated in v15 */
 } imquic_moq_message_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_message_type value.
  * @param type The imquic_moq_message_type value
@@ -98,8 +88,8 @@ gboolean imquic_moq_is_datagram_message_type_valid(imquic_moq_version version, u
  * @param payload Whether there is a payload
  * @param ext Whether there are extensions
  * @param eog Whether there is an End of Group
- * @param oid Whether there is an Object ID (ignored before v14)
- * @param priority Whether there is a Publisher Priority (ignored before v15)
+ * @param oid Whether there is an Object ID
+ * @param priority Whether there is a Publisher Priority
  * @returns The type as a bitmask flag */
 uint8_t imquic_moq_datagram_message_type_return(imquic_moq_version version,
 	gboolean payload, gboolean ext, gboolean eog, gboolean oid, gboolean priority);
@@ -110,8 +100,8 @@ uint8_t imquic_moq_datagram_message_type_return(imquic_moq_version version,
  * @param[out] payload Output variable to write whether there is a payload
  * @param[out] ext Output variable to write whether there are extensions
  * @param[out] eog Output variable to write whether there is an End of Group
- * @param[out] oid Output variable to write whether there is an Object ID (ignored before v14)
- * @param[out] priority Output variable to write whether there is a Publisher Priority (added in v15)
+ * @param[out] oid Output variable to write whether there is an Object ID
+ * @param[out] priority Output variable to write whether there is a Publisher Priority
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t type,
 	gboolean *payload, gboolean *ext, gboolean *eog, gboolean *oid, gboolean *priority, gboolean *violation);
@@ -124,19 +114,11 @@ const char *imquic_moq_datagram_message_type_str(uint8_t type, imquic_moq_versio
 /*! \brief MoQ \c STREAM data messages */
 typedef enum imquic_moq_data_message_type {
 	/* IMQUIC_MOQ_SUBGROUP_HEADER_XXX */
-		/* v11 */
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_NOEXT_v11 = 0x8,	/* Deprecated in v12 */
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID0_v11 = 0x9,		/* Deprecated in v12 */
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_NOEXT_v11 = 0xA,	/* Deprecated in v12 */
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOSGID_v11 = 0xB,		/* Deprecated in v12 */
-		IMQUIC_MOQ_SUBGROUP_HEADER_NOEXT_v11 = 0xC,			/* Deprecated in v12 */
-		IMQUIC_MOQ_SUBGROUP_HEADER_v11 = 0xD,				/* Deprecated in v12 */
-		/* v12 and beyond */
-		IMQUIC_MOQ_SUBGROUP_HEADER = 0x10,
-			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN = 0x10,
-			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX = 0x1D,
-			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN = 0x30,
-			IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX = 0x3D,
+	IMQUIC_MOQ_SUBGROUP_HEADER = 0x10,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN = 0x10,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX = 0x1D,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN = 0x30,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX = 0x3D,
 	/* IMQUIC_MOQ_FETCH_HEADER */
 	IMQUIC_MOQ_FETCH_HEADER = 0x5,
 } imquic_moq_data_message_type;
@@ -151,7 +133,7 @@ gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8
  * @param[in] sgid0 Whether the default value of Subgroup ID is 0, in case the field is missing
  * @param[in] ext Whether there are extensions
  * @param[in] eog Whether there is an End of Group
- * @param[in] priority Whether there is a Publisher Priority (added in v15)
+ * @param[in] priority Whether there is a Publisher Priority
  * @returns The type as a bitmask flag */
 uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version,
 	gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog, gboolean priority);
@@ -162,7 +144,7 @@ uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version ver
  * @param[out] sgid0 Output variable to write whether the default value of Subgroup ID is 0, in case the field is missing
  * @param[out] ext Output variable to write whether there are extensions
  * @param[out] eog Output variable to write whether there is an End of Group
- * @param[out] priority Output variable to write whether there is a Publisher Priority (added in v15)
+ * @param[out] priority Output variable to write whether there is a Publisher Priority
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
 	gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog, gboolean *priority, gboolean *violation);
@@ -210,7 +192,7 @@ uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version versio
  * @param[out] subgroup Output variable to write the type of subgroup
  * @param[out] oid Output variable to write whether the Object ID field is present
  * @param[out] group Output variable to write whether the Group ID field is present
- * @param[out] priority Output variable to write whether there is a Publisher Priority (added in v15)
+ * @param[out] priority Output variable to write whether there is a Publisher Priority
  * @param[out] ext Output variable to write whether there are extensions
  * @param[out] datagram Output variable to write whether the forwarding preference is Datagram
  * @param[out] end_ne_range Output variable to write whether this is the end of a non-existent range
@@ -236,18 +218,14 @@ const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type 
 
 /*! \brief MoQ request parameter types */
 typedef enum imquic_moq_request_parameter_type {
-	IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN_v11 = 0x01,	/* Deprecated in v12 */
 	IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN = 0x03,
 	IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT = 0x02,
-	IMQUIC_MOQ_REQUEST_PARAM_MAX_CACHE_DURATION = 0x04,		/* Deprecated in v16 */
-	IMQUIC_MOQ_REQUEST_PARAM_PUBLISHER_PRIORITY = 0x0E,		/* Deprecated in v16 */
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY = 0x20,
 	IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER = 0x22,
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER = 0x21,
 	IMQUIC_MOQ_REQUEST_PARAM_EXPIRES = 0x8,
 	IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT = 0x9,
 	IMQUIC_MOQ_REQUEST_PARAM_FORWARD = 0x10,
-	IMQUIC_MOQ_REQUEST_PARAM_DYNAMIC_GROUPS = 0x30,		/* Deprecated in v16 */
 	IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST = 0x32,
 } imquic_moq_request_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_parameter_type value.
@@ -313,34 +291,6 @@ typedef enum imquic_moq_fetch_type {
  * @param type The imquic_moq_fetch_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_fetch_type_str(imquic_moq_fetch_type type);
-
-/*! \brief MoQ legacy (pre-v15) error codes and translation to/from new ones */
-typedef enum imquic_moq_legacy_error_code {
-	IMQUIC_MOQ_OLDERR_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_OLDERR_UNAUTHORIZED = 0x1,
-	IMQUIC_MOQ_OLDERR_TIMEOUT = 0x2,
-	IMQUIC_MOQ_OLDERR_NOT_SUPPORTED = 0x3,
-	IMQUIC_MOQ_OLDERR_UNINTERESTED = 0x4,
-	IMQUIC_MOQ_OLDERR_TRACK_DOES_NOT_EXIST = 0x4,
-	IMQUIC_MOQ_OLDERR_INVALID_RANGE = 0x5,
-	IMQUIC_MOQ_OLDERR_INVALID_JOINING_REQUEST_ID = 0x7,
-	IMQUIC_MOQ_OLDERR_UNKNOWN_STATUS_IN_RANGE = 0x8,
-	IMQUIC_MOQ_OLDERR_MALFORMED_TRACK = 0x9,
-	IMQUIC_MOQ_OLDERR_MALFORMED_AUTH_TOKEN = 0x10,
-	IMQUIC_MOQ_OLDERR_EXPIRED_AUTH_TOKEN = 0x12,
-} imquic_moq_legacy_error_code;
-/*! \brief Helper to translate a new request error code passed by the
- * user to a legacy error code, if serializing on an old version of MoQ
- * @param version The version this connection is using
- * @param code The new request error code
- * @returns The associated legacy error code, if available, or a generic internal error otherwise */
-imquic_moq_legacy_error_code imquic_moq_request_error_code_to_legacy(imquic_moq_version version, imquic_moq_request_error_code code);
-/*! \brief Helper to translate a legacy error code parsed by the stack
- * to a new request error code, if receiving from an old version of MoQ
- * @param version The version this connection is using
- * @param code The legacy error code
- * @returns The associated new request error code, if available, or a generic internal error otherwise */
-imquic_moq_request_error_code imquic_moq_request_error_code_from_legacy(imquic_moq_version version, imquic_moq_legacy_error_code code);
 
 /*! \brief MoQ context */
 typedef struct imquic_moq_context {
@@ -512,22 +462,16 @@ size_t imquic_moq_parse_max_request_id(imquic_moq_context *moq, uint8_t *bytes, 
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c REQUEST_OK message
- * \note This message was only added in v15, and consolidates most OK
- * messages that existed until then. It will automatically trigger the
- * right callback, by checking what the original request was for
  * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] moq_stream The imquic_moq_stream instance the message came from (ignored before v16, only needed for namespaces)
+ * @param[in] moq_stream The imquic_moq_stream instance the message came from
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c REQUEST_ERROR message
- * \note This message was only added in v15, and consolidates all error
- * messages that existed until then. It will automatically trigger the
- * right callback, by checking what the original request was for
  * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] moq_stream The imquic_moq_stream instance the message came from (ignored before v16, only needed for namespaces)
+ * @param[in] moq_stream The imquic_moq_stream instance the message came from
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
@@ -540,20 +484,6 @@ size_t imquic_moq_parse_request_error(imquic_moq_context *moq, imquic_moq_stream
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse a \c PUBLISH_NAMESPACE_OK message
- * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] bytes The buffer containing the message to parse
- * @param[in] blen Size of the buffer to parse
- * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
- * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_publish_namespace_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse a \c PUBLISH_NAMESPACE_ERROR message
- * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] bytes The buffer containing the message to parse
- * @param[in] blen Size of the buffer to parse
- * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
- * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_publish_namespace_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c PUBLISH_NAMESPACE_DONE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -633,7 +563,7 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 size_t imquic_moq_parse_publish_done(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c SUBSCRIBE_NAMESPACE message
  * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] moq_stream The imquic_moq_stream instance the message came from (ignored before v16)
+ * @param[in] moq_stream The imquic_moq_stream instance the message came from
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
@@ -661,7 +591,6 @@ size_t imquic_moq_parse_subscribe_namespace_error(imquic_moq_context *moq, uint8
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c NAMESPACE message
- * \note This method was added in v16, to notify namespaces on a dedicated STREAM
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_stream instance the message came from
  * @param[in] bytes The buffer containing the message to parse
@@ -670,7 +599,6 @@ size_t imquic_moq_parse_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c NAMESPACE_DONE message
- * \note This method was added in v16, to notify namespaces on a dedicated STREAM
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_stream instance the message came from
  * @param[in] bytes The buffer containing the message to parse
@@ -794,20 +722,18 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param supported_versions List of supported versions
  * @param parameters The setup parameters to send
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	GList *supported_versions, imquic_moq_setup_parameters *parameters);
+	imquic_moq_setup_parameters *parameters);
 /*! \brief Helper method to add a \c SERVER_SETUP message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param version Negotiated version
  * @param parameters The setup parameters to send
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint32_t version, imquic_moq_setup_parameters *parameters);
+	imquic_moq_setup_parameters *parameters);
 /*! \brief Helper method to add a \c MAX_REQUEST_ID message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -823,8 +749,6 @@ size_t imquic_moq_add_max_request_id(imquic_moq_context *moq, uint8_t *bytes, si
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t max_request_id);
 /*! \brief Helper method to add a \c REQUEST_OK message to a buffer
- * \note This message was only added in v15, and consolidates most OK
- * messages that existed until then
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
  * @param bytes The buffer to add the message to
@@ -835,8 +759,6 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
 size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c REQUEST_ERROR message to a buffer
- * \note This message was only added in v15, and consolidates all
- * error messages that existed until then
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
  * @param bytes The buffer to add the message to
@@ -844,7 +766,7 @@ size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq
  * @param request_id The request ID to put in the message
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
- * @param retry_interval Retry interval in ms (added in v16, ignored otherwise)
+ * @param retry_interval Retry interval in ms
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_request_error(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t error, const char *reason, uint64_t retry_interval);
@@ -901,7 +823,7 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
  * @param track_name The track name to put in the message
  * @param track_alias The track alias to put in the message
  * @param parameters The parameters to add, if any
- * @param track_extensions List of track extensions to add, if any (added in v16)
+ * @param track_extensions List of track extensions to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias,
@@ -930,19 +852,18 @@ size_t imquic_moq_add_publish_error(imquic_moq_context *moq, uint8_t *bytes, siz
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
- * @param track_alias The track alias to put in the message
  * @param track_namespace The namespace to put in the message
  * @param track_name The track name to put in the message
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
+size_t imquic_moq_add_subscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c REQUEST_UPDATE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
- * @param sub_request_id The subscription request ID to put in the message (ignored before v14)
+ * @param sub_request_id The subscription request ID to put in the message
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_request_update(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
@@ -952,9 +873,9 @@ size_t imquic_moq_add_request_update(imquic_moq_context *moq, uint8_t *bytes, si
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
- * @param track_alias The track alias to put in the message (ignored before v12)
+ * @param track_alias The track alias to put in the message
  * @param parameters The parameters to add, if any
- * @param track_extensions List of track extensions to add, if any (added in v16)
+ * @param track_extensions List of track extensions to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
@@ -965,10 +886,9 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
  * @param request_id The request ID to put in the message
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
- * @param track_alias The track alias to put in the message (ignored starting from v12)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_error(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_request_error_code error, const char *reason, uint64_t track_alias);
+	imquic_moq_request_error_code error, const char *reason);
 /*! \brief Helper method to add an \c UNSUBSCRIBE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -994,7 +914,7 @@ size_t imquic_moq_add_publish_done(imquic_moq_context *moq, uint8_t *bytes, size
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
  * @param track_namespace The namespace to put in the message
- * @param subscribe_options The subscribe options to put in the message (added in v16)
+ * @param subscribe_options The subscribe options to put in the message
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
@@ -1020,10 +940,9 @@ size_t imquic_moq_add_subscribe_namespace_error(imquic_moq_context *moq, uint8_t
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param request_id The request ID to put in the message (added in v15)
- * @param track_namespace The namespace to put in the message (ignored starting from v15)
+ * @param request_id The request ID to put in the message
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_namespace *track_namespace);
+size_t imquic_moq_add_unsubscribe_namespace(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id);
 /*! \brief Helper method to add a \c NAMESPACE_DONE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -1074,7 +993,7 @@ size_t imquic_moq_add_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, size
  * @param end_of_track Whether all objects have been published
  * @param end_location End location to add to the message, if needed
  * @param parameters The parameters to add, if any
- * @param track_extensions List of track extensions to add, if any (added in v16)
+ * @param track_extensions List of track extensions to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	uint8_t end_of_track, imquic_moq_location *end_location, imquic_moq_request_parameters *parameters, GList *track_extensions);
@@ -1208,7 +1127,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param moq The imquic_moq_context generating the object
  * @param bytes The buffer to add the object to
  * @param blen The size of the buffer
- * @param flags The serialization flags (added in v15)
+ * @param flags The serialization flags
  * @param group_id The group ID
  * @param subgroup_id The subgroup ID
  * @param object_id The object ID
@@ -1331,12 +1250,12 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ERROR messages */
 	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
-	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
-	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval);
+	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c REQUEST_UPDATE messages */
 	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about an ACK to a previously sent \c REQUEST_UPDATE message */
@@ -1377,7 +1296,7 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ACCEPTED messages */
-	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters);
+	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ERROR messages */
 	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming MoQ objects */

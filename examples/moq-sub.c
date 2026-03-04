@@ -166,7 +166,6 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	/* Let's subscribe to the provided namespace/name(s) */
 	int i = 0;
 	uint64_t request_id = 0;
-	uint64_t track_alias = 0;
 	imquic_moq_namespace tns[32];	/* FIXME */
 	while(options.track_namespace[i] != NULL) {
 		const char *track_namespace = options.track_namespace[i];
@@ -193,23 +192,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	if(options.subscribe_namespace) {
 		/* Only send a SUBSCRIBE_NAMESPACE: the relay will send us a
 		 * PUBLISH request when there's something we can subscribe to */
-		if(moq_version < IMQUIC_MOQ_VERSION_12) {
-			/* Version is too old, we can't: stop here */
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
-			g_atomic_int_inc(&stop);
-			return;
-		}
-		/* Check if we need to request forwarding right away, or if we'll ask send an update later */
 		params.forward_set = TRUE;
 		params.forward = TRUE;
-		if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0))
+		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
 			params.forward = FALSE;
 		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), tns, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
-		return;
-	} else if(options.track_status && moq_version < IMQUIC_MOQ_VERSION_13) {
-		/* Version is too old, we can't: stop here */
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "TRACK_STATUS only supported starting from version 13\n");
-		g_atomic_int_inc(&stop);
 		return;
 	}
 	/* Parameters in case we need to FETCH */
@@ -223,7 +210,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	/* Check if we need to request forwarding right away, or if we'll ask send an update later */
 	params.forward_set = TRUE;
 	params.forward = TRUE;
-	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0))
+	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
 		params.forward = FALSE;
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
@@ -239,18 +226,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	while(options.track_name[i] != NULL) {
 		request_id = imquic_moq_get_next_request_id(conn);
 		const char *track_name = options.track_name[i];
-		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-			/* Older versions of MoQ passed the track alias in the SUBSCRIBE */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s--%s' (%s), using ID %"SCNu64"/%"SCNu64"\n",
-				imquic_get_connection_name(conn),
-				((options.fetch != NULL && options.join_offset < 0) ? "Fetching" : "Subscribing"),
-				ns, track_name, imquic_demo_payload_type_str(payload_type), request_id, track_alias);
-		} else {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s--%s' (%s), using ID %"SCNu64"\n",
-				imquic_get_connection_name(conn),
-				((options.fetch != NULL && options.join_offset < 0) ? "Fetching" : "Subscribing"),
-				ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
-		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s--%s' (%s), using ID %"SCNu64"\n",
+			imquic_get_connection_name(conn),
+			((options.fetch != NULL && options.join_offset < 0) ? "Fetching" : "Subscribing"),
+			ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
 		imquic_moq_name tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
@@ -258,7 +237,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		if(options.fetch == NULL) {
 			if(!options.track_status) {
 				/* Send a SUBSCRIBE */
-				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, &params);
+				imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
 				if(!params.forward)
 					request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 			} else {
@@ -276,13 +255,12 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				imquic_moq_standalone_fetch(conn, request_id, &tns[0], &tn, &range, &fparams);
 			} else {
 				/* Send a SUBSCRIBE first, we'll send the joining FETCH when the subscription is accepted */
-				imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, &params);
+				imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
 				if(!params.forward)
 					request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 			}
 		}
 		i++;
-		track_alias++;
 	}
 	if(!params.forward) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
@@ -325,14 +303,10 @@ static void imquic_demo_incoming_namespace_done(imquic_connection *conn, uint64_
 		imquic_get_connection_name(conn), ns);
 }
 
-static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Track status %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
 		imquic_get_connection_name(conn), request_id, parameters->expires,
 		imquic_moq_group_order_str(parameters->group_order));
-	if(imquic_moq_get_version(conn) <= IMQUIC_MOQ_VERSION_14) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
-				imquic_get_connection_name(conn), track_alias);
-	}
 	if(parameters->largest_object_set) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
@@ -355,11 +329,8 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		imquic_get_connection_name(conn), request_id, parameters->expires,
 		imquic_moq_group_order_str(parameters->group_order),
 		g_list_length(track_extensions));
-	if(imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_12) {
-		/* Starting from v12, the publisher always chooses the track_alias */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
-			imquic_get_connection_name(conn), track_alias);
-	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
+		imquic_get_connection_name(conn), track_alias);
 	if(parameters->largest_object_set) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
@@ -406,15 +377,9 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval) {
-	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-		/* Older versions of MoQ passed the track alias in the SUBSCRIBE */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to ID %"SCNu64"/%"SCNu64": error %d (%s)\n",
-			imquic_get_connection_name(conn), request_id, track_alias, error_code, reason);
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing via ID %"SCNu64": error %d (%s)\n",
-			imquic_get_connection_name(conn), request_id, error_code, reason);
-	}
+static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing via ID %"SCNu64": error %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -469,7 +434,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	rparams.subscription_filter.type = filter_type;
 	rparams.subscription_filter.start_location = start_location;
 	rparams.subscription_filter.end_group = end_location_sub.group;
-	if(options.update_subscribe > 0 && imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_11 && (options.fetch == NULL || options.join_offset >= 0)) {
+	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 			imquic_get_connection_name(conn), options.update_subscribe);
@@ -671,7 +636,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	} else if(object->request_id == 0 && payload_type == DEMO_TYPE_MP4) {
 		/* FIXME Ugly hack: if this is mp4, and our response to request ID 0, subscribe to another track */
 		uint64_t request_id = 1;
-		uint64_t track_alias = 1;
 		const char *track_name = "1.m4s";
 		imquic_moq_namespace tns[32];	/* FIXME */
 		int i = 0;
@@ -684,14 +648,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		char tns_buffer[256];
 		const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
-		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-			/* Older versions of MoQ passed the track alias in the SUBSCRIBE */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"/%"SCNu64"\n",
-				imquic_get_connection_name(conn), ns, track_name, imquic_demo_payload_type_str(payload_type), request_id, track_alias);
-		} else {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"\n",
-				imquic_get_connection_name(conn), ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
-		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"\n",
+			imquic_get_connection_name(conn), ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
 		imquic_moq_name tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
@@ -718,7 +676,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		params.subscription_filter.type = filter_type;
 		params.subscription_filter.start_location = start_location;
 		params.subscription_filter.end_group = end_location_sub.group;
-		imquic_moq_subscribe(conn, request_id, track_alias, &tns[0], &tn, &params);
+		imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
@@ -802,11 +760,9 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled (ticket file '%s')\n", options.ticket_file);
 	if(options.moq_version != NULL) {
 		if(!strcasecmp(options.moq_version, "any")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 11 and %d\n", IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and %d\n",
+				IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE, IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY;
-		} else if(!strcasecmp(options.moq_version, "legacy")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
-			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
@@ -833,20 +789,8 @@ int main(int argc, char *argv[]) {
 			goto done;
 		}
 	} else if(options.subscribe_namespace) {
-		if(moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12) {
-			/* Version is too old, we can't: stop here */
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
-			ret = 1;
-			goto done;
-		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE_NAMESPACE and incoming PUBLISH for the subscription\n");
 	} else if(options.track_status) {
-		if(moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_13) {
-			/* Version is too old, we can't: stop here */
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "TRACK_STATUS only supported starting from version 13\n");
-			ret = 1;
-			goto done;
-		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a TRACK_STATUS for simulating the subscription\n");
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE for the subscription\n");
@@ -1057,9 +1001,8 @@ int main(int argc, char *argv[]) {
 				params.subscription_filter.type = filter_type;
 				params.subscription_filter.start_location = start_location;
 				params.subscription_filter.end_group = end_location_sub.group;
-				uint64_t request_id = *rid, sub_request_id = request_id;
-				if(imquic_moq_get_version(moq_conn) >= IMQUIC_MOQ_VERSION_14)
-					request_id = imquic_moq_get_next_request_id(moq_conn);
+				uint64_t request_id = imquic_moq_get_next_request_id(moq_conn),
+					sub_request_id = request_id;
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a REQUEST_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
 					imquic_get_connection_name(moq_conn), *rid, request_id);
 				imquic_moq_update_request(moq_conn, request_id, sub_request_id, &params);

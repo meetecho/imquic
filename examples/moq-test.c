@@ -43,6 +43,7 @@ static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GMutex mutex;
 static GHashTable *connections = NULL, *subscribers = NULL;
 static void *imquic_demo_tester_thread(void *data);
+static uint64_t moq_track_alias = 0;
 
 /* Namespace tuple fields */
 typedef enum imquic_demo_tuple_field {
@@ -306,20 +307,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64"/%"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id, track_alias);
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id);
-	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, request_id);
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* Parse the namespace tuple to a test profile */
@@ -327,7 +322,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	char err[256];
 	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
 	if(res != 0) {
-		imquic_moq_reject_subscribe(conn, request_id, res, err, track_alias, 0);
+		imquic_moq_reject_subscribe(conn, request_id, res, err, 0);
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -346,11 +341,13 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		return;
 	}
 	/* Create a subscription to this track */
-	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, track_alias);
+	uint64_t new_track_alias = moq_track_alias;
+	moq_track_alias++;
+	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, new_track_alias);
 	memcpy(s->test, test, sizeof(test));
 	s->forward = parameters->forward;
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
-	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
+	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(new_track_alias), s);
 	g_mutex_unlock(&mutex);
 	/* Check the filter */
 	uint64_t filter_type = parameters->subscription_filter_set ?
@@ -387,7 +384,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	rparams.expires = 0;
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, NULL);
+	imquic_moq_accept_subscribe(conn, request_id, new_track_alias, &rparams, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -411,8 +408,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		return;
 	}
 	/* Update the subscription */
-	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id,
-		imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_14 ? &sub_request_id : &request_id);
+	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &sub_request_id);
 	if(s && !s->fetch && parameters->forward_set) {
 		/* TODO Update start location and end group too */
 		s->forward = parameters->forward;
@@ -827,11 +823,9 @@ int main(int argc, char *argv[]) {
 
 	if(options.moq_version != NULL) {
 		if(!strcasecmp(options.moq_version, "any")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 11 and %d\n", IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and %d\n",
+				IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE, IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY;
-		} else if(!strcasecmp(options.moq_version, "legacy")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
-			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
