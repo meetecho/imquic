@@ -1023,7 +1023,7 @@ void imquic_set_incoming_object_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_goaway Pointer to the function that will handle the incoming \c GOAWAY */
 void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
-	void (* incoming_goaway)(imquic_connection *conn, const char *uri));
+	void (* incoming_goaway)(imquic_connection *conn, const char *uri, uint64_t timeout));
 /*! \brief Configure the callback function to be notified when an existing
  * MoQ connection handled by this endpoint has been closed/shut down.
  * @note This is a good place to release the last reference to the connection
@@ -1357,8 +1357,9 @@ int imquic_moq_requests_blocked(imquic_connection *conn);
 /*! \brief Function to send a \c GOAWAY request
  * @param conn The imquic_connection to send the request on
  * @param uri Where the client can connect to continue the session
+ * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_goaway(imquic_connection *conn, const char *uri);
+int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout);
 ///@}
 
 #endif

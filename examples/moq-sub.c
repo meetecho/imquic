@@ -636,9 +636,10 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	}
 }
 
-static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri) {
+static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri, uint64_t timeout) {
 	/* Connection was closed */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s\n", imquic_get_connection_name(conn), uri);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s (timeout=%"SCNu64"ms)\n",
+		imquic_get_connection_name(conn), uri, timeout);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }

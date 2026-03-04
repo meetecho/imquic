@@ -1043,8 +1043,9 @@ size_t imquic_moq_add_track_status_error(imquic_moq_context *moq, uint8_t *bytes
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param new_session_uri New uri value to put in the message, if any
+ * @param timeout Timeout to put in the message (added in v17, ignored for older versions)
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri);
+size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri, uint64_t timeout);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -1302,7 +1303,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming MoQ objects */
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
-	void (* incoming_goaway)(imquic_connection *conn, const char *uri);
+	void (* incoming_goaway)(imquic_connection *conn, const char *uri, uint64_t timeout);
 	/*! \brief Callback function to be notified about MoQ connections being closed */
 	void (* connection_gone)(imquic_connection *conn);
 } imquic_moq_callbacks;

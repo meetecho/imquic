@@ -776,7 +776,7 @@ void imquic_set_incoming_object_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
-		void (* incoming_goaway)(imquic_connection *conn, const char *uri)) {
+		void (* incoming_goaway)(imquic_connection *conn, const char *uri, uint64_t timeout)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

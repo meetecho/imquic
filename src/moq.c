@@ -3452,10 +3452,18 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
 		}
 	}
 	offset += uri_len;
+	uint64_t timeout = 0;
+	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
+		timeout = imquic_read_varint(&bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken GOAWAY");
+		offset += length;
+	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("goaway");
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)uri_str, uri_len);
+		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "timeout", json_integer(timeout));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, bytes-3, offset+3, message);
 	}
 #endif
@@ -3463,7 +3471,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Multiple GOAWAY messages received");
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_goaway)
-		moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str);
+		moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str, timeout);
 	if(error)
 		*error = 0;
 	return offset;
@@ -4126,7 +4134,7 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, uint8_t *bytes, size
 	return offset;
 }
 
-size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri) {
+size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri, uint64_t timeout) {
 	if(bytes == NULL || blen < 1 || (new_session_uri && strlen(new_session_uri) > 8192)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_GOAWAY, moq->version));
@@ -4145,11 +4153,15 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t ble
 		memcpy(&bytes[offset], new_session_uri, uri_len);
 		offset += uri_len;
 	}
+	if(moq->version >= IMQUIC_MOQ_VERSION_17)
+		offset += imquic_write_varint(timeout, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("goaway");
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)new_session_uri, uri_len);
+		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "timeout", json_integer(timeout));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}
 #endif
@@ -5812,7 +5824,7 @@ int imquic_moq_requests_blocked(imquic_connection *conn) {
 	return 0;
 }
 
-int imquic_moq_goaway(imquic_connection *conn, const char *uri) {
+int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
@@ -5825,7 +5837,7 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri) {
 	imquic_mutex_unlock(&moq_mutex);
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t g_len = imquic_moq_add_goaway(moq, buffer, blen, uri);
+	size_t g_len = imquic_moq_add_goaway(moq, buffer, blen, uri, timeout);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		buffer, g_len, FALSE);
 	/* Done */
