@@ -370,31 +370,37 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code) {
 	switch(code) {
 		case IMQUIC_MOQ_REQERR_INTERNAL_ERROR:
-			return "INTERNAL_ERROR";
+			return "Internal Error";
 		case IMQUIC_MOQ_REQERR_UNAUTHORIZED:
-			return "UNAUTHORIZED";
+			return "Unauthorized";
 		case IMQUIC_MOQ_REQERR_TIMEOUT:
-			return "TIMEOUT";
+			return "Timeout";
 		case IMQUIC_MOQ_REQERR_NOT_SUPPORTED:
-			return "NOT_SUPPORTED";
+			return "Not Suppoered";
 		case IMQUIC_MOQ_REQERR_MALFORMED_AUTH_TOKEN:
-			return "MALFORMED_AUTH_TOKEN";
+			return "Malformed Auth Token";
 		case IMQUIC_MOQ_REQERR_EXPIRED_AUTH_TOKEN:
-			return "EXPIRED_AUTH_TOKEN";
+			return "Expired Auth Token";
+		case IMQUIC_MOQ_REQERR_GOING_AWAY:
+			return "Going Away";
+		case IMQUIC_MOQ_REQERR_EXCESSIVE_LOAD:
+			return "Excessive Load";
 		case IMQUIC_MOQ_REQERR_DOES_NOT_EXIST:
-			return "DOES_NOT_EXIST";
+			return "Does Not Exist";
 		case IMQUIC_MOQ_REQERR_INVALID_RANGE:
-			return "INVALID_RANGE";
+			return "Invalid Range";
 		case IMQUIC_MOQ_REQERR_MALFORMED_TRACK:
-			return "MALFORMED_TRACK";
+			return "Malformed Track";
 		case IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION:
-			return "DUPLICATE_SUBSCRIPTION";
+			return "Duplicate Subscription";
 		case IMQUIC_MOQ_REQERR_UNINTERESTED:
-			return "UNINTERESTED";
+			return "Uninterested";
 		case IMQUIC_MOQ_REQERR_PREFIX_OVERLAP:
-			return "PREFIX_OVERLAP";
+			return "Prefix Overlap";
+		case IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE:
+			return "Namespace Too Large";
 		case IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID:
-			return "INVALID_JOINING_REQUEST_ID";
+			return "Invalid Joining Request ID";
 		default: break;
 	}
 	return NULL;
@@ -416,10 +422,12 @@ const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code) {
 			return "Expired";
 		case IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND:
 			return "Too Far Behind";
-		case IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK:
-			return "Malformed Track";
 		case IMQUIC_MOQ_PUBDONE_UPDATE_FAILED:
 			return "Update Failed";
+		case IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD:
+			return "Excessive Load";
+		case IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK:
+			return "Malformed Track";
 		default: break;
 	}
 	return NULL;
@@ -437,6 +445,10 @@ const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code) 
 			return "Session Closed";
 		case IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS:
 			return "Unknown Object Status";
+		case IMQUIC_MOQ_RESET_TOO_FAR_BEHIND:
+			return "Too Far Behind";
+		case IMQUIC_MOQ_RESET_EXCESSIVE_LOAD:
+			return "Excessive Load";
 		case IMQUIC_MOQ_RESET_MALFORMED_TRACK:
 			return "Malformed Track";
 		default: break;

@@ -671,6 +671,8 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_NOT_SUPPORTED = 0x3,
 	IMQUIC_MOQ_REQERR_MALFORMED_AUTH_TOKEN = 0x4,
 	IMQUIC_MOQ_REQERR_EXPIRED_AUTH_TOKEN = 0x5,
+	IMQUIC_MOQ_REQERR_GOING_AWAY = 0x6,
+	IMQUIC_MOQ_REQERR_EXCESSIVE_LOAD = 0x9,
 	/* The following are returned by publishers */
 	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
 	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
@@ -680,6 +682,7 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
 	/* Others */
 	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,
+	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
 	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
 } imquic_moq_request_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
@@ -696,8 +699,9 @@ typedef enum imquic_moq_pub_done_code {
 	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
 	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x5,
 	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x6,
-	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
 	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
+	IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD = 0x9,
+	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
 } imquic_moq_pub_done_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_pub_done_code value.
  * @param code The imquic_moq_pub_done_code value
@@ -711,6 +715,8 @@ typedef enum imquic_moq_reset_stream_code {
 	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
 	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
 	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x4,
+	IMQUIC_MOQ_RESET_TOO_FAR_BEHIND = 0x5,
+	IMQUIC_MOQ_RESET_EXCESSIVE_LOAD = 0x9,
 	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
 } imquic_moq_reset_stream_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_reset_stream_code value.
