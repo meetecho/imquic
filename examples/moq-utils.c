@@ -22,51 +22,68 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 		new_obj->payload = g_malloc(object->payload_len);
 		memcpy(new_obj->payload, object->payload, object->payload_len);
 	}
-	new_obj->extensions = imquic_moq_object_extensions_duplicate(object->extensions);
+	new_obj->properties = imquic_moq_properties_duplicate(object->properties);
 	return new_obj;
 }
 
-/* Helper to duplicate a list of extensions */
-GList *imquic_moq_object_extensions_duplicate(GList *extensions) {
-	if(extensions == NULL)
-		return NULL;
-	GList *new_extensions = NULL;
-	GList *temp = extensions;
+/* Helper to print a list of properties */
+void imquic_moq_properties_print(GList *properties) {
+	GList *temp = properties;
 	while(temp) {
-		imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-		imquic_moq_object_extension *new_ext = g_malloc0(sizeof(imquic_moq_object_extension));
-		new_ext->id = ext->id;
-		if(ext->id % 2 == 0) {
-			new_ext->value.number = ext->value.number;
+		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+		const char *prop_name = imquic_moq_property_type_str(prop->id);
+		if(prop->id % 2 == 0) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Property '%"SCNu32"' (%s) = %"SCNu64"\n",
+				prop->id, (prop_name ? prop_name : "unknown"), prop->value.number);
 		} else {
-			new_ext->value.data.length = ext->value.data.length;
-			if(ext->value.data.length > 0) {
-				new_ext->value.data.buffer = g_malloc(ext->value.data.length);
-				memcpy(new_ext->value.data.buffer, ext->value.data.buffer, ext->value.data.length);
-			}
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Property '%"SCNu32"' (%s) = %.*s\n",
+				prop->id, (prop_name ? prop_name : "unknown"), (int)prop->value.data.length, prop->value.data.buffer);
 		}
-		new_extensions = g_list_prepend(new_extensions, new_ext);
 		temp = temp->next;
 	}
-	new_extensions = g_list_reverse(new_extensions);
-	return new_extensions;
+}
+
+/* Helper to duplicate a list of properties */
+GList *imquic_moq_properties_duplicate(GList *properties) {
+	if(properties == NULL)
+		return NULL;
+	GList *new_properties = NULL;
+	GList *temp = properties;
+	while(temp) {
+		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+		imquic_moq_property *new_prop = g_malloc0(sizeof(imquic_moq_property));
+		new_prop->id = prop->id;
+		if(prop->id % 2 == 0) {
+			new_prop->value.number = prop->value.number;
+		} else {
+			new_prop->value.data.length = prop->value.data.length;
+			if(prop->value.data.length > 0) {
+				new_prop->value.data.buffer = g_malloc(prop->value.data.length);
+				memcpy(new_prop->value.data.buffer, prop->value.data.buffer, prop->value.data.length);
+			}
+		}
+		new_properties = g_list_prepend(new_properties, new_prop);
+		temp = temp->next;
+	}
+	new_properties = g_list_reverse(new_properties);
+	return new_properties;
 }
 
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object) {
 	if(object) {
 		g_free(object->payload);
-		g_list_free_full(object->extensions, (GDestroyNotify)(imquic_moq_object_extension_cleanup));
+		g_list_free_full(object->properties, (GDestroyNotify)(imquic_moq_property_cleanup));
 		g_free(object);
 	}
 }
 
-/* Helper to destroy an object extension */
-void imquic_moq_object_extension_cleanup(imquic_moq_object_extension *extension) {
-	if(extension != NULL) {
-		if(extension->value.data.buffer != NULL)
-			g_free(extension->value.data.buffer);
-		g_free(extension);
+/* Helper to destroy an object propertie */
+void imquic_moq_property_cleanup(imquic_moq_property *property) {
+	if(property != NULL) {
+		if(property->value.data.buffer != NULL)
+			g_free(property->value.data.buffer);
+		g_free(property);
 	}
 }
 

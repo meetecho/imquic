@@ -79,7 +79,7 @@ typedef struct imquic_demo_moq_track {
 	gboolean pending;
 	GList *subscriptions;
 	GList *objects;
-	GList *extensions;
+	GList *properties;
 	imquic_mutex mutex;
 } imquic_demo_moq_track;
 static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_published_namespace *annc, const char *track_name);
@@ -236,8 +236,8 @@ static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 		t->subscriptions = NULL;
 		g_list_free_full(t->objects, (GDestroyNotify)imquic_moq_object_cleanup);
 		t->objects = NULL;
-		g_list_free_full(t->extensions, (GDestroyNotify)imquic_moq_object_extension_cleanup);
-		t->extensions = NULL;
+		g_list_free_full(t->properties, (GDestroyNotify)imquic_moq_property_cleanup);
+		t->properties = NULL;
 		imquic_mutex_unlock(&t->mutex);
 		imquic_mutex_destroy(&t->mutex);
 		g_free(t);
@@ -406,7 +406,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			};
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
-			imquic_moq_publish(mon->conn, relay_request_id, tns, &tn, relay_track_alias, &params, track->extensions);
+			imquic_moq_publish(mon->conn, relay_request_id, tns, &tn, relay_track_alias, &params, track->properties);
 		}
 		temp = temp->next;
 	}
@@ -561,13 +561,13 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_m
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d extensions)\n",
-		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_extensions));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
+		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(name == NULL || strlen(name) == 0)
@@ -603,7 +603,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	track->published = TRUE;
 	track->pending = FALSE;
 	track->track_alias_valid = TRUE;
-	track->extensions = imquic_moq_object_extensions_duplicate(track_extensions);
+	track->properties = imquic_moq_properties_duplicate(track_properties);
 	g_hash_table_insert(annc->tracks, g_strdup(name), track);
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 	g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
@@ -885,7 +885,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			rparams.largest_object_set = TRUE;
 			rparams.largest_object = s->sub_start;
 		}
-		imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, track->extensions);
+		imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, track->properties);
 	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
@@ -908,12 +908,12 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 }
 
 static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
-		imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* Our subscription to a publisher was accepted */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order; %d extensions)\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order; %d properties)\n",
 		imquic_get_connection_name(conn), request_id, parameters->expires,
 		imquic_moq_group_order_str(parameters->group_order),
-		g_list_length(track_extensions));
+		g_list_length(track_properties));
 	if(parameters->largest_object_set) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
@@ -937,7 +937,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	track->track_alias = track_alias;
 	track->track_alias_valid = TRUE;
 	g_hash_table_insert(pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
-	track->extensions = imquic_moq_object_extensions_duplicate(track_extensions);
+	track->properties = imquic_moq_properties_duplicate(track_properties);
 	/* Send a SUBSCRIBE_OK to all subscribers */
 	imquic_mutex_lock(&track->mutex);
 	GList *temp = track->subscriptions;
@@ -945,7 +945,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && s->sub && s->sub->conn) {
 			s->active = TRUE;
-			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, s->track_alias, parameters, track->extensions);
+			imquic_moq_accept_subscribe(s->sub->conn, s->request_id, s->track_alias, parameters, track->properties);
 		}
 		temp = temp->next;
 	}
@@ -1226,7 +1226,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.group_order_set = parameters->group_order_set;
 	rparams.group_order = parameters->group_order;
-	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams, track->extensions);
+	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams, track->properties);
 	imquic_mutex_unlock(&mutex);
 }
 
@@ -1300,7 +1300,7 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.group_order_set = parameters->group_order_set;
 	rparams.group_order = parameters->group_order;
-	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams, track->extensions);
+	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams, track->properties);
 	imquic_mutex_unlock(&mutex);
 }
 
@@ -1324,10 +1324,10 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
 	if(!options.quiet) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 			imquic_get_connection_name(conn), object->request_id, object->track_alias,
 			object->group_id, object->subgroup_id, object->object_id,
-			object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
+			object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	}
 	/* Find the track associated to this subscription */

@@ -474,7 +474,7 @@ void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
 
 void imquic_set_incoming_publish_cb(imquic_endpoint *endpoint,
 		void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-			uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions)) {
+			uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -519,7 +519,7 @@ void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-		void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions)) {
+		void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -709,7 +709,7 @@ void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
-		void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions)) {
+		void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_properties)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -852,24 +852,24 @@ const char *imquic_moq_object_status_str(imquic_moq_object_status status) {
 	return NULL;
 }
 
-/* Extension header types  */
-const char *imquic_moq_extension_type_str(imquic_moq_extension_type type) {
+/* Property types  */
+const char *imquic_moq_property_type_str(imquic_moq_property_type type) {
 	switch(type) {
-		case IMQUIC_MOQ_EXT_DELIVERY_TIMEOUT:
+		case IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT:
 			return "Delivery Timeout";
-		case IMQUIC_MOQ_EXT_MAX_CACHE_DURATION:
+		case IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION:
 			return "Max Cache Duration";
-		case IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY:
+		case IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY:
 			return "Default Publisher Priority";
-		case IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER:
+		case IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER:
 			return "Default Group Order";
-		case IMQUIC_MOQ_EXT_DYNAMIC_GROUPS:
+		case IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS:
 			return "Dynamic Groups";
-		case IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP:
+		case IMQUIC_MOQ_PROPERTY_PRIOR_GROUP_ID_GAP:
 			return "Prior Group ID Gap";
-		case IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP:
+		case IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP:
 			return "Prior Object ID Gap";
-		case IMQUIC_MOQ_EXT_IMMUTABLE_EXTENSIONS:
+		case IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES:
 			return "Immutable Extensions";
 		default: break;
 	}

@@ -101,17 +101,17 @@ static const char *imquic_demo_media_type_str(imquic_demo_media_type type) {
 	return NULL;
 }
 
-typedef enum imquic_demo_loc_extension {
-	DEMO_LOC_MEDIA_TYPE = 0x0A,		/* Media type header extension */
+typedef enum imquic_demo_loc_property {
+	DEMO_LOC_MEDIA_TYPE = 0x0A,		/* Media type header property */
 	DEMO_LOC_H264_HEADER = 0x0B,	/* Video H264 in AVCC metadata (TODO change to 0x15) */
 	DEMO_LOC_H264_EXTRADATA = 0x0D,	/* Video H264 in AVCC extradata */
 	DEMO_LOC_OPUS_HEADER = 0x0F,	/* Audio Opus bitstream data */
 	DEMO_LOC_AAC_HEADER = 0x13,		/* Audio AAC-LC in MPEG4 bitstream data */
-} imquic_demo_loc_extension;
-static const char *imquic_demo_loc_extension_str(imquic_demo_loc_extension type) {
+} imquic_demo_loc_property;
+static const char *imquic_demo_loc_property_str(imquic_demo_loc_property type) {
 	switch(type) {
 		case DEMO_LOC_MEDIA_TYPE:
-			return "Media type header extension";
+			return "Media type property";
 		case DEMO_LOC_H264_HEADER:
 			return "Video H264 in AVCC metadata";
 		case DEMO_LOC_H264_EXTRADATA:
@@ -324,11 +324,11 @@ static void imquic_demo_track_status_error(imquic_connection *conn, uint64_t req
 }
 
 static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
-		imquic_moq_request_parameters *parameters, GList *track_extensions) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order, %d extensions)\n",
+		imquic_moq_request_parameters *parameters, GList *track_properties) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription %"SCNu64" accepted (expires=%"SCNu64"; %s order, %d properties)\n",
 		imquic_get_connection_name(conn), request_id, parameters->expires,
 		imquic_moq_group_order_str(parameters->group_order),
-		g_list_length(track_extensions));
+		g_list_length(track_properties));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
 		imquic_get_connection_name(conn), track_alias);
 	if(parameters->largest_object_set) {
@@ -336,21 +336,8 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
 	}
-	if(track_extensions != NULL) {
-		GList *temp = track_extensions;
-		while(temp) {
-			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-			const char *ext_name = imquic_moq_extension_type_str(ext->id);
-			if(ext->id % 2 == 0) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
-					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
-			} else {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
-					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
-			}
-			temp = temp->next;
-		}
-	}
+	if(track_properties != NULL)
+		imquic_moq_properties_print(track_properties);
 	if(options.fetch != NULL && options.join_offset >= 0) {
 		/* Send a Joining Fetch referencing this subscription */
 		imquic_moq_request_parameters fparams;
@@ -395,32 +382,19 @@ static void imquic_demo_request_update_error(imquic_connection *conn, uint64_t r
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d extensions)\n",
-		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_extensions));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
+		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
-	if(track_extensions != NULL) {
-		GList *temp = track_extensions;
-		while(temp) {
-			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-			const char *ext_name = imquic_moq_extension_type_str(ext->id);
-			if(ext->id % 2 == 0) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
-					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
-			} else {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
-					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
-			}
-			temp = temp->next;
-		}
-	}
+	if(track_properties != NULL)
+		imquic_moq_properties_print(track_properties);
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
@@ -453,26 +427,13 @@ static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_i
 }
 
 static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest,
-		imquic_moq_request_parameters *parameters, GList *track_extensions) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64"; %d extensions)\n",
+		imquic_moq_request_parameters *parameters, GList *track_properties) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64"; %d properties)\n",
 		imquic_get_connection_name(conn), request_id,
 		imquic_moq_group_order_str(parameters->group_order),
-		largest->group, largest->object, g_list_length(track_extensions));
-	if(track_extensions != NULL) {
-		GList *temp = track_extensions;
-		while(temp) {
-			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-			const char *ext_name = imquic_moq_extension_type_str(ext->id);
-			if(ext->id % 2 == 0) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
-					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
-			} else {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
-					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
-			}
-			temp = temp->next;
-		}
-	}
+		largest->group, largest->object, g_list_length(track_properties));
+	if(track_properties != NULL)
+		imquic_moq_properties_print(track_properties);
 }
 
 static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
@@ -497,10 +458,10 @@ static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint6
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, extensions=%d, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->request_id, object->track_alias,
 		object->group_id, object->subgroup_id, object->object_id,
-		object->payload_len, g_list_length(object->extensions), imquic_moq_delivery_str(object->delivery),
+		object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	if(object->payload == NULL || object->payload_len == 0) {
 		if(object->end_of_stream) {
@@ -513,21 +474,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
-	if(object->extensions != NULL) {
-		GList *temp = object->extensions;
-		while(payload_type != DEMO_TYPE_LOC && temp) {
-			imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-			const char *ext_name = imquic_moq_extension_type_str(ext->id);
-			if(ext->id % 2 == 0) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %"SCNu64"\n",
-					ext->id, (ext_name ? ext_name : "unknown"), ext->value.number);
-			} else {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Extension '%"SCNu32"' (%s) = %.*s\n",
-					ext->id, (ext_name ? ext_name : "unknown"), (int)ext->value.data.length, ext->value.data.buffer);
-			}
-			temp = temp->next;
-		}
-	}
+	if(object->properties != NULL)
+		imquic_moq_properties_print(object->properties);
 	if(file != NULL)
 		fwrite(object->payload, 1, object->payload_len, file);
 	if(payload_type == DEMO_TYPE_TEXT) {
@@ -540,54 +488,54 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	} else if(payload_type == DEMO_TYPE_LOC) {
 		/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
 		 * which uses the MoQ-MI draft: https://datatracker.ietf.org/doc/html/draft-cenzano-moq-media-interop */
-		if(object->extensions == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No extensions, missing LOC info?\n");
+		if(object->properties == NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No properties, missing LOC info?\n");
 		} else {
-			/* Parse the extensions to get access to the LOC info */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %d extensions\n", g_list_length(object->extensions));
+			/* Parse the properties to get access to the LOC info */
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %d properties\n", g_list_length(object->properties));
 			imquic_demo_media_type media_type = DEMO_MEDIA_NONE;
-			struct imquic_moq_object_extension_data *loc_header = NULL, *loc_extradata = NULL;
-			GList *temp = object->extensions;
+			struct imquic_moq_property_data *loc_header = NULL, *loc_extradata = NULL;
+			GList *temp = object->properties;
 			while(temp) {
-				imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-				switch(ext->id) {
+				imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+				switch(prop->id) {
 					case DEMO_LOC_MEDIA_TYPE: {
-						media_type = ext->value.number;
+						media_type = prop->value.number;
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %s\n",
-							imquic_demo_loc_extension_str(ext->id),
+							imquic_demo_loc_property_str(prop->id),
 							imquic_demo_media_type_str(media_type));
 						break;
 					}
 					case DEMO_LOC_H264_HEADER: {
-						loc_header = &ext->value.data;
+						loc_header = &prop->value.data;
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_extension_str(ext->id),
+							imquic_demo_loc_property_str(prop->id),
 							loc_header->length);
 						break;
 					}
 					case DEMO_LOC_H264_EXTRADATA: {
-						loc_extradata = &ext->value.data;
+						loc_extradata = &prop->value.data;
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_extension_str(ext->id),
+							imquic_demo_loc_property_str(prop->id),
 							loc_extradata->length);
 						break;
 					}
 					case DEMO_LOC_OPUS_HEADER: {
-						loc_header = &ext->value.data;
+						loc_header = &prop->value.data;
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_extension_str(ext->id),
+							imquic_demo_loc_property_str(prop->id),
 							loc_header->length);
 						break;
 					}
 					case DEMO_LOC_AAC_HEADER: {
-						loc_header = &ext->value.data;
+						loc_header = &prop->value.data;
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_extension_str(ext->id),
+							imquic_demo_loc_property_str(prop->id),
 							loc_header->length);
 						break;
 					}
 					default: {
-						IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- -- Unknown extension '%"SCNu32"'\n", ext->id);
+						IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- -- Unknown property '%"SCNu32"'\n", prop->id);
 						break;
 					}
 				}

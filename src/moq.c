@@ -307,11 +307,11 @@ static void imquic_moq_context_free(const imquic_refcount *moq_ref) {
 	g_free(moq);
 }
 
-static void imquic_moq_object_extension_free(imquic_moq_object_extension *extension) {
-	if(extension != NULL) {
-		if(extension->value.data.buffer != NULL)
-			g_free(extension->value.data.buffer);
-		g_free(extension);
+static void imquic_moq_property_free(imquic_moq_property *property) {
+	if(property != NULL) {
+		if(property->value.data.buffer != NULL)
+			g_free(property->value.data.buffer);
+		g_free(property);
 	}
 }
 
@@ -559,13 +559,13 @@ gboolean imquic_moq_is_datagram_message_type_valid(imquic_moq_version version, u
 }
 
 uint8_t imquic_moq_datagram_message_type_return(imquic_moq_version version,
-		gboolean payload, gboolean ext, gboolean eog, gboolean oid, gboolean priority) {
+		gboolean payload, gboolean prop, gboolean eog, gboolean oid, gboolean priority) {
 	uint8_t type = payload ? 0x00 : 0x20;
 	if(!payload)
 		eog = FALSE;
 	if(eog)
 		type |= 0x02;
-	if(ext)
+	if(prop)
 		type |= 0x01;
 	if(!oid)
 		type |= 0x04;
@@ -575,7 +575,7 @@ uint8_t imquic_moq_datagram_message_type_return(imquic_moq_version version,
 }
 
 void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t type,
-		gboolean *payload, gboolean *ext, gboolean *eog, gboolean *oid, gboolean *priority, gboolean *violation) {
+		gboolean *payload, gboolean *prop, gboolean *eog, gboolean *oid, gboolean *priority, gboolean *violation) {
 	if(oid)
 		*oid = TRUE;
 	if(priority)
@@ -583,8 +583,8 @@ void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t 
 	/* v15 and later */
 	if(payload)
 		*payload = !(type & 0x20);
-	if(ext)
-		*ext = (type & 0x01);
+	if(prop)
+		*prop = (type & 0x01);
 	if(eog)
 		*eog = (type & 0x02);
 	if(oid)
@@ -613,7 +613,7 @@ gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8
 }
 
 uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version,
-		gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog, gboolean priority) {
+		gboolean subgroup, gboolean sgid0, gboolean prop, gboolean eog, gboolean priority) {
 	uint8_t type = 0;
 	if(subgroup) {
 		sgid0 = FALSE;
@@ -621,7 +621,7 @@ uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version ver
 	}
 	if(sgid0)
 		type |= 0x02;
-	if(ext)
+	if(prop)
 		type |= 0x01;
 	if(eog)
 		type |= 0x08;
@@ -630,7 +630,7 @@ uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version ver
 }
 
 void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
-		gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog, gboolean *priority, gboolean *violation) {
+		gboolean *subgroup, gboolean *sgid0, gboolean *prop, gboolean *eog, gboolean *priority, gboolean *violation) {
 	uint8_t base = 0x10;
 	if(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) {
 		base = 0x10;
@@ -650,8 +650,8 @@ void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version,
 		*subgroup = (bitmask & 0x04);
 	if(sgid0)
 		*sgid0 = (bitmask & 0x02);
-	if(ext)
-		*ext = (bitmask & 0x01);
+	if(prop)
+		*prop = (bitmask & 0x01);
 	if(eog)
 		*eog = (bitmask & 0x08);
 }
@@ -680,7 +680,7 @@ gboolean imquic_moq_is_fetch_serialization_flags_valid(imquic_moq_version versio
 }
 
 uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version version,
-		imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean ext,
+		imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean prop,
 		gboolean datagram, gboolean end_ne_range, gboolean end_uk_range) {
 	if(end_ne_range) {
 		/* Ignore everything else */
@@ -697,7 +697,7 @@ uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version versio
 		flags |= 0x08;
 	if(priority)
 		flags |= 0x10;
-	if(ext)
+	if(prop)
 		flags |= 0x20;
 	if(datagram)
 		flags |= 0x40;
@@ -705,7 +705,7 @@ uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version versio
 }
 
 void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint64_t flags,
-		imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *ext,
+		imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *prop,
 		gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation) {
 	/* Make sure the provided flags are valid, or return a protocol violation */
 	if(!imquic_moq_is_fetch_serialization_flags_valid(version, flags)) {
@@ -739,8 +739,8 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 		*group = (flags8 & 0x08);
 	if(priority)
 		*priority = (flags8 & 0x10);
-	if(ext)
-		*ext = (flags8 & 0x20);
+	if(prop)
+		*prop = (flags8 & 0x20);
 	if(datagram)
 		*datagram = (flags8 & 0x40);
 }
@@ -748,17 +748,17 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 
 const char *imquic_moq_setup_option_type_str(imquic_moq_setup_option_type type) {
 	switch(type) {
-		case IMQUIC_MOQ_SETUP_PARAM_PATH:
+		case IMQUIC_MOQ_SETUP_OPTION_PATH:
 			return "PATH";
-		case IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID:
+		case IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID:
 			return "MAX_REQUEST_ID";
-		case IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN:
+		case IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN:
 			return "AUTHORIZATION_TOKEN";
-		case IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE:
+		case IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE:
 			return "MAX_AUTH_TOKEN_CACHE_SIZE";
-		case IMQUIC_MOQ_SETUP_PARAM_AUTHORITY:
+		case IMQUIC_MOQ_SETUP_OPTION_AUTHORITY:
 			return "AUTHORITY";
-		case IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION:
+		case IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION:
 			return "MOQT_IMPLEMENTATION";
 		default: break;
 	}
@@ -877,17 +877,17 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 		uint64_t new_id = 0, last_id = 0;
 		GList *list = NULL;
 		if(options->path_set)
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_PATH));
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_PATH));
 		if(options->max_request_id_set)
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID));
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID));
 		if(options->max_auth_token_cache_size_set)
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE));
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE));
 		if(options->auth_token_set)
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN));
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN));
 		if(options->authority_set)
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_AUTHORITY));
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORITY));
 		if(options->moqt_implementation_set)
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION));
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION));
 		*params_num = g_list_length(list);
 		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
 		if(list != NULL) {
@@ -895,27 +895,27 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 			GList *temp = list;
 			while(temp) {
 				new_id = GPOINTER_TO_UINT(temp->data);
-				if(new_id == IMQUIC_MOQ_SETUP_PARAM_PATH) {
+				if(new_id == IMQUIC_MOQ_SETUP_OPTION_PATH) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->path, strlen(options->path));
-				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID) {
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID) {
 					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						options->max_request_id);
-				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE) {
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE) {
 					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						options->max_auth_token_cache_size);
-				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN) {
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						options->auth_token, options->auth_token_len);
-				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_AUTHORITY) {
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_AUTHORITY) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->authority, strlen(options->authority));
-				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION) {
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->moqt_implementation, strlen(options->moqt_implementation));
@@ -2103,20 +2103,19 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH");
 	}
-	/* v16 added support for Track Extensions */
-	size_t ext_offset = 0, ext_len = 0;
-	ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || (ext_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken PUBLISH");
+	size_t prop_offset = 0, prop_len = 0;
+	prop_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || (prop_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken PUBLISH");
 	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Extensions Length:  %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), ext_len);
-	ext_offset = offset;
-	IMQUIC_MOQ_CHECK_ERR(ext_len > blen-offset, NULL, 0, 0, "Broken PUBLISH");
-	offset += ext_len;
-	GList *track_extensions = NULL;
-	if(ext_offset > 0 && ext_len > 0) {
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), prop_len);
+	prop_offset = offset;
+	IMQUIC_MOQ_CHECK_ERR(prop_len > blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	offset += prop_len;
+	GList *track_properties = NULL;
+	if(prop_offset > 0 && prop_len > 0) {
 		/* TODO Check Protocol Violation cases */
-		track_extensions = imquic_moq_parse_object_extensions(moq->version, &bytes[ext_offset], ext_len);
+		track_properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2127,7 +2126,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 		json_object_set_new(message, "track_alias", json_integer(track_alias));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
-		imquic_qlog_moq_message_add_extensions(message, track_extensions, "track_extensions");
+		imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, bytes-3, offset+3, message);
 	}
 #endif
@@ -2137,12 +2136,12 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, uint8_t *bytes, size_t 
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish) {
 		moq->conn->socket->callbacks.moq.incoming_publish(moq->conn,
-			request_id, &tns[0], &tn, track_alias, &parameters, track_extensions);
+			request_id, &tns[0], &tn, track_alias, &parameters, track_properties);
 	} else {
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_publish(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0);
 	}
-	g_list_free_full(track_extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2343,20 +2342,19 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	}
-	/* v16 added support for Track Extensions */
-	size_t ext_offset = 0, ext_len = 0;
-	ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || (ext_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken SUBSCRIBE_OK");
+	size_t prop_offset = 0, prop_len = 0;
+	prop_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || (prop_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken SUBSCRIBE_OK");
 	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Extensions Length:  %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), ext_len);
-	ext_offset = offset;
-	IMQUIC_MOQ_CHECK_ERR(ext_len > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
-	offset += ext_len;
-	GList *track_extensions = NULL;
-	if(ext_offset > 0 && ext_len > 0) {
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), prop_len);
+	prop_offset = offset;
+	IMQUIC_MOQ_CHECK_ERR(prop_len > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
+	offset += prop_len;
+	GList *track_properties = NULL;
+	if(prop_offset > 0 && prop_len > 0) {
 		/* TODO Check Protocol Violation cases */
-		track_extensions = imquic_moq_parse_object_extensions(moq->version, &bytes[ext_offset], ext_len);
+		track_properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2365,16 +2363,16 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, si
 		json_object_set_new(message, "track_alias", json_integer(track_alias));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
-		imquic_qlog_moq_message_add_extensions(message, track_extensions, "track_extensions");
+		imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, bytes-3, offset+3, message);
 	}
 #endif
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.subscribe_accepted) {
 		moq->conn->socket->callbacks.moq.subscribe_accepted(moq->conn,
-			request_id, track_alias, &parameters, track_extensions);
+			request_id, track_alias, &parameters, track_properties);
 	}
-	g_list_free_full(track_extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2821,20 +2819,19 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH_OK");
 	}
-	/* v16 added support for Track Extensions */
-	size_t ext_offset = 0, ext_len = 0;
-	ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || (ext_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken FETCH_OK");
+	size_t prop_offset = 0, prop_len = 0;
+	prop_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || (prop_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken FETCH_OK");
 	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Extensions Length:  %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), ext_len);
-	ext_offset = offset;
-	IMQUIC_MOQ_CHECK_ERR(ext_len > blen-offset, NULL, 0, 0, "Broken FETCH_OK");
-	offset += ext_len;
-	GList *track_extensions = NULL;
-	if(ext_offset > 0 && ext_len > 0) {
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), prop_len);
+	prop_offset = offset;
+	IMQUIC_MOQ_CHECK_ERR(prop_len > blen-offset, NULL, 0, 0, "Broken FETCH_OK");
+	offset += prop_len;
+	GList *track_properties = NULL;
+	if(prop_offset > 0 && prop_len > 0) {
 		/* TODO Check Protocol Violation cases */
-		track_extensions = imquic_moq_parse_object_extensions(moq->version, &bytes[ext_offset], ext_len);
+		track_properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2845,14 +2842,14 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t
 		json_object_set_new(message, "largest_object_id", json_integer(largest.object));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
-		imquic_qlog_moq_message_add_extensions(message, track_extensions, "track_extensions");
+		imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, bytes-3, offset+3, message);
 	}
 #endif
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.fetch_accepted)
-		moq->conn->socket->callbacks.moq.fetch_accepted(moq->conn, request_id, &largest, &parameters, track_extensions);
-	g_list_free_full(track_extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+		moq->conn->socket->callbacks.moq.fetch_accepted(moq->conn, request_id, &largest, &parameters, track_properties);
+	g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2924,8 +2921,8 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	if(bytes == NULL || blen < 5)
 		return 0;
 	/* TODO Check EOG too */
-	gboolean has_ext = FALSE, has_oid = TRUE, has_priority = TRUE;
-	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_ext, NULL, &has_oid, &has_priority, NULL);
+	gboolean has_prop = FALSE, has_oid = TRUE, has_priority = TRUE;
+	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_prop, NULL, &has_oid, &has_priority, NULL);
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -2953,23 +2950,23 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
-	size_t ext_offset = 0, ext_len = 0;
-	if(has_ext) {
-		/* The object contains extensions */
-		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	size_t prop_offset = 0, prop_len = 0;
+	if(has_prop) {
+		/* The object contains properties */
+		prop_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
-		IMQUIC_MOQ_CHECK_ERR(ext_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Extensions length is 0 but type is OBJECT_DATAGRAM");
+		IMQUIC_MOQ_CHECK_ERR(prop_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Properties length is 0 but type is OBJECT_DATAGRAM");
 		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), ext_len);
-		ext_offset = offset;
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || ext_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
-		offset += ext_len;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Properties Length:  %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), prop_len);
+		prop_offset = offset;
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || prop_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
+		offset += prop_len;
 	}
-	GList *extensions = NULL;
-	if(ext_offset > 0 && ext_len > 0) {
+	GList *properties = NULL;
+	if(prop_offset > 0 && prop_len > 0) {
 		/* TODO Check Protocol Violation cases */
-		extensions = imquic_moq_parse_object_extensions(moq->version, &bytes[ext_offset], ext_len);
+		properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
 	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Payload Length:    %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), blen-offset);
@@ -2984,7 +2981,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		.priority = priority,
 		.payload = (blen-offset > 0 ? &bytes[offset] : NULL),
 		.payload_len = blen-offset,
-		.extensions = extensions,
+		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_DATAGRAM,
 		.end_of_stream = FALSE	/* No stream is involved here */
 	};
@@ -2995,7 +2992,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
-	g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	g_list_free_full(properties, (GDestroyNotify)imquic_moq_property_free);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3006,8 +3003,8 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 5)
 		return 0;
-	gboolean has_ext = FALSE, has_oid = TRUE, has_priority = TRUE;
-	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_ext, NULL, &has_oid, &has_priority, NULL);
+	gboolean has_prop = FALSE, has_oid = TRUE, has_priority = TRUE;
+	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_prop, NULL, &has_oid, &has_priority, NULL);
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -3035,23 +3032,23 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
 		imquic_get_connection_name(moq->conn), priority);
-	size_t ext_offset = 0, ext_len = 0;
-	if(has_ext) {
-		/* The object contains extensions */
-		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	size_t prop_offset = 0, prop_len = 0;
+	if(has_prop) {
+		/* The object contains properties */
+		prop_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
-		IMQUIC_MOQ_CHECK_ERR(ext_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Extensions length is 0 but type is OBJECT_DATAGRAM_STATUS");
+		IMQUIC_MOQ_CHECK_ERR(prop_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Properties length is 0 but type is OBJECT_DATAGRAM_STATUS");
 		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), ext_len);
-		ext_offset = offset;
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || ext_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
-		offset += ext_len;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Properties Length:  %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), prop_len);
+		prop_offset = offset;
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || prop_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+		offset += prop_len;
 	}
-	GList *extensions = NULL;
-	if(ext_offset > 0 && ext_len > 0) {
+	GList *properties = NULL;
+	if(prop_offset > 0 && prop_len > 0) {
 		/* TODO Check Protocol Violation cases */
-		extensions = imquic_moq_parse_object_extensions(moq->version, &bytes[ext_offset], ext_len);
+		properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
 	}
 	uint64_t object_status = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
@@ -3070,7 +3067,7 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 		.priority = priority,
 		.payload = NULL,
 		.payload_len = 0,
-		.extensions = extensions,
+		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_DATAGRAM,
 		.end_of_stream = FALSE	/* No stream is involved here */
 	};
@@ -3081,7 +3078,7 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
-	g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	g_list_free_full(properties, (GDestroyNotify)imquic_moq_property_free);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3106,11 +3103,11 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 		imquic_get_connection_name(moq->conn), group_id);
 	uint64_t subgroup_id = 0;
 	/* Starting from v11, the subgroup ID property is optional */
-	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE, is_eog = FALSE, has_priority = FALSE, violation = FALSE;
+	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_prop = FALSE, is_eog = FALSE, has_priority = FALSE, violation = FALSE;
 	imquic_moq_data_message_type_to_subgroup_header(moq->version, dtype,
-		&has_subgroup, &is_sgid0, &has_ext, &is_eog, &has_priority, &violation);
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, ext=%d, eog=%d, pri=%d, viol=%d\n",
-		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_ext, is_eog, has_priority, violation);
+		&has_subgroup, &is_sgid0, &has_prop, &is_eog, &has_priority, &violation);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, prop=%d, eog=%d, pri=%d, viol=%d\n",
+		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_prop, is_eog, has_priority, violation);
 	IMQUIC_MOQ_CHECK_ERR(violation, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid SUBGROUP_HEADER type");
 	if(has_subgroup) {
 		subgroup_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -3162,23 +3159,23 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	if(length == 0 || length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
 	offset += length;
-	size_t ext_offset = 0, ext_len = 0;
+	size_t prop_offset = 0, prop_len = 0;
 	/* TODO We can optimize this by only doing it once, when we parse the header */
 	/* TODO Check EOG too */
-	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_ext = FALSE, has_priority = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_subgroup, &is_sgid0, &has_ext, NULL, &has_priority, NULL);
-	if(has_ext) {
-		/* The object contains extensions */
-		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_prop = FALSE, has_priority = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_subgroup, &is_sgid0, &has_prop, NULL, &has_priority, NULL);
+	if(has_prop) {
+		/* The object contains properties */
+		prop_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
 		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), ext_len);
-		ext_offset = offset;
-		if(length == 0 || ext_len >= blen-offset)
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Properties Length:  %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), prop_len);
+		prop_offset = offset;
+		if(length == 0 || prop_len >= blen-offset)
 			return -1;	/* Not enough data, try again later */
-		offset += ext_len;
+		offset += prop_len;
 	}
 	uint64_t p_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	if(length == 0 || length >= blen-offset)
@@ -3191,7 +3188,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 			return -1;	/* Not enough data, try again later */
 		/* TODO An invalid object status should be a protocol violation error */
 		//~ IMQUIC_MOQ_CHECK_ERR(object_status > IMQUIC_MOQ_END_OF_TRACK, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid object status");
-		//~ IMQUIC_MOQ_CHECK_ERR(object_status == IMQUIC_MOQ_OBJECT_DOESNT_EXIST && ext_len > 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Extensions received in object with status 'Does Not Exist'");
+		//~ IMQUIC_MOQ_CHECK_ERR(object_status == IMQUIC_MOQ_OBJECT_DOESNT_EXIST && prop_len > 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Properties received in object with status 'Does Not Exist'");
 		offset += length;
 	}
 	if(p_len > blen-offset)
@@ -3216,10 +3213,10 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	if(!moq_stream->got_objects)
 		moq_stream->got_objects = TRUE;
 	moq_stream->last_object_id = object_id;
-	GList *extensions = NULL;
-	if(ext_offset > 0 && ext_len > 0) {
+	GList *properties = NULL;
+	if(prop_offset > 0 && prop_len > 0) {
 		/* TODO Check Protocol Violation cases */
-		extensions = imquic_moq_parse_object_extensions(moq->version, &bytes[ext_offset], ext_len);
+		properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
 	}
 	/* Notify the payload at the application layer */
 	imquic_moq_object object = {
@@ -3232,7 +3229,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		.priority = moq_stream->priority,
 		.payload = bytes + offset,
 		.payload_len = p_len,
-		.extensions = extensions,
+		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 		.end_of_stream = complete
 	};
@@ -3242,7 +3239,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
-	g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	g_list_free_full(properties, (GDestroyNotify)imquic_moq_property_free);
 	/* Move on */
 	offset += p_len;
 	imquic_buffer_shift(moq_stream->buffer, offset);
@@ -3298,10 +3295,10 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	if(length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
 	imquic_moq_fetch_subgroup_type subgroup_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
-	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_ext = FALSE,
+	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_prop = FALSE,
 		is_datagram = FALSE, end_ne_range = FALSE, end_uk_range = FALSE, violation = FALSE;
 	imquic_moq_parse_fetch_serialization_flags(moq->version, flags,
-		&subgroup_type, &has_oid, &has_group, &has_priority, &has_ext, &is_datagram, &end_ne_range, &end_uk_range, &violation);
+		&subgroup_type, &has_oid, &has_group, &has_priority, &has_prop, &is_datagram, &end_ne_range, &end_uk_range, &violation);
 	uint64_t group_id = 0;
 	if(has_group) {
 		group_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -3347,18 +3344,18 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
 		priority = moq_stream->last_priority;
 	}
-	size_t ext_offset = 0, ext_len = 0;
-	if(has_ext) {
-		ext_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	size_t prop_offset = 0, prop_len = 0;
+	if(has_prop) {
+		prop_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
 		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Extensions Length:  %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), ext_len);
-		ext_offset = offset;
-		if(length == 0 || ext_len >= blen-offset)
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Properties Length:  %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), prop_len);
+		prop_offset = offset;
+		if(length == 0 || prop_len >= blen-offset)
 			return -1;	/* Not enough data, try again later */
-		offset += ext_len;
+		offset += prop_len;
 	}
 	uint64_t p_len = imquic_read_varint(&bytes[offset], blen-offset, &length);
 	if(length == 0 || length >= blen-offset)
@@ -3371,7 +3368,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 			return -1;	/* Not enough data, try again later */
 		/* TODO An invalid object status should be a protocol violation error */
 		//~ IMQUIC_MOQ_CHECK_ERR(object_status > IMQUIC_MOQ_END_OF_TRACK, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid object status");
-		//~ IMQUIC_MOQ_CHECK_ERR(object_status == IMQUIC_MOQ_OBJECT_DOESNT_EXIST && ext_len > 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Extensions received in object with status 'Does Not Exist'");
+		//~ IMQUIC_MOQ_CHECK_ERR(object_status == IMQUIC_MOQ_OBJECT_DOESNT_EXIST && prop_len > 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Properties received in object with status 'Does Not Exist'");
 		offset += length;
 	}
 	if(p_len > blen-offset)
@@ -3394,10 +3391,10 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	moq_stream->last_subgroup_id = subgroup_id;
 	moq_stream->last_object_id = object_id;
 	moq_stream->last_priority = priority;
-	GList *extensions = NULL;
-	if(ext_offset > 0 && ext_len > 0) {
+	GList *properties = NULL;
+	if(prop_offset > 0 && prop_len > 0) {
 		/* TODO Check Protocol Violation cases */
-		extensions = imquic_moq_parse_object_extensions(moq->version, &bytes[ext_offset], ext_len);
+		properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
 	}
 	/* Notify the payload at the application layer */
 	imquic_moq_object object = {
@@ -3410,7 +3407,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		.priority = priority,
 		.payload = bytes + offset,
 		.payload_len = p_len,
-		.extensions = extensions,
+		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_FETCH,
 		.end_of_stream = complete
 	};
@@ -3420,7 +3417,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 #endif
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 		moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
-	g_list_free_full(extensions, (GDestroyNotify)imquic_moq_object_extension_free);
+	g_list_free_full(properties, (GDestroyNotify)imquic_moq_property_free);
 	/* Move on */
 	offset += p_len;
 	imquic_buffer_shift(moq_stream->buffer, offset);
@@ -3698,7 +3695,7 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
 }
 
 size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
 			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
@@ -3713,11 +3710,11 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
 	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
-	/* Check if there are extensions to encode */
-	uint8_t extensions[256];
-	size_t extensions_len = 0;
-	extensions_len = imquic_moq_build_object_extensions(moq->version, track_extensions, extensions, sizeof(extensions));
-	offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, extensions_len);
+	/* Check if there are properties to encode */
+	uint8_t properties[256];
+	size_t properties_len = 0;
+	properties_len = imquic_moq_build_properties(moq->version, track_properties, properties, sizeof(properties));
+	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3728,7 +3725,7 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		json_object_set_new(message, "track_alias", json_integer(track_alias));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
-		imquic_qlog_moq_message_add_extensions(message, track_extensions, "track_extensions");
+		imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}
 #endif
@@ -3817,7 +3814,7 @@ size_t imquic_moq_add_request_update(imquic_moq_context *moq, uint8_t *bytes, si
 }
 
 size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_OK, moq->version));
@@ -3829,11 +3826,11 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
 	offset += imquic_write_varint(track_alias, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
 	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
-	/* Check if there are extensions to encode */
-	uint8_t extensions[256];
-	size_t extensions_len = 0;
-	extensions_len = imquic_moq_build_object_extensions(moq->version, track_extensions, extensions, sizeof(extensions));
-	offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, extensions_len);
+	/* Check if there are properties to encode */
+	uint8_t properties[256];
+	size_t properties_len = 0;
+	properties_len = imquic_moq_build_properties(moq->version, track_properties, properties, sizeof(properties));
+	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3842,7 +3839,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size
 		json_object_set_new(message, "track_alias", json_integer(track_alias));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
-		imquic_qlog_moq_message_add_extensions(message, track_extensions, "track_extensions");
+		imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}
 #endif
@@ -4062,7 +4059,7 @@ size_t imquic_moq_add_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, size
 }
 
 size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-		uint8_t end_of_track, imquic_moq_location *end_location, imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		uint8_t end_of_track, imquic_moq_location *end_location, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH_OK, moq->version));
@@ -4077,11 +4074,11 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
 	offset += imquic_write_varint(end_location->object, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
 	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
-	/* Check if there are extensions to encode */
-	uint8_t extensions[256];
-	size_t extensions_len = 0;
-	extensions_len = imquic_moq_build_object_extensions(moq->version, track_extensions, extensions, sizeof(extensions));
-	offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, extensions_len);
+	/* Check if there are properties to encode */
+	uint8_t properties[256];
+	size_t properties_len = 0;
+	properties_len = imquic_moq_build_properties(moq->version, track_properties, properties, sizeof(properties));
+	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4092,7 +4089,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t b
 		json_object_set_new(message, "largest_object_id", json_integer(end_location->object));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
-		imquic_qlog_moq_message_add_extensions(message, track_extensions, "track_extensions");
+		imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}
 #endif
@@ -4161,19 +4158,19 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t ble
 
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
 		uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t priority,
-		uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen) {
+		uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_datagram_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM, moq->version));
 		return 0;
 	}
 	/* TODO Involve EOG */
-	gboolean has_ext = (extensions != NULL && elen > 0), is_eog = FALSE;
+	gboolean has_prop = (properties != NULL && prlen > 0), is_eog = FALSE;
 	gboolean has_oid = (object_id != 0);
 	gboolean has_priority = TRUE;	/* FIXME */
 	imquic_moq_datagram_message_type dtype = imquic_moq_datagram_message_type_return(moq->version,
 		TRUE,			/* Payload */
-		has_ext,		/* Extensions */
+		has_prop,		/* Properties */
 		is_eog,			/* End of Group */
 		has_oid,		/* Object ID */
 		has_priority);	/* Priority */
@@ -4186,8 +4183,8 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 		bytes[offset] = priority;
 		offset++;
 	}
-	if(has_ext)
-		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
+	if(has_prop)
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
 	if(payload != NULL && plen > 0) {
 		memcpy(&bytes[offset], payload, plen);
 		offset += plen;
@@ -4197,18 +4194,18 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 
 size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t track_alias, uint64_t group_id, uint64_t object_id, uint8_t priority,
-		uint64_t object_status, uint8_t *extensions, size_t elen) {
+		uint64_t object_status, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_datagram_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS, moq->version));
 		return 0;
 	}
-	gboolean has_ext = (extensions != NULL && elen > 0);
+	gboolean has_prop = (properties != NULL && prlen > 0);
 	gboolean has_oid = (object_id != 0);
 	gboolean has_priority = TRUE;	/* FIXME */
 	imquic_moq_datagram_message_type dtype = imquic_moq_datagram_message_type_return(moq->version,
 		FALSE,			/* Status */
-		has_ext,		/* Extensions */
+		has_prop,		/* Properties */
 		FALSE,			/* End of Group */
 		has_oid,		/* Object ID */
 		has_priority);	/* Priority */
@@ -4221,8 +4218,8 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
 		bytes[offset] = priority;
 		offset++;
 	}
-	if(has_ext)
-		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
+	if(has_prop)
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
 	offset += imquic_write_varint(object_status, &bytes[offset], blen-offset);
 	return offset;
 }
@@ -4251,7 +4248,7 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
 
 size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 		uint8_t *bytes, size_t blen, uint64_t object_id, uint64_t object_status,
-		uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen) {
+		uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_SUBGROUP_HEADER, moq->version));
@@ -4261,10 +4258,10 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq
 	offset += imquic_write_varint(object_id, &bytes[offset], blen-offset);
 	/* TODO We can optimize this by only doing it once, when we parse the header */
 	/* TODO Involve EOG too */
-	gboolean has_ext = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_ext, NULL, NULL, NULL);
-	if(has_ext)
-		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
+	gboolean has_prop = FALSE;
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_prop, NULL, NULL, NULL);
+	if(has_prop)
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_varint(plen, &bytes[offset], blen-offset);
@@ -4290,7 +4287,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
-		uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen) {
+		uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_FETCH_HEADER, moq->version));
@@ -4298,9 +4295,9 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 	}
 	size_t offset = 0;
 	imquic_moq_fetch_subgroup_type subgroup_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
-	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_ext = FALSE, is_datagram = FALSE;
+	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_prop = FALSE, is_datagram = FALSE;
 	imquic_moq_parse_fetch_serialization_flags(moq->version, flags,
-		&subgroup_type, &has_oid, &has_group, &has_priority, &has_ext, &is_datagram, NULL, NULL, NULL);
+		&subgroup_type, &has_oid, &has_group, &has_priority, &has_prop, &is_datagram, NULL, NULL, NULL);
 	offset += imquic_write_varint(flags, &bytes[offset], blen-offset);
 	if(has_group)
 		offset += imquic_write_varint(group_id, &bytes[offset], blen-offset);
@@ -4312,8 +4309,8 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 		bytes[offset] = priority;
 		offset++;
 	}
-	if(has_ext)
-		offset += imquic_moq_add_object_extensions(moq, &bytes[offset], blen-offset, extensions, elen);
+	if(has_prop)
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_varint(plen, &bytes[offset], blen-offset);
@@ -4326,22 +4323,22 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 	return offset;
 }
 
-size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint8_t *extensions, size_t elen) {
+size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't serialize MoQ object extensions: invalid arguments\n",
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't serialize MoQ properties: invalid arguments\n",
 			imquic_get_connection_name(moq->conn));
 		return 0;
 	}
-	if(extensions == NULL || elen == 0) {
-		extensions = NULL;
-		elen = 0;
+	if(properties == NULL || prlen == 0) {
+		properties = NULL;
+		prlen = 0;
 	}
 	size_t offset = 0;
-	offset += imquic_write_varint(elen, &bytes[offset], blen-offset);
-	if(extensions != NULL && elen > 0) {
-		memcpy(&bytes[offset], extensions, elen);
-		offset += elen;
+	offset += imquic_write_varint(prlen, &bytes[offset], blen-offset);
+	if(properties != NULL && prlen > 0) {
+		memcpy(&bytes[offset], properties, prlen);
+		offset += prlen;
 	}
 	return offset;
 }
@@ -4423,27 +4420,27 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 		IMQUIC_MOQ_CHECK_ERR(len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
 	}
 	/* Update the parsed parameter */
-	if(type == IMQUIC_MOQ_SETUP_PARAM_PATH) {
+	if(type == IMQUIC_MOQ_SETUP_OPTION_PATH) {
 		params->path_set = TRUE;
 		if(len > 0)
 			g_snprintf(params->path, sizeof(params->path), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->path);
-	} else if(type == IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID) {
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID) {
 		params->max_request_id = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
 		params->max_request_id_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_request_id);
 		len = length;
-	} else if(type == IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE) {
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE) {
 		params->max_auth_token_cache_size = imquic_read_varint(&bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
 		params->max_auth_token_cache_size_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_request_id);
 		len = length;
-	} else if(type == IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN) {
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN) {
 		params->auth_token_set = TRUE;
 		size_t auth_len = len;
 		if(auth_len > sizeof(params->auth_token)) {
@@ -4456,13 +4453,13 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 		char ai_str[513];
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s\n",
 			imquic_get_connection_name(moq->conn), imquic_hex_str(&bytes[offset], auth_len, ai_str, sizeof(ai_str)));
-	} else if(type == IMQUIC_MOQ_SETUP_PARAM_AUTHORITY) {
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_AUTHORITY) {
 		params->authority_set = TRUE;
 		if(len > 0)
 			g_snprintf(params->authority, sizeof(params->authority), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->authority);
-	} else if(type == IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION) {
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION) {
 		params->moqt_implementation_set = TRUE;
 		if(len > 0)
 			g_snprintf(params->moqt_implementation, sizeof(params->moqt_implementation), "%.*s", (int)len, &bytes[offset]);
@@ -4701,64 +4698,64 @@ const char *imquic_moq_get_remote_implementation(imquic_connection *conn) {
 	return implementation;
 }
 
-/* Object extensions management */
-GList *imquic_moq_parse_object_extensions(imquic_moq_version version, uint8_t *extensions, size_t elen) {
-	if(extensions == NULL || elen == 0)
+/* Propertie management */
+GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t prlen) {
+	if(properties == NULL || prlen == 0)
 		return NULL;
-	GList *exts = NULL;
+	GList *props = NULL;
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t last_id = 0;
-	/* Parse extensions */
-	while(elen-offset > 0) {
-		uint64_t ext_type = imquic_read_varint(&extensions[offset], elen-offset, &length);
-		if(length == 0 || length >= elen-offset) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken object extensions\n");
-			g_list_free_full(exts, (GDestroyNotify)imquic_moq_object_extension_free);
+	/* Parse properties */
+	while(prlen-offset > 0) {
+		uint64_t prop_type = imquic_read_varint(&properties[offset], prlen-offset, &length);
+		if(length == 0 || length >= prlen-offset) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken properties\n");
+			g_list_free_full(props, (GDestroyNotify)imquic_moq_property_free);
 			return 0;
 		}
-		ext_type += last_id;
-		last_id = ext_type;
+		prop_type += last_id;
+		last_id = prop_type;
 		offset += length;
-		if(ext_type % 2 == 0) {
+		if(prop_type % 2 == 0) {
 			/* Even types are followed by a numeric value */
-			uint64_t ext_val = imquic_read_varint(&extensions[offset], elen-offset, &length);
-			if(length == 0 || length > elen-offset) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken object extensions\n");
-				g_list_free_full(exts, (GDestroyNotify)imquic_moq_object_extension_free);
+			uint64_t prop_val = imquic_read_varint(&properties[offset], prlen-offset, &length);
+			if(length == 0 || length > prlen-offset) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken properties\n");
+				g_list_free_full(props, (GDestroyNotify)imquic_moq_property_free);
 				return 0;
 			}
 			offset += length;
-			imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-			extension->id = ext_type;
-			extension->value.number = ext_val;
-			exts = g_list_prepend(exts, extension);
+			imquic_moq_property *property = g_malloc0(sizeof(imquic_moq_property));
+			property->id = prop_type;
+			property->value.number = prop_val;
+			props = g_list_prepend(props, property);
 		} else {
 			/* Odd typed are followed by a length and a value */
-			uint64_t ext_len = imquic_read_varint(&extensions[offset], elen-offset, &length);
-			if(length == 0 || length >= elen-offset || ext_len >= elen-offset) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken object extensions\n");
-				g_list_free_full(exts, (GDestroyNotify)imquic_moq_object_extension_free);
+			uint64_t prop_len = imquic_read_varint(&properties[offset], prlen-offset, &length);
+			if(length == 0 || length >= prlen-offset || prop_len >= prlen-offset) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Broken properties\n");
+				g_list_free_full(props, (GDestroyNotify)imquic_moq_property_free);
 				return 0;
 			}
 			/* TODO A length larger than UINT16_MAX should be a protocol violation error */
-			//~ IMQUIC_MOQ_CHECK_ERR(ext_len > UINT16_MAX, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Key-Value-Pair length");
+			//~ IMQUIC_MOQ_CHECK_ERR(prop_len > UINT16_MAX, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid Key-Value-Pair length");
 			offset += length;
-			imquic_moq_object_extension *extension = g_malloc0(sizeof(imquic_moq_object_extension));
-			extension->id = ext_type;
-			if(ext_len > 0) {
-				extension->value.data.length = ext_len;
-				extension->value.data.buffer = g_malloc(ext_len);
-				memcpy(extension->value.data.buffer, &extensions[offset], ext_len);
+			imquic_moq_property *property = g_malloc0(sizeof(imquic_moq_property));
+			property->id = prop_type;
+			if(prop_len > 0) {
+				property->value.data.length = prop_len;
+				property->value.data.buffer = g_malloc(prop_len);
+				memcpy(property->value.data.buffer, &properties[offset], prop_len);
 			}
-			exts = g_list_prepend(exts, extension);
-			offset += ext_len;
+			props = g_list_prepend(props, property);
+			offset += prop_len;
 		}
 	}
-	return g_list_reverse(exts);
+	return g_list_reverse(props);
 }
 
-static int imquic_moq_extension_type_sort(imquic_moq_object_extension *a, imquic_moq_object_extension *b) {
+static int imquic_moq_property_type_sort(imquic_moq_property *a, imquic_moq_property *b) {
 	if(!a && !b)
 		return 0;
 	else if(!b || a->id < b->id)
@@ -4768,26 +4765,26 @@ static int imquic_moq_extension_type_sort(imquic_moq_object_extension *a, imquic
 	return 0;
 }
 
-size_t imquic_moq_build_object_extensions(imquic_moq_version version, GList *extensions, uint8_t *bytes, size_t blen) {
-	if(extensions == NULL || bytes == NULL || blen == 0)
+size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties, uint8_t *bytes, size_t blen) {
+	if(properties == NULL || bytes == NULL || blen == 0)
 		return 0;
 	size_t offset = 0;
-	/* Starting from v16, extensions are encoded with the type delta-encoded,
+	/* Starting from v16, properties are encoded with the type delta-encoded,
 	 * which means we need to sort them all in increasing type order */
-	GList *ordered = g_list_sort(g_list_copy(extensions), (GCompareFunc)imquic_moq_extension_type_sort);
+	GList *ordered = g_list_sort(g_list_copy(properties), (GCompareFunc)imquic_moq_property_type_sort);
 	GList *temp = ordered;
 	uint64_t last_id = 0;
 	while(temp) {
-		imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
-		offset += imquic_write_varint((ext->id - last_id), &bytes[offset], blen-offset);
-		last_id = ext->id;
-		if(ext->id % 2 == 0) {
-			offset += imquic_write_varint(ext->value.number, &bytes[offset], blen-offset);
+		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+		offset += imquic_write_varint((prop->id - last_id), &bytes[offset], blen-offset);
+		last_id = prop->id;
+		if(prop->id % 2 == 0) {
+			offset += imquic_write_varint(prop->value.number, &bytes[offset], blen-offset);
 		} else {
-			offset += imquic_write_varint(ext->value.data.length, &bytes[offset], blen-offset);
-			if(ext->value.data.length > 0) {
-				memcpy(&bytes[offset], ext->value.data.buffer, ext->value.data.length);
-				offset += ext->value.data.length;
+			offset += imquic_write_varint(prop->value.data.length, &bytes[offset], blen-offset);
+			if(prop->value.data.length > 0) {
+				memcpy(&bytes[offset], prop->value.data.buffer, prop->value.data.length);
+				offset += prop->value.data.length;
 			}
 		}
 		temp = temp->next;
@@ -4966,7 +4963,7 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namesp
 }
 
 int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
@@ -5000,7 +4997,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 	size_t blen = sizeof(buffer);
 	size_t sb_len = 0;
 	sb_len = imquic_moq_add_publish(moq, buffer, blen,
-		request_id, tns, tn, track_alias, parameters, track_extensions);
+		request_id, tns, tn, track_alias, parameters, track_properties);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		buffer, sb_len, FALSE);
 	/* Done */
@@ -5110,7 +5107,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 }
 
 int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
-		imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		imquic_moq_request_parameters *parameters, GList *track_properties) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
@@ -5133,7 +5130,7 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id, ui
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
 	size_t sb_len = imquic_moq_add_subscribe_ok(moq, buffer, blen,
-		request_id, track_alias, parameters, track_extensions);
+		request_id, track_alias, parameters, track_properties);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		buffer, sb_len, FALSE);
 	/* Done */
@@ -5631,7 +5628,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 }
 
 int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest,
-		imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		imquic_moq_request_parameters *parameters, GList *track_properties) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || largest == NULL) {
@@ -5650,7 +5647,7 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, imquic
 		request_id,
 		0,	/* TODO End of track */
 		largest,	/* Largest location */
-		parameters, track_extensions);
+		parameters, track_properties);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		buffer, f_len, FALSE);
 	/* Done */
@@ -5855,13 +5852,13 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* Check if we have data to send */
 	gboolean has_payload = (object->payload_len > 0 && object->payload != NULL);
 	gboolean valid_pkt = has_payload || (object->object_status != IMQUIC_MOQ_NORMAL_OBJECT);
-	/* Check if there are extensions to encode */
-	uint8_t extensions[256];
-	size_t extensions_len = 0;
-	if(object->extensions != NULL)
-		extensions_len = imquic_moq_build_object_extensions(moq->version, object->extensions, extensions, sizeof(extensions));
+	/* Check if there are properties to encode */
+	uint8_t properties[256];
+	size_t properties_len = 0;
+	if(object->properties != NULL)
+		properties_len = imquic_moq_build_properties(moq->version, object->properties, properties, sizeof(properties));
 	/* Check how we should send this */
-	size_t bufsize = extensions_len + object->payload_len + 100;
+	size_t bufsize = properties_len + object->payload_len + 100;
 	uint8_t *buffer = g_malloc(bufsize);	/* FIXME */
 	if(object->delivery == IMQUIC_MOQ_USE_DATAGRAM) {
 		/* Use a datagram */
@@ -5869,7 +5866,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			size_t dg_len = imquic_moq_add_object_datagram(moq, buffer, bufsize,
 				object->request_id, object->track_alias, object->group_id, object->object_id, object->object_status,
 				object->priority, object->payload, object->payload_len,
-				extensions, extensions_len);
+				properties, properties_len);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_object_datagram_created(conn->qlog, object);
@@ -5878,7 +5875,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		} else {
 			size_t dg_len = imquic_moq_add_object_datagram_status(moq, buffer, bufsize,
 				object->track_alias, object->group_id, object->object_id, object->priority,
-				object->object_status, extensions, extensions_len);
+				object->object_status, properties, properties_len);
 			imquic_connection_send_on_datagram(conn, buffer, dg_len);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
@@ -5910,14 +5907,14 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			}
 			/* Create a new stream */
 			moq_stream = g_malloc0(sizeof(imquic_moq_stream));
-			/* TODO Change the type depending on whether extensions/subgroup will be set:
+			/* TODO Change the type depending on whether properties/subgroup will be set:
 			 * since we don't have an API for that, for now we always set the type
 			 * that will allow us to dynamically use them all. This also means we
 			 * currently don't have a way to specify an End-of-Group flag */
 			moq_stream->type = imquic_moq_data_message_type_from_subgroup_header(moq->version,
 				TRUE,	/* We'll explicitly specify the Subgroup ID */
 				FALSE,	/* Whether the default Subgroup ID is 0 (ignored, since we set it) */
-				TRUE,	/* We'll add the extensions block, whether there are extensions or not */
+				TRUE,	/* We'll add the properties block, whether there are properties or not */
 				TRUE,	/* End-of-Group is set */
 				TRUE);	/* We'll add the Publisher Priority property */
 			moq_stream->priority = 128;	/* FIXME */
@@ -5960,7 +5957,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->last_object_id = object->object_id;
 			shgo_len = imquic_moq_add_subgroup_header_object(moq, moq_stream, buffer, bufsize,
 				object_id, object->object_status, object->payload, object->payload_len,
-				extensions, extensions_len);
+				properties, properties_len);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_subgroup_object_created(conn->qlog, moq_stream->stream_id, object);
@@ -6027,13 +6024,13 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				TRUE,	/* We write the Object ID */
 				TRUE,	/* We write the Group ID */
 				TRUE,	/* We write the Priority */
-				TRUE,	/* We add extensions */
+				TRUE,	/* We add properties */
 				FALSE,	/* We assume Forwarding Preference is not DATAGRAM */
 				FALSE, FALSE);	/* We don't use the "end of range" flags */
 			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize, flags,
 				object->group_id, object->subgroup_id, object->object_id, object->priority,
 				object->object_status, object->payload, object->payload_len,
-				extensions, extensions_len);
+				properties, properties_len);
 #ifdef HAVE_QLOG
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_fetch_object_created(conn->qlog, moq_stream->stream_id, object);
@@ -6357,20 +6354,20 @@ void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_
 	json_object_set_new(message, name, params);
 }
 
-void imquic_qlog_moq_message_add_extensions(json_t *message, GList *extensions, const char *name) {
-	if(message == NULL || extensions == NULL || name == NULL)
+void imquic_qlog_moq_message_add_properties(json_t *message, GList *properties, const char *name) {
+	if(message == NULL || properties == NULL || name == NULL)
 		return;
 	json_t *headers = json_array();
-	GList *temp = extensions;
+	GList *temp = properties;
 	while(temp) {
-		imquic_moq_object_extension *ext = (imquic_moq_object_extension *)temp->data;
+		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
 		json_t *header = json_object();
-		json_object_set_new(header, "header_type", json_integer(ext->id));
-		if(ext->id % 2 == 0) {
-			json_object_set_new(header, "header_value", json_integer(ext->value.number));
+		json_object_set_new(header, "type", json_integer(prop->id));
+		if(prop->id % 2 == 0) {
+			json_object_set_new(header, "value", json_integer(prop->value.number));
 		} else {
 			/* FIXME */
-			json_object_set_new(header, "header_length", json_integer(ext->value.data.length));
+			json_object_set_new(header, "length", json_integer(prop->value.data.length));
 		}
 		json_array_append_new(headers, header);
 		temp = temp->next;
@@ -6432,7 +6429,7 @@ void imquic_moq_qlog_object_datagram_created(imquic_qlog *qlog, imquic_moq_objec
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	if(object->payload_len > 0) {
 		imquic_qlog_event_add_raw(data, "object_payload",
 			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
@@ -6449,7 +6446,7 @@ void imquic_moq_qlog_object_datagram_parsed(imquic_qlog *qlog, imquic_moq_object
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	if(object->payload_len > 0) {
 		imquic_qlog_event_add_raw(data, "object_payload",
 			(qlog->moq_objects ? object->payload : NULL), object->payload_len);
@@ -6466,7 +6463,7 @@ void imquic_moq_qlog_object_datagram_status_created(imquic_qlog *qlog, imquic_mo
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {
 		imquic_qlog_event_add_raw(data, "object_payload",
@@ -6484,7 +6481,7 @@ void imquic_moq_qlog_object_datagram_status_parsed(imquic_qlog *qlog, imquic_moq
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {
 		imquic_qlog_event_add_raw(data, "object_payload",
@@ -6537,7 +6534,7 @@ void imquic_moq_qlog_subgroup_object_created(imquic_qlog *qlog, uint64_t stream_
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {
@@ -6557,7 +6554,7 @@ void imquic_moq_qlog_subgroup_object_parsed(imquic_qlog *qlog, uint64_t stream_i
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
 	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {
@@ -6602,7 +6599,7 @@ void imquic_moq_qlog_fetch_object_created(imquic_qlog *qlog, uint64_t stream_id,
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {
@@ -6621,7 +6618,7 @@ void imquic_moq_qlog_fetch_object_parsed(imquic_qlog *qlog, uint64_t stream_id, 
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
-	imquic_qlog_moq_message_add_extensions(data, object->extensions, "extension_headers");
+	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {

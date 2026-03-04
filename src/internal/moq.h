@@ -86,25 +86,25 @@ gboolean imquic_moq_is_datagram_message_type_valid(imquic_moq_version version, u
  * for \c OBJECT_DATAGRAM or \c OBJECT_DATAGRAM_STATUS out of the individual properties.
  * @param version The version of the connection
  * @param payload Whether there is a payload
- * @param ext Whether there are extensions
+ * @param prop Whether there are properties
  * @param eog Whether there is an End of Group
  * @param oid Whether there is an Object ID
  * @param priority Whether there is a Publisher Priority
  * @returns The type as a bitmask flag */
 uint8_t imquic_moq_datagram_message_type_return(imquic_moq_version version,
-	gboolean payload, gboolean ext, gboolean eog, gboolean oid, gboolean priority);
+	gboolean payload, gboolean prop, gboolean eog, gboolean oid, gboolean priority);
 /*! \brief Helper function to parse a imquic_moq_datagram_message_type value
  * for \c OBJECT_DATAGRAM or \c OBJECT_DATAGRAM_STATUS to the individual properties.
  * @param[in] version The version of the connection
  * @param[in] type The type to parse
  * @param[out] payload Output variable to write whether there is a payload
- * @param[out] ext Output variable to write whether there are extensions
+ * @param[out] prop Output variable to write whether there are properties
  * @param[out] eog Output variable to write whether there is an End of Group
  * @param[out] oid Output variable to write whether there is an Object ID
  * @param[out] priority Output variable to write whether there is a Publisher Priority
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t type,
-	gboolean *payload, gboolean *ext, gboolean *eog, gboolean *oid, gboolean *priority, gboolean *violation);
+	gboolean *payload, gboolean *prop, gboolean *eog, gboolean *oid, gboolean *priority, gboolean *violation);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_datagram_message_type value.
  * @param type The type value
  * @param version The version of the connection
@@ -131,23 +131,23 @@ gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8
  * @param[in] version The version of the connection
  * @param[in] subgroup Whether the Subgroup ID field is present
  * @param[in] sgid0 Whether the default value of Subgroup ID is 0, in case the field is missing
- * @param[in] ext Whether there are extensions
+ * @param[in] prop Whether there are properties
  * @param[in] eog Whether there is an End of Group
  * @param[in] priority Whether there is a Publisher Priority
  * @returns The type as a bitmask flag */
 uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version,
-	gboolean subgroup, gboolean sgid0, gboolean ext, gboolean eog, gboolean priority);
+	gboolean subgroup, gboolean sgid0, gboolean prop, gboolean eog, gboolean priority);
 /*! \brief Helper function to parse a type value for \c SUBRGOUP_HEADER to the individual properties.
  * @param[in] version The version of the connection
  * @param[in] type The type to parse
  * @param[out] subgroup Output variable to write whether the Subgroup ID field is present
  * @param[out] sgid0 Output variable to write whether the default value of Subgroup ID is 0, in case the field is missing
- * @param[out] ext Output variable to write whether there are extensions
+ * @param[out] prop Output variable to write whether there are properties
  * @param[out] eog Output variable to write whether there is an End of Group
  * @param[out] priority Output variable to write whether there is a Publisher Priority
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
-	gboolean *subgroup, gboolean *sgid0, gboolean *ext, gboolean *eog, gboolean *priority, gboolean *violation);
+	gboolean *subgroup, gboolean *sgid0, gboolean *prop, gboolean *eog, gboolean *priority, gboolean *violation);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_data_message_type value.
  * @param type The imquic_data_moq_message_type value
  * @param version The version of the connection
@@ -178,13 +178,13 @@ gboolean imquic_moq_is_fetch_serialization_flags_valid(imquic_moq_version versio
  * @param[in] oid Whether the Object ID field is present
  * @param[in] group Whether the Group ID field is present
  * @param[in] priority Whether the Publisher field is present
- * @param[in] ext Whether there are extensions
+ * @param[in] prop Whether there are properties
  * @param[in] datagram Whether the forwarding preference is Datagram
  * @param[in] end_ne_range Whether this is the end of a non-existent range (ignores all other properties)
  * @param[in] end_uk_range Whether this is the end of an unknown range (ignores all other properties)
  * @returns The serialization flags as an integer */
 uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version version,
-	imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean ext,
+	imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean prop,
 	gboolean datagram, gboolean end_ne_range, gboolean end_uk_range);
 /*! \brief Helper function to parse serialozation flags for \c FETCH to the individual properties.
  * @param[in] version The version of the connection
@@ -193,23 +193,23 @@ uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version versio
  * @param[out] oid Output variable to write whether the Object ID field is present
  * @param[out] group Output variable to write whether the Group ID field is present
  * @param[out] priority Output variable to write whether there is a Publisher Priority
- * @param[out] ext Output variable to write whether there are extensions
+ * @param[out] prop Output variable to write whether there are properties
  * @param[out] datagram Output variable to write whether the forwarding preference is Datagram
  * @param[out] end_ne_range Output variable to write whether this is the end of a non-existent range
  * @param[out] end_uk_range Output variable to write whether this is the end of an unknown range
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint64_t flags,
-	imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *ext,
+	imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *prop,
 	gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation);
 
 /*! \brief MoQ setup parameter types */
 typedef enum imquic_moq_setup_option_type {
-	IMQUIC_MOQ_SETUP_PARAM_PATH = 0x01,
-	IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID = 0x02,
-	IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN = 0x03,
-	IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
-	IMQUIC_MOQ_SETUP_PARAM_AUTHORITY = 0x05,
-	IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION = 0x07,
+	IMQUIC_MOQ_SETUP_OPTION_PATH = 0x01,
+	IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID = 0x02,
+	IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN = 0x03,
+	IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
+	IMQUIC_MOQ_SETUP_OPTION_AUTHORITY = 0x05,
+	IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION = 0x07,
 } imquic_moq_setup_option_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_setup_option_type value.
  * @param type The imquic_moq_setup_option_type value
@@ -266,20 +266,20 @@ typedef struct imquic_moq_setup_options {
 	gboolean unknown;
 } imquic_moq_setup_options;
 
-/*! \brief Helper mode to parse an extensions buffer to a GList of imquic_moq_object_extension
+/*! \brief Helper mode to parse a properties buffer to a GList of imquic_moq_property
  * \note The caller owns the list, and is responsible of freeing it and its content
  * @param version The version of the connection
- * @param extensions The buffer containing the extensions data
- * @param elen The size of the buffer containing the extensions data
- * @returns A GList instance containing a set of imquic_moq_object_extension, if successful, or NULL if no extensions were found */
-GList *imquic_moq_parse_object_extensions(imquic_moq_version version, uint8_t *extensions, size_t elen);
-/*! \brief Helper mode to craft an extensions buffer out of a GList of imquic_moq_object_extension
+ * @param properties The buffer containing the properties data
+ * @param plen The size of the buffer containing the properties data
+ * @returns A GList instance containing a set of imquic_moq_property, if successful, or NULL if no properties were found */
+GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t plen);
+/*! \brief Helper mode to craft a properties buffer out of a GList of imquic_moq_property
  * @param[in] version The version of the connection
- * @param[in] extensions The list of extensions to serialize
- * @param[out] bytes The buffer to write the extensions data to
+ * @param[in] properties The list of properties to serialize
+ * @param[out] bytes The buffer to write the properties data to
  * @param[in] blen The size of the buffer to write to
  * @returns How many bytes were written, if successful */
-size_t imquic_moq_build_object_extensions(imquic_moq_version version, GList *extensions, uint8_t *bytes, size_t blen);
+size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties, uint8_t *bytes, size_t blen);
 
 /*! \brief MoQ FETCH types */
 typedef enum imquic_moq_fetch_type {
@@ -823,11 +823,11 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
  * @param track_name The track name to put in the message
  * @param track_alias The track alias to put in the message
  * @param parameters The parameters to add, if any
- * @param track_extensions List of track extensions to add, if any
+ * @param track_properties List of track properties to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias,
-	imquic_moq_request_parameters *parameters, GList *track_extensions);
+	imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Helper method to add a \c PUBLISH_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -875,10 +875,10 @@ size_t imquic_moq_add_request_update(imquic_moq_context *moq, uint8_t *bytes, si
  * @param request_id The request ID to put in the message
  * @param track_alias The track alias to put in the message
  * @param parameters The parameters to add, if any
- * @param track_extensions List of track extensions to add, if any
+ * @param track_properties List of track properties to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Helper method to add a \c SUBSCRIBE_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -993,10 +993,10 @@ size_t imquic_moq_add_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, size
  * @param end_of_track Whether all objects have been published
  * @param end_location End location to add to the message, if needed
  * @param parameters The parameters to add, if any
- * @param track_extensions List of track extensions to add, if any
+ * @param track_properties List of track properties to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id,
-	uint8_t end_of_track, imquic_moq_location *end_location, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	uint8_t end_of_track, imquic_moq_location *end_location, imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Helper method to add a \c FETCH_ERRROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1058,12 +1058,12 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t ble
  * @param priority The publisher priority to put in the message
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
- * @param extensions The buffer containing the object extensions, if any
- * @param elen The size of the object extensions buffer
+ * @param properties The buffer containing the properties, if any
+ * @param prlen The size of the properties buffer
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
 	uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t priority,
-	uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen);
+	uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM_STATUS message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -1074,12 +1074,12 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
  * @param object_id The object ID to put in the message
  * @param priority The publisher priority to put in the message
  * @param object_status The object status (only added if the payload length is 0)
- * @param extensions The buffer containing the object extensions, if any
- * @param elen The size of the object extensions buffer
+ * @param properties The buffer containing the properties, if any
+ * @param prlen The size of the properties buffer
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t track_alias, uint64_t group_id, uint64_t object_id, uint8_t priority,
-	uint64_t object_status, uint8_t *extensions, size_t elen);
+	uint64_t object_status, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add a \c SUBGROUP_HEADER message to a buffer
  * @note This will create a new \c STREAM and send the header: after
  * that, imquic_moq_add_stream_header_subgroup_object is used to send
@@ -1106,12 +1106,12 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
  * @param object_status The object status (only added if the payload length is 0)
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
- * @param extensions The buffer containing the object extensions, if any
- * @param elen The size of the object extensions buffer
+ * @param properties The buffer containing the properties, if any
+ * @param prlen The size of the properties buffer
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t object_id, uint64_t object_status,
-	uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen);
+	uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add a \c FETCH_HEADER message to a buffer
  * @note This will create a new \c STREAM and send the header: after
  * that, imquic_moq_add_fetch_header_object is used to send
@@ -1135,21 +1135,21 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param object_status The object status (only added if the payload length is 0)
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
- * @param extensions The buffer containing the object extensions, if any
- * @param elen The size of the object extensions buffer
+ * @param properties The buffer containing the properties, if any
+ * @param prlen The size of the properties buffer
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
-	uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *extensions, size_t elen);
-/*! \brief Helper method to add object extensions to a buffer
+	uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
+/*! \brief Helper method to add properties to a buffer
  * @param moq The imquic_moq_context generating the message
- * @param bytes The buffer to add the extensions to
+ * @param bytes The buffer to add the properties to
  * @param blen The size of the buffer
- * @param extensions The buffer containing the object extensions, if any
- * @param elen The size of the object extensions buffer
- * @returns The size of the generated extensions block, if successful, or 0 otherwise */
-size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint8_t *extensions, size_t elen);
+ * @param properties The buffer containing the properties, if any
+ * @param prlen The size of the properties buffer
+ * @returns The size of the generated properties block, if successful, or 0 otherwise */
+size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint8_t *properties, size_t prlen);
 ///@}
 
 /** @name Parsing and building MoQ parameters
@@ -1244,7 +1244,7 @@ typedef struct imquic_moq_callbacks {
 	void (* publish_namespace_done)(imquic_connection *conn, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH messages */
 	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ACCEPTED messages */
 	void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ERROR messages */
@@ -1253,7 +1253,7 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c REQUEST_UPDATE messages */
@@ -1289,7 +1289,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c FETCH_CANCEL messages */
 	void (* incoming_fetch_cancel)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ACCEPTED messages */
-	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
@@ -1372,11 +1372,11 @@ void imquic_qlog_moq_message_add_setup_options(json_t *message, imquic_moq_setup
  * @param name The name the array should have in the message object */
 void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_version version,
 	imquic_moq_request_parameters *parameters, const char *name);
-/*! \brief Helper to add a stringified array of extension headers to a message
+/*! \brief Helper to add a stringified array of propertie headers to a message
  * @param message The message object to update
- * @param extensions The list of extensions to convert
+ * @param properties The list of properties to convert
  * @param name The name the array should have in the message object */
-void imquic_qlog_moq_message_add_extensions(json_t *message, GList *extensions, const char *name);
+void imquic_qlog_moq_message_add_properties(json_t *message, GList *properties, const char *name);
 /*! \brief Add a \c control_message_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message

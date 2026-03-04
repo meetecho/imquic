@@ -95,9 +95,9 @@ static const char *imquic_demo_tuple_field_str(imquic_demo_tuple_field field) {
 		case TUPLE_FIELD_SEND_EOG:
 			return "Send End of Group Markers";
 		case TUPLE_FIELD_EXT_INT:
-			return "Test Integer Extension";
+			return "Test Integer Property";
 		case TUPLE_FIELD_EXT_VAR:
-			return "Test Variable Extension";
+			return "Test Variable Property";
 		case TUPLE_FIELD_TIMEOUT:
 			return "Publisher Delivery Timeout";
 		default:
@@ -603,11 +603,11 @@ static void *imquic_demo_tester_thread(void *data) {
 	uint8_t *obj_p = s->test[TUPLE_FIELD_OBJS_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJS_SIZE]) : NULL;
 	if(obj_p)
 		memset(obj_p, 't', s->test[TUPLE_FIELD_OBJS_SIZE]);
-	size_t extensions_count = 0;
+	size_t properties_count = 0;
 	if(s->test[TUPLE_FIELD_EXT_INT] >= 0)
-		extensions_count++;
+		properties_count++;
 	if(s->test[TUPLE_FIELD_EXT_VAR] >= 0)
-		extensions_count++;
+		properties_count++;
 	/* Timers */
 	int64_t frequency = s->test[TUPLE_FIELD_OBJS_FREQ] * 1000;
 	int64_t sleep_time = frequency/2;
@@ -658,21 +658,21 @@ static void *imquic_demo_tester_thread(void *data) {
 					(s->descending && (object_id == 0 || (group_id == (uint64_t)s->test[TUPLE_FIELD_START_GROUP] && object_id <= (uint64_t)s->test[TUPLE_FIELD_START_OBJECT]))))
 				last_object = TRUE;
 		}
-		GList *exts = NULL;
-		if(extensions_count > 0) {
-			imquic_moq_object_extension numext = { 0 }, dataext = { 0 };
+		GList *props = NULL;
+		if(properties_count > 0) {
+			imquic_moq_property numprop = { 0 }, dataprop = { 0 };
 			if(s->test[TUPLE_FIELD_EXT_INT] >= 0) {
-				/* Add a numeric extension */
-				numext.id = 2 * s->test[TUPLE_FIELD_EXT_INT];
-				numext.value.number = g_random_int();
-				exts = g_list_append(exts, &numext);
+				/* Add a numeric property */
+				numprop.id = 2 * s->test[TUPLE_FIELD_EXT_INT];
+				numprop.value.number = g_random_int();
+				props = g_list_append(props, &numprop);
 			}
 			if(s->test[TUPLE_FIELD_EXT_VAR] >= 0) {
-				/* Add a data extension */
-				dataext.id = 2 * s->test[TUPLE_FIELD_EXT_VAR] + 1;
-				dataext.value.data.buffer = (uint8_t *)"moq-test";
-				dataext.value.data.length = strlen("moq-test");
-				exts = g_list_append(exts, &dataext);
+				/* Add a data property */
+				dataprop.id = 2 * s->test[TUPLE_FIELD_EXT_VAR] + 1;
+				dataprop.value.data.buffer = (uint8_t *)"moq-test";
+				dataprop.value.data.length = strlen("moq-test");
+				props = g_list_append(props, &dataprop);
 			}
 		}
 		imquic_moq_object object = {
@@ -684,7 +684,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			.object_status = 0,
 			.payload = (num_objects == 0) ? obj0_p : obj_p,
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
-			.extensions = exts,
+			.properties = props,
 			.delivery = delivery,
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
@@ -694,7 +694,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			last_subgroup_id = object.subgroup_id;
 			last_object_id = object.object_id;
 		}
-		g_list_free(exts);
+		g_list_free(props);
 		/* Update IDs for the next object */
 		num_objects++;
 		next_group = (num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]);
@@ -711,7 +711,7 @@ static void *imquic_demo_tester_thread(void *data) {
 				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK : IMQUIC_MOQ_END_OF_GROUP;
 				object.payload_len = 0;
 				object.payload = NULL;
-				object.extensions = NULL;
+				object.properties = NULL;
 				object.end_of_stream = TRUE;
 				if(send_object || last_object)
 					imquic_moq_send_object(conn, &object);
@@ -934,8 +934,8 @@ int main(int argc, char *argv[]) {
 	default_test[TUPLE_FIELD_GROUP_INC] = 1;
 	default_test[TUPLE_FIELD_OBJ_INC] = 1;
 	default_test[TUPLE_FIELD_SEND_EOG] = 0;
-	default_test[TUPLE_FIELD_EXT_INT] = -1;					/* Don't add any numeric extension by default */
-	default_test[TUPLE_FIELD_EXT_VAR] = -1;					/* Don't add any variable extension by default */
+	default_test[TUPLE_FIELD_EXT_INT] = -1;					/* Don't add any numeric property by default */
+	default_test[TUPLE_FIELD_EXT_VAR] = -1;					/* Don't add any variable property by default */
 	default_test[TUPLE_FIELD_TIMEOUT] = -1;					/* No delivery timeout by default */
 
 	/* Initialize the resources we'll need */

@@ -503,49 +503,49 @@ typedef enum imquic_moq_object_status {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_object_status_str(imquic_moq_object_status status);
 
-/*! \brief MoQ Object Extension
+/*! \brief MoQ Property
  * \note This may contain info related to different MoQ versions, and so
  * should be considered a higher level abstraction that the internal
  * MoQ stack may (and often will) use and notify differently */
-typedef struct imquic_moq_object_extension {
-	/*! \brief MoQ extension ID */
+typedef struct imquic_moq_property {
+	/*! \brief MoQ Property ID */
 	uint32_t id;
-	/*! \brief Extension value, which could be either a number (even
-	 * extension ID) or an octet of data with length (odd extension ID) */
+	/*! \brief Property value, which could be either a number (even
+	 * property ID) or an octet of data with length (odd property ID) */
 	union {
 		uint64_t number;
-		struct imquic_moq_object_extension_data {
+		struct imquic_moq_property_data {
 			uint64_t length;
 			uint8_t *buffer;
 		} data;
 	} value;
-} imquic_moq_object_extension;
+} imquic_moq_property;
 
-/*! \brief Known MoQ Object Extension header types
- * \note The library will not try to interpret extensions and their
+/*! \brief Known MoQ Property types
+ * \note The library will not try to interpret properties and their
  * payload: this is always left up to applications */
-typedef enum imquic_moq_extension_type {
+typedef enum imquic_moq_property_type {
 	/* Delivery Timeout */
-	IMQUIC_MOQ_EXT_DELIVERY_TIMEOUT = 0x02,
+	IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT = 0x02,
 	/* Max Cache Duration */
-	IMQUIC_MOQ_EXT_MAX_CACHE_DURATION = 0x04,
+	IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION = 0x04,
 	/* Default Publisher Priority */
-	IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
+	IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
 	/* Default Group Order */
-	IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER = 0x22,
+	IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER = 0x22,
 	/* Dynamic Groups */
-	IMQUIC_MOQ_EXT_DYNAMIC_GROUPS = 0x30,
+	IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS = 0x30,
 	/* Prior Group ID Gap */
-	IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP = 0x3C,
+	IMQUIC_MOQ_PROPERTY_PRIOR_GROUP_ID_GAP = 0x3C,
 	/* Prior Object ID Gap */
-	IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP = 0x3E,
-	/* Immutable Extensions */
-	IMQUIC_MOQ_EXT_IMMUTABLE_EXTENSIONS = 0xB,
-} imquic_moq_extension_type;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_extension_type value.
- * @param type The imquic_moq_extension_type value
+	IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP = 0x3E,
+	/* Immutable Properties */
+	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
+} imquic_moq_property_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
+ * @param type The imquic_moq_property_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_extension_type_str(imquic_moq_extension_type type);
+const char *imquic_moq_property_type_str(imquic_moq_property_type type);
 
 /*! \brief MoQ Object
  * \note This may contain info related to different MoQ versions, and so
@@ -570,8 +570,8 @@ typedef struct imquic_moq_object {
 	uint8_t *payload;
 	/*! \brief Size of the MoQ object payload */
 	size_t payload_len;
-	/*! \brief MoQ object extensions, if any */
-	GList *extensions;
+	/*! \brief MoQ properties, if any */
+	GList *properties;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
 	/*! \brief Whether this signals the end of the stream */
@@ -855,7 +855,7 @@ void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
  * @param incoming_publish Pointer to the function that will handle the incoming \c PUBLISH */
 void imquic_set_incoming_publish_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions));
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -880,7 +880,7 @@ void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_accepted Pointer to the function that will fire when a \c SUBSCRIBE is accepted */
 void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
-	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions));
+	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -986,7 +986,7 @@ void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
  * @param fetch_accepted Pointer to the function that will fire when an \c FETCH is accepted */
 void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
 	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions));
+		imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_properties));
 /*! \brief Configure the callback function to be notified when an
  * \c FETCH we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1132,11 +1132,11 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namesp
  * @param tn The imquic_moq_name track name to publish to
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param parameters The parameters to add to the request
- * @param track_extensions List of track extensions to add, if any
+ * @param track_properties List of track properties to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_publish(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_namespace *tns, imquic_moq_name *tn,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Function to accept an incoming \c PUBLISH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
@@ -1166,10 +1166,10 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
  * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param track_alias The unique \c track_alias value associated to the subscription to accept
  * @param parameters The parameters to add to the request
- * @param track_extensions List of track extensions to add, if any
+ * @param track_properties List of track properties to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Function to reject an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject
@@ -1296,10 +1296,10 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
  * @param request_id The unique \c request_id value associated to the subscription to accept
  * @param largest The largest group/object IDs
  * @param parameters The parameters to add to the request
- * @param track_extensions List of track extensions to add, if any
+ * @param track_properties List of track properties to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Function to reject an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject

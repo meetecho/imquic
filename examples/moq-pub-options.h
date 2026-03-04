@@ -27,7 +27,7 @@ typedef struct demo_options {
 	const char *delivery;
 	gboolean publish;
 	uint64_t track_alias;
-	gboolean extensions;
+	gboolean properties;
 	const char *ip;
 	int port;
 	const char *remote_host;
