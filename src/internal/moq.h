@@ -203,18 +203,18 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 	gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation);
 
 /*! \brief MoQ setup parameter types */
-typedef enum imquic_moq_setup_parameter_type {
+typedef enum imquic_moq_setup_option_type {
 	IMQUIC_MOQ_SETUP_PARAM_PATH = 0x01,
 	IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID = 0x02,
 	IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN = 0x03,
 	IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
 	IMQUIC_MOQ_SETUP_PARAM_AUTHORITY = 0x05,
 	IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION = 0x07,
-} imquic_moq_setup_parameter_type;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_setup_parameter_type value.
- * @param type The imquic_moq_setup_parameter_type value
+} imquic_moq_setup_option_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_setup_option_type value.
+ * @param type The imquic_moq_setup_option_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type type);
+const char *imquic_moq_setup_option_type_str(imquic_moq_setup_option_type type);
 
 /*! \brief MoQ request parameter types */
 typedef enum imquic_moq_request_parameter_type {
@@ -235,7 +235,7 @@ typedef enum imquic_moq_request_parameter_type {
 const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_type type, imquic_moq_version version);
 
 /*! \brief MoQ setup parameters */
-typedef struct imquic_moq_setup_parameters {
+typedef struct imquic_moq_setup_options {
 	/*! \brief Whether the PATH parameter is set */
 	gboolean path_set;
 	/*! \brief Value of the PATH parameter */
@@ -264,7 +264,7 @@ typedef struct imquic_moq_setup_parameters {
 	char moqt_implementation[256];
 	/*! \brief Whether there's unknown parameters */
 	gboolean unknown;
-} imquic_moq_setup_parameters;
+} imquic_moq_setup_options;
 
 /*! \brief Helper mode to parse an extensions buffer to a GList of imquic_moq_object_extension
  * \note The caller owns the list, and is responsible of freeing it and its content
@@ -722,18 +722,18 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param parameters The setup parameters to send
+ * @param options The setup options to send
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	imquic_moq_setup_parameters *parameters);
+	imquic_moq_setup_options *options);
 /*! \brief Helper method to add a \c SERVER_SETUP message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
- * @param parameters The setup parameters to send
+ * @param options The setup options to send
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	imquic_moq_setup_parameters *parameters);
+	imquic_moq_setup_options *options);
 /*! \brief Helper method to add a \c MAX_REQUEST_ID message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1160,12 +1160,12 @@ size_t imquic_moq_add_object_extensions(imquic_moq_context *moq, uint8_t *bytes,
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
  * @param[in] bytes Buffer containing the parameter to parse
  * @param[in] blen Size of the buffer to parse
- * @param[out] params imquic_moq_setup_parameters instance to put the parsed parameter in
+ * @param[out] params imquic_moq_setup_options instance to put the parsed parameter in
  * @param[out] param_type Type of the parsed parameter, needed for delta-decoding
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parameter, if successful, or 0 otherwise */
-size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	imquic_moq_setup_parameters *params, uint64_t *param_type, uint8_t *error);
+size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	imquic_moq_setup_options *params, uint64_t *param_type, uint8_t *error);
 /*! \brief Helper method to parse a MoQ subscribe parameter
  * @note This method does nothing at the moment
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
@@ -1198,15 +1198,15 @@ size_t imquic_moq_parameter_add_int(imquic_moq_context *moq, uint8_t *bytes, siz
  * @returns The size of the parameter, if successful, or 0 otherwise */
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen);
-/*! \brief Helper to serialize a imquic_moq_setup_parameters set to a buffer
+/*! \brief Helper to serialize a imquic_moq_setup_options set to a buffer
  * @param[in] moq The imquic_moq_context instance the parameter is for
- * @param[in] parameters The imquic_moq_setup_parameters to serialize
+ * @param[in] parameters The imquic_moq_setup_options to serialize
  * @param[out] bytes The buffer to add paramerers to
  * @param[in] blen The size of the buffer
  * @param[out] params_num The number of parameters added to the buffer
  * @returns The size of the serialized parameters, if successful, or 0 otherwise */
-size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
-	imquic_moq_setup_parameters *parameters,
+size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
+	imquic_moq_setup_options *options,
 	uint8_t *bytes, size_t blen, uint8_t *params_num);
 
 /*! \brief Helper to serialize a imquic_moq_request_parameters set to a buffer
@@ -1361,9 +1361,9 @@ void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_name *track_n
 /*! \brief Helper to add a stringified array of setup parameters to a message
  * @note This automatically fills in a property with the specified name
  * @param message The message object to update
- * @param parameters The setup parameters to convert
+ * @param options The setup options to convert
  * @param name The name the array should have in the message object */
-void imquic_qlog_moq_message_add_setup_parameters(json_t *message, imquic_moq_setup_parameters *parameters, const char *name);
+void imquic_qlog_moq_message_add_setup_options(json_t *message, imquic_moq_setup_options *options, const char *name);
 /*! \brief Helper to add a stringified array of subscribe parameters to a message
  * @note This automatically fills in a property with the specified name
  * @param message The message object to update

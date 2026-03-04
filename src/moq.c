@@ -157,7 +157,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	/* After the function returns, check if we can do something */
 	if(!moq->is_server) {
 		/* Generate a CLIENT_SETUP */
-		imquic_moq_setup_parameters parameters = { 0 };
+		imquic_moq_setup_options parameters = { 0 };
 		if(moq->local_max_request_id > 0) {
 			parameters.max_request_id_set = TRUE;
 			parameters.max_request_id = moq->local_max_request_id;
@@ -746,7 +746,7 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 }
 
 
-const char *imquic_moq_setup_parameter_type_str(imquic_moq_setup_parameter_type type) {
+const char *imquic_moq_setup_option_type_str(imquic_moq_setup_option_type type) {
 	switch(type) {
 		case IMQUIC_MOQ_SETUP_PARAM_PATH:
 			return "PATH";
@@ -859,34 +859,34 @@ const char *imquic_moq_auth_token_alias_type_str(imquic_moq_auth_token_alias_typ
 	return NULL;
 }
 
-/* MoQ parameters */
+/* MoQ options and parameters */
 static int imquic_moq_compare_types(const void *a, const void *b) {
 	return GPOINTER_TO_INT(a) - GPOINTER_TO_INT(b);
 }
-size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
-		imquic_moq_setup_parameters *parameters,
+size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
+		imquic_moq_setup_options *options,
 		uint8_t *bytes, size_t blen, uint8_t *params_num) {
 	*params_num = 0;
 	if(bytes == NULL || blen == 0)
 		return 0;
 	size_t offset = 0;
-	if(parameters == NULL) {
-		/* No parameters */
+	if(options == NULL) {
+		/* No options */
 		offset += imquic_write_varint(0, &bytes[offset], blen-offset);
 	} else {
 		uint64_t new_id = 0, last_id = 0;
 		GList *list = NULL;
-		if(parameters->path_set)
+		if(options->path_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_PATH));
-		if(parameters->max_request_id_set)
+		if(options->max_request_id_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID));
-		if(parameters->max_auth_token_cache_size_set)
+		if(options->max_auth_token_cache_size_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE));
-		if(parameters->auth_token_set)
+		if(options->auth_token_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN));
-		if(parameters->authority_set)
+		if(options->authority_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_AUTHORITY));
-		if(parameters->moqt_implementation_set)
+		if(options->moqt_implementation_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION));
 		*params_num = g_list_length(list);
 		offset += imquic_write_varint(*params_num, &bytes[offset], blen-offset);
@@ -898,27 +898,27 @@ size_t imquic_moq_setup_parameters_serialize(imquic_moq_context *moq,
 				if(new_id == IMQUIC_MOQ_SETUP_PARAM_PATH) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
-						(uint8_t *)parameters->path, strlen(parameters->path));
+						(uint8_t *)options->path, strlen(options->path));
 				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MAX_REQUEST_ID) {
 					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
-						parameters->max_request_id);
+						options->max_request_id);
 				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MAX_AUTH_TOKEN_CACHE_SIZE) {
 					offset += imquic_moq_parameter_add_int(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
-						parameters->max_auth_token_cache_size);
+						options->max_auth_token_cache_size);
 				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_AUTHORIZATION_TOKEN) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
-						parameters->auth_token, parameters->auth_token_len);
+						options->auth_token, options->auth_token_len);
 				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_AUTHORITY) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
-						(uint8_t *)parameters->authority, strlen(parameters->authority));
+						(uint8_t *)options->authority, strlen(options->authority));
 				} else if(new_id == IMQUIC_MOQ_SETUP_PARAM_MOQT_IMPLEMENTATION) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
-						(uint8_t *)parameters->moqt_implementation, strlen(parameters->moqt_implementation));
+						(uint8_t *)options->moqt_implementation, strlen(options->moqt_implementation));
 				}
 				last_id = new_id;
 				temp = temp->next;
@@ -1563,53 +1563,53 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	}
 	size_t offset = 0;
 	uint8_t length = 0;
-	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(params_num > 0 && (length == 0 || length >= blen-offset), NULL, 0, 0, "Broken CLIENT_SETUP");
-	IMQUIC_MOQ_CHECK_ERR(params_num == 0 && (length == 0 || length > blen-offset), NULL, 0, 0, "Broken CLIENT_SETUP");
+	uint64_t opts_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(opts_num > 0 && (length == 0 || length >= blen-offset), NULL, 0, 0, "Broken CLIENT_SETUP");
+	IMQUIC_MOQ_CHECK_ERR(opts_num == 0 && (length == 0 || length > blen-offset), NULL, 0, 0, "Broken CLIENT_SETUP");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params_num);
-	imquic_moq_setup_parameters parameters = { 0 };
-	uint64_t param = 0, i = 0;
-	for(i = 0; i<params_num; i++) {
-		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		imquic_get_connection_name(moq->conn), opts_num);
+	imquic_moq_setup_options options = { 0 };
+	uint64_t opt = 0, i = 0;
+	for(i = 0; i<opts_num; i++) {
+		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken CLIENT_SETUP");
 	}
-	if(parameters.max_request_id_set) {
+	if(options.max_request_id_set) {
 		/* Update the value we have */
-		moq->max_request_id = parameters.max_request_id;
+		moq->max_request_id = options.max_request_id;
 	}
-	if(parameters.max_auth_token_cache_size) {
+	if(options.max_auth_token_cache_size) {
 		/* Update the value we have */
-		moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
+		moq->max_auth_token_cache_size = options.max_auth_token_cache_size;
 	}
-	if(parameters.moqt_implementation_set) {
+	if(options.moqt_implementation_set) {
 		/* Take note of the implemntation */
 		g_free(moq->peer_implementation);
 		moq->peer_implementation = NULL;
-		if(strlen(parameters.moqt_implementation) > 0)
-			moq->peer_implementation = g_strdup(parameters.moqt_implementation);
+		if(strlen(options.moqt_implementation) > 0)
+			moq->peer_implementation = g_strdup(options.moqt_implementation);
 	}
-	if(parameters.path_set) {
+	if(options.path_set) {
 		/* TODO Handle and validate */
 		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
 			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received on a WebTransport");
 	}
-	if(parameters.authority_set) {
+	if(options.authority_set) {
 		/* TODO Handle and validate */
 		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
 			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_PATH, 0, "AUTHORITY received on a WebTransport");
 	}
 	if(moq->max_request_id == 0) {
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID parameter received, setting it to 1\n",
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID option received, setting it to 1\n",
 			imquic_get_connection_name(moq->conn));
 		moq->max_request_id = 1;
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("client_setup");
-		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_setup_parameters(message, &parameters, "setup_parameters");
+		json_object_set_new(message, "number_of_options", json_integer(opts_num));
+		imquic_qlog_moq_message_add_setup_options(message, &options, "setup_options");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, bytes-3, offset+3, message);
 	}
 #endif
@@ -1617,26 +1617,26 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	uint64_t error_code = 0;
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_moq_connection) {
 		error_code = moq->conn->socket->callbacks.moq.incoming_moq_connection(moq->conn,
-			(parameters.auth_token_set ? parameters.auth_token : NULL),
-			(parameters.auth_token_set ? parameters.auth_token_len : 0));
+			(options.auth_token_set ? options.auth_token : NULL),
+			(options.auth_token_set ? options.auth_token_len : 0));
 	}
 	IMQUIC_MOQ_CHECK_ERR(error_code > 0, error, error_code, 0, "CLIENT_SETUP rejected by application");
 	/* If we got here, generate a SERVER_SETUP to send back */
-	imquic_moq_setup_parameters s_parameters = { 0 };
+	imquic_moq_setup_options s_options = { 0 };
 	if(moq->local_max_request_id > 0) {
-		s_parameters.max_request_id_set = TRUE;
-		s_parameters.max_request_id = moq->local_max_request_id;
+		s_options.max_request_id_set = TRUE;
+		s_options.max_request_id = moq->local_max_request_id;
 	}
 	if(moq->local_max_auth_token_cache_size > 0) {
-		s_parameters.max_auth_token_cache_size_set = TRUE;
-		s_parameters.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
+		s_options.max_auth_token_cache_size_set = TRUE;
+		s_options.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
 	}
 	/* Add the implementation */
-	s_parameters.moqt_implementation_set = TRUE;
-	g_snprintf(s_parameters.moqt_implementation, sizeof(s_parameters.moqt_implementation), "imquic %s", imquic_version_string_full);
+	s_options.moqt_implementation_set = TRUE;
+	g_snprintf(s_options.moqt_implementation, sizeof(s_options.moqt_implementation), "imquic %s", imquic_version_string_full);
 	uint8_t buffer[200];
 	size_t buflen = sizeof(buffer);
-	size_t ss_len = imquic_moq_add_server_setup(moq, buffer, buflen, &s_parameters);
+	size_t ss_len = imquic_moq_add_server_setup(moq, buffer, buflen, &s_options);
 	imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
 		buffer, ss_len, FALSE);
 	g_atomic_int_set(&moq->connected, 1);
@@ -1656,52 +1656,52 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		return 0;
 	size_t offset = 0;
 	uint8_t length = 0;
-	uint64_t params_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(params_num > 0 && (length == 0 || length >= blen-offset), NULL, 0, 0, "Broken SERVER_SETUP");
-	IMQUIC_MOQ_CHECK_ERR(params_num == 0 && (length == 0 || length > blen-offset), NULL, 0, 0, "Broken SERVER_SETUP");
+	uint64_t opts_num = imquic_read_varint(&bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(opts_num > 0 && (length == 0 || length >= blen-offset), NULL, 0, 0, "Broken SERVER_SETUP");
+	IMQUIC_MOQ_CHECK_ERR(opts_num == 0 && (length == 0 || length > blen-offset), NULL, 0, 0, "Broken SERVER_SETUP");
 	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
-		imquic_get_connection_name(moq->conn), params_num);
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" options:\n",
+		imquic_get_connection_name(moq->conn), opts_num);
 	uint64_t i = 0;
-	imquic_moq_setup_parameters parameters = { 0 };
-	uint64_t param = 0;
-	for(i = 0; i<params_num; i++) {
-		offset += imquic_moq_parse_setup_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+	imquic_moq_setup_options options = { 0 };
+	uint64_t opt = 0;
+	for(i = 0; i<opts_num; i++) {
+		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SERVER_SETUP");
 	}
-	if(parameters.max_request_id_set) {
+	if(options.max_request_id_set) {
 		/* Update the value we have */
-		moq->max_request_id = parameters.max_request_id;
+		moq->max_request_id = options.max_request_id;
 	}
-	if(parameters.max_auth_token_cache_size_set) {
+	if(options.max_auth_token_cache_size_set) {
 		/* Update the value we have */
-		moq->max_auth_token_cache_size = parameters.max_auth_token_cache_size;
+		moq->max_auth_token_cache_size = options.max_auth_token_cache_size;
 	}
-	if(parameters.moqt_implementation_set) {
+	if(options.moqt_implementation_set) {
 		/* Take note of the implemntation */
 		g_free(moq->peer_implementation);
 		moq->peer_implementation = NULL;
-		if(strlen(parameters.moqt_implementation) > 0)
-			moq->peer_implementation = g_strdup(parameters.moqt_implementation);
+		if(strlen(options.moqt_implementation) > 0)
+			moq->peer_implementation = g_strdup(options.moqt_implementation);
 	}
-	if(parameters.path_set) {
+	if(options.path_set) {
 		/* Servers can't use PATH */
 		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received from a server");
 	}
-	if(parameters.authority_set) {
+	if(options.authority_set) {
 		/* Servers can't use AUTHORITY */
 		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_PATH, 0, "AUTHORITY received from a server");
 	}
 	if(moq->max_request_id == 0) {
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID parameter received, setting it to 1\n",
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID option received, setting it to 1\n",
 			imquic_get_connection_name(moq->conn));
 		moq->max_request_id = 1;
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
-		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_setup_parameters(message, &parameters, "setup_parameters");
+		json_object_set_new(message, "number_of_options", json_integer(opts_num));
+		imquic_qlog_moq_message_add_setup_options(message, &options, "setup_options");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq->control_stream_id, bytes-3, offset+3, message);
 	}
 #endif
@@ -3474,7 +3474,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
 
 /* Message building */
 size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_setup_parameters *parameters) {
+		imquic_moq_setup_options *options) {
 	if(bytes == NULL || blen < 2) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_CLIENT_SETUP, moq->version));
@@ -3482,14 +3482,14 @@ size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size
 	}
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_CLIENT_SETUP);
-	uint8_t params_num = 0;
-	offset += imquic_moq_setup_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	uint8_t opts_num = 0;
+	offset += imquic_moq_setup_options_serialize(moq, options, &bytes[offset], blen-offset, &opts_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("client_setup");
-		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_setup_parameters(message, parameters, "setup_parameters");
+		json_object_set_new(message, "number_of_options", json_integer(opts_num));
+		imquic_qlog_moq_message_add_setup_options(message, options, "setup_options");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}
 #endif
@@ -3497,7 +3497,7 @@ size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size
 }
 
 size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_setup_parameters *parameters) {
+		imquic_moq_setup_options *options) {
 	if(bytes == NULL || blen < 2) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SERVER_SETUP, moq->version));
@@ -3505,14 +3505,14 @@ size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size
 	}
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_SERVER_SETUP);
-	uint8_t params_num = 0;
-	offset += imquic_moq_setup_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	uint8_t opts_num = 0;
+	offset += imquic_moq_setup_options_serialize(moq, options, &bytes[offset], blen-offset, &opts_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
-		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
-		imquic_qlog_moq_message_add_setup_parameters(message, parameters, "setup_parameters");
+		json_object_set_new(message, "number_of_options", json_integer(opts_num));
+		imquic_qlog_moq_message_add_setup_options(message, options, "setup_options");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}
 #endif
@@ -4397,8 +4397,8 @@ size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, si
 	return offset;
 }
 
-size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		imquic_moq_setup_parameters *params, uint64_t *param_type, uint8_t *error) {
+size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+		imquic_moq_setup_options *params, uint64_t *param_type, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1) {
@@ -4414,7 +4414,7 @@ size_t imquic_moq_parse_setup_parameter(imquic_moq_context *moq, uint8_t *bytes,
 	type += *param_type;
 	*param_type = type;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %s (%"SCNu64")\n",
-		imquic_get_connection_name(moq->conn), imquic_moq_setup_parameter_type_str(type), type);
+		imquic_get_connection_name(moq->conn), imquic_moq_setup_option_type_str(type), type);
 	uint64_t len = 0;
 	if(type % 2 == 1) {
 		len = imquic_read_varint(&bytes[offset], blen-offset, &length);
@@ -6225,53 +6225,53 @@ void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_name *track_n
 	json_object_set_new(message, "track_name", tn);
 }
 
-void imquic_qlog_moq_message_add_setup_parameters(json_t *message, imquic_moq_setup_parameters *parameters, const char *name) {
-	if(message == NULL || parameters == NULL || name == NULL)
+void imquic_qlog_moq_message_add_setup_options(json_t *message, imquic_moq_setup_options *options, const char *name) {
+	if(message == NULL || options == NULL || name == NULL)
 		return;
-	json_t *params = json_array();
-	if(parameters->path_set) {
+	json_t *opts = json_array();
+	if(options->path_set) {
 		json_t *path = json_object();
 		json_object_set_new(path, "name", json_string("path"));
-		json_object_set_new(path, "value", json_string(parameters->path));
-		json_array_append_new(params, path);
+		json_object_set_new(path, "value", json_string(options->path));
+		json_array_append_new(opts, path);
 	}
-	if(parameters->max_request_id_set) {
+	if(options->max_request_id_set) {
 		json_t *max_request_id = json_object();
 		json_object_set_new(max_request_id, "name", json_string("max_request_id"));
-		json_object_set_new(max_request_id, "value", json_integer(parameters->max_request_id));
-		json_array_append_new(params, max_request_id);
+		json_object_set_new(max_request_id, "value", json_integer(options->max_request_id));
+		json_array_append_new(opts, max_request_id);
 	}
-	if(parameters->max_auth_token_cache_size_set) {
+	if(options->max_auth_token_cache_size_set) {
 		json_t *max_auth_token_cache_size = json_object();
 		json_object_set_new(max_auth_token_cache_size, "name", json_string("max_auth_token_cache_size"));
-		json_object_set_new(max_auth_token_cache_size, "value", json_integer(parameters->max_auth_token_cache_size));
-		json_array_append_new(params, max_auth_token_cache_size);
+		json_object_set_new(max_auth_token_cache_size, "value", json_integer(options->max_auth_token_cache_size));
+		json_array_append_new(opts, max_auth_token_cache_size);
 	}
-	if(parameters->auth_token_set && parameters->auth_token_len > 0) {
+	if(options->auth_token_set && options->auth_token_len > 0) {
 		json_t *auth_token = json_object();
 		json_object_set_new(auth_token, "name", json_string("authorization_token"));
 		char ai_str[513];
-		json_object_set_new(auth_token, "value", json_string(imquic_hex_str(parameters->auth_token, parameters->auth_token_len, ai_str, sizeof(ai_str))));
-		json_array_append_new(params, auth_token);
+		json_object_set_new(auth_token, "value", json_string(imquic_hex_str(options->auth_token, options->auth_token_len, ai_str, sizeof(ai_str))));
+		json_array_append_new(opts, auth_token);
 	}
-	if(parameters->authority_set) {
+	if(options->authority_set) {
 		json_t *authority = json_object();
 		json_object_set_new(authority, "name", json_string("authority"));
-		json_object_set_new(authority, "value", json_string(parameters->authority));
-		json_array_append_new(params, authority);
+		json_object_set_new(authority, "value", json_string(options->authority));
+		json_array_append_new(opts, authority);
 	}
-	if(parameters->moqt_implementation_set) {
+	if(options->moqt_implementation_set) {
 		json_t *moqt_implementation = json_object();
 		json_object_set_new(moqt_implementation, "name", json_string("moqt_implementation"));
-		json_object_set_new(moqt_implementation, "value", json_string(parameters->moqt_implementation));
-		json_array_append_new(params, moqt_implementation);
+		json_object_set_new(moqt_implementation, "value", json_string(options->moqt_implementation));
+		json_array_append_new(opts, moqt_implementation);
 	}
-	if(parameters->unknown) {
+	if(options->unknown) {
 		json_t *unknown = json_object();
 		json_object_set_new(unknown, "name", json_string("unknown"));
-		json_array_append_new(params, unknown);
+		json_array_append_new(opts, unknown);
 	}
-	json_object_set_new(message, name, params);
+	json_object_set_new(message, name, opts);
 }
 
 void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_version version, imquic_moq_request_parameters *parameters, const char *name) {
