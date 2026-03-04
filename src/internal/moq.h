@@ -1201,7 +1201,7 @@ size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, si
 	uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen);
 /*! \brief Helper to serialize a imquic_moq_setup_options set to a buffer
  * @param[in] moq The imquic_moq_context instance the parameter is for
- * @param[in] parameters The imquic_moq_setup_options to serialize
+ * @param[in] options The imquic_moq_setup_options to serialize
  * @param[out] bytes The buffer to add paramerers to
  * @param[in] blen The size of the buffer
  * @param[out] params_num The number of parameters added to the buffer

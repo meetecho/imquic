@@ -300,6 +300,29 @@
 /** @name MoQ resources
  */
 ///@{
+/*! \brief Versions that can be negotiated */
+typedef enum imquic_moq_version {
+	/* Base */
+	IMQUIC_MOQ_VERSION_BASE = 0xff000000,
+	/* Draft version -16 */
+	IMQUIC_MOQ_VERSION_MIN = 0xff000010,
+	IMQUIC_MOQ_VERSION_16 = 0xff000010,
+	/* Draft version -17 */
+	IMQUIC_MOQ_VERSION_17 = 0xff000011,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_17,
+	/* Any version starting from v15: for client, it means offer all supported versions;
+	 * for servers, it means accept the first supported offered version */
+	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
+} imquic_moq_version;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_version property.
+ * @param version The imquic_moq_version property
+ * @returns The version name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_version_str(imquic_moq_version version);
+/*! \brief Helper function to get the MoQ version associated with a connection.
+ * @param conn The imquic_connection to query
+ * @returns The imquic_moq_version value */
+imquic_moq_version imquic_moq_get_version(imquic_connection *conn);
+
 /*! \brief MoQ Track Namespace */
 typedef struct imquic_moq_namespace {
 	/*! \brief Namespace data (typically a non-null terminated string) */
@@ -617,17 +640,19 @@ typedef struct imquic_moq_auth_token {
  * @note The buffer in the \c value property will point to data in the original \c bytes buffer,
  * which means that no allocation will be performed by this method. If you need to store the
  * token value somewhere, it's up to you to copy it before \c bytes is invalidated by the application
+ * @param[in] version The MoQ version used on the connection
  * @param[in] bytes The buffer containing the auth token data
  * @param[in] blen The size of the buffer containing the auth token data data
  * @param[out] token The imquic_moq_auth_token to put the parsed token info to
  * @returns 0 in case of success, or a negative integer otherwise */
-int imquic_moq_parse_auth_token(uint8_t *bytes, size_t blen, imquic_moq_auth_token *token);
+int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size_t blen, imquic_moq_auth_token *token);
 /*! \brief Helper mode to craft an auth token buffer out of a imquic_moq_auth_token instance
+ * @param[in] version The MoQ version used on the connection
  * @param[in] token The imquic_moq_auth_token instance to serialize
  * @param[out] bytes The buffer to write the auth token to
  * @param[in] blen The size of the buffer to write to
  * @returns How many bytes were written, if successful */
-size_t imquic_moq_build_auth_token(imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
+size_t imquic_moq_build_auth_token(imquic_moq_version version, imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
 
 /** @name MoQ error and status codes
  */
@@ -1039,29 +1064,6 @@ void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
 void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
 	void (* moq_connection_gone)(imquic_connection *conn));
 ///@}
-
-/*! \brief Versions that can be negotiated */
-typedef enum imquic_moq_version {
-	/* Base */
-	IMQUIC_MOQ_VERSION_BASE = 0xff000000,
-	/* Draft version -16 */
-	IMQUIC_MOQ_VERSION_MIN = 0xff000010,
-	IMQUIC_MOQ_VERSION_16 = 0xff000010,
-	/* Draft version -17 */
-	IMQUIC_MOQ_VERSION_17 = 0xff000011,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_17,
-	/* Any version starting from v15: for client, it means offer all supported versions;
-	 * for servers, it means accept the first supported offered version */
-	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
-} imquic_moq_version;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_version property.
- * @param version The imquic_moq_version property
- * @returns The version name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_version_str(imquic_moq_version version);
-/*! \brief Helper function to get the MoQ version associated with a connection.
- * @param conn The imquic_connection to query
- * @returns The imquic_moq_version value */
-imquic_moq_version imquic_moq_get_version(imquic_connection *conn);
 
 /*! \brief Method to provide credentials, as a client, on a new connection.
  * If credentials need to provided, this must be done as soon as the

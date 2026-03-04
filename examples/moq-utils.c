@@ -98,7 +98,7 @@ int imquic_moq_auth_info_to_bytes(imquic_connection *conn, const char *auth_info
 	token.token_type = 0;	/* FIXME */
 	token.token_value.buffer = (uint8_t *)auth_info;
 	token.token_value.length = strlen(auth_info);
-	size_t offset = imquic_moq_build_auth_token(&token, auth, *authlen);
+	size_t offset = imquic_moq_build_auth_token(imquic_moq_get_version(conn), &token, auth, *authlen);
 	if(offset == 0)
 		return -1;
 	*authlen = offset;
@@ -125,7 +125,7 @@ gboolean imquic_moq_check_auth_info(imquic_connection *conn, const char *auth_in
 	auth_str[0] = '\0';
 	/* Unpack the token */
 	imquic_moq_auth_token token = { 0 };
-	if(imquic_moq_parse_auth_token(auth, authlen, &token) < 0)
+	if(imquic_moq_parse_auth_token(imquic_moq_get_version(conn), auth, authlen, &token) < 0)
 		return FALSE;
 	if(token.alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] This demo currently only supports %s as an auth token alias type, ignoring %s\n",
