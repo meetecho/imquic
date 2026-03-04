@@ -332,8 +332,8 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 			return "Duplicate Track Alias";
 		case IMQUIC_MOQ_KEYVALUE_FORMATTING_ERROR:
 			return "Key-Value Formatting Error";
-		case IMQUIC_MOQ_TOO_MANY_REQUESTS:
-			return "Too Many Requests";
+		case IMQUIC_MOQ_INVALID_REQUIRED_REQUEST_ID:
+			return "Invalid Required Request ID";
 		case IMQUIC_MOQ_INVALID_PATH:
 			return "Invalid Path";
 		case IMQUIC_MOQ_MALFORMED_PATH:
