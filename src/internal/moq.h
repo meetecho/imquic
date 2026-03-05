@@ -45,22 +45,23 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_SUBSCRIBE = 0x3,
 	IMQUIC_MOQ_SUBSCRIBE_OK = 0x4,
 	IMQUIC_MOQ_PUBLISH_NAMESPACE = 0x6,
-	IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE = 0x9,
-	IMQUIC_MOQ_UNSUBSCRIBE = 0xa,
+		IMQUIC_MOQ_PUBLISH_NAMESPACE_DONE = 0x9,	/* Deprecated in v17 */
+		IMQUIC_MOQ_UNSUBSCRIBE = 0xa,				/* Deprecated in v17 */
 	IMQUIC_MOQ_PUBLISH_DONE = 0xb,
-	IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL = 0xc,
+		IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL = 0xc,	/* Deprecated in v17 */
 	IMQUIC_MOQ_TRACK_STATUS = 0xd,
 	IMQUIC_MOQ_GOAWAY = 0x10,
 	IMQUIC_MOQ_SUBSCRIBE_NAMESPACE = 0x11,
 	IMQUIC_MOQ_NAMESPACE = 0x8,
 	IMQUIC_MOQ_NAMESPACE_DONE = 0xe,
-	IMQUIC_MOQ_MAX_REQUEST_ID = 0x15,
-	IMQUIC_MOQ_REQUESTS_BLOCKED = 0x1A,
+		IMQUIC_MOQ_MAX_REQUEST_ID = 0x15,			/* Deprecated in v17 */
+		IMQUIC_MOQ_REQUESTS_BLOCKED = 0x1A,			/* Deprecated in v17 */
 	IMQUIC_MOQ_FETCH = 0x16,
-	IMQUIC_MOQ_FETCH_CANCEL = 0x17,
+		IMQUIC_MOQ_FETCH_CANCEL = 0x17,				/* Deprecated in v17 */
 	IMQUIC_MOQ_FETCH_OK = 0x18,
-	IMQUIC_MOQ_CLIENT_SETUP = 0x20,
-	IMQUIC_MOQ_SERVER_SETUP = 0x21,
+	IMQUIC_MOQ_SETUP = 0x2F00,
+		IMQUIC_MOQ_CLIENT_SETUP = 0x20,				/* Deprecated in v17 */
+		IMQUIC_MOQ_SERVER_SETUP = 0x21,				/* Deprecated in v17 */
 	IMQUIC_MOQ_PUBLISH = 0x1D,
 	IMQUIC_MOQ_PUBLISH_OK = 0x1E,
 } imquic_moq_message_type;
@@ -240,9 +241,11 @@ typedef struct imquic_moq_setup_options {
 	gboolean path_set;
 	/*! \brief Value of the PATH parameter */
 	char path[256];
-	/*! \brief Whether the MAX_REQUEST_ID parameter is set */
+	/*! \brief Whether the MAX_REQUEST_ID parameter is set
+	 * \note Deprecated in v17 */
 	gboolean max_request_id_set;
-	/*! \brief Value of the MAX_REQUEST_ID parameter */
+	/*! \brief Value of the MAX_REQUEST_ID parameter
+	 * \note Deprecated in v17 */
 	uint64_t max_request_id;
 	/*! \brief Whether the MAX_AUTH_TOKEN_CACHE_SIZE parameter is set */
 	gboolean max_auth_token_cache_size_set;
@@ -312,8 +315,10 @@ typedef struct imquic_moq_context {
 	gboolean is_server;
 	/*! \brief Whether a MoQ control stream has been established */
 	gboolean has_control_stream;
-	/*! \brief ID of the control stream */
-	uint64_t control_stream_id;
+	/*! \brief ID(s) of the control stream (legacy bidirectional, or new unidirectional) */
+	uint64_t control_stream_id, remote_control_stream_id;
+	/*! \brief Whether we sent and received a SETUP */
+	gboolean sent_setup, recvd_setup;
 	/*! \brief QUIC streams handled by the stack */
 	GHashTable *streams;
 	/*! \brief Subscriptions this connection will send objects to, indexed by track_alias */
@@ -434,6 +439,7 @@ void imquic_moq_subscription_destroy(imquic_moq_subscription *moq_sub);
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_t *bytes, size_t blen, gboolean complete, gboolean datagram);
 /*! \brief Helper to parse a \c CLIENT_SETUP message
+ * \note This message was deprecated in v17: now both client and server use \c SETUP
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
@@ -441,12 +447,20 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c SERVER_SETUP message
+ * \note This message was deprecated in v17: now both client and server use \c SETUP
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c SETUP message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c MAX_REQUEST_ID message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -719,6 +733,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
  */
 ///@{
 /*! \brief Helper method to add a \c CLIENT_SETUP message to a buffer
+ * \note This message was deprecated in v17: now both client and server use \c SETUP
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
@@ -727,12 +742,21 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t b
 size_t imquic_moq_add_client_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	imquic_moq_setup_options *options);
 /*! \brief Helper method to add a \c SERVER_SETUP message to a buffer
+ * \note This message was deprecated in v17: now both client and server use \c SETUP
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param options The setup options to send
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	imquic_moq_setup_options *options);
+/*! \brief Helper method to add a \c SETUP message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param options The setup options to send
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	imquic_moq_setup_options *options);
 /*! \brief Helper method to add a \c MAX_REQUEST_ID message to a buffer
  * @param moq The imquic_moq_context generating the message

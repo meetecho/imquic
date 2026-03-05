@@ -858,7 +858,8 @@ void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c PUBLISH_NAMESPACE_CANCEL request.
+ * an incoming \c PUBLISH_NAMESPACE_CANCEL request (legacy), or when
+ * the associated stream is closed (new draft versions)
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_publish_namespace_cancel Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_CANCEL */
 void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
@@ -951,6 +952,7 @@ void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c REQUESTS_BLOCKED request.
+ * \note Deprecated in v17
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param requests_blocked Pointer to the function that will handle the incoming \c REQUESTS_BLOCKED */
 void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
@@ -1007,7 +1009,8 @@ void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c FETCH_CANCEL request.
+ * an incoming \c FETCH_CANCEL request (legacy), or when
+ * the associated stream is closed (new draft versions)
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_fetch_cancel Pointer to the function that will handle the incoming \c FETCH_CANCEL */
 void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
@@ -1079,7 +1082,8 @@ void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
 int imquic_moq_set_connection_auth(imquic_connection *conn, uint8_t *auth, size_t authlen);
 
 /*! \brief Helper function to set the Maximum Request ID a subscriber can send
- * \note If invoked before the MoQ connection setup, it will be put in the
+ * \note Deprecated in v17, and so not needed anymore. For older versions,
+ * if invoked before the MoQ connection setup, it will be put in the
  * setup parameter, otherwise it's sent in a \c MAX_REQUEST_ID request.
  * Notice that whatever is passed to the request will be decremented by
  * 1, as per the specification, meaning you cannot pass \c 0 as a value here
@@ -1318,7 +1322,8 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
-/*! \brief Function to send a \c FETCH_CANCEL request
+/*! \brief Function to send a \c FETCH_CANCEL request (legacy) or close
+ * the stream associated with the \c FETCH subscription (new draft versions)
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to cancel_fetch from
  * @returns 0 in case of success, a negative integer otherwise */
