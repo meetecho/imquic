@@ -146,6 +146,11 @@ void imquic_connection_notify_gone(imquic_connection *conn);
  * @param stream_id ID of the stream to reset
  * @param error_code The error code to add to the frame */
 void imquic_connection_reset_stream(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
+/*! \brief Helper to ask the peer to stop sending on a stream, sending a \c STOP_SENDING
+ * @param conn The imquic_connection instance that owns the stream to stop
+ * @param stream_id ID of the stream to stop
+ * @param error_code The error code to add to the frame */
+void imquic_connection_stop_sending_stream(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
 /*! \brief Helpers to close connections
  * @param conn The imquic_connection instance to close
  * @param error_code The error code to send back in the \c CONNECTION_CLOSE frame
@@ -162,6 +167,7 @@ typedef enum imquic_connection_event_type {
 	IMQUIC_CONNECTION_EVENT_STREAM,
 	IMQUIC_CONNECTION_EVENT_DATAGRAM,
 	IMQUIC_CONNECTION_EVENT_RESET_STREAM,
+	IMQUIC_CONNECTION_EVENT_STOP_SENDING,
 	IMQUIC_CONNECTION_EVENT_CLOSE_CONN,
 } imquic_connection_event_type;
 

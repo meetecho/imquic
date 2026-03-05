@@ -10,6 +10,7 @@
 
 #include <picoquic.h>
 #include <picoquic_config.h>
+#include <picoquic_internal.h>
 #include <autoqlog.h>
 
 #include "internal/quic.h"
@@ -206,6 +207,13 @@ gboolean imquic_quic_queued_event(imquic_connection *conn, imquic_connection_eve
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error resetting STREAM %"SCNu64": %d\n",
 				conn->name, event->stream_id, ret);
 		}
+	} else if(event->type == IMQUIC_CONNECTION_EVENT_STOP_SENDING) {
+		/* Send a STOP_SENDING */
+		int ret = picoquic_stop_sending(conn->piconn, event->stream_id, event->error_code);
+		if(ret != 0) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error stopping STREAM %"SCNu64": %d\n",
+				conn->name, event->stream_id, ret);
+		}
 	} else if(event->type == IMQUIC_CONNECTION_EVENT_CLOSE_CONN) {
 		/* Send a CONNECTION_CLOSE */
 		int ret = picoquic_close(conn->piconn, event->error_code);
@@ -231,7 +239,7 @@ void imquic_quic_next_step(imquic_network_endpoint *endpoint) {
 static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		uint64_t stream_id, uint8_t *bytes, size_t blen,
 		picoquic_call_back_event_t fin_or_event, void *callback_ctx, void *v_stream_ctx) {
-	/* TODO */
+	/* Check what the callback is about */
 	imquic_network_endpoint *endpoint = (imquic_network_endpoint *)callback_ctx;
 	imquic_connection *conn = pconn ? g_hash_table_lookup(endpoint->connections_by_cnx, pconn) : NULL;
 	char *name = conn ? conn->name : endpoint->name;
@@ -319,6 +327,42 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 			/* Pass the data to the application callback */
 			imquic_connection_notify_stream_incoming(conn, stream, bytes, blen);
 		}
+	} else if(fin_or_event == picoquic_callback_stream_reset) {
+		/* Use the picoquic internal API to obtain the error_code */
+		uint64_t error_code = 0;
+		picoquic_stream_head_t *ps = picoquic_find_stream(pconn, stream_id);
+		if(ps != NULL)
+			error_code = ps->remote_error;
+		/* Update the local state of the stream */
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Stream %"SCNu64" has been reset by the peer\n", stream_id);
+			if(stream->in_state != IMQUIC_STREAM_COMPLETE)
+				stream->in_state = IMQUIC_STREAM_RESET;
+		}
+		imquic_mutex_unlock(&conn->mutex);
+		/* Pass the data to the application callback */
+		if(endpoint->reset_stream_incoming)
+			endpoint->reset_stream_incoming(conn, stream_id, error_code);
+	} else if(fin_or_event == picoquic_callback_stop_sending) {
+		/* Use the picoquic internal API to obtain the error_code */
+		uint64_t error_code = 0;
+		picoquic_stream_head_t *ps = picoquic_find_stream(pconn, stream_id);
+		if(ps != NULL)
+			error_code = ps->remote_stop_error;
+		/* Update the local state of the stream */
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "We've been asked to stop sending on stream %"SCNu64"\n", stream_id);
+			if(stream->out_state != IMQUIC_STREAM_COMPLETE)
+				stream->out_state = IMQUIC_STREAM_RESET;
+		}
+		imquic_mutex_unlock(&conn->mutex);
+		/* Pass the data to the application callback */
+		if(endpoint->stop_sending_incoming)
+			endpoint->stop_sending_incoming(conn, stream_id, error_code);
 	} else if(fin_or_event == picoquic_callback_application_close) {
 		/* TODO Should we handle this somehow? */
 	} else if(fin_or_event == picoquic_callback_close) {

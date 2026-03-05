@@ -269,6 +269,27 @@ void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_i
 		moq->conn->socket->callbacks.moq.incoming_unsubscribe_namespace(moq->conn, request_id, NULL);
 }
 
+void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_id, uint64_t error_code) {
+	/* We got a STOP_SENDING */
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	imquic_mutex_unlock(&moq_mutex);
+	if(moq == NULL)
+		return;
+	imquic_mutex_lock(&moq->mutex);
+	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams, &stream_id);
+	if(moq_stream == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Got STOP_SENDING for unknown STREAM %"SCNu64": %"SCNu64" (%s)\n",
+			imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
+		imquic_mutex_unlock(&moq->mutex);
+		return;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Got STOP_SENDING for STREAM %"SCNu64": %"SCNu64" (%s)\n",
+		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
+	imquic_mutex_unlock(&moq->mutex);
+	/* TODO */
+}
+
 void imquic_moq_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	imquic_mutex_lock(&moq_mutex);

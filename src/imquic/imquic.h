@@ -463,6 +463,12 @@ void imquic_set_datagram_incoming_cb(imquic_endpoint *endpoint,
  * @param reset_stream_incoming Pointer to the function that will be invoked on the new RESET_STREAM */
 void imquic_set_reset_stream_cb(imquic_endpoint *endpoint,
 	void (* reset_stream_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code));
+/*! \brief Configure the callback function to be notified about incoming
+ * STOP_SENDING messages on an existing connection handled by this endpoint.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param reset_stop_sending Pointer to the function that will be invoked on the new RESET_STREAM */
+void imquic_set_stop_sending_cb(imquic_endpoint *endpoint,
+	void (* reset_stop_sending)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code));
 /*! \brief Configure the callback function to be notified when an attemp
  * to establish a connection failed, e.g., because the server is unreachable.
  * @note Considering the application never received a connection instance
