@@ -41,7 +41,7 @@ static void imquic_demo_handle_signal(int signum) {
 /* Publisher state */
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
-static uint64_t moq_request_id = 0, moq_track_alias = 0;
+static uint64_t moq_tns_request_id = 0, moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
 static char pub_tns_buffer[256], pub_tn_buffer[256];
 static const char *pub_tns = NULL, *pub_tn = NULL;
@@ -119,7 +119,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], &params);
+		moq_tns_request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_publish_namespace(conn, moq_tns_request_id, &tns[0], &params);
 	} else {
 		/* We use PUBLISH */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, pub_tn);
@@ -610,18 +611,8 @@ int main(int argc, char *argv[]) {
 	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
 	if(g_atomic_int_get(&started) && !g_atomic_int_get(&done_sent))
 		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
-	if(!options.publish) {
-		imquic_moq_namespace tns[32];	/* FIXME */
-		int i = 0;
-		while(options.track_namespace[i] != NULL) {
-			const char *track_namespace = options.track_namespace[i];
-			tns[i].buffer = (uint8_t *)track_namespace;
-			tns[i].length = strlen(track_namespace);
-			tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
-			i++;
-		}
-		imquic_moq_publish_namespace_done(moq_conn, &tns[0]);
-	}
+	if(!options.publish)
+		imquic_moq_publish_namespace_done(moq_conn, moq_tns_request_id);
 	/* Shutdown the client */
 	imquic_shutdown_endpoint(client);
 

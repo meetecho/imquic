@@ -431,7 +431,7 @@ void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
-		void (* incoming_publish_namespace_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_request_error_code error_code, const char *reason)) {
+		void (* incoming_publish_namespace_cancel)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -464,7 +464,7 @@ void imquic_set_publish_namespace_error_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
-		void (* publish_namespace_done)(imquic_connection *conn, imquic_moq_namespace *tns)) {
+		void (* publish_namespace_done)(imquic_connection *conn, uint64_t request_id)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -643,7 +643,7 @@ void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
-		void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns)) {
+		void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

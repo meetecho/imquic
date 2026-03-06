@@ -866,7 +866,7 @@ void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_publish_namespace_cancel Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_CANCEL */
 void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_request_error_code error_code, const char *reason));
+	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when an
  * \c PUBLISH_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -888,7 +888,7 @@ void imquic_set_publish_namespace_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_namespace_done Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_DONE */
 void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
-	void (* publish_namespace_done)(imquic_connection *conn, imquic_moq_namespace *tns));
+	void (* publish_namespace_done)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c PUBLISH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -994,7 +994,7 @@ void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe_namespace Pointer to the function that will handle the incoming \c UNSUBSCRIBE_NAMESPACE */
 void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
-	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1025,8 +1025,7 @@ void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
  * an incoming \c FETCH_CANCEL request.
  * \note Starting in v17, \c FETCH_CANCEL doesn't exist anymore,
  * so this callback is only fired if the endpoint that sent the
- * \c FETCH closed the associated bidirectiomal stream before
- * getting a \c FETCH_OK or \c REQUEST_ERROR back.
+ * \c FETCH closed the associated bidirectiomal stream.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_fetch_cancel Pointer to the function that will handle the incoming \c FETCH_CANCEL */
 void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,
@@ -1151,9 +1150,9 @@ int imquic_moq_reject_publish_namespace(imquic_connection *conn, uint64_t reques
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 /*! \brief Function to send a \c PUBLISH_NAMESPACE_DONE request
  * @param conn The imquic_connection to send the request on
- * @param tns The imquic_moq_namespace namespace to publish_namespace_done
+ * @param request_id The unique \c request_id value associated to the original \c PUBLISH_NAMESPACE
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_publish_namespace_done(imquic_connection *conn, imquic_moq_namespace *tns);
+int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a \c PUBLISH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription

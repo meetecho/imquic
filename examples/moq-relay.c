@@ -49,6 +49,7 @@ static GList *fetches = NULL;
 typedef struct imquic_demo_moq_publisher {
 	imquic_connection *conn;
 	GHashTable *namespaces;
+	GHashTable *namespaces_by_id;
 	GHashTable *subscriptions;
 	GHashTable *subscriptions_by_id;
 	uint64_t relay_track_alias;
@@ -59,6 +60,7 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub);
 
 typedef struct imquic_demo_moq_published_namespace {
 	imquic_demo_moq_publisher *pub;
+	uint64_t request_id;
 	char *track_namespace;
 	imquic_moq_namespace *tns;
 	gboolean announced;
@@ -66,7 +68,7 @@ typedef struct imquic_demo_moq_published_namespace {
 	imquic_mutex mutex;
 } imquic_demo_moq_published_namespace;
 static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub,
-	const char *track_namespace, imquic_moq_namespace *tns, gboolean announced);
+	uint64_t request_id, const char *track_namespace, imquic_moq_namespace *tns, gboolean announced);
 static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_published_namespace *annc);
 
 typedef struct imquic_demo_moq_track {
@@ -135,6 +137,7 @@ static imquic_demo_moq_publisher *imquic_demo_moq_publisher_create(imquic_connec
 	pub->conn = conn;
 	pub->namespaces = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_demo_moq_published_namespace_destroy);
+	pub->namespaces_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	pub->subscriptions = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 	pub->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal, (GDestroyNotify)g_free, NULL);
 
@@ -155,6 +158,8 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
 			}
 			g_hash_table_unref(pub->namespaces);
 		}
+		if(pub->namespaces_by_id)
+			g_hash_table_unref(pub->namespaces_by_id);
 		if(pub->subscriptions != NULL)
 			g_hash_table_unref(pub->subscriptions);
 		if(pub->subscriptions_by_id != NULL)
@@ -164,9 +169,10 @@ static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
 	}
 }
 static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub,
-		const char *track_namespace, imquic_moq_namespace *tns, gboolean announced) {
+		uint64_t request_id, const char *track_namespace, imquic_moq_namespace *tns, gboolean announced) {
 	imquic_demo_moq_published_namespace *annc = g_malloc0(sizeof(imquic_demo_moq_published_namespace));
 	annc->pub = pub;
+	annc->request_id = request_id;
 	annc->track_namespace = g_strdup(track_namespace);
 	annc->tns = imquic_moq_namespace_duplicate(tns);
 	annc->announced = announced;
@@ -492,8 +498,9 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 		g_hash_table_insert(publishers, conn, pub);
 	}
 	/* Let's keep track of it */
-	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_published_namespace_create(pub, ns, tns, TRUE);
+	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_published_namespace_create(pub, request_id, ns, tns, TRUE);
 	g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
+	g_hash_table_insert(pub->namespaces_by_id, imquic_uint64_dup(request_id), annc);
 	g_hash_table_insert(namespaces, g_strdup(ns), annc);
 	/* Check if there's monitors interested in this */
 	imquic_demo_alert_monitors(annc, NULL, FALSE);
@@ -502,15 +509,16 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 	imquic_moq_accept_publish_namespace(conn, request_id, NULL);
 }
 
-static void imquic_demo_incoming_publish_namespace_cancel(imquic_connection *conn, imquic_moq_namespace *tns, imquic_moq_request_error_code error_code, const char *reason) {
+static void imquic_demo_incoming_publish_namespace_cancel(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason) {
 	/* We received an publish_namespace cancel */
-	char buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Cancelled publishing of namespace: '%s' (%d, %s)\n",
-		imquic_get_connection_name(conn), ns, error_code, reason);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Cancelled publishing of namespace: %"SCNu64" (%d, %s)\n",
+		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
-	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	imquic_demo_moq_published_namespace *annc = NULL;
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub != NULL)
+		annc = g_hash_table_lookup(pub->namespaces_by_id, &request_id);
 	if(annc == NULL || !annc->announced) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
@@ -524,21 +532,22 @@ static void imquic_demo_incoming_publish_namespace_cancel(imquic_connection *con
 		return;
 	}
 	/* Get rid of it */
-	g_hash_table_remove(namespaces, ns);
+	g_hash_table_remove(namespaces, annc->track_namespace);
 	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t request_id) {
 	/* We received an publish_namespace_done */
-	char buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace done: '%s'\n",
-		imquic_get_connection_name(conn), ns);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace done: %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id);
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
-	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	imquic_demo_moq_published_namespace *annc = NULL;
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub != NULL)
+		annc = g_hash_table_lookup(pub->namespaces_by_id, &request_id);
 	if(annc == NULL || !annc->announced) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
@@ -554,7 +563,7 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_m
 	/* Check if there's monitors interested in this */
 	imquic_demo_alert_monitors(annc, NULL, TRUE);
 	/* Get rid of it */
-	g_hash_table_remove(namespaces, ns);
+	g_hash_table_remove(namespaces, annc->track_namespace);
 	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
 	imquic_mutex_unlock(&mutex);
@@ -586,7 +595,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 			g_hash_table_insert(publishers, conn, pub);
 		}
 		/* Let's keep track of it */
-		annc = imquic_demo_moq_published_namespace_create(pub, ns, tns, FALSE);
+		annc = imquic_demo_moq_published_namespace_create(pub, 0, ns, tns, FALSE);
 		g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 		g_hash_table_insert(namespaces, g_strdup(ns), annc);
 	}
@@ -902,7 +911,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		params.forward = TRUE;
 		params.subscription_filter_set = TRUE;
 		params.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
-		imquic_moq_subscribe(annc->pub->conn, track->request_id, tns, tn, &params);
+		if(imquic_moq_subscribe(annc->pub->conn, track->request_id, tns, tn, &params) < 0) {
+			g_hash_table_remove(annc->pub->subscriptions_by_id, &track->request_id);
+			imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "Error creating upstream subscription", 0);
+		}
 	}
 	imquic_mutex_unlock(&mutex);
 }
@@ -1121,7 +1133,7 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id) {
 	/* We received an unsubscribe */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for namespace via ID %"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);

@@ -273,18 +273,16 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 	/* We received an PUBLISH_NAMESPACE (older MoQ version) */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace: '%s'\n",
-		imquic_get_connection_name(conn), ns);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace via ID %"SCNu64": '%s'\n",
+		imquic_get_connection_name(conn), request_id, ns);
 	/* Accept the request */
 	imquic_moq_accept_publish_namespace(conn, request_id, NULL);
 }
 
-static void imquic_demo_publish_namespace_done(imquic_connection *conn, imquic_moq_namespace *tns) {
+static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t request_id) {
 	/* We received an PUBLISH_NAMESPACE_DONE (older MoQ version) */
-	char buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace done: '%s'\n",
-		imquic_get_connection_name(conn), ns);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish Namespace done: %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id);
 }
 
 static void imquic_demo_incoming_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns_suffix) {

@@ -84,6 +84,7 @@ typedef struct imquic_moq_interop_client {
 	imquic_client *client;
 	imquic_connection *conn;
 	gboolean publisher;
+	uint64_t request_id;
 } imquic_moq_interop_client;
 static void imquic_moq_interop_client_destroy(imquic_moq_interop_client *mc) {
 	if(mc != NULL) {
@@ -525,7 +526,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		tns[1].buffer = (uint8_t *)"interop";
 		tns[1].length = strlen("interop");
 		tns[1].next = NULL;
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], NULL);
+		client->request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_publish_namespace(conn, client->request_id, &tns[0], NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("publisher announced namespace"));
 	} else if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR) {
@@ -541,7 +543,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
-		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), &tns[0], &tn, NULL);
+		client->request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_subscribe(conn, client->request_id, &tns[0], &tn, NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to non-existing track"));
 	} else if((test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
@@ -558,7 +561,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
-		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), &tns[0], &tn, NULL);
+		client->request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_subscribe(conn, client->request_id, &tns[0], &tn, NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to track"));
 		if(test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
@@ -584,14 +588,7 @@ static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *con
 		g_atomic_int_set(&test->done, 1);
 	} else if(test->name == IMQUIC_INTEROP_PUBLISH_NAMESPACE_DONE) {
 		/* Send a PUBLISH_NAMESPACE_DONE */
-		imquic_moq_namespace tns[2];
-		tns[0].buffer = (uint8_t *)"moq-test";
-		tns[0].length = strlen("moq-test");
-		tns[0].next = &tns[1];
-		tns[1].buffer = (uint8_t *)"interop";
-		tns[1].length = strlen("interop");
-		tns[1].next = NULL;
-		int ret = imquic_moq_publish_namespace_done(conn, &tns[0]);
+		int ret = imquic_moq_publish_namespace_done(conn, client->request_id);
 		if(ret == 0) {
 			g_atomic_int_set(&test->success, 1);
 			if(verbose)
