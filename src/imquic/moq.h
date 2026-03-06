@@ -1008,6 +1008,12 @@ void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
 	void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
+ * an incoming \c PUBLISH_BLOCKED request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_publish_blocked Pointer to the function that will handle the incoming \c PUBLISH_BLOCKED */
+void imquic_set_incoming_publish_blocked_cb(imquic_endpoint *endpoint,
+	void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn));
+/*! \brief Configure the callback function to be notified when there's
  * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
@@ -1302,6 +1308,17 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
  * @param tns The imquic_moq_namespace namespace this request refers to
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+/*! \brief Function to send a \c PUBLISH_BLOCKED request
+ * \note While the request itself doesn't contain the request ID, we use
+ * it to find the subscription and use the right STREAM.
+ * Notice the method expects the full track namespace: the stack will strip
+ * the prefix itself, before sending the actual message.
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
+ * @param tns The imquic_moq_namespace namespace this request refers to
+ * @param tn The imquic_moq_name track this request refers to
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn);
 /*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription

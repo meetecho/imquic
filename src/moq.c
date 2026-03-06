@@ -681,6 +681,8 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type, imquic_moq
 			return "NAMESPACE";
 		case IMQUIC_MOQ_NAMESPACE_DONE:
 			return "NAMESPACE_DONE";
+		case IMQUIC_MOQ_PUBLISH_BLOCKED:
+			return "PUBLISH_BLOCKED";
 		case IMQUIC_MOQ_MAX_REQUEST_ID:
 			return "MAX_REQUEST_ID";
 		case IMQUIC_MOQ_REQUESTS_BLOCKED:
@@ -1633,6 +1635,9 @@ next:
 			} else if(type == IMQUIC_MOQ_NAMESPACE_DONE) {
 				/* Parse this NAMESPACE_DONE message */
 				parsed = imquic_moq_parse_namespace_done(moq, moq_stream, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_BLOCKED) {
+				/* Parse this PUBLISH_BLOCKED message */
+				parsed = imquic_moq_parse_publish_blocked(moq, moq_stream, &bytes[offset], plen, &error);
 			} else {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported message '%02x' (%s) on a %s request stream\n",
 					imquic_get_connection_name(moq->conn), type,
@@ -2951,7 +2956,7 @@ size_t imquic_moq_parse_namespace(imquic_moq_context *moq, imquic_moq_stream *mo
 	if(bytes == NULL || blen < 1)
 		return 0;
 	IMQUIC_MOQ_CHECK_ERR((moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
-			moq_stream->request_sender || !g_atomic_int_compare_and_exchange(&moq_stream->request_state, 0, 1)),
+			moq_stream->request_sender || g_atomic_int_get(&moq_stream->request_state) < 2),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of NAMESPACE on bidirectional request");
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -2986,7 +2991,7 @@ size_t imquic_moq_parse_namespace_done(imquic_moq_context *moq, imquic_moq_strea
 	if(bytes == NULL || blen < 1)
 		return 0;
 	IMQUIC_MOQ_CHECK_ERR((moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
-			moq_stream->request_sender || !g_atomic_int_compare_and_exchange(&moq_stream->request_state, 0, 1)),
+			moq_stream->request_sender || g_atomic_int_get(&moq_stream->request_state) < 2),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of NAMESPACE_DONE on bidirectional request");
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -3008,6 +3013,44 @@ size_t imquic_moq_parse_namespace_done(imquic_moq_context *moq, imquic_moq_strea
 		if(tns_num > 0)
 			moq_stream->last_tuple->next = &tns[0];
 		moq->conn->socket->callbacks.moq.incoming_namespace_done(moq->conn, moq_stream->request_id, moq_stream->namespace_prefix);
+		moq_stream->last_tuple->next = NULL;
+	}
+	if(error)
+		*error = 0;
+	return offset;
+}
+
+size_t imquic_moq_parse_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error) {
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	if(bytes == NULL || blen < 1)
+		return 0;
+	IMQUIC_MOQ_CHECK_ERR((moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
+			moq_stream->request_sender || g_atomic_int_get(&moq_stream->request_state) < 2),
+		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of PUBLISH_BLOCKED on bidirectional request");
+	size_t offset = 0;
+	uint8_t length = 0;
+	imquic_moq_namespace tns[32];
+	memset(&tns, 0, sizeof(tns));
+	uint64_t tns_num = 0, i = 0;
+	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE_DONE, tns_num, i, "Broken PUBLISH_BLOCKED", TRUE);
+	IMQUIC_MOQ_CHECK_ERR((tns_num + moq_stream->namespace_prefix_size) > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces");
+	imquic_moq_name tn = { 0 };
+	IMQUIC_MOQ_PARSE_TRACKNAME("Broken PUBLISH_BLOCKED", FALSE);
+#ifdef HAVE_QLOG
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish_blocked");
+		imquic_qlog_moq_message_add_namespace(message, (tns_num > 0 ? &tns[0] : NULL), "track_namespace_suffix");
+		imquic_qlog_moq_message_add_track(message, &tn);
+		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq_stream->stream_id, bytes-3, offset+3, message);
+	}
+#endif
+	/* Notify the application */
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish_blocked) {
+		/* Prepare the full track namespace */
+		if(tns_num > 0)
+			moq_stream->last_tuple->next = &tns[0];
+		moq->conn->socket->callbacks.moq.incoming_publish_blocked(moq->conn, moq_stream->request_id, moq_stream->namespace_prefix, &tn);
 		moq_stream->last_tuple->next = NULL;
 	}
 	if(error)
@@ -4498,8 +4541,33 @@ size_t imquic_moq_add_namespace_done(imquic_moq_context *moq, imquic_moq_stream 
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("namespace");
+		json_t *message = imquic_qlog_moq_message_prepare("namespace_done");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace_suffix");
+		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq_stream->stream_id, bytes, offset, message);
+	}
+#endif
+	return offset;
+}
+
+size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+		uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace, imquic_moq_name *track_name) {
+	if(bytes == NULL || blen < 1 || moq_stream == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_NAMESPACE_DONE, moq->version));
+		return 0;
+	}
+	size_t offset = 0, len_offset = 0;
+	/* FIXME A tuple of size 0 is allowed here, this macro needs fixing */
+	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_PUBLISH_BLOCKED);
+	/* FIXME A tuple of size 0 is allowed here, this macro needs fixing */
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_BLOCKED);
+	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_PUBLISH_BLOCKED);
+	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
+#ifdef HAVE_QLOG
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish_blocked");
+		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace_suffix");
+		imquic_qlog_moq_message_add_track(message, track_name);
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq_stream->stream_id, bytes, offset, message);
 	}
 #endif
@@ -6339,6 +6407,47 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
 	size_t nn_len = imquic_moq_add_namespace_done(moq, moq_stream, buffer, blen, tns_suffix);
+	/* Send on the dedicated bidirectional STREAM */
+	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
+		buffer, nn_len, FALSE);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
+int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
+			tn == NULL || tn->buffer == 0 || tn->length == 0) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	/* Check if the request ID exists */
+	imquic_mutex_lock(&moq->mutex);
+	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
+	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || moq_stream->request_sender ||
+			g_atomic_int_get(&moq_stream->request_state) < 2 ||
+			!imquic_moq_namespace_contains(moq_stream->namespace_prefix, tns)) {
+		imquic_mutex_unlock(&moq->mutex);
+		imquic_refcount_decrease(&moq->ref);
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state\n",
+			imquic_get_connection_name(conn));
+		return -1;
+	}
+	imquic_mutex_unlock(&moq->mutex);
+	/* We need the track namespace suffix */
+	imquic_moq_namespace *tns_suffix = tns;
+	for(uint8_t i=0; i<moq_stream->namespace_prefix_size; i++)
+		tns_suffix = tns_suffix->next;
+	/* Prepare the message */
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer);
+	size_t nn_len = imquic_moq_add_publish_blocked(moq, moq_stream, buffer, blen, tns_suffix, tn);
 	/* Send on the dedicated bidirectional STREAM */
 	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 		buffer, nn_len, FALSE);
