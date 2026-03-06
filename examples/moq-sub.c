@@ -196,7 +196,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		params.forward = TRUE;
 		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
 			params.forward = FALSE;
-		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), tns, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
+		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), 0, tns, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
 		return;
 	}
 	/* Parameters in case we need to FETCH */
@@ -237,7 +237,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		if(options.fetch == NULL) {
 			if(!options.track_status) {
 				/* Send a SUBSCRIBE */
-				imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
+				imquic_moq_subscribe(conn, request_id, 0, &tns[0], &tn, &params);
 				if(!params.forward)
 					request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 			} else {
@@ -252,10 +252,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					.start = start_location,
 					.end = end_location
 				};
-				imquic_moq_standalone_fetch(conn, request_id, &tns[0], &tn, &range, &fparams);
+				imquic_moq_standalone_fetch(conn, request_id, 0, &tns[0], &tn, &range, &fparams);
 			} else {
 				/* Send a SUBSCRIBE first, we'll send the joining FETCH when the subscription is accepted */
-				imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
+				imquic_moq_subscribe(conn, request_id, 0, &tns[0], &tn, &params);
 				if(!params.forward)
 					request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 			}
@@ -269,7 +269,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 }
 
-static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
 	/* We received an PUBLISH_NAMESPACE (older MoQ version) */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
@@ -357,7 +358,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		uint64_t fetch_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending Joining Fetch for subscription %"SCNu64", using ID %"SCNu64" (offset=%d)\n",
 			imquic_get_connection_name(conn), request_id, fetch_request_id, options.join_offset);
-		imquic_moq_joining_fetch(conn, fetch_request_id, request_id,
+		imquic_moq_joining_fetch(conn, fetch_request_id, 0, request_id,
 			FALSE, options.join_offset, &fparams);
 	}
 }
@@ -379,8 +380,8 @@ static void imquic_demo_request_update_error(imquic_connection *conn, uint64_t r
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 }
 
-static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
+static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+		imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -622,7 +623,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		params.subscription_filter.type = filter_type;
 		params.subscription_filter.start_location = start_location;
 		params.subscription_filter.end_group = end_location_sub.group;
-		imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
+		imquic_moq_subscribe(conn, request_id, 0, &tns[0], &tn, &params);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",

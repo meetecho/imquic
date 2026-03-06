@@ -412,7 +412,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			};
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
-			imquic_moq_publish(mon->conn, relay_request_id, tns, &tn, relay_track_alias, &params, track->properties);
+			imquic_moq_publish(mon->conn, relay_request_id, 0, tns, &tn, relay_track_alias, &params, track->properties);
 		}
 		temp = temp->next;
 	}
@@ -475,7 +475,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 }
 
-static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
 	/* We received an publish_namespace */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
@@ -569,7 +569,7 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
@@ -785,7 +785,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 	imquic_moq_accept_track_status(conn, request_id, &rparams);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
@@ -911,7 +911,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		params.forward = TRUE;
 		params.subscription_filter_set = TRUE;
 		params.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
-		if(imquic_moq_subscribe(annc->pub->conn, track->request_id, tns, tn, &params) < 0) {
+		if(imquic_moq_subscribe(annc->pub->conn, track->request_id, 0, tns, tn, &params) < 0) {
 			g_hash_table_remove(annc->pub->subscriptions_by_id, &track->request_id);
 			imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "Error creating upstream subscription", 0);
 		}
@@ -1098,7 +1098,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
+static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
 		imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe for a namespace tuple */
 	char tns_buffer[256];
@@ -1153,7 +1153,7 @@ static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, 
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id,
+static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 		//~ gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
 	/* We received a standalone fetch */
@@ -1242,7 +1242,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id ,
+static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters) {
 	/* We received a joining fetch */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",

@@ -120,7 +120,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			}
 		}
 		moq_tns_request_id = imquic_moq_get_next_request_id(conn);
-		imquic_moq_publish_namespace(conn, moq_tns_request_id, &tns[0], &params);
+		imquic_moq_publish_namespace(conn, moq_tns_request_id, 0, &tns[0], &params);
 	} else {
 		/* We use PUBLISH */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, pub_tn);
@@ -142,7 +142,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias, &params, NULL);
+		imquic_moq_publish(conn, moq_request_id, 0, &tns[0], &tn, moq_track_alias, &params, NULL);
 	}
 }
 
@@ -176,7 +176,7 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
