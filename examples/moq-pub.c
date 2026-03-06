@@ -459,7 +459,7 @@ int main(int argc, char *argv[]) {
 	if(options.publish) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
 	}
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64", if a version higher or equal than 12 is negotiated\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64"\n",
 		options.track_alias);
 	moq_track_alias	= options.track_alias;
 

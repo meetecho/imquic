@@ -858,8 +858,11 @@ void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c PUBLISH_NAMESPACE_CANCEL request (legacy), or when
- * the associated stream is closed (new draft versions)
+ * an incoming \c PUBLISH_NAMESPACE_CANCEL request.
+ * \note Starting in v17, \c PUBLISH_NAMESPACE_CANCEL doesn't exist anymore,
+ * so this callback is only fired if the endpoint that sent the
+ * \c PUBLISH_NAMESPACE closed the associated bidirectiomal stream before
+ * getting a \c REQUEST_OK or \c REQUEST_ERROR back.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_publish_namespace_cancel Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_CANCEL */
 void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
@@ -878,6 +881,10 @@ void imquic_set_publish_namespace_error_cb(imquic_endpoint *endpoint,
 	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c PUBLISH_NAMESPACE_DONE request.
+ * \note Starting in v17, \c PUBLISH_NAMESPACE_DONE doesn't exist anymore,
+ * so this callback is only fired if the endpoint that sent the
+ * \c PUBLISH_NAMESPACE closed the associated bidirectiomal stream after
+ * getting a \c REQUEST_OK or \c REQUEST_ERROR back.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_namespace_done Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_DONE */
 void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
@@ -946,6 +953,9 @@ void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
 	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE request.
+ * \note Starting in v17, \c UNSUBSCRIBE doesn't exist anymore,
+ * so this callback is only fired if the endpoint that sent the
+ * \c SUBSCRIBE closed the associated bidirectiomal stream.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe Pointer to the function that will handle the incoming \c UNSUBSCRIBE */
 void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
@@ -978,6 +988,9 @@ void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
 	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_NAMESPACE request.
+ * \note On newer versions, \c UNSUBSCRIBE_NAMESPACE doesn't exist anymore,
+ * so this callback is only fired if the endpoint that sent the
+ * \c SUBSCRIBE_NAMESPACE closed the associated bidirectiomal stream.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe_namespace Pointer to the function that will handle the incoming \c UNSUBSCRIBE_NAMESPACE */
 void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
@@ -1009,8 +1022,11 @@ void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c FETCH_CANCEL request (legacy), or when
- * the associated stream is closed (new draft versions)
+ * an incoming \c FETCH_CANCEL request.
+ * \note Starting in v17, \c FETCH_CANCEL doesn't exist anymore,
+ * so this callback is only fired if the endpoint that sent the
+ * \c FETCH closed the associated bidirectiomal stream before
+ * getting a \c FETCH_OK or \c REQUEST_ERROR back.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_fetch_cancel Pointer to the function that will handle the incoming \c FETCH_CANCEL */
 void imquic_set_incoming_fetch_cancel_cb(imquic_endpoint *endpoint,

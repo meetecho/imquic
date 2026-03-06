@@ -35,6 +35,20 @@
 static GHashTable *moq_sessions = NULL;
 static imquic_mutex moq_mutex = IMQUIC_MUTEX_INITIALIZER;
 
+/* Buffering of streams/requests, where needed */
+typedef struct imquic_moq_pending_stream {
+	uint64_t stream_id;
+	imquic_buffer *buffer;
+	gboolean complete;
+} imquic_moq_pending_stream;
+static void imquic_moq_pending_stream_destroy(imquic_moq_pending_stream *stream) {
+	if(stream != NULL) {
+		imquic_buffer_destroy(stream->buffer);
+		g_free(stream);
+	}
+}
+static GHashTable *moq_pending_streams = NULL;
+
 /* MoQ's flavour of varint (introduced in v17) */
 uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length);
 uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen);
@@ -44,6 +58,7 @@ static void imquic_moq_context_destroy(imquic_moq_context *moq);
 static void imquic_moq_context_free(const imquic_refcount *moq_ref);
 void imquic_moq_init(void) {
 	moq_sessions = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)imquic_moq_context_destroy);
+	moq_pending_streams = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)g_hash_table_unref);
 }
 
 void imquic_moq_deinit(void) {
@@ -51,6 +66,9 @@ void imquic_moq_deinit(void) {
 	if(moq_sessions != NULL)
 		g_hash_table_unref(moq_sessions);
 	moq_sessions = NULL;
+	if(moq_pending_streams != NULL)
+		g_hash_table_unref(moq_pending_streams);
+	moq_pending_streams = NULL;
 	imquic_mutex_unlock(&moq_mutex);
 }
 
@@ -115,6 +133,49 @@ static gboolean moq_is_request_id_valid(imquic_moq_context *moq, uint64_t reques
 	return TRUE;
 }
 
+/* Helpers to manage pending streams */
+static void imquic_moq_track_pending_stream(imquic_connection *conn, uint64_t stream_id, uint8_t *bytes, size_t length, gboolean complete) {
+	imquic_mutex_lock(&moq_mutex);
+	GHashTable *streams = g_hash_table_lookup(moq_pending_streams, conn);
+	if(streams == NULL) {
+		/* No map for this connection yet, create it now */
+		streams = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+			(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_pending_stream_destroy);
+		g_hash_table_insert(moq_pending_streams, conn, streams);
+	}
+	/* Keep track of the stream data */
+	imquic_moq_pending_stream *stream = g_hash_table_lookup(streams, &stream_id);
+	if(stream == NULL) {
+		stream = g_malloc0(sizeof(imquic_moq_pending_stream));
+		stream->stream_id = stream_id;
+		stream->buffer = imquic_buffer_create(NULL, 0);
+		g_hash_table_insert(streams, imquic_uint64_dup(stream_id), stream);
+	}
+	imquic_buffer_append(stream->buffer, bytes, length);
+	stream->complete = complete;
+	imquic_mutex_unlock(&moq_mutex);
+}
+
+static void imquic_moq_handle_pending_streams(imquic_connection *conn) {
+	GHashTable *streams = NULL;
+	imquic_mutex_lock(&moq_mutex);
+	g_hash_table_steal_extended(moq_pending_streams, conn,
+		NULL, (gpointer *)&streams);
+	imquic_mutex_unlock(&moq_mutex);
+	/* Iterate on the streams list and cleanup */
+	if(streams != NULL) {
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, streams);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			imquic_moq_pending_stream *stream = value;
+			imquic_moq_stream_incoming(conn, stream->stream_id,
+				stream->buffer->bytes, stream->buffer->length, stream->complete);
+		}
+		g_hash_table_unref(streams);
+	}
+}
+
 /* Callbacks */
 void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	/* Got new connection */
@@ -145,6 +206,8 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	imquic_refcount_init(&moq->ref, imquic_moq_context_free);
 	imquic_mutex_lock(&moq_mutex);
 	g_hash_table_insert(moq_sessions, conn, moq);
+	if(moq->version <= IMQUIC_MOQ_VERSION_16)
+		g_hash_table_remove(moq_pending_streams, conn);
 	imquic_mutex_unlock(&moq_mutex);
 	/* Let's check if we need to create a control stream */
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
@@ -235,6 +298,8 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		imquic_connection_send_on_stream(moq->conn, moq->control_stream_id,
 			buffer, cs_len, FALSE);
 	}
+	/* Check if there are streams we kept on hold because we didn't have a context */
+	imquic_moq_handle_pending_streams(conn);
 }
 
 void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
@@ -247,21 +312,33 @@ void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	imquic_mutex_unlock(&moq_mutex);
 	if(moq == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Ignoring incoming STREAM data on unknown context\n",
+		/* FIXME For newer versions, we may get bidirectional stream data
+		 * from requests before we get the SETUP on the unidirectional
+		 * control stream, which means we need to buffer data for later */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Buffering incoming STREAM data on unknown context\n",
 			imquic_get_connection_name(conn));
+		imquic_moq_track_pending_stream(conn, stream_id, bytes, length, complete);
 		return;
 	}
 	if(!moq->has_control_stream) {
 		uint64_t actual_id = 0;
 		gboolean client_initiated = FALSE, bidirectional = FALSE;
 		imquic_parse_stream_id(stream_id, &actual_id, &client_initiated, &bidirectional);
-		if((moq->version <= IMQUIC_MOQ_VERSION_16 && !bidirectional) ||
-				(moq->version >= IMQUIC_MOQ_VERSION_17 && bidirectional)) {
-			/* FIXME Depending on the version, we'll be waiting for the remote
-			 * control stream on either a bidirectional or unidirectional stream */
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Not a %s MoQ control stream\n",
-				imquic_get_connection_name(conn),
-				(moq->version <= IMQUIC_MOQ_VERSION_16 ? "bidirectional" : "unidirectional"));
+		/* FIXME Depending on the version, we'll be waiting for the remote
+		 * control stream on either a bidirectional or unidirectional stream */
+		if(moq->version <= IMQUIC_MOQ_VERSION_16 && !bidirectional) {
+			/* Legacy version, we need a bidirectional control stream as a first thing */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Not a bidirectional MoQ control stream\n",
+				imquic_get_connection_name(conn));
+			return;
+		} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && bidirectional) {
+			/* New version, the remote control stream will be unidirectional,
+			 * but we may get some bidirectional streams for requests too
+			 * in the meanwhile: if that happens, queue that data, and we
+			 * will handle it later, once the control stream has been setup */
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Not a unidirectional MoQ control stream, buffering stream %"SCNu64" data\n",
+				imquic_get_connection_name(conn), stream_id);
+			imquic_moq_track_pending_stream(conn, stream_id, bytes, length, complete);
 			return;
 		}
 		moq->has_control_stream = TRUE;
@@ -275,6 +352,14 @@ void imquic_moq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
 #endif
 	}
 	imquic_moq_parse_message(moq, stream_id, bytes, length, complete, FALSE);
+	/* After we've handled this stream, check if there is pending stream
+	 * data we should process now: this can happen in newer MoQ versions
+	 * if we received data from a bidirectional stream (e.g., a request)
+	 * before we received the SETUP on the unidirectional control stream */
+	if(g_atomic_int_compare_and_exchange(&moq->check_pending, 1, 0)) {
+		/* We do, check if there are streams to process */
+		imquic_moq_handle_pending_streams(conn);
+	}
 }
 
 void imquic_moq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint64_t length) {
@@ -306,7 +391,7 @@ void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_i
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Got RESET_STREAM for STREAM %"SCNu64": %"SCNu64" (%s)\n",
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
-	if(!moq_stream->subscribe_namespace) {
+	if(moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE) {
 		/* FIXME Not the SUBSCRIBE_NAMESPACE stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
 		return;
@@ -348,6 +433,7 @@ void imquic_moq_connection_gone(imquic_connection *conn) {
 	/* Connection was closed */
 	imquic_mutex_lock(&moq_mutex);
 	gboolean removed = g_hash_table_remove(moq_sessions, conn);
+	g_hash_table_remove(moq_pending_streams, conn);
 	imquic_mutex_unlock(&moq_mutex);
 	if(conn->socket && conn->socket->callbacks.moq.connection_gone)
 		conn->socket->callbacks.moq.connection_gone(conn);
@@ -1316,7 +1402,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		imquic_buffer_append(moq->buffer, bytes, blen);
 		bytes = moq->buffer->bytes;
 		blen = moq->buffer->length;
-	} else if(moq_stream != NULL && moq_stream->subscribe_namespace) {
+	} else if(moq_stream != NULL && moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE) {
 		if(moq_stream->buffer == NULL)
 			moq_stream->buffer = imquic_buffer_create(NULL, 0);
 		imquic_buffer_append(moq_stream->buffer, bytes, blen);
@@ -1324,7 +1410,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		blen = moq_stream->buffer->length;
 	}
 	/* Iterate on all frames */
-	while((moq_stream == NULL || moq_stream->subscribe_namespace) && blen-offset > 0) {
+	while((moq_stream == NULL || moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE) && blen-offset > 0) {
 		/* If we're here, we're either on the control stream, or on a media stream waiting to know what it will be like */
 		imquic_moq_message_type type = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &tlen);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_VERB, "[%s][MoQ][%zu] >> %s (%02x, %u)\n",
@@ -1341,7 +1427,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 					imquic_get_connection_name(moq->conn), stream_id);
 				moq_stream = g_malloc0(sizeof(imquic_moq_stream));
 				moq_stream->stream_id = stream_id;
-				moq_stream->subscribe_namespace = TRUE;
+				moq_stream->request_type = IMQUIC_MOQ_SUBSCRIBE_NAMESPACE;
 				moq_stream->namespace_publisher = TRUE;
 				g_hash_table_insert(moq->streams, imquic_dup_uint64(stream_id), moq_stream);
 				moq_stream->buffer = imquic_buffer_create(bytes, blen);
@@ -1483,7 +1569,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 			bytes = moq->buffer->bytes;
 			blen = moq->buffer->length;
 			offset = 0;
-		} else if(moq_stream->subscribe_namespace) {
+		} else if(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE) {
 			/* Control message for namespaces advertisement */
 			size_t plen = blen-offset;
 			tlen = 2;
@@ -1573,7 +1659,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		}
 	}
 	/* Check if we have a media stream to process */
-	if(moq_stream != NULL && !moq_stream->subscribe_namespace && blen > offset) {
+	if(moq_stream != NULL && moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE && blen > offset) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] MoQ media stream %"SCNu64" (%zu bytes)\n",
 			imquic_get_connection_name(moq->conn), stream_id, blen - offset);
 		/* Copy the incoming data to the buffer, as we'll use that for parsing */
@@ -1611,7 +1697,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 
 done:
 	if(moq_stream != NULL && complete) {
-		if(moq_stream->subscribe_namespace) {
+		if(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE) {
 			/* The SUBSCRIBE_NAMESPACE dedicated bidirectional STREAM has been closed */
 			gboolean notify = moq_stream->namespace_publisher;
 			uint64_t request_id = moq_stream->request_id;
@@ -1861,6 +1947,7 @@ size_t imquic_moq_parse_setup(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	/* FIXME */
 	if(moq->recvd_setup && moq->sent_setup) {
 		g_atomic_int_set(&moq->connected, 1);
+		g_atomic_int_set(&moq->check_pending, 1);
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.moq_ready)
 			moq->conn->socket->callbacks.moq.moq_ready(moq->conn);
 	}
@@ -1929,7 +2016,7 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
 		return 0;
-	IMQUIC_MOQ_CHECK_ERR((moq_stream != NULL &&
+	IMQUIC_MOQ_CHECK_ERR((moq_stream != NULL && moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE &&
 			(moq_stream->namespace_publisher || !g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2))),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of REQUEST_OK for SUBSCRIBE_NAMESPACE");
 	size_t offset = 0;
@@ -1999,7 +2086,7 @@ size_t imquic_moq_parse_request_error(imquic_moq_context *moq, imquic_moq_stream
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
 		return 0;
-	IMQUIC_MOQ_CHECK_ERR((moq_stream != NULL &&
+	IMQUIC_MOQ_CHECK_ERR((moq_stream != NULL && moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE &&
 			(moq_stream->namespace_publisher || !g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2))),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of REQUEST_ERROR for SUBSCRIBE_NAMESPACE");
 	size_t offset = 0;
@@ -5529,7 +5616,7 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	/* Starting from v16, SUBSCRIBE_NAMESPACE goes on a dedicated bidirectional STREAM */
 	imquic_moq_stream *moq_stream = g_malloc0(sizeof(imquic_moq_stream));
 	imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
-	moq_stream->subscribe_namespace = TRUE;
+	moq_stream->request_type = IMQUIC_MOQ_SUBSCRIBE_NAMESPACE;
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->streams, imquic_dup_uint64(moq_stream->stream_id), moq_stream);
 	imquic_mutex_unlock(&moq->mutex);
@@ -5570,7 +5657,7 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
 	 * bidirectional STREAM, and the same applies to REQUEST_OK/ERROR */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->tns_subscriptions_by_id, &request_id);
-	if(moq_stream == NULL || !moq_stream->subscribe_namespace || !moq_stream->namespace_publisher ||
+	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || !moq_stream->namespace_publisher ||
 			!g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2)) {
 		imquic_mutex_unlock(&moq->mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state\n",
@@ -5606,7 +5693,7 @@ int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t requ
 	 * bidirectional STREAM, and the same applies to REQUEST_OK/ERROR */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->tns_subscriptions_by_id, &request_id);
-	if(moq_stream == NULL || !moq_stream->subscribe_namespace || !moq_stream->namespace_publisher ||
+	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || !moq_stream->namespace_publisher ||
 			!g_atomic_int_compare_and_exchange(&moq_stream->subscribe_namespace_state, 1, 2)) {
 		imquic_mutex_unlock(&moq->mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state\n",
@@ -5672,7 +5759,7 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 	/* Check if the request ID exists */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->tns_subscriptions_by_id, &request_id);
-	if(moq_stream == NULL || !moq_stream->subscribe_namespace || !moq_stream->namespace_publisher ||
+	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || !moq_stream->namespace_publisher ||
 			g_atomic_int_get(&moq_stream->subscribe_namespace_state) < 2 ||
 			!imquic_moq_namespace_contains(moq_stream->namespace_prefix, tns)) {
 		imquic_mutex_unlock(&moq->mutex);
@@ -5711,7 +5798,7 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	/* Check if the request ID exists */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->tns_subscriptions_by_id, &request_id);
-	if(moq_stream == NULL || !moq_stream->subscribe_namespace || !moq_stream->namespace_publisher ||
+	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || !moq_stream->namespace_publisher ||
 			g_atomic_int_get(&moq_stream->subscribe_namespace_state) < 2 ||
 			!imquic_moq_namespace_contains(moq_stream->namespace_prefix, tns)) {
 		imquic_mutex_unlock(&moq->mutex);
