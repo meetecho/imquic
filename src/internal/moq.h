@@ -222,6 +222,7 @@ const char *imquic_moq_setup_option_type_str(imquic_moq_setup_option_type type);
 typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN = 0x03,
 	IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT = 0x02,
+	IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT = 0x04,
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY = 0x20,
 	IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER = 0x22,
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER = 0x21,
@@ -1099,9 +1100,30 @@ size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t
 	uint8_t *properties, size_t prlen);
 ///@}
 
-/** @name Parsing and building MoQ parameters
+/** @name Parsing and building MoQ setup options (TLV)
  */
 ///@{
+/*! \brief Helper to add a MoQ setup option with a numeric value to a buffer
+ * @param moq The imquic_moq_context instance the setup option is for
+ * @param bytes Buffer to add the setup option to
+ * @param blen Size of the buffer
+ * @param opt ID of the setup option to add
+ * @param prev ID of the previously added setup option, if we're delta-encoding
+ * @param number The numeric value of the setup option to add
+ * @returns The size of the setup option, if successful, or 0 otherwise */
+size_t imquic_moq_setup_option_add_int(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t opt, uint64_t prev, uint64_t number);
+/*! \brief Helper to add a MoQ setup option with generic data to a buffer
+ * @param moq The imquic_moq_context instance the setup option is for
+ * @param bytes Buffer to add the setup option to
+ * @param blen Size of the buffer
+ * @param opt ID of the setup option to add
+ * @param prev ID of the previously added setup option, if we're delta-encoding
+ * @param buf The data acting as a value for the setup option to add
+ * @param buflen The size of the data value
+ * @returns The size of the setup option, if successful, or 0 otherwise */
+size_t imquic_moq_setup_option_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t opt, uint64_t prev, uint8_t *buf, size_t buflen);
 /*! \brief Helper method to parse a MoQ setup parameter
  * @note This method does nothing at the moment
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
@@ -1113,6 +1135,62 @@ size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t
  * @returns The size of the parameter, if successful, or 0 otherwise */
 size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	imquic_moq_setup_options *params, uint64_t *param_type, uint8_t *error);
+/*! \brief Helper to serialize a imquic_moq_setup_options set to a buffer
+ * @param[in] moq The imquic_moq_context instance the parameter is for
+ * @param[in] options The imquic_moq_setup_options to serialize
+ * @param[out] bytes The buffer to add paramerers to
+ * @param[in] blen The size of the buffer
+ * @param[out] params_num The number of parameters added to the buffer
+ * @returns The size of the serialized parameters, if successful, or 0 otherwise */
+size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
+	imquic_moq_setup_options *options,
+	uint8_t *bytes, size_t blen, uint8_t *params_num);
+///@}
+
+/** @name Parsing and building MoQ parameters (TLV or not, depending on version)
+ */
+///@{
+/*! \brief Helper to add a MoQ parameter with a numeric value to a buffer as a varint
+ * @param moq The imquic_moq_context instance the parameter is for
+ * @param bytes Buffer to add the parameter to
+ * @param blen Size of the buffer
+ * @param param ID of the parameter to add
+ * @param prev ID of the previously added parameter, if we're delta-encoding
+ * @param number The numeric value of the parameter to add
+ * @returns The size of the parameter, if successful, or 0 otherwise */
+size_t imquic_moq_parameter_add_varint(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t param, uint64_t prev, uint64_t number);
+/*! \brief Helper to add a MoQ parameter with a numeric value to a buffer as a byte
+ * @param moq The imquic_moq_context instance the parameter is for
+ * @param bytes Buffer to add the parameter to
+ * @param blen Size of the buffer
+ * @param param ID of the parameter to add
+ * @param prev ID of the previously added parameter, if we're delta-encoding
+ * @param number The numeric value of the parameter to add
+ * @returns The size of the parameter, if successful, or 0 otherwise */
+size_t imquic_moq_parameter_add_uint8(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t param, uint64_t prev, uint8_t number);
+/*! \brief Helper to add a MoQ parameter with a location to a buffer
+ * @param moq The imquic_moq_context instance the parameter is for
+ * @param bytes Buffer to add the parameter to
+ * @param blen Size of the buffer
+ * @param param ID of the parameter to add
+ * @param prev ID of the previously added parameter, if we're delta-encoding
+ * @param location The location parameter to add
+ * @returns The size of the parameter, if successful, or 0 otherwise */
+size_t imquic_moq_parameter_add_location(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t param, uint64_t prev, imquic_moq_location *location);
+/*! \brief Helper to add a MoQ parameter with generic data to a buffer
+ * @param moq The imquic_moq_context instance the parameter is for
+ * @param bytes Buffer to add the parameter to
+ * @param blen Size of the buffer
+ * @param param ID of the parameter to add
+ * @param prev ID of the previously added parameter, if we're delta-encoding
+ * @param buf The data acting as a value for the parameter to add
+ * @param buflen The size of the data value
+ * @returns The size of the parameter, if successful, or 0 otherwise */
+size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen);
 /*! \brief Helper method to parse a MoQ subscribe parameter
  * @note This method does nothing at the moment
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
@@ -1124,38 +1202,6 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
  * @returns The size of the parameter, if successful, or 0 otherwise */
 size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	imquic_moq_request_parameters *params, uint64_t *param_type, uint8_t *error);
-/*! \brief Helper to add a MoQ (setup or subscribe) parameter with a numeric value to a buffer
- * @param moq The imquic_moq_context instance the parameter is for
- * @param bytes Buffer to add the parameter to
- * @param blen Size of the buffer
- * @param param ID of the parameter to add
- * @param prev ID of the previously added parameter, if we're delta-encoding
- * @param number The numeric value of the parameter to add
- * @returns The size of the parameter, if successful, or 0 otherwise */
-size_t imquic_moq_parameter_add_int(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t param, uint64_t prev, uint64_t number);
-/*! \brief Helper to add a MoQ (setup or subscribe) parameter with generic data to a buffer
- * @param moq The imquic_moq_context instance the parameter is for
- * @param bytes Buffer to add the parameter to
- * @param blen Size of the buffer
- * @param param ID of the parameter to add
- * @param prev ID of the previously added parameter, if we're delta-encoding
- * @param buf The data acting as a value for the parameter to add
- * @param buflen The size of the data value
- * @returns The size of the parameter, if successful, or 0 otherwise */
-size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen);
-/*! \brief Helper to serialize a imquic_moq_setup_options set to a buffer
- * @param[in] moq The imquic_moq_context instance the parameter is for
- * @param[in] options The imquic_moq_setup_options to serialize
- * @param[out] bytes The buffer to add paramerers to
- * @param[in] blen The size of the buffer
- * @param[out] params_num The number of parameters added to the buffer
- * @returns The size of the serialized parameters, if successful, or 0 otherwise */
-size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
-	imquic_moq_setup_options *options,
-	uint8_t *bytes, size_t blen, uint8_t *params_num);
-
 /*! \brief Helper to serialize a imquic_moq_request_parameters set to a buffer
  * @param[in] moq The imquic_moq_context instance the parameter is for
  * @param[in] parameters The imquic_moq_request_parameters to serialize

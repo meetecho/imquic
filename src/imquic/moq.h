@@ -459,6 +459,10 @@ typedef struct imquic_moq_request_parameters {
 	gboolean delivery_timeout_set;
 	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
 	uint64_t delivery_timeout;
+	/*! \brief Whether the RENDEZVOUS_TIMEOUT parameter is set */
+	gboolean rendezvous_timeout_set;
+	/*! \brief Value of the RENDEZVOUS_TIMEOUT parameter */
+	uint64_t rendezvous_timeout;
 	/*! \brief Whether the SUBSCRIBER_PRIORITY parameter is set */
 	gboolean subscriber_priority_set;
 	/*! \brief Value of the SUBSCRIBER_PRIORITY parameter */
