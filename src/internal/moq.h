@@ -1222,13 +1222,14 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 	imquic_moq_request_parameters *params, uint64_t *param_type, uint8_t *error);
 /*! \brief Helper to serialize a imquic_moq_request_parameters set to a buffer
  * @param[in] moq The imquic_moq_context instance the parameter is for
+ * @param[in] request The imquic_moq_message_type request originating the parameters to serialize
  * @param[in] parameters The imquic_moq_request_parameters to serialize
  * @param[out] bytes The buffer to add paramerers to
  * @param[in] blen The size of the buffer
  * @param[out] params_num The number of parameters added to the buffer
  * @returns The size of the serialized parameters, if successful, or 0 otherwise */
 size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
-	imquic_moq_request_parameters *parameters,
+	imquic_moq_message_type request, imquic_moq_request_parameters *parameters,
 	uint8_t *bytes, size_t blen, uint8_t *params_num);
 ///@}
 

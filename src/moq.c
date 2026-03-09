@@ -1140,7 +1140,7 @@ void imquic_moq_request_parameters_init_defaults(imquic_moq_request_parameters *
 }
 
 size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
-		imquic_moq_request_parameters *parameters,
+		imquic_moq_message_type request, imquic_moq_request_parameters *parameters,
 		uint8_t *bytes, size_t blen, uint8_t *params_num) {
 	if(bytes == NULL || blen == 0)
 		return 0;
@@ -1151,26 +1151,46 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 	} else {
 		uint64_t new_id = 0, last_id = 0;
 		GList *list = NULL;
-		if(parameters->auth_token_set)
+		if(parameters->auth_token_set && request != IMQUIC_MOQ_REQUEST_OK && request != IMQUIC_MOQ_REQUEST_ERROR) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN));
-		if(parameters->delivery_timeout_set && parameters->delivery_timeout > 0)
+		}
+		if(parameters->delivery_timeout_set && parameters->delivery_timeout > 0 &&
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
-		if(parameters->rendezvous_timeout_set && parameters->rendezvous_timeout > 0 && moq->version >= IMQUIC_MOQ_VERSION_17)
+		}
+		if(parameters->rendezvous_timeout_set && parameters->rendezvous_timeout > 0 &&
+				moq->version >= IMQUIC_MOQ_VERSION_17 && request == IMQUIC_MOQ_SUBSCRIBE) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT));
-		if(parameters->subscriber_priority_set)
+		}
+		if(parameters->subscriber_priority_set &&
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
-		if(parameters->group_order_set)
+		}
+		if(parameters->group_order_set &&
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
-		if(parameters->subscription_filter_set)
+		}
+		if(parameters->subscription_filter_set &&
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER));
-		if(parameters->expires_set)
+		}
+		if(parameters->expires_set &&
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_EXPIRES));
-		if(parameters->largest_object_set)
+		}
+		if(parameters->largest_object_set &&
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE_OK || request == IMQUIC_MOQ_REQUEST_OK)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
-		if(parameters->forward_set)
+		}
+		if(parameters->forward_set &&
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE ||
+					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
-		if(parameters->new_group_request_set)
+		}
+		if(parameters->new_group_request_set &&
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
+		}
 		*params_num = g_list_length(list);
 		offset += imquic_write_moqint(moq->version, *params_num, &bytes[offset], blen-offset);
 		if(list != NULL) {
@@ -1207,8 +1227,13 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 						toffset += imquic_write_moqint(moq->version, parameters->subscription_filter.start_location.group, &temp[toffset], tlen-toffset);
 						toffset += imquic_write_moqint(moq->version, parameters->subscription_filter.start_location.object, &temp[toffset], tlen-toffset);
 					}
-					if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE)
-						toffset += imquic_write_moqint(moq->version, parameters->subscription_filter.end_group, &temp[toffset], tlen-toffset);
+					if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+						/* End group is a delta, starting from v17 */
+						uint64_t end_group = parameters->subscription_filter.end_group;
+						if(moq->version >= IMQUIC_MOQ_VERSION_16)
+							end_group -= parameters->subscription_filter.start_location.group;
+						toffset += imquic_write_moqint(moq->version, end_group, &temp[toffset], tlen-toffset);
+					}
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						temp, toffset);
@@ -4178,7 +4203,7 @@ size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 	if(moq->version <= IMQUIC_MOQ_VERSION_16)
 		offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_REQUEST_OK, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4246,7 +4271,7 @@ size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, imquic_moq_stre
 		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_NAMESPACE);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_PUBLISH_NAMESPACE, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4335,7 +4360,7 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_PUBLISH);
 	offset += imquic_write_moqint(moq->version, track_alias, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_PUBLISH, parameters, &bytes[offset], blen-offset, &params_num);
 	/* Check if there are properties to encode */
 	uint8_t properties[256];
 	size_t properties_len = 0;
@@ -4376,7 +4401,7 @@ size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 	if(moq->version <= IMQUIC_MOQ_VERSION_16)
 		offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_PUBLISH_OK, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4410,7 +4435,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE);
 	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_SUBSCRIBE);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_SUBSCRIBE, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4447,7 +4472,7 @@ size_t imquic_moq_add_request_update(imquic_moq_context *moq, imquic_moq_stream 
 		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
 	}
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_REQUEST_UPDATE, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4480,7 +4505,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream *m
 		offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
 	offset += imquic_write_moqint(moq->version, track_alias, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_SUBSCRIBE_OK, parameters, &bytes[offset], blen-offset, &params_num);
 	/* Check if there are properties to encode */
 	uint8_t properties[256];
 	size_t properties_len = 0;
@@ -4577,7 +4602,7 @@ size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, imquic_moq_st
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE_NAMESPACE);
 	offset += imquic_write_moqint(moq->version, subscribe_options, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_SUBSCRIBE_NAMESPACE, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4707,7 +4732,7 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stre
 		offset += imquic_write_moqint(moq->version, preceding_group_offset, &bytes[offset], blen-offset);
 	}
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_FETCH, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4774,7 +4799,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq_s
 	offset += imquic_write_moqint(moq->version, end_location->group, &bytes[offset], blen-offset);
 	offset += imquic_write_moqint(moq->version, end_location->object, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_FETCH_OK, parameters, &bytes[offset], blen-offset, &params_num);
 	/* Check if there are properties to encode */
 	uint8_t properties[256];
 	size_t properties_len = 0;
@@ -4814,7 +4839,7 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, imquic_moq_stream *m
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_TRACK_STATUS);
 	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_TRACK_STATUS);
 	uint8_t params_num = 0;
-	offset += imquic_moq_request_parameters_serialize(moq, parameters, &bytes[offset], blen-offset, &params_num);
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_TRACK_STATUS, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -5395,6 +5420,10 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		if(params->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 			params->subscription_filter.end_group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+			/* The End group property is a delta, starting from v17, but
+			 * we expose the full actual value to the application */
+			if(moq->version >= IMQUIC_MOQ_VERSION_17)
+				params->subscription_filter.end_group += params->subscription_filter.start_location.group;
 		}
 		params->subscription_filter_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %d\n",
@@ -7636,6 +7665,12 @@ void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_
 		json_object_set_new(delivery_timeout, "value", json_integer(parameters->delivery_timeout));
 		json_array_append_new(params, delivery_timeout);
 	}
+	if(parameters->rendezvous_timeout_set) {
+		json_t *rendezvous_timeout = json_object();
+		json_object_set_new(rendezvous_timeout, "name", json_string("rendezvous_timeout"));
+		json_object_set_new(rendezvous_timeout, "value", json_integer(parameters->rendezvous_timeout));
+		json_array_append_new(params, rendezvous_timeout);
+	}
 	if(parameters->subscriber_priority_set) {
 		json_t *subscriber_priority = json_object();
 		json_object_set_new(subscriber_priority, "name", json_string("subscriber_priority"));
@@ -7661,8 +7696,12 @@ void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_
 			json_object_set_new(lo, "object", json_integer(parameters->subscription_filter.start_location.object));
 			json_object_set_new(sf, "start_location", lo);
 		}
-		if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE)
-			json_object_set_new(sf, "end_group", json_integer(parameters->subscription_filter.end_group));
+		if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			if(version <= IMQUIC_MOQ_VERSION_16)
+				json_object_set_new(sf, "end_group", json_integer(parameters->subscription_filter.end_group));
+			else
+				json_object_set_new(sf, "end_group_delta", json_integer(parameters->subscription_filter.end_group - parameters->subscription_filter.start_location.group));
+		}
 		json_object_set_new(subscription_filter, "value", sf);
 		json_array_append_new(params, subscription_filter);
 	}
