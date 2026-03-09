@@ -50,8 +50,14 @@ static void imquic_moq_pending_stream_destroy(imquic_moq_pending_stream *stream)
 static GHashTable *moq_pending_streams = NULL;
 
 /* MoQ's flavour of varint (introduced in v17) */
-uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length);
-uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen);
+static uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length);
+static uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen);
+
+/* Helpers to check and generate GREASE values */
+#define IMQUIC_MOQ_GREASE_BASE	0x7f
+#define IMQUIC_MOQ_GREASE_SUM	0x9D
+static gboolean imquic_moq_is_grease(uint64_t value);
+static uint64_t imquic_moq_random_grease(void);
 
 /* Initialization */
 static void imquic_moq_context_destroy(imquic_moq_context *moq);
@@ -1066,6 +1072,9 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORITY));
 		if(options->moqt_implementation_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION));
+		/* For newer versions, we always add a GREASE option */
+		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+			list = g_list_append(list, GUINT_TO_POINTER(imquic_moq_random_grease()));
 		*params_num = g_list_length(list);
 		if(moq->version <= IMQUIC_MOQ_VERSION_16)
 			offset += imquic_write_moqint(moq->version, *params_num, &bytes[offset], blen-offset);
@@ -1098,6 +1107,17 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_setup_option_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->moqt_implementation, strlen(options->moqt_implementation));
+				} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(new_id)) {
+					/* Add a GREASE setup option */
+					if(new_id % 2 == 0) {
+						uint64_t value = g_random_int_range(1, 1000);
+						offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
+							new_id, last_id, value);
+					} else {
+						uint8_t data[] = { 0x01, 0x02, 0x03, 0x04 };
+						offset += imquic_moq_setup_option_add_data(moq, &bytes[offset], blen-offset,
+							new_id, last_id, data, sizeof(data));
+					}
 				}
 				last_id = new_id;
 				temp = temp->next;
@@ -5154,6 +5174,13 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 			g_snprintf(params->moqt_implementation, sizeof(params->moqt_implementation), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->moqt_implementation);
+	} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(type)) {
+		/* This is a GREASE setup option, just skip it */
+		if(type % 2 == 0) {
+			uint64_t grease = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+			len = length;
+		}
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter '%"SCNu64"'\n",
 			imquic_get_connection_name(moq->conn), type);
@@ -7336,7 +7363,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 }
 
 /* Reading and writing MoQ's flavour of variable size integers */
-uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length) {
+static uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length) {
 	if(version <= IMQUIC_MOQ_VERSION_16)
 		return imquic_read_varint(bytes, blen, length);
 	if(length)
@@ -7386,7 +7413,7 @@ done:
 	return res;
 }
 
-uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen) {
+static uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen) {
 	if(version <= IMQUIC_MOQ_VERSION_16)
 		return imquic_write_varint(number, bytes, blen);
 	if(blen < 1)
@@ -7471,6 +7498,20 @@ uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t
 	}
 	IMQUIC_LOG(IMQUIC_LOG_WARN, "Didn't write moqint '%"SCNu64"'\n", number);
 	return 0;
+}
+
+/* Helpers to check and generate GREASE values */
+static gboolean imquic_moq_is_grease(uint64_t value) {
+	if(value < IMQUIC_MOQ_GREASE_SUM)
+		return FALSE;
+	uint64_t n = (value - IMQUIC_MOQ_GREASE_SUM) / IMQUIC_MOQ_GREASE_BASE;
+	return (((n * IMQUIC_MOQ_GREASE_BASE) + IMQUIC_MOQ_GREASE_SUM) == value);
+}
+
+static uint64_t imquic_moq_random_grease(void) {
+	/* FIXME */
+	uint64_t n = g_random_int_range(0, 1000);
+	return (n * IMQUIC_MOQ_GREASE_BASE) + IMQUIC_MOQ_GREASE_SUM;
 }
 
 #ifdef HAVE_QLOG
