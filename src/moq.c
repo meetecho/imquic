@@ -707,6 +707,8 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type, imquic_moq
 			return "CLIENT_SETUP";
 		case IMQUIC_MOQ_SERVER_SETUP:
 			return "SERVER_SETUP";
+		case IMQUIC_MOQ_SETUP:
+			return "SETUP";
 		case IMQUIC_MOQ_PUBLISH:
 			return "PUBLISH";
 		case IMQUIC_MOQ_PUBLISH_OK:
@@ -5177,7 +5179,7 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 	} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(type)) {
 		/* This is a GREASE setup option, just skip it */
 		if(type % 2 == 0) {
-			uint64_t grease = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+			(void)imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
 			len = length;
 		}
@@ -5213,7 +5215,7 @@ size_t imquic_moq_parameter_add_varint(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 	param -= prev;
 	size_t offset = 0;
-	offset += imquic_write_moqint(moq->version, param, &bytes[0], blen-offset);
+	offset += imquic_write_moqint(moq->version, param, &bytes[offset], blen-offset);
 	offset += imquic_write_moqint(moq->version, number, &bytes[offset], blen-offset);
 	return offset;
 }
@@ -5233,8 +5235,7 @@ size_t imquic_moq_parameter_add_uint8(imquic_moq_context *moq, uint8_t *bytes, s
 		return 0;
 	}
 	param -= prev;
-	size_t offset = 0;
-	offset += imquic_write_moqint(moq->version, param, &bytes[0], blen-offset);
+	size_t offset = imquic_write_moqint(moq->version, param, bytes, blen);
 	bytes[offset] = number;
 	return offset+1;
 }
@@ -5246,11 +5247,19 @@ size_t imquic_moq_parameter_add_location(imquic_moq_context *moq, uint8_t *bytes
 			imquic_get_connection_name(moq->conn), param);
 		return 0;
 	}
-	uint8_t temp[40];
-	size_t tlen = sizeof(temp);
-	size_t toffset = imquic_write_moqint(moq->version, location->group, temp, tlen);
-	toffset += imquic_write_moqint(moq->version, location->object, &temp[toffset], tlen-toffset);
-	return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, temp, toffset);
+	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
+		uint8_t temp[40];
+		size_t tlen = sizeof(temp);
+		size_t toffset = imquic_write_moqint(moq->version, location->group, temp, tlen);
+		toffset += imquic_write_moqint(moq->version, location->object, &temp[toffset], tlen-toffset);
+		return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, temp, toffset);
+	}
+	param -= prev;
+	size_t offset = 0;
+	offset += imquic_write_moqint(moq->version, param, &bytes[offset], blen-offset);
+	offset += imquic_write_moqint(moq->version, location->group, &bytes[offset], blen-offset);
+	offset += imquic_write_moqint(moq->version, location->object, &bytes[offset], blen-offset);
+	return offset;
 }
 
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
@@ -5409,8 +5418,10 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		} else {
 			params->largest_object.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+			len = length;
 			params->largest_object.object = imquic_read_moqint(moq->version, &bytes[offset+length], blen-offset-length, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+			len += length;
 		}
 		params->largest_object_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64" / %"SCNu64"\n",
@@ -5436,11 +5447,19 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->new_group_request);
 		len = length;
-	} else if(moq->version <= IMQUIC_MOQ_VERSION_16) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), type);
-		if(type % 2 == 0)
-			len = length;
+	} else {
+		if(moq->version <= IMQUIC_MOQ_VERSION_16) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), type);
+			if(type % 2 == 0)
+				len = length;
+		} else {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Unsupported parameter %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), type);
+			if(error)
+				*error = IMQUIC_MOQ_PROTOCOL_VIOLATION;
+			return 0;
+		}
 	}
 	offset += len;
 	if(error)
