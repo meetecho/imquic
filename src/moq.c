@@ -6415,8 +6415,8 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 			imquic_refcount_decrease(&moq->ref);
 			return -1;
 		}
-		/* Reset the STREAM */
-		imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
+		/* Send a STOP_SENDING */
+		imquic_connection_stop_sending_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 		imquic_refcount_decrease(&moq->ref);
@@ -6478,7 +6478,12 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 		request_id, status_code, streams_count, reason);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
-		buffer, sd_len, FALSE);
+		buffer, sd_len, moq_stream ? TRUE : FALSE);
+	if(moq_stream != NULL) {
+		imquic_mutex_lock(&moq->mutex);
+		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
+		imquic_mutex_unlock(&moq->mutex);
+	}
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
 	return 0;
