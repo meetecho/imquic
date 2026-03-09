@@ -204,7 +204,7 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 	imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *prop,
 	gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation);
 
-/*! \brief MoQ setup parameter types */
+/*! \brief MoQ setup option type */
 typedef enum imquic_moq_setup_option_type {
 	IMQUIC_MOQ_SETUP_OPTION_PATH = 0x01,
 	IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID = 0x02,

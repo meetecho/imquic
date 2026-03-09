@@ -2122,7 +2122,7 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken REQUEST_OK");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing REQUEST_OK parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2316,7 +2316,7 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, imquic_moq_st
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH_NAMESPACE parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2476,7 +2476,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH parameters");
 	}
 	size_t prop_offset = 0, prop_len = 0;
 	prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -2567,7 +2567,7 @@ size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken PUBLISH_OK");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH_OK parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2632,7 +2632,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2721,7 +2721,7 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_UPDATE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken REQUEST_UPDATE");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing REQUEST_UPDATE parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2797,7 +2797,7 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream 
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_OK");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_OK parameters");
 	}
 	size_t prop_offset = 0, prop_len = 0;
 	prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -2987,7 +2987,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_NAMESPACE parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3222,7 +3222,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing FETCH parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3378,7 +3378,7 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken FETCH_OK");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing FETCH_OK parameters");
 	}
 	size_t prop_offset = 0, prop_len = 0;
 	prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -3454,7 +3454,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken TRACK_STATUS");
+		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing TRACK_STATUS parameters");
 	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
