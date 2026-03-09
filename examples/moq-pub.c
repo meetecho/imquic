@@ -306,11 +306,12 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		}
 		if(options.properties) {
 			/* Just for fun, we add a couple of fake properties to the object: a numeric
-			 * property set to the length of the text, and a data property with a fixed string */
-			numprop.id = 0x6;	/* FIXME */
+			 * property set to the length of the text, and a data property with a fixed string.
+			 * We use the reserved space mentioned in the draft, for their IDs */
+			numprop.id = 0x38;
 			numprop.value.number = strlen(text);
 			props = g_list_append(props, &numprop);
-			dataprop.id = 0x7;	/* FIXME */
+			dataprop.id = 0x39;
 			dataprop.value.data.buffer = (uint8_t *)"lminiero";
 			dataprop.value.data.length = strlen("lminiero");
 			props = g_list_append(props, &dataprop);
