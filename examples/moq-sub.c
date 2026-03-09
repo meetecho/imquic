@@ -933,7 +933,6 @@ int main(int argc, char *argv[]) {
 		if(update_time > 0 && g_get_monotonic_time() >= update_time) {
 			/* Send a REQUEST_UPDATE with forward=true */
 			update_time = 0;
-			/* TODO This should be done for all subscriptions */
 			GList *temp = request_ids;
 			while(temp) {
 				uint64_t *rid = (uint64_t *)temp->data;
@@ -949,11 +948,10 @@ int main(int argc, char *argv[]) {
 				params.subscription_filter.type = filter_type;
 				params.subscription_filter.start_location = start_location;
 				params.subscription_filter.end_group = end_location_sub.group;
-				uint64_t request_id = imquic_moq_get_next_request_id(moq_conn),
-					sub_request_id = request_id;
+				uint64_t request_id = imquic_moq_get_next_request_id(moq_conn);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a REQUEST_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
 					imquic_get_connection_name(moq_conn), *rid, request_id);
-				imquic_moq_update_request(moq_conn, request_id, sub_request_id, &params);
+				imquic_moq_update_request(moq_conn, request_id, *rid, 0, &params);
 				temp = temp->next;
 			}
 		}

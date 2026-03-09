@@ -331,6 +331,8 @@ typedef struct imquic_moq_context {
 	GHashTable *subscriptions_by_id;
 	/*! \brief Map of Request IDs and what they were for */
 	GHashTable *requests;
+	/*! \brief Map of Request IDs to Existing Request IDs, for updates */
+	GHashTable *update_requests;
 	/*! \brief Current Request IDs we expect and we can send */
 	uint64_t expected_request_id, next_request_id;
 	/*! \brief Maximum Request IDs we can send and the one we accept */
@@ -353,6 +355,21 @@ typedef struct imquic_moq_context {
 	imquic_refcount ref;
 } imquic_moq_context;
 
+/*! \brief MoQ stream request state
+ * \note Only needed for tracking the state of bidirectional requests, not media */
+typedef enum imquic_media_stream_request_state {
+	IMQUIC_MOQ_REQUEST_STATE_NEW = 0,
+	IMQUIC_MOQ_REQUEST_STATE_SENT,
+	IMQUIC_MOQ_REQUEST_STATE_OK,
+	IMQUIC_MOQ_REQUEST_STATE_ERROR,
+	IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT,
+	IMQUIC_MOQ_REQUEST_STATE_DONE,
+} imquic_media_stream_request_state;
+/*! \brief Helper function to serialize to string the name of a imquic_media_stream_request_state value.
+ * @param state The imquic_media_stream_request_state value
+ * @returns The state name as a string, if valid, or NULL otherwise */
+const char *imquic_media_stream_request_state_str(imquic_media_stream_request_state state);
+
 /*! \brief MoQ stream
  * \note This is usually used for objects (e.g., via SUBGROUP_HEADER or
  * FETCH), but starting in v16, requests can use streams too */
@@ -364,15 +381,15 @@ typedef struct imquic_moq_stream {
 	/*! In case this is a bidirectional STREAM for a request, if this endpoint originated it */
 	gboolean request_sender;
 	/*! In case this is a bidirectional STREAM for a request, its current state */
-	volatile gint request_state;
+	imquic_media_stream_request_state request_state;
 	/*! \brief In case this is for SUBSCRIBE_NAMESPACE, the namespace prefix */
 	imquic_moq_namespace *namespace_prefix, *last_tuple;
 	/*! \brief In case this is for SUBSCRIBE_NAMESPACE, how many tuples are in the namespace prefix */
 	uint8_t namespace_prefix_size;
 	/*! \brief Delivery mode for this stream, in case it's used for objects */
 	imquic_moq_data_message_type type;
-	/*! \brief ID of the subscription */
-	uint64_t request_id;
+	/*! \brief ID of the request/subscription, and of the update if one was involved */
+	uint64_t request_id, update_request_id;
 	/*! \brief Track alias */
 	uint64_t track_alias;
 	/*! \brief Group ID */
@@ -849,11 +866,12 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
- * @param sub_request_id The subscription request ID to put in the message
+ * @param sub_request_id The subscription request ID to put in the message (not added to message starting in v17)
+ * @param required_id_delta The required request ID delta to put in the message (ignored before v17)
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_request_update(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-	uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
+	uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c SUBSCRIBE_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -1251,7 +1269,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c REQUEST_UPDATE messages */
-	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
+	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about an ACK to a previously sent \c REQUEST_UPDATE message */
 	void (* request_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming errors to a previously \c REQUEST_UPDATE message */

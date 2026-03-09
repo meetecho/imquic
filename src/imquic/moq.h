@@ -936,7 +936,7 @@ void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param request_updated Pointer to the function that will fire when a \c SUBSCRIBE is done */
 void imquic_set_request_updated_cb(imquic_endpoint *endpoint,
-	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters));
+	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an OK
  * is received for a \c REQUEST_UPDATE we previously sent
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1223,12 +1223,13 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 /*! \brief Function to send a \c REQUEST_UPDATE request
  * @param conn The imquic_connection to send the request on
- * @param request_id Unique \c request_id value (before v14, this is associated to the subscription to update)
+ * @param request_id Unique \c request_id value
  * @param sub_request_id Unique \c request_id value associated to the subscription to update
+ * @param required_id_delta Required Request ID Delta, if needed (ignored before v17)
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id,
-	uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
+	uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c REQUEST_UPDATE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c REQUEST_UPDATE request
