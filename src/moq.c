@@ -1283,12 +1283,22 @@ void imquic_moq_subscription_destroy(imquic_moq_subscription *moq_sub) {
 	}
 }
 
+static void imquic_moq_stream_free(const imquic_refcount *ms_ref) {
+	imquic_moq_stream *moq_stream = imquic_refcount_containerof(ms_ref, imquic_moq_stream, ref);
+	imquic_moq_namespace_free(moq_stream->namespace_prefix);
+	imquic_buffer_destroy(moq_stream->buffer);
+	g_free(moq_stream);
+}
+
+imquic_moq_stream *imquic_moq_stream_create(void) {
+	imquic_moq_stream *moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+	imquic_refcount_init(&moq_stream->ref, imquic_moq_stream_free);
+	return moq_stream;
+}
+
 void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
-	if(moq_stream != NULL) {
-		imquic_moq_namespace_free(moq_stream->namespace_prefix);
-		imquic_buffer_destroy(moq_stream->buffer);
-		g_free(moq_stream);
-	}
+	if(moq_stream && g_atomic_int_compare_and_exchange(&moq_stream->destroyed, 0, 1))
+		imquic_refcount_decrease(&moq_stream->ref);
 }
 
 /* Parsing and building macros */
@@ -1449,6 +1459,7 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		return 0;
 	}
 	/* Check if this is a media stream */
+	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams, &stream_id);
 	if(imquic_moq_is_control_stream(moq, stream_id)) {
 		imquic_buffer_append(moq->buffer, bytes, blen);
@@ -1461,6 +1472,9 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		bytes = moq_stream->buffer->bytes;
 		blen = moq_stream->buffer->length;
 	}
+	if(moq_stream != NULL)
+		imquic_refcount_increase(&moq_stream->ref);
+	imquic_mutex_unlock(&moq->mutex);
 	/* Iterate on all frames */
 	while((moq_stream == NULL || moq_stream->request_type != 0) && blen-offset > 0) {
 		/* If we're here, we're either on the control stream, on a request
@@ -1480,22 +1494,30 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				/* Create a new MoQ stream for the request and track it */
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Stream %"SCNu64" will be used for %s\n",
 					imquic_get_connection_name(moq->conn), stream_id, imquic_moq_message_type_str(type, moq->version));
-				moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+				moq_stream = imquic_moq_stream_create();
 				moq_stream->stream_id = stream_id;
 				moq_stream->request_type = type;
-				g_hash_table_insert(moq->streams, imquic_dup_uint64(stream_id), moq_stream);
 				moq_stream->buffer = imquic_buffer_create(bytes, blen);
 				bytes = moq_stream->buffer->bytes;
 				blen = moq_stream->buffer->length;
+				imquic_mutex_lock(&moq->mutex);
+				g_hash_table_insert(moq->streams, imquic_dup_uint64(stream_id), moq_stream);
+				imquic_mutex_unlock(&moq->mutex);
+				/* This reference is for managing the message */
+				imquic_refcount_increase(&moq_stream->ref);
 			} else if(!bidirectional && imquic_moq_is_data_message_type_valid(moq->version, dtype)) {
 				/* Create a new MoQ stream for data and track it */
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Stream %"SCNu64" will be used for %s\n",
 					imquic_get_connection_name(moq->conn), stream_id, imquic_moq_data_message_type_str(dtype, moq->version));
-				moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+				moq_stream = imquic_moq_stream_create();
 				moq_stream->stream_id = stream_id;
 				moq_stream->type = dtype;
 				moq_stream->priority = 128;	/* FIXME */
+				imquic_mutex_lock(&moq->mutex);
 				g_hash_table_insert(moq->streams, imquic_dup_uint64(stream_id), moq_stream);
+				imquic_mutex_unlock(&moq->mutex);
+				/* This reference is for managing the message */
+				imquic_refcount_increase(&moq_stream->ref);
 			} else {
 				/* TODO Handle failure */
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] MoQ message '%s' (%02x) is not allowed on media streams\n",
@@ -1633,6 +1655,8 @@ next:
 				imquic_buffer_shift(moq->buffer, plen);
 				if(error != IMQUIC_MOQ_UNKNOWN_ERROR)
 					imquic_connection_close(moq->conn, error, imquic_moq_error_code_str(error));
+				if(moq_stream != NULL)
+					imquic_refcount_decrease(&moq_stream->ref);
 				return -1;
 			}
 			/* Move to the next message */
@@ -1734,6 +1758,8 @@ next:
 				imquic_buffer_shift(moq_stream->buffer, plen);
 				if(error != IMQUIC_MOQ_UNKNOWN_ERROR)
 					imquic_connection_close(moq->conn, error, imquic_moq_error_code_str(error));
+				if(moq_stream != NULL)
+					imquic_refcount_decrease(&moq_stream->ref);
 				return -1;
 			}
 			/* Move to the next message */
@@ -1761,12 +1787,16 @@ next:
 			} else {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported data message '%02x'\n",
 					imquic_get_connection_name(moq->conn), type);
+				if(moq_stream != NULL)
+					imquic_refcount_decrease(&moq_stream->ref);
 				return -1;
 			}
 		}
 		if(parsed == parsed_prev) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Broken MoQ message (didn't advance from offset %zu/%zu)\n",
 				imquic_get_connection_name(moq->conn), parsed, blen);
+			if(moq_stream != NULL)
+				imquic_refcount_decrease(&moq_stream->ref);
 			return -1;
 		}
 	}
@@ -1798,11 +1828,15 @@ next:
 				/* FIXME Shouldn't happen */
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid MoQ stream type '%s' (%02x)\n",
 					imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(moq_stream->type, moq->version), moq_stream->type);
+				if(moq_stream != NULL)
+					imquic_refcount_decrease(&moq_stream->ref);
 				return -1;
 			}
 		}
 		if(error && error != IMQUIC_MOQ_UNKNOWN_ERROR) {
 			imquic_connection_close(moq->conn, error, imquic_moq_error_code_str(error));
+			if(moq_stream != NULL)
+				imquic_refcount_decrease(&moq_stream->ref);
 			return -1;
 		}
 	}
@@ -1812,6 +1846,7 @@ done:
 		if(moq_stream->request_type > 0) {
 			/* The request dedicated bidirectional STREAM has been closed */
 			imquic_moq_request_stream_closed(moq, moq_stream);
+			imquic_refcount_decrease(&moq_stream->ref);
 			return 0;
 		}
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] Media stream %"SCNu64" is complete\n",
@@ -1838,6 +1873,8 @@ done:
 		g_hash_table_remove(moq->streams, &stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 	}
+	if(moq_stream != NULL)
+		imquic_refcount_decrease(&moq_stream->ref);
 	/* Done */
 	return 0;
 }
@@ -5779,7 +5816,7 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, u
 	/* Starting from v17, requests on a dedicated bidirectional STREAM */
 	imquic_moq_stream *moq_stream = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
-		moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+		moq_stream = imquic_moq_stream_create();
 		imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
 		moq_stream->request_type = IMQUIC_MOQ_PUBLISH_NAMESPACE;
 		moq_stream->request_id = request_id;
@@ -5912,6 +5949,7 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_
 		}
 		/* Reset the STREAM */
 		imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 		imquic_refcount_decrease(&moq->ref);
@@ -5962,7 +6000,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, uint64_t re
 	/* Starting from v17, requests on a dedicated bidirectional STREAM */
 	imquic_moq_stream *moq_stream = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
-		moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+		moq_stream = imquic_moq_stream_create();
 		imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
 		moq_stream->request_type = IMQUIC_MOQ_PUBLISH;
 		moq_stream->request_id = request_id;
@@ -6072,6 +6110,7 @@ int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
 		buffer, sb_len, moq_stream ? TRUE : FALSE);
 	if(moq_stream != NULL) {
 		imquic_mutex_lock(&moq->mutex);
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 	}
@@ -6117,7 +6156,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 	/* Starting from v17, requests on a dedicated bidirectional STREAM */
 	imquic_moq_stream *moq_stream = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
-		moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+		moq_stream = imquic_moq_stream_create();
 		imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
 		moq_stream->request_type = IMQUIC_MOQ_SUBSCRIBE;
 		moq_stream->request_id = request_id;
@@ -6227,6 +6266,7 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
 		buffer, sb_len, moq_stream ? TRUE : FALSE);
 	if(moq_stream != NULL) {
 		imquic_mutex_lock(&moq->mutex);
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 	}
@@ -6419,9 +6459,11 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 			return -1;
 		}
 		/* Send a STOP_SENDING */
-		imquic_connection_stop_sending_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
+		uint64_t stream_id = moq_stream->stream_id;
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
+		imquic_connection_stop_sending_stream(moq->conn, stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 		imquic_refcount_decrease(&moq->ref);
 		return 0;
 	}
@@ -6484,6 +6526,7 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 		buffer, sd_len, moq_stream ? TRUE : FALSE);
 	if(moq_stream != NULL) {
 		imquic_mutex_lock(&moq->mutex);
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 	}
@@ -6529,7 +6572,7 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_SUBSCRIBE_NAMESPACE));
 	imquic_mutex_unlock(&moq->mutex);
 	/* Starting from v16, SUBSCRIBE_NAMESPACE goes on a dedicated bidirectional STREAM */
-	imquic_moq_stream *moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+	imquic_moq_stream *moq_stream = imquic_moq_stream_create();
 	imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
 	moq_stream->request_type = IMQUIC_MOQ_SUBSCRIBE_NAMESPACE;
 	moq_stream->request_id = request_id;
@@ -6629,6 +6672,7 @@ int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t requ
 		buffer, sb_len, moq_stream ? TRUE : FALSE);
 	if(moq_stream != NULL) {
 		imquic_mutex_lock(&moq->mutex);
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 	}
@@ -6818,7 +6862,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id, ui
 	/* Starting from v17, requests on a dedicated bidirectional STREAM */
 	imquic_moq_stream *moq_stream = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
-		moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+		moq_stream = imquic_moq_stream_create();
 		imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
 		moq_stream->request_type = IMQUIC_MOQ_FETCH;
 		moq_stream->request_id = request_id;
@@ -6873,7 +6917,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 	/* Starting from v17, requests on a dedicated bidirectional STREAM */
 	imquic_moq_stream *moq_stream = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
-		moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+		moq_stream = imquic_moq_stream_create();
 		imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
 		moq_stream->request_type = IMQUIC_MOQ_FETCH;
 		moq_stream->request_id = request_id;
@@ -6983,6 +7027,7 @@ int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
 		buffer, f_len, moq_stream ? TRUE : FALSE);
 	if(moq_stream != NULL) {
 		imquic_mutex_lock(&moq->mutex);
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 	}
@@ -7050,7 +7095,7 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 	/* Starting from v17, requests on a dedicated bidirectional STREAM */
 	imquic_moq_stream *moq_stream = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
-		moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+		moq_stream = imquic_moq_stream_create();
 		imquic_connection_new_stream_id(moq->conn, TRUE, &moq_stream->stream_id);
 		moq_stream->request_type = IMQUIC_MOQ_TRACK_STATUS;
 		moq_stream->request_id = request_id;
@@ -7150,6 +7195,7 @@ int imquic_moq_reject_track_status(imquic_connection *conn, uint64_t request_id,
 		buffer, tsr_len, moq_stream ? TRUE : FALSE);
 	if(moq_stream != NULL) {
 		imquic_mutex_lock(&moq->mutex);
+		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 	}
@@ -7273,7 +7319,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				return -1;
 			}
 			/* Create a new stream */
-			moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+			moq_stream = imquic_moq_stream_create();
 			/* TODO Change the type depending on whether properties/subgroup will be set:
 			 * since we don't have an API for that, for now we always set the type
 			 * that will allow us to dynamically use them all. This also means we
@@ -7360,7 +7406,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				return -1;
 			}
 			/* Create a new stream */
-			moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+			moq_stream = imquic_moq_stream_create();
 			moq_stream->type = IMQUIC_MOQ_FETCH_HEADER;
 			moq_stream->priority = 128;	/* FIXME */
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);

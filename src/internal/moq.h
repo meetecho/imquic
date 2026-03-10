@@ -416,7 +416,14 @@ typedef struct imquic_moq_stream {
 	uint8_t last_priority;
 	/*! \brief Whether we closed this stream */
 	gboolean closed;
+	/*! \brief Whether this instance has been destroyed (reference counting) */
+	volatile gint destroyed;
+	/*! \brief Reference counter */
+	imquic_refcount ref;
 } imquic_moq_stream;
+/*! \brief Create a new MoQ stream
+ * @returns A pointer to a new moq_stream instance, if successful, or NULL otherwise */
+imquic_moq_stream *imquic_moq_stream_create(void);
 /*! \brief Destroy an existing MoQ stream
  * @param moq_stream MoQ stream to destroy */
 void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream);

@@ -137,7 +137,6 @@ static imquic_moq_interop_client *imquic_moq_interop_client_create(imquic_moq_in
 
 /* Callbacks */
 static void imquic_moq_interop_new_connection(imquic_connection *conn, void *user_data);
-static void imquic_moq_interop_connection_failed(void *user_data);
 static void imquic_moq_interop_ready(imquic_connection *conn);
 static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
@@ -455,7 +454,6 @@ static imquic_moq_interop_client *imquic_moq_interop_client_create(imquic_moq_in
 		return NULL;
 	}
 	imquic_set_new_moq_connection_cb(mc->client, imquic_moq_interop_new_connection);
-	imquic_set_connection_failed_cb(mc->client, imquic_moq_interop_connection_failed);
 	imquic_set_moq_ready_cb(mc->client, imquic_moq_interop_ready);
 	imquic_set_moq_connection_gone_cb(mc->client, imquic_moq_interop_connection_gone);
 	if(publisher) {
@@ -480,14 +478,6 @@ static void imquic_moq_interop_new_connection(imquic_connection *conn, void *use
 		imquic_mutex_unlock(&mutex);
 	}
 	imquic_moq_set_max_request_id(conn, max_request_id);
-}
-
-static void imquic_moq_interop_connection_failed(void *user_data) {
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)user_data;
-	if(client != NULL) {
-		imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-		g_atomic_int_set(&test->done, 1);
-	}
 }
 
 static void imquic_moq_interop_ready(imquic_connection *conn) {
