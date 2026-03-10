@@ -196,7 +196,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		params.forward = TRUE;
 		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
 			params.forward = FALSE;
-		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), 0, NULL, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
+		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), 0, tns, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
 		return;
 	}
 	/* Parameters in case we need to FETCH */
