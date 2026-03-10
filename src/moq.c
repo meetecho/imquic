@@ -3066,7 +3066,7 @@ size_t imquic_moq_parse_namespace(imquic_moq_context *moq, imquic_moq_stream *mo
 	if(bytes == NULL || blen < 1)
 		return 0;
 	IMQUIC_MOQ_CHECK_ERR((moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
-			moq_stream->request_sender || (moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)),
+			!moq_stream->request_sender || (moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of NAMESPACE on bidirectional request");
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -3101,7 +3101,7 @@ size_t imquic_moq_parse_namespace_done(imquic_moq_context *moq, imquic_moq_strea
 	if(bytes == NULL || blen < 1)
 		return 0;
 	IMQUIC_MOQ_CHECK_ERR((moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
-			moq_stream->request_sender || (moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)),
+			!moq_stream->request_sender || (moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of NAMESPACE_DONE on bidirectional request");
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -3136,7 +3136,7 @@ size_t imquic_moq_parse_publish_blocked(imquic_moq_context *moq, imquic_moq_stre
 	if(bytes == NULL || blen < 1)
 		return 0;
 	IMQUIC_MOQ_CHECK_ERR((moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
-			moq_stream->request_sender || (moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)),
+			!moq_stream->request_sender || (moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of PUBLISH_BLOCKED on bidirectional request");
 	size_t offset = 0;
 	uint8_t length = 0;
