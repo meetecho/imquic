@@ -253,9 +253,11 @@ static size_t imquic_moq_name_render(uint8_t *data, size_t dlen, char *buffer, s
 }
 
 const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple) {
-	if(tns == NULL)
+	if(buffer == NULL)
 		return NULL;
 	*buffer = '\0';
+	if(tns == NULL)
+		return buffer;
 	size_t offset = 0;
 	while(tns != NULL) {
 		if(blen - offset == 0)
@@ -299,7 +301,9 @@ gboolean imquic_moq_namespace_equals(imquic_moq_namespace *first, imquic_moq_nam
 }
 
 gboolean imquic_moq_namespace_contains(imquic_moq_namespace *parent, imquic_moq_namespace *child) {
-	if(parent == NULL || child == NULL)
+	if(parent == NULL)
+		return TRUE;
+	if(child == NULL)
 		return FALSE;
 	size_t i = 0;
 	while(parent) {

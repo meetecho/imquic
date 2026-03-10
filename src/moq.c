@@ -3050,7 +3050,9 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_namespace) {
 		moq->conn->socket->callbacks.moq.incoming_subscribe_namespace(moq->conn,
-			request_id, required_id_delta, &tns[0], subscribe_options, &parameters);
+			request_id, required_id_delta,
+			(tns_num > 0 ? &tns[0] : NULL),
+			subscribe_options, &parameters);
 	} else {
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe_namespace(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0);

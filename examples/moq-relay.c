@@ -330,7 +330,7 @@ static void imquic_demo_moq_monitor_destroy(imquic_demo_moq_monitor *mon) {
 
 /* Helper functions to return monitors that match a namespace */
 static GList *imquic_demo_match_monitors(imquic_connection *conn, imquic_moq_namespace *tns) {
-	if(monitors == NULL || tns == NULL)
+	if(monitors == NULL)
 		return NULL;
 	imquic_demo_moq_monitor *mon = NULL;
 	GList *list = NULL, *temp = monitors;
