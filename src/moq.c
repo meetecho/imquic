@@ -1303,7 +1303,7 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 	do { \
 		tns_num = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length); \
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || (tns_num > 0 && length >= blen-offset), NULL, 0, 0, error_message); \
-		IMQUIC_MOQ_CHECK_ERR((tns_num == 0 && request != IMQUIC_MOQ_NAMESPACE && request != IMQUIC_MOQ_NAMESPACE_DONE) || tns_num > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces"); \
+		IMQUIC_MOQ_CHECK_ERR((tns_num == 0 && request != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE && request != IMQUIC_MOQ_NAMESPACE && request != IMQUIC_MOQ_NAMESPACE_DONE) || tns_num > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces"); \
 		offset += length; \
 		uint64_t total_len = 0; \
 		i = 0; \
@@ -1364,7 +1364,7 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 			tns_num++; \
 			temp = temp->next; \
 		} \
-		if((tns_num == 0 && request != IMQUIC_MOQ_NAMESPACE && request != IMQUIC_MOQ_NAMESPACE_DONE) || tns_num > 32) { \
+		if((tns_num == 0 && request != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE && request != IMQUIC_MOQ_NAMESPACE && request != IMQUIC_MOQ_NAMESPACE_DONE) || tns_num > 32) { \
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid number of tuples\n", \
 				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(request, moq->version)); \
 			return 0; \
@@ -4589,7 +4589,7 @@ size_t imquic_moq_add_publish_done(imquic_moq_context *moq, imquic_moq_stream *m
 size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 		uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *track_namespace,
 		imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters) {
-	if(bytes == NULL || blen < 1 || track_namespace == NULL || moq_stream == NULL) {
+	if(bytes == NULL || blen < 1 || moq_stream == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE_NAMESPACE, moq->version));
 		return 0;
@@ -6493,7 +6493,7 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
+	if(moq == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6541,8 +6541,8 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	/* Track the request, and map it to the dedicated bidirectional STREAM */
 	moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_SENT;
 	moq_stream->request_id = request_id;
-	moq_stream->namespace_prefix = moq_stream->last_tuple = imquic_moq_namespace_duplicate(tns);
-	while(moq_stream->last_tuple->next != NULL)
+	moq_stream->namespace_prefix = moq_stream->last_tuple = tns ? imquic_moq_namespace_duplicate(tns) : g_malloc0(sizeof(imquic_moq_namespace));
+	while(moq_stream->last_tuple != NULL && moq_stream->last_tuple->next != NULL)
 		moq_stream->last_tuple = moq_stream->last_tuple->next;
 	moq_stream->namespace_prefix_size = tns_num;
 	imquic_mutex_lock(&moq->mutex);
