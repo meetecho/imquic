@@ -393,6 +393,7 @@ static void imquic_moq_request_stream_closed(imquic_moq_context *moq, imquic_moq
 	gboolean request_sender = moq_stream->request_sender;
 	uint64_t request_id = moq_stream->request_id;
 	gboolean notify = !request_sender;
+	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 	g_hash_table_remove(moq->streams, &moq_stream->stream_id);	/* */
 	imquic_mutex_unlock(&moq->mutex);
