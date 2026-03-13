@@ -588,9 +588,10 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 		/* Check if the WebTransport protocol negotiation worked */
 		if(wt_protocol == NULL) {
 			if(!has_wt_protocol) {
-				/* The client didn't offer any negotiated protocol,
+				/* FIXME The client didn't offer any negotiated protocol,
 				 * maybe it's not supported? Fallback to the first */
-					/* TODO */
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Client didn't offer any WebTransport protocol\n",
+					imquic_get_connection_name(h3c->conn));
 			} else {
 				/* We didn't converge */
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported WebTransport protocols\n",
@@ -647,7 +648,9 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 	headers = g_list_append(headers, imquic_qpack_entry_create(":scheme", "https"));
 	char address[256];
 	headers = g_list_append(headers, imquic_qpack_entry_create(":authority",
-		imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address), TRUE)));	/* FIXME */
+		h3c->conn->socket->sni ? h3c->conn->socket->sni :
+		imquic_network_address_str(&h3c->conn->socket->remote_address,
+			address, sizeof(address), TRUE)));	/* FIXME */
 	const char *path = "/";
 	if(h3c->conn->socket && h3c->conn->socket->h3_path)
 		path = (const char *)h3c->conn->socket->h3_path;
@@ -689,6 +692,7 @@ int imquic_http3_prepare_headers_request(imquic_http3_connection *h3c, uint8_t *
 		imquic_qlog_http3_append_object(headers, ":method", "CONNECT");
 		imquic_qlog_http3_append_object(headers, ":scheme", "https");
 		imquic_qlog_http3_append_object(headers, ":authority",
+			h3c->conn->socket->sni ? h3c->conn->socket->sni :
 			imquic_network_address_str(&h3c->conn->socket->remote_address, address, sizeof(address), TRUE));
 		imquic_qlog_http3_append_object(headers, ":path", path);
 		imquic_qlog_http3_append_object(headers, ":protocol", "webtransport");
