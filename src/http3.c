@@ -510,7 +510,8 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 							imquic_get_connection_name(h3c->conn), header->value);
 						error_code = 405;
 					}
-				} else if(!strcasecmp(header->name, "wt-available-protocols")) {
+				} else if(!strcasecmp(header->name, "wt-available-protocols") ||
+						!strcasecmp(header->name, "wt-available-protocols\n")) {
 					/* Check which protocol we should converge to */
 					has_wt_protocol = TRUE;
 					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Offered WebTransport protocols: %s\n",
@@ -530,7 +531,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 				if(!strcasecmp(header->name, ":status")) {
 					/* Check what we got back */
 					error_code = header->value ? atoi(header->value) : -1;
-				} else if(!strcasecmp(header->name, "wt-protocol")) {
+				} else if(!strcasecmp(header->name, "wt-protocol") || !strcasecmp(header->name, "wt-protocol\n")) {
 					/* Check if we converged to anything */
 					has_wt_protocol = TRUE;
 					IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Negotiated WebTransport protocol: %s\n",
@@ -737,9 +738,12 @@ int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, int erro
 	char server[100];
 	g_snprintf(server, sizeof(server), "%s %s", imquic_name, imquic_version_string_full);
 	headers = g_list_append(headers, imquic_qpack_entry_create("server", server));
+	char quoted[100];
 	if(error_code == 200) {
+		headers = g_list_append(headers, imquic_qpack_entry_create("protocol", "webtransport"));
 		if(wt_protocol != NULL) {
-			headers = g_list_append(headers, imquic_qpack_entry_create("wt-protocol", wt_protocol));
+			g_snprintf(quoted, sizeof(quoted), "\"%s\"", wt_protocol);
+			headers = g_list_append(headers, imquic_qpack_entry_create("wt-protocol", quoted));
 			h3c->conn->chosen_wt_protocol = g_strdup(wt_protocol);
 		}
 		headers = g_list_append(headers, imquic_qpack_entry_create("sec-webtransport-http3-draft", "draft02"));
@@ -778,7 +782,7 @@ int imquic_http3_prepare_headers_response(imquic_http3_connection *h3c, int erro
 		imquic_qlog_http3_append_object(headers, "server", server);
 		if(error_code == 200) {
 			if(wt_protocol != NULL)
-				imquic_qlog_http3_append_object(headers, "wt-protocol", wt_protocol);
+				imquic_qlog_http3_append_object(headers, "wt-protocol", quoted);
 			imquic_qlog_http3_append_object(headers, "sec-webtransport-http3-draft", "draft02");
 		}
 		imquic_qlog_event_add_raw(frame, "raw", NULL, r_len);
