@@ -71,6 +71,8 @@ typedef struct imquic_configuration {
 	const char *ticket_file;
 	/*! \brief MoQ version to negotiate, if any */
 	uint32_t moq_version;
+	/*! \brief Whether we should add GREASE to our SETUP options */
+	gboolean moq_grease;
 	/*! \brief Optional user data, to pass back when notifying new connections associated to this endpoint */
 	void *user_data;
 } imquic_configuration;

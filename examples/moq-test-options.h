@@ -16,6 +16,7 @@
 /*! \brief Struct containing the parsed command line options */
 typedef struct demo_options {
 	char *moq_version;
+	gboolean test_grease;
 	const char *ip;
 	int port;
 	gboolean raw_quic;

@@ -195,6 +195,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	const char *alpn = imquic_is_connection_webtransport(conn) ?
 		imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn);
 	moq->version = imquic_moq_version_from_alpn(alpn, conn->socket->moq_version);
+	moq->do_grease = conn->socket->moq_grease;
 	IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s][MoQ] MoQ version: %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_moq_version_str(moq->version), alpn);
 	moq->streams = g_hash_table_new_full(g_int64_hash, g_int64_equal,
@@ -1075,8 +1076,8 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORITY));
 		if(options->moqt_implementation_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION));
-		/* For newer versions, we always add a GREASE option */
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+		/* For newer versions, we may add a GREASE option */
+		if(moq->version >= IMQUIC_MOQ_VERSION_17 && moq->do_grease)
 			list = g_list_append(list, GUINT_TO_POINTER(imquic_moq_random_grease()));
 		*params_num = g_list_length(list);
 		if(moq->version <= IMQUIC_MOQ_VERSION_16)

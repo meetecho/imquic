@@ -332,6 +332,8 @@ typedef enum imquic_config {
 	IMQUIC_CONFIG_QLOG_SEQUENTIAL,
 	/*! \brief MoQ version to negotiate (only used when creating MoQ endpoints, ignored otherwise) */
 	IMQUIC_CONFIG_MOQ_VERSION,
+	/*! \brief Whether MoQ SETUP messages should include GREASE options (ignored before v17) */
+	IMQUIC_CONFIG_MOQ_GREASE,
 	/*! \brief Generic user data, if any (void pointer) */
 	IMQUIC_CONFIG_USER_DATA,
 	/*! \brief Must be the last property, followed by NULL */

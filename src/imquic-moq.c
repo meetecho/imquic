@@ -88,6 +88,8 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
 			config.moq_version = va_arg(args, int);
+		} else if(property == IMQUIC_CONFIG_MOQ_GREASE) {
+			config.moq_grease = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else {
@@ -113,6 +115,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	server->internal_callbacks = TRUE;
 	server->protocol = IMQUIC_MOQ;
 	server->moq_version = config.moq_version;
+	server->moq_grease = config.moq_grease;
 	server->new_connection = imquic_moq_new_connection;
 	server->stream_incoming = imquic_moq_stream_incoming;
 	server->datagram_incoming = imquic_moq_datagram_incoming;
@@ -191,6 +194,8 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 			config.qlog_sequential = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_MOQ_VERSION) {
 			config.moq_version = va_arg(args, int);
+		} else if(property == IMQUIC_CONFIG_MOQ_GREASE) {
+			config.moq_grease = va_arg(args, gboolean);
 		} else if(property == IMQUIC_CONFIG_USER_DATA) {
 			config.user_data = va_arg(args, void *);
 		} else {
@@ -216,6 +221,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	client->internal_callbacks = TRUE;
 	client->protocol = IMQUIC_MOQ;
 	client->moq_version = config.moq_version;
+	client->moq_grease = config.moq_grease;
 	client->new_connection = imquic_moq_new_connection;
 	client->stream_incoming = imquic_moq_stream_incoming;
 	client->datagram_incoming = imquic_moq_datagram_incoming;

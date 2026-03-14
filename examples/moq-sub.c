@@ -882,6 +882,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_MOQ_OBJECTS, options.qlog_moq_objects,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_MOQ_VERSION, moq_version,
+		IMQUIC_CONFIG_MOQ_GREASE, options.test_grease,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {
 		ret = 1;

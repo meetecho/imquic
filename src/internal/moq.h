@@ -305,6 +305,8 @@ typedef struct imquic_moq_context {
 	GList *supported_versions;
 	/*! \brief Negotiated version */
 	imquic_moq_version version;
+	/*! \brief Whether we should add GREASE to our SETUP options */
+	gboolean do_grease;
 	/*! \brief MoQ implementation of our peer, if provided */
 	char *peer_implementation;
 	/*! \brief Auth data to use when connecting (clients only) */

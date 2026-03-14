@@ -120,8 +120,10 @@ typedef struct imquic_network_endpoint {
 	gboolean qlog_quic, qlog_http3,
 		qlog_roq, qlog_roq_packets,
 		qlog_moq, qlog_moq_messages, qlog_moq_objects;
-	/*! brief MoQ version to negotiare, if any */
+	/*! \brief MoQ version to negotiate, if any */
 	uint32_t moq_version;
+	/*! \brief Whether GREASE should be sent in SETUP options */
+	gboolean moq_grease;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection has been started */
