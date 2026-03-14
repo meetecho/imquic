@@ -82,9 +82,9 @@ void imquic_moq_deinit(void) {
 static imquic_moq_version imquic_moq_version_from_alpn(const char *alpn, imquic_moq_version fallback) {
 	if(alpn == NULL)
 		return fallback;
-	if(!strcasecmp(alpn, "moq-17"))
+	if(!strcasecmp(alpn, "moqt-17"))
 		return IMQUIC_MOQ_VERSION_17;
-	else if(!strcasecmp(alpn, "moq-16"))
+	else if(!strcasecmp(alpn, "moqt-16"))
 		return IMQUIC_MOQ_VERSION_16;
 	/* If we got here, there was no specific ALPN negotiation */
 	return fallback;
@@ -4160,7 +4160,8 @@ size_t imquic_moq_add_server_setup(imquic_moq_context *moq, uint8_t *bytes, size
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("setup");
+		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
+		json_object_set_new(message, "number_of_options", json_integer(opts_num));
 		imquic_qlog_moq_message_add_setup_options(message, options, "setup_options");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}
@@ -4182,8 +4183,7 @@ size_t imquic_moq_add_setup(imquic_moq_context *moq, uint8_t *bytes, size_t blen
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("server_setup");
-		json_object_set_new(message, "number_of_options", json_integer(opts_num));
+		json_t *message = imquic_qlog_moq_message_prepare("setup");
 		imquic_qlog_moq_message_add_setup_options(message, options, "setup_options");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
 	}

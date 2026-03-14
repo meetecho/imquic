@@ -831,11 +831,11 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 static const char *imquic_moq_version_alpn(imquic_moq_version version) {
 	switch(version) {
 		case IMQUIC_MOQ_VERSION_16:
-			return "moq-16";
+			return "moqt-16";
 		case IMQUIC_MOQ_VERSION_17:
-			return "moq-17";
+			return "moqt-17";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "moq-17,moq-16";
+			return "moqt-17,moqt-16";
 		default: break;
 	}
 	return NULL;
