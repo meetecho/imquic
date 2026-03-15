@@ -100,7 +100,7 @@ typedef struct imquic_network_endpoint {
 	/*! \brief Callback to invoke when a \c STOP_SENDING arrives on one of the connections handled by this endpoint */
 	void (* stop_sending_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
 	/*! \brief Callback to invoke when new one of the connections handled by this endpoint is closed */
-	void (* connection_gone)(imquic_connection *conn);
+	void (* connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason);
 	/*! \brief Callback to invoke when a client connection attempt fails */
 	void (* connection_failed)(void *user_data);
 	/*! \brief User data to pass in the \c new_connection callback, to correlate a connection to the endpoint it's coming from */

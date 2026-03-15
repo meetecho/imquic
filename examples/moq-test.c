@@ -556,7 +556,7 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_connection_gone(imquic_connection *conn) {
+static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
 	/* Remove subscribers associated to this connection */

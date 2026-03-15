@@ -485,7 +485,7 @@ void imquic_set_connection_failed_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param connection_gone Pointer to the function that will be invoked when a connection is gone */
 void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
-	void (* connection_gone)(imquic_connection *conn));
+	void (* connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason));
 ///@}
 
 /** @name Interacting with connections

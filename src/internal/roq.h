@@ -65,7 +65,7 @@ typedef struct imquic_roq_callbacks {
 	void (* rtp_incoming)(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
 		uint64_t flow_id, uint8_t *bytes, size_t blen);
 	/*! \brief Callback function to be notified about RoQ connections being closed */
-	void (* connection_gone)(imquic_connection *conn);
+	void (* connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason);
 } imquic_roq_callbacks;
 
 /** @name Internal callbacks for RoQ endpoints
@@ -90,8 +90,10 @@ void imquic_roq_stream_incoming(imquic_connection *conn, uint64_t stream_id,
  * @param length Size of the new data */
 void imquic_roq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint64_t length);
 /*! \brief Callback the core invokes when an existing RoQ connection is not available anymore
- * @param conn The imquic_connection instance that is now gone */
-void imquic_roq_connection_gone(imquic_connection *conn);
+ * @param conn The imquic_connection instance that is now gone
+ * @param error_code The error code associated with the event
+ * @param reason The reason string associated with the event, if any */
+void imquic_roq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 ///@}
 
 #ifdef HAVE_QLOG

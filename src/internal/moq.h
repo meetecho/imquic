@@ -1329,7 +1329,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
 	void (* incoming_goaway)(imquic_connection *conn, const char *uri, uint64_t timeout);
 	/*! \brief Callback function to be notified about MoQ connections being closed */
-	void (* connection_gone)(imquic_connection *conn);
+	void (* connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason);
 } imquic_moq_callbacks;
 
 /** @name Internal callbacks for MoQ endpoints
@@ -1364,8 +1364,10 @@ void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_i
  * @param error_code The error code that was received */
 void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
 /*! \brief Callback the core invokes when an existing MoQ connection is not available anymore
- * @param conn The imquic_connection instance that is now gone */
-void imquic_moq_connection_gone(imquic_connection *conn);
+ * @param conn The imquic_connection instance that is now gone
+ * @param error_code The error code associated with the event
+ * @param reason The reason string associated with the event, if any */
+void imquic_moq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 ///@}
 
 #ifdef HAVE_QLOG

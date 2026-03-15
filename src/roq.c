@@ -209,13 +209,13 @@ void imquic_roq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
 	}
 }
 
-void imquic_roq_connection_gone(imquic_connection *conn) {
+void imquic_roq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	imquic_mutex_lock(&roq_mutex);
 	gboolean removed = g_hash_table_remove(roq_sessions, conn);
 	imquic_mutex_unlock(&roq_mutex);
 	if(conn->socket && conn->socket->callbacks.roq.connection_gone)
-		conn->socket->callbacks.roq.connection_gone(conn);
+		conn->socket->callbacks.roq.connection_gone(conn, error_code, reason);
 	if(removed) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][RoQ] Connection gone\n", imquic_get_connection_name(conn));
 		imquic_refcount_decrease(&conn->ref);

@@ -70,7 +70,7 @@ static void imquic_demo_datagram_incoming(imquic_connection *conn, uint8_t *byte
 	imquic_send_on_datagram(conn, bytes, length);
 }
 
-static void imquic_demo_connection_gone(imquic_connection *conn) {
+static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection gone\n", imquic_get_connection_name(conn));
 	if(g_hash_table_remove(connections, conn))

@@ -148,7 +148,7 @@ static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint6
 	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
-static void imquic_moq_interop_connection_gone(imquic_connection *conn);
+static void imquic_moq_interop_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 
 /* Main */
 int main(int argc, char *argv[]) {
@@ -677,7 +677,7 @@ static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t
 	/* TODO Other tests */
 }
 
-static void imquic_moq_interop_connection_gone(imquic_connection *conn) {
+static void imquic_moq_interop_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
 	if(client != NULL) {

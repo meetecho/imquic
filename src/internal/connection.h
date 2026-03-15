@@ -81,6 +81,8 @@ struct imquic_connection {
 	imquic_mutex mutex;
 	/*! \brief Whether this connection is being closed or has been closed */
 	volatile gint closing, closed, notified_close;
+	/*! \brief Copy of the local connection close reason (needed by picoquic) */
+	char *local_reason;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
 	volatile gint destroyed;
 	/*! \brief Reference counter */
@@ -139,8 +141,10 @@ void imquic_connection_notify_datagram_incoming(imquic_connection *conn, uint8_t
  * @param length Size of the new data buffer */
 void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_stream *stream, uint8_t *data, uint64_t length);
 /*! \brief Helper to notify about the connection being gone
- * @param conn The imquic_connection instance to notify the event for */
-void imquic_connection_notify_gone(imquic_connection *conn);
+ * @param conn The imquic_connection instance to notify the event for
+ * @param error_code The error code associated with the event
+ * @param reason The reason string associated with the event, if any */
+void imquic_connection_notify_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 /*! \brief Helper to reset a stream, sending a \c RESET_STREAM
  * @param conn The imquic_connection instance that owns the stream to reset
  * @param stream_id ID of the stream to reset

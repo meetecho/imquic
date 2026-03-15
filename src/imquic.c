@@ -495,7 +495,7 @@ void imquic_set_connection_failed_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_connection_gone_cb(imquic_endpoint *endpoint,
-		void (* connection_gone)(imquic_connection *conn)) {
+		void (* connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->internal_callbacks) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't seq QUIC callback when using specific protocol handler\n");

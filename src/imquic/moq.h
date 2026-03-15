@@ -1090,7 +1090,7 @@ void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param moq_connection_gone Pointer to the function that will be invoked when a MoQ connection is gone */
 void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
-	void (* moq_connection_gone)(imquic_connection *conn));
+	void (* moq_connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason));
 ///@}
 
 /*! \brief Method to provide credentials, as a client, on a new connection.

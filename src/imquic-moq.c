@@ -810,7 +810,7 @@ void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
-		void (* moq_connection_gone)(imquic_connection *conn)) {
+		void (* moq_connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

@@ -48,6 +48,7 @@ static void imquic_connection_free(const imquic_refcount *conn_ref) {
 	imquic_http3_connection_destroy(conn->http3);
 	if(conn->socket != NULL)
 		imquic_refcount_decrease(&conn->socket->ref);
+	g_free(conn->local_reason);
 	free(conn);
 }
 
@@ -223,12 +224,12 @@ void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_st
 }
 
 /* Helper to notify about the connection being gone */
-void imquic_connection_notify_gone(imquic_connection *conn) {
+void imquic_connection_notify_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	if(conn == NULL || conn->socket == NULL || !g_atomic_int_compare_and_exchange(&conn->notified_close, 0, 1))
 		return;
 	/* Notify the event */
 	if(conn->established && conn->socket->connection_gone)
-		conn->socket->connection_gone(conn);
+		conn->socket->connection_gone(conn, error_code, reason);
 	else if(!conn->is_server && !conn->established && conn->socket->connection_failed)
 		conn->socket->connection_failed(conn->socket->user_data);
 }

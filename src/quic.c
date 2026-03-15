@@ -216,7 +216,9 @@ gboolean imquic_quic_queued_event(imquic_connection *conn, imquic_connection_eve
 		}
 	} else if(event->type == IMQUIC_CONNECTION_EVENT_CLOSE_CONN) {
 		/* Send a CONNECTION_CLOSE */
-		int ret = picoquic_close(conn->piconn, event->error_code);
+		g_free(conn->local_reason);
+		conn->local_reason = event->reason ? g_strdup(event->reason) : NULL;
+		int ret = picoquic_close_ex(conn->piconn, event->error_code, conn->local_reason);
 		if(ret != 0) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error sending CLOSE_CONNECTION: %d\n",
 				conn->name, ret);
@@ -372,15 +374,21 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		picoquic_get_close_reasons(pconn, &local_reason, &remote_reason,
 			&local_application_reason, &remote_application_reason);
 		if(conn != NULL) {
+			uint64_t error_code = 0;
+			const char *reason = NULL;
 			if(g_atomic_int_get(&conn->closing)) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed (%"SCNu64"/%"SCNu64")\n",
-					name, local_reason, local_application_reason);
+				error_code = local_application_reason ? local_application_reason : local_reason;
+				reason = pconn->local_error_reason;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed: %"SCNu64" (%s)\n",
+					name, error_code, reason ? reason : "no reason");
 			} else if(g_atomic_int_compare_and_exchange(&conn->closed, 0, 1)) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed by peer (%"SCNu64"/%"SCNu64")\n",
-					name, remote_reason, remote_application_reason);
+				error_code = remote_application_reason ? remote_application_reason : remote_reason;
+				reason = pconn->remote_error_reason;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed by peer: %"SCNu64" (%s)\n",
+					name, error_code, reason ? reason : "no reason");
 			}
 			g_atomic_int_set(&conn->closed, 1);
-			imquic_connection_notify_gone(conn);
+			imquic_connection_notify_gone(conn, error_code, reason);
 		}
 	}
 	imquic_quic_next_step(endpoint);

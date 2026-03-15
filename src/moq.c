@@ -471,14 +471,14 @@ void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_i
 	imquic_moq_request_stream_closed(moq, moq_stream);
 }
 
-void imquic_moq_connection_gone(imquic_connection *conn) {
+void imquic_moq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	imquic_mutex_lock(&moq_mutex);
 	gboolean removed = g_hash_table_remove(moq_sessions, conn);
 	g_hash_table_remove(moq_pending_streams, conn);
 	imquic_mutex_unlock(&moq_mutex);
 	if(conn->socket && conn->socket->callbacks.moq.connection_gone)
-		conn->socket->callbacks.moq.connection_gone(conn);
+		conn->socket->callbacks.moq.connection_gone(conn, error_code, reason);
 	if(removed) {
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s][MoQ] Connection gone\n",
 			imquic_get_connection_name(conn));
