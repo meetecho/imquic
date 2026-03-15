@@ -268,14 +268,12 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		}
 	} else if(fin_or_event == picoquic_callback_almost_ready) {
 		/* A connection was established for a specific ALPN */
-		const char *alpn = picoquic_tls_get_negotiated_alpn(pconn);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection established (%s)\n",
-			name, alpn);
 		picoquic_connection_id_t initial_cid = picoquic_get_initial_cnxid(pconn);
 		if(endpoint->is_server && conn == NULL) {
 			/* New connection */
 			conn = imquic_connection_create(endpoint, pconn);
 		}
+		name = conn->name;
 		imquic_connection_id_str(&initial_cid, conn->initial_cid_str, sizeof(conn->initial_cid_str));
 #ifdef HAVE_QLOG
 		if(endpoint->qlog_path && (endpoint->qlog_http3 || endpoint->qlog_roq || endpoint->qlog_moq)) {
@@ -285,15 +283,18 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 				endpoint->qlog_moq, endpoint->qlog_moq_messages, endpoint->qlog_moq_objects);
 		}
 #endif
+		const char *alpn = picoquic_tls_get_negotiated_alpn(pconn);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection established (ALPN=%s)\n",
+			name, alpn);
 		conn->alpn_negotiated = TRUE;
 		conn->chosen_alpn = g_strdup(alpn);
 		if(endpoint->webtransport && !strcasecmp(alpn, "h3"))
 			conn->http3 = imquic_http3_connection_create(conn, endpoint->wt_protocols);
 		if(conn->http3 != NULL) {
 			if(conn->is_server) {
-				/* FIXME If this is an HTTP/3 connection, as a server wait for a SETTINGS */
+				/* If this is an HTTP/3 connection, as a server wait for a SETTINGS */
 			} else {
-				/* FIXME If this is an HTTP/3 connection, as a client send a SETTINGS */
+				/* If this is an HTTP/3 connection, as a client send a SETTINGS */
 				imquic_http3_prepare_settings(conn->http3);
 			}
 		} else if(endpoint->new_connection) {

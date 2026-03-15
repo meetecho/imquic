@@ -487,6 +487,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 	}
 #endif
 	int error_code = -1;
+	const char *error_reason = "CONNECT error";
 	gboolean has_wt_protocol = FALSE;
 	char *wt_protocol = NULL;
 	size_t bread = 0;
@@ -509,6 +510,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 						IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported HTTP/3 request %s\n",
 							imquic_get_connection_name(h3c->conn), header->value);
 						error_code = 405;
+						error_reason = "Unsupported HTTP/3 request";
 					}
 				} else if(!strcasecmp(header->name, "wt-available-protocols") ||
 						!strcasecmp(header->name, "wt-available-protocols\n")) {
@@ -530,7 +532,13 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 			} else {
 				if(!strcasecmp(header->name, ":status")) {
 					/* Check what we got back */
-					error_code = header->value ? atoi(header->value) : -1;
+					if(error_code < 0) {
+						error_code = header->value ? atoi(header->value) : -1;
+						if(error_code >= 400) {
+							IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Got an HTTP/3 error: %d\n",
+								imquic_get_connection_name(h3c->conn), error_code);
+						}
+					}
 				} else if(!strcasecmp(header->name, "wt-protocol") || !strcasecmp(header->name, "wt-protocol\n")) {
 					/* Check if we converged to anything */
 					has_wt_protocol = TRUE;
@@ -566,13 +574,19 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 		if(wt_protocol == NULL) {
 			if(!has_wt_protocol) {
 				/* The server didn't reply with a negotiated protocol,
-				 * maybe it's not supported? Fallback to the first */
-					/* TODO */
+				 * only fail if we were expecting one */
+				if(h3c->wt_protocols) {
+					IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No WebTransport protocol returned\n",
+						imquic_get_connection_name(h3c->conn));
+					error_code = 406;
+					error_reason = "No WebTransport protocol returned";
+				}
 			} else {
 				/* We didn't converge */
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported WebTransport protocols\n",
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported WebTransport protocol(s)\n",
 					imquic_get_connection_name(h3c->conn));
-				error_code = -1;
+				error_code = 406;
+				error_reason = "Unsupported WebTransport protocol(s)";
 			}
 		}
 		/* Done */
@@ -583,21 +597,26 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 				h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
 		} else {
 			/* Something went wrong, close the connection */
-			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR, "CONNECT error");
+			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR, error_reason);
 		}
 	} else {
 		/* Check if the WebTransport protocol negotiation worked */
 		if(wt_protocol == NULL) {
 			if(!has_wt_protocol) {
-				/* FIXME The client didn't offer any negotiated protocol,
-				 * maybe it's not supported? Fallback to the first */
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Client didn't offer any WebTransport protocol\n",
-					imquic_get_connection_name(h3c->conn));
+				/* The client didn't offer any negotiated protocol,
+				 * only fail if we were expecting one */
+				if(h3c->wt_protocols) {
+					IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No WebTransport protocol offered\n",
+						imquic_get_connection_name(h3c->conn));
+					error_code = 406;
+					error_reason = "No WebTransport protocol offered";
+				}
 			} else {
 				/* We didn't converge */
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported WebTransport protocols\n",
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unsupported WebTransport protocol(s)\n",
 					imquic_get_connection_name(h3c->conn));
 				error_code = 406;
+				error_reason = "Unsupported WebTransport protocol(s)";
 			}
 		}
 		/* Prepare a response */
@@ -609,16 +628,16 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 				imquic_connection_send_on_stream(h3c->conn, h3c->local_qpack_encoder_stream, es, es_len, FALSE);
 			if(rs_len > 0)
 				imquic_connection_send_on_stream(h3c->conn, stream->stream_id, rs, rs_len, FALSE);
-			if(error_code == 200) {
+			if(error_code >= 200 && error_code < 300) {
 				h3c->webtransport = TRUE;
 				h3c->conn->established = TRUE;
 				if(h3c->conn->socket->new_connection)
 					h3c->conn->socket->new_connection(h3c->conn, h3c->conn->socket->user_data);
 			}
 		}
-		if(error_code != 200) {
+		if(error_code < 200 || error_code >= 400) {
 			/* Something went wrong, close the connection */
-			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR, "CONNECT error");
+			imquic_connection_close(h3c->conn, IMQUIC_HTTP3_H3_CONNECT_ERROR, error_reason);
 		}
 	}
 	return blen;
