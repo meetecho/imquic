@@ -115,7 +115,7 @@ static void imquic_demo_rtp_incoming(imquic_connection *conn, imquic_roq_multipl
 	}
 }
 
-static void imquic_demo_connection_gone(imquic_connection *conn) {
+static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] RoQ connection gone\n", imquic_get_connection_name(conn));
 	if(g_hash_table_remove(connections, conn))

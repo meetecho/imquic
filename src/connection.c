@@ -48,6 +48,7 @@ static void imquic_connection_free(const imquic_refcount *conn_ref) {
 	imquic_http3_connection_destroy(conn->http3);
 	if(conn->socket != NULL)
 		imquic_refcount_decrease(&conn->socket->ref);
+	g_free(conn->local_reason);
 	free(conn);
 }
 
@@ -223,12 +224,12 @@ void imquic_connection_notify_stream_incoming(imquic_connection *conn, imquic_st
 }
 
 /* Helper to notify about the connection being gone */
-void imquic_connection_notify_gone(imquic_connection *conn) {
+void imquic_connection_notify_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	if(conn == NULL || conn->socket == NULL || !g_atomic_int_compare_and_exchange(&conn->notified_close, 0, 1))
 		return;
 	/* Notify the event */
 	if(conn->established && conn->socket->connection_gone)
-		conn->socket->connection_gone(conn);
+		conn->socket->connection_gone(conn, error_code, reason);
 	else if(!conn->is_server && !conn->established && conn->socket->connection_failed)
 		conn->socket->connection_failed(conn->socket->user_data);
 }
@@ -241,7 +242,7 @@ void imquic_connection_reset_stream(imquic_connection *conn, uint64_t stream_id,
 	imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
 	if(stream == NULL || !stream->can_send) {
 		imquic_mutex_unlock(&conn->mutex);
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't close stream, no such stream %"SCNu64"\n",
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't reset stream, no such stream %"SCNu64"\n",
 			imquic_get_connection_name(conn), stream_id);
 		return;
 	}
@@ -256,9 +257,43 @@ void imquic_connection_reset_stream(imquic_connection *conn, uint64_t stream_id,
 		imquic_stream_mark_complete(stream, FALSE);
 		stream->out_state = IMQUIC_STREAM_RESET;
 		imquic_mutex_unlock(&stream->mutex);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Closing stream %"SCNu64" (RESET_STREAM)\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Resetting stream %"SCNu64" (RESET_STREAM)\n",
 			imquic_get_connection_name(conn), stream_id);
 		imquic_connection_event *event = imquic_connection_event_create(IMQUIC_CONNECTION_EVENT_RESET_STREAM);
+		event->stream_id = stream_id;
+		event->error_code = error_code;
+		g_async_queue_push(conn->queued_events, event);
+		imquic_loop_wakeup();
+	}
+	imquic_refcount_decrease(&stream->ref);
+}
+
+/* Helper to stop a STREAM */
+void imquic_connection_stop_sending_stream(imquic_connection *conn, uint64_t stream_id, uint64_t error_code) {
+	if(conn == NULL)
+		return;
+	imquic_mutex_lock(&conn->mutex);
+	imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+	if(stream == NULL || !stream->can_send) {
+		imquic_mutex_unlock(&conn->mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't stop stream, no such stream %"SCNu64"\n",
+			imquic_get_connection_name(conn), stream_id);
+		return;
+	}
+	imquic_refcount_increase(&stream->ref);
+	imquic_mutex_unlock(&conn->mutex);
+	imquic_mutex_lock(&stream->mutex);
+	if(stream->in_state >= IMQUIC_STREAM_RESET) {
+		imquic_mutex_unlock(&stream->mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't prepare STOP_SENDING for %"SCNu64" (alreayd sent?)\n",
+			imquic_get_connection_name(conn), stream_id);
+	} else {
+		imquic_stream_mark_complete(stream, FALSE);
+		stream->in_state = IMQUIC_STREAM_RESET;
+		imquic_mutex_unlock(&stream->mutex);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping stream %"SCNu64" (RESET_STREAM)\n",
+			imquic_get_connection_name(conn), stream_id);
+		imquic_connection_event *event = imquic_connection_event_create(IMQUIC_CONNECTION_EVENT_STOP_SENDING);
 		event->stream_id = stream_id;
 		event->error_code = error_code;
 		g_async_queue_push(conn->queued_events, event);

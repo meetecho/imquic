@@ -84,6 +84,7 @@ typedef struct imquic_moq_interop_client {
 	imquic_client *client;
 	imquic_connection *conn;
 	gboolean publisher;
+	uint64_t request_id;
 } imquic_moq_interop_client;
 static void imquic_moq_interop_client_destroy(imquic_moq_interop_client *mc) {
 	if(mc != NULL) {
@@ -136,19 +137,18 @@ static imquic_moq_interop_client *imquic_moq_interop_client_create(imquic_moq_in
 
 /* Callbacks */
 static void imquic_moq_interop_new_connection(imquic_connection *conn, void *user_data);
-static void imquic_moq_interop_connection_failed(void *user_data);
 static void imquic_moq_interop_ready(imquic_connection *conn);
 static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_parameters *parameters);
 static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
-static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
 static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint64_t request_id,
-	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions);
+	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval);
-static void imquic_moq_interop_connection_gone(imquic_connection *conn);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+static void imquic_moq_interop_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 
 /* Main */
 int main(int argc, char *argv[]) {
@@ -454,7 +454,6 @@ static imquic_moq_interop_client *imquic_moq_interop_client_create(imquic_moq_in
 		return NULL;
 	}
 	imquic_set_new_moq_connection_cb(mc->client, imquic_moq_interop_new_connection);
-	imquic_set_connection_failed_cb(mc->client, imquic_moq_interop_connection_failed);
 	imquic_set_moq_ready_cb(mc->client, imquic_moq_interop_ready);
 	imquic_set_moq_connection_gone_cb(mc->client, imquic_moq_interop_connection_gone);
 	if(publisher) {
@@ -479,14 +478,6 @@ static void imquic_moq_interop_new_connection(imquic_connection *conn, void *use
 		imquic_mutex_unlock(&mutex);
 	}
 	imquic_moq_set_max_request_id(conn, max_request_id);
-}
-
-static void imquic_moq_interop_connection_failed(void *user_data) {
-	imquic_moq_interop_client *client = (imquic_moq_interop_client *)user_data;
-	if(client != NULL) {
-		imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-		g_atomic_int_set(&test->done, 1);
-	}
 }
 
 static void imquic_moq_interop_ready(imquic_connection *conn) {
@@ -525,7 +516,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		tns[1].buffer = (uint8_t *)"interop";
 		tns[1].length = strlen("interop");
 		tns[1].next = NULL;
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], NULL);
+		client->request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_publish_namespace(conn, client->request_id, 0, &tns[0], NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("publisher announced namespace"));
 	} else if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR) {
@@ -541,7 +533,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
-		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), 0, &tns[0], &tn, NULL);
+		client->request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_subscribe(conn, client->request_id, 0, &tns[0], &tn, NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to non-existing track"));
 	} else if((test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
@@ -558,7 +551,8 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
-		imquic_moq_subscribe(conn, imquic_moq_get_next_request_id(conn), 0, &tns[0], &tn, NULL);
+		client->request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_subscribe(conn, client->request_id, 0, &tns[0], &tn, NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to track"));
 		if(test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) {
@@ -584,14 +578,7 @@ static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *con
 		g_atomic_int_set(&test->done, 1);
 	} else if(test->name == IMQUIC_INTEROP_PUBLISH_NAMESPACE_DONE) {
 		/* Send a PUBLISH_NAMESPACE_DONE */
-		imquic_moq_namespace tns[2];
-		tns[0].buffer = (uint8_t *)"moq-test";
-		tns[0].length = strlen("moq-test");
-		tns[0].next = &tns[1];
-		tns[1].buffer = (uint8_t *)"interop";
-		tns[1].length = strlen("interop");
-		tns[1].next = NULL;
-		int ret = imquic_moq_publish_namespace_done(conn, &tns[0]);
+		int ret = imquic_moq_publish_namespace_done(conn, client->request_id);
 		if(ret == 0) {
 			g_atomic_int_set(&test->success, 1);
 			if(verbose)
@@ -629,8 +616,8 @@ static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, 
 	/* TODO Other tests */
 }
 
-static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
-		uint64_t track_alias, imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* Depending on the test, we may or may not be done */
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
@@ -647,7 +634,7 @@ static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint6
 }
 
 static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint64_t request_id,
-		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_extensions) {
+		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* Depending on the test, we may or may not be done */
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
@@ -672,7 +659,7 @@ static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint6
 }
 
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_request_error_code error_code, const char *reason, uint64_t track_alias, uint64_t retry_interval) {
+		imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	/* Depending on the test, we may or may not be done */
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
@@ -690,7 +677,7 @@ static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t
 	/* TODO Other tests */
 }
 
-static void imquic_moq_interop_connection_gone(imquic_connection *conn) {
+static void imquic_moq_interop_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
 	if(client != NULL) {

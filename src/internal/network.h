@@ -97,8 +97,10 @@ typedef struct imquic_network_endpoint {
 	void (* datagram_incoming)(imquic_connection *conn, uint8_t *bytes, uint64_t length);
 	/*! \brief Callback to invoke when a \c RESET_STREAM arrives on one of the connections handled by this endpoint */
 	void (* reset_stream_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
+	/*! \brief Callback to invoke when a \c STOP_SENDING arrives on one of the connections handled by this endpoint */
+	void (* stop_sending_incoming)(imquic_connection *conn, uint64_t stream_id, uint64_t error_code);
 	/*! \brief Callback to invoke when new one of the connections handled by this endpoint is closed */
-	void (* connection_gone)(imquic_connection *conn);
+	void (* connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason);
 	/*! \brief Callback to invoke when a client connection attempt fails */
 	void (* connection_failed)(void *user_data);
 	/*! \brief User data to pass in the \c new_connection callback, to correlate a connection to the endpoint it's coming from */
@@ -118,8 +120,10 @@ typedef struct imquic_network_endpoint {
 	gboolean qlog_quic, qlog_http3,
 		qlog_roq, qlog_roq_packets,
 		qlog_moq, qlog_moq_messages, qlog_moq_objects;
-	/*! brief MoQ version to negotiare, if any */
+	/*! \brief MoQ version to negotiate, if any */
 	uint32_t moq_version;
+	/*! \brief Whether GREASE should be sent in SETUP options */
+	gboolean moq_grease;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection has been started */

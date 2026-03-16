@@ -41,7 +41,7 @@ static void imquic_demo_handle_signal(int signum) {
 /* Publisher state */
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
-static uint64_t moq_request_id = 0, moq_track_alias = 0;
+static uint64_t moq_tns_request_id = 0, moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
 static char pub_tns_buffer[256], pub_tn_buffer[256];
 static const char *pub_tns = NULL, *pub_tn = NULL;
@@ -119,15 +119,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish_namespace(conn, imquic_moq_get_next_request_id(conn), &tns[0], &params);
+		moq_tns_request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_publish_namespace(conn, moq_tns_request_id, 0, &tns[0], &params);
 	} else {
 		/* We use PUBLISH */
-		if(moq_version < IMQUIC_MOQ_VERSION_12) {
-			/* Version is too old, we can't: stop here */
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
-			g_atomic_int_inc(&stop);
-			return;
-		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, pub_tn);
 		moq_request_id = imquic_moq_get_next_request_id(conn);
 		gboolean forward = FALSE;
@@ -147,18 +142,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		/* Add a couple of track extensions too (will be ignored on versions older than v16) */
-		GList *exts = NULL;
-		imquic_moq_object_extension default_priority = { 0 };
-		default_priority.id = IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY;
-		default_priority.value.number = 128;
-		exts = g_list_append(exts, &default_priority);
-		imquic_moq_object_extension default_order = { 0 };
-		default_order.id = IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER;
-		default_order.value.number = IMQUIC_MOQ_ORDERING_ASCENDING;
-		exts = g_list_append(exts, &default_order);
-		imquic_moq_publish(conn, moq_request_id, &tns[0], &tn, moq_track_alias, &params, exts);
-		g_list_free(exts);
+		imquic_moq_publish(conn, moq_request_id, 0, &tns[0], &tn, moq_track_alias, &params, NULL);
 	}
 }
 
@@ -192,29 +176,23 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64"/%"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id, track_alias);
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id);
-	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, request_id);
 	if(pub_tns == NULL || strcasecmp(ns, pub_tns) || strcasecmp(name, pub_tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace or track\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", track_alias, 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", 0);
 		return;
 	}
 	if(options.publish || g_atomic_int_get(&send_objects)) {
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] We already have a subscriber\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", track_alias, 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", 0);
 		return;
 	}
 	/* TODO Check if it matches our published namespace */
@@ -256,8 +234,6 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Accept the subscription */
 	moq_request_id = request_id;
-	if(moq_version < IMQUIC_MOQ_VERSION_12)
-		moq_track_alias = track_alias;
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.expires_set = TRUE;
@@ -268,18 +244,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		rparams.largest_object_set = TRUE;
 		rparams.largest_object = sub_start;
 	}
-	/* Add a couple of track extensions too (will be ignored on versions older than v16) */
-	GList *exts = NULL;
-	imquic_moq_object_extension default_priority = { 0 };
-	default_priority.id = IMQUIC_MOQ_EXT_DEFAULT_PUBLISHER_PRIORITY;
-	default_priority.value.number = 128;
-	exts = g_list_append(exts, &default_priority);
-	imquic_moq_object_extension default_order = { 0 };
-	default_order.id = IMQUIC_MOQ_EXT_DEFAULT_GROUP_ORDER;
-	default_order.value.number = IMQUIC_MOQ_ORDERING_ASCENDING;
-	exts = g_list_append(exts, &default_order);
-	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, exts);
-	g_list_free(exts);
+	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, NULL);
 	/* Start sending objects */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
@@ -292,9 +257,10 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_atomic_int_set(&send_objects, 0);
 }
 
-static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri) {
+static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri, uint64_t timeout) {
 	/* Connection was closed */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s\n", imquic_get_connection_name(conn), uri);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s (timeout=%"SCNu64"ms)\n",
+		imquic_get_connection_name(conn), uri, timeout);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -306,7 +272,7 @@ static void imquic_demo_connection_failed(void *user_data) {
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_connection_gone(imquic_connection *conn) {
+static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
 	if(conn == moq_conn)
@@ -317,43 +283,44 @@ static void imquic_demo_connection_gone(imquic_connection *conn) {
 }
 
 static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
-	GList *exts = NULL;
-	imquic_moq_object_extension pgidext = { 0 };
-	imquic_moq_object_extension poidext = { 0 };
-	imquic_moq_object_extension numext = { 0 };
-	imquic_moq_object_extension dataext = { 0 };
+	GList *props = NULL;
+	imquic_moq_property pgidprop = { 0 };
+	imquic_moq_property poidprop = { 0 };
+	imquic_moq_property numprop = { 0 };
+	imquic_moq_property dataprop = { 0 };
 	if((first && options.first_group > 0 && group_id == options.first_group) ||
 			(first && options.first_object > 0 && object_id == options.first_object) ||
-			options.extensions) {
-		/* We have extensions to add to the object */
+			options.properties) {
+		/* We have properties to add to the object */
 		if(first && options.first_group > 0 && group_id == options.first_group) {
-			/* Add the Prior Group ID Gap extension */
-			pgidext.id = IMQUIC_MOQ_EXT_PRIOR_GROUP_ID_GAP;
-			pgidext.value.number = options.first_group;
-			exts = g_list_append(exts, &pgidext);
+			/* Add the Prior Group ID Gap property */
+			pgidprop.id = IMQUIC_MOQ_PROPERTY_PRIOR_GROUP_ID_GAP;
+			pgidprop.value.number = options.first_group;
+			props = g_list_append(props, &pgidprop);
 		}
 		if(first && options.first_object > 0 && object_id == options.first_object) {
-			/* Add the Prior Object ID Gap extension */
-			poidext.id = IMQUIC_MOQ_EXT_PRIOR_OBJECT_ID_GAP;
-			poidext.value.number = options.first_object;
-			exts = g_list_append(exts, &poidext);
+			/* Add the Prior Object ID Gap property */
+			poidprop.id = IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP;
+			poidprop.value.number = options.first_object;
+			props = g_list_append(props, &poidprop);
 		}
-		if(options.extensions) {
-			/* Just for fun, we add a couple of fake extensions to the object: a numeric
-			 * extension set to the length of the text, and a data extension with a fixed string */
-			numext.id = 0x6;	/* FIXME */
-			numext.value.number = strlen(text);
-			exts = g_list_append(exts, &numext);
-			dataext.id = 0x7;	/* FIXME */
-			dataext.value.data.buffer = (uint8_t *)"lminiero";
-			dataext.value.data.length = strlen("lminiero");
-			exts = g_list_append(exts, &dataext);
+		if(options.properties) {
+			/* Just for fun, we add a couple of fake properties to the object: a numeric
+			 * property set to the length of the text, and a data property with a fixed string.
+			 * We use the reserved space mentioned in the draft, for their IDs */
+			numprop.id = 0x38;
+			numprop.value.number = strlen(text);
+			props = g_list_append(props, &numprop);
+			dataprop.id = 0x39;
+			dataprop.value.data.buffer = (uint8_t *)"lminiero";
+			dataprop.value.data.length = strlen("lminiero");
+			props = g_list_append(props, &dataprop);
 		}
 	}
 	/* Check if it matches the filter */
 	if(group_id < sub_start.group || (group_id == sub_start.group && object_id < sub_start.object)) {
 		/* Not the time to send the object yet */
-		g_list_free(exts);
+		g_list_free(props);
 		return;
 	}
 	if(group_id > sub_end.group || (group_id == sub_end.group && object_id > sub_end.object)) {
@@ -365,7 +332,7 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		g_atomic_int_set(&done_sent, 1);
 		moq_request_id = 0;
 		g_atomic_int_set(&send_objects, 0);
-		g_list_free(exts);
+		g_list_free(props);
 		return;
 	} else if(group_id == sub_end.group && object_id == sub_end.object) {
 		last = TRUE;
@@ -380,19 +347,19 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		.object_status = 0,
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
-		.extensions = exts,
+		.properties = props,
 		.delivery = delivery,
 		.end_of_stream = FALSE
 	};
 	imquic_moq_send_object(moq_conn, &object);
-	g_list_free(exts);
+	g_list_free(props);
 	if(last && delivery == IMQUIC_MOQ_USE_SUBGROUP) {
 		/* Send an empty object with status "end of X" */
 		object.object_id++;
 		object.object_status = IMQUIC_MOQ_END_OF_GROUP;
 		object.payload_len = 0;
 		object.payload = NULL;
-		object.extensions = NULL;
+		object.properties = NULL;
 		object.end_of_stream = TRUE;
 		imquic_moq_send_object(moq_conn, &object);
 	}
@@ -453,11 +420,9 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled (ticket file '%s')\n", options.ticket_file);
 	if(options.moq_version != NULL) {
 		if(!strcasecmp(options.moq_version, "any")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 11 and %d\n", IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and %d\n",
+				IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE, IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY;
-		} else if(!strcasecmp(options.moq_version, "legacy")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
-			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
@@ -490,18 +455,13 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(options.first_group > 0)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %"SCNu64" (will send the 'Prior Group ID Gap' extension)\n", options.first_group);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %"SCNu64" (will send the 'Prior Group ID Gap' property)\n", options.first_group);
 	if(options.first_object > 0)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' extension)\n", options.first_object);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' property)\n", options.first_object);
 	if(options.publish) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
-		if(moq_version > IMQUIC_MOQ_VERSION_MIN && moq_version < IMQUIC_MOQ_VERSION_12) {
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "PUBLISH only supported starting from version 12\n");
-			ret = 1;
-			goto done;
-		}
 	}
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64", if a version higher or equal than 12 is negotiated\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64"\n",
 		options.track_alias);
 	moq_track_alias	= options.track_alias;
 
@@ -560,6 +520,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_MOQ_OBJECTS, options.qlog_moq_objects,
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_MOQ_VERSION, moq_version,
+		IMQUIC_CONFIG_MOQ_GREASE, options.test_grease,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(client == NULL) {
 		ret = 1;
@@ -652,18 +613,8 @@ int main(int argc, char *argv[]) {
 	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
 	if(g_atomic_int_get(&started) && !g_atomic_int_get(&done_sent))
 		imquic_moq_publish_done(moq_conn, moq_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
-	if(!options.publish) {
-		imquic_moq_namespace tns[32];	/* FIXME */
-		int i = 0;
-		while(options.track_namespace[i] != NULL) {
-			const char *track_namespace = options.track_namespace[i];
-			tns[i].buffer = (uint8_t *)track_namespace;
-			tns[i].length = strlen(track_namespace);
-			tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
-			i++;
-		}
-		imquic_moq_publish_namespace_done(moq_conn, &tns[0]);
-	}
+	if(!options.publish)
+		imquic_moq_publish_namespace_done(moq_conn, moq_tns_request_id);
 	/* Shutdown the client */
 	imquic_shutdown_endpoint(client);
 

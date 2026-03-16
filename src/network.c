@@ -174,7 +174,7 @@ void imquic_network_endpoint_remove_connection(imquic_network_endpoint *ne, imqu
 	if(lock_mutex)
 		imquic_mutex_lock(&ne->mutex);
 	if(g_hash_table_lookup(ne->connections, conn)) {
-		imquic_connection_notify_gone(conn);
+		imquic_connection_notify_gone(conn, 0, NULL);
 		g_hash_table_remove(ne->connections, conn);
 	}
 	if(conn->piconn != NULL)
@@ -200,7 +200,7 @@ void imquic_network_endpoint_destroy(imquic_network_endpoint *ne) {
 		while(g_hash_table_iter_next(&iter, NULL, &value)) {
 			imquic_connection *conn = (imquic_connection *)value;
 			imquic_connection_close(conn, 0, NULL);
-			imquic_connection_notify_gone(conn);
+			imquic_connection_notify_gone(conn, 0, NULL);
 			g_hash_table_iter_remove(&iter);
 		}
 		imquic_mutex_unlock(&ne->mutex);

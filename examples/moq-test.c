@@ -43,6 +43,7 @@ static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GMutex mutex;
 static GHashTable *connections = NULL, *subscribers = NULL;
 static void *imquic_demo_tester_thread(void *data);
+static uint64_t moq_track_alias = 0;
 
 /* Namespace tuple fields */
 typedef enum imquic_demo_tuple_field {
@@ -94,9 +95,9 @@ static const char *imquic_demo_tuple_field_str(imquic_demo_tuple_field field) {
 		case TUPLE_FIELD_SEND_EOG:
 			return "Send End of Group Markers";
 		case TUPLE_FIELD_EXT_INT:
-			return "Test Integer Extension";
+			return "Test Integer Property";
 		case TUPLE_FIELD_EXT_VAR:
-			return "Test Variable Extension";
+			return "Test Variable Property";
 		case TUPLE_FIELD_TIMEOUT:
 			return "Publisher Delivery Timeout";
 		default:
@@ -306,20 +307,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_12) {
-		/* Older versions of MoQ expect the track alias in the SUBSCRIBE */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64"/%"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id, track_alias);
-	} else {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
-			imquic_get_connection_name(conn), ns, name, request_id);
-	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), ns, name, request_id);
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* Parse the namespace tuple to a test profile */
@@ -327,7 +322,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	char err[256];
 	int res = imquic_demo_tuple_to_test(conn, tns, test, err, sizeof(err));
 	if(res != 0) {
-		imquic_moq_reject_subscribe(conn, request_id, res, err, track_alias, 0);
+		imquic_moq_reject_subscribe(conn, request_id, res, err, 0);
 		return;
 	}
 	g_mutex_lock(&mutex);
@@ -346,11 +341,13 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		return;
 	}
 	/* Create a subscription to this track */
-	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, track_alias);
+	uint64_t new_track_alias = moq_track_alias;
+	moq_track_alias++;
+	imquic_demo_moq_subscription *s = imquic_demo_moq_subscription_create(sub, request_id, new_track_alias);
 	memcpy(s->test, test, sizeof(test));
 	s->forward = parameters->forward;
 	g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), s);
-	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
+	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(new_track_alias), s);
 	g_mutex_unlock(&mutex);
 	/* Check the filter */
 	uint64_t filter_type = parameters->subscription_filter_set ?
@@ -387,7 +384,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	rparams.expires = 0;
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, NULL);
+	imquic_moq_accept_subscribe(conn, request_id, new_track_alias, &rparams, NULL);
 	/* Spawn thread to send objects */
 	GError *error = NULL;
 	s->thread = g_thread_try_new("moq-test", &imquic_demo_tester_thread, s, &error);
@@ -398,7 +395,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 }
 
-static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id,
+		uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
@@ -411,8 +409,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		return;
 	}
 	/* Update the subscription */
-	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id,
-		imquic_moq_get_version(conn) >= IMQUIC_MOQ_VERSION_14 ? &sub_request_id : &request_id);
+	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &sub_request_id);
 	if(s && !s->fetch && parameters->forward_set) {
 		/* TODO Update start location and end group too */
 		s->forward = parameters->forward;
@@ -441,8 +438,8 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
-		imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -527,7 +524,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	}
 }
 
-static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id ,
+static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, uint64_t joining_request_id ,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters) {
 	/* We received a joining fetch */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",
@@ -559,7 +556,7 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_connection_gone(imquic_connection *conn) {
+static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] MoQ connection gone\n", imquic_get_connection_name(conn));
 	/* Remove subscribers associated to this connection */
@@ -607,11 +604,11 @@ static void *imquic_demo_tester_thread(void *data) {
 	uint8_t *obj_p = s->test[TUPLE_FIELD_OBJS_SIZE] ? g_malloc(s->test[TUPLE_FIELD_OBJS_SIZE]) : NULL;
 	if(obj_p)
 		memset(obj_p, 't', s->test[TUPLE_FIELD_OBJS_SIZE]);
-	size_t extensions_count = 0;
+	size_t properties_count = 0;
 	if(s->test[TUPLE_FIELD_EXT_INT] >= 0)
-		extensions_count++;
+		properties_count++;
 	if(s->test[TUPLE_FIELD_EXT_VAR] >= 0)
-		extensions_count++;
+		properties_count++;
 	/* Timers */
 	int64_t frequency = s->test[TUPLE_FIELD_OBJS_FREQ] * 1000;
 	int64_t sleep_time = frequency/2;
@@ -662,21 +659,21 @@ static void *imquic_demo_tester_thread(void *data) {
 					(s->descending && (object_id == 0 || (group_id == (uint64_t)s->test[TUPLE_FIELD_START_GROUP] && object_id <= (uint64_t)s->test[TUPLE_FIELD_START_OBJECT]))))
 				last_object = TRUE;
 		}
-		GList *exts = NULL;
-		if(extensions_count > 0) {
-			imquic_moq_object_extension numext = { 0 }, dataext = { 0 };
+		GList *props = NULL;
+		if(properties_count > 0) {
+			imquic_moq_property numprop = { 0 }, dataprop = { 0 };
 			if(s->test[TUPLE_FIELD_EXT_INT] >= 0) {
-				/* Add a numeric extension */
-				numext.id = 2 * s->test[TUPLE_FIELD_EXT_INT];
-				numext.value.number = g_random_int();
-				exts = g_list_append(exts, &numext);
+				/* Add a numeric property */
+				numprop.id = 2 * s->test[TUPLE_FIELD_EXT_INT];
+				numprop.value.number = g_random_int();
+				props = g_list_append(props, &numprop);
 			}
 			if(s->test[TUPLE_FIELD_EXT_VAR] >= 0) {
-				/* Add a data extension */
-				dataext.id = 2 * s->test[TUPLE_FIELD_EXT_VAR] + 1;
-				dataext.value.data.buffer = (uint8_t *)"moq-test";
-				dataext.value.data.length = strlen("moq-test");
-				exts = g_list_append(exts, &dataext);
+				/* Add a data property */
+				dataprop.id = 2 * s->test[TUPLE_FIELD_EXT_VAR] + 1;
+				dataprop.value.data.buffer = (uint8_t *)"moq-test";
+				dataprop.value.data.length = strlen("moq-test");
+				props = g_list_append(props, &dataprop);
 			}
 		}
 		imquic_moq_object object = {
@@ -688,7 +685,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			.object_status = 0,
 			.payload = (num_objects == 0) ? obj0_p : obj_p,
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
-			.extensions = exts,
+			.properties = props,
 			.delivery = delivery,
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
@@ -698,7 +695,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			last_subgroup_id = object.subgroup_id;
 			last_object_id = object.object_id;
 		}
-		g_list_free(exts);
+		g_list_free(props);
 		/* Update IDs for the next object */
 		num_objects++;
 		next_group = (num_objects == s->test[TUPLE_FIELD_OBJS_x_GROUP]);
@@ -715,7 +712,7 @@ static void *imquic_demo_tester_thread(void *data) {
 				object.object_status = last_object ? IMQUIC_MOQ_END_OF_TRACK : IMQUIC_MOQ_END_OF_GROUP;
 				object.payload_len = 0;
 				object.payload = NULL;
-				object.extensions = NULL;
+				object.properties = NULL;
 				object.end_of_stream = TRUE;
 				if(send_object || last_object)
 					imquic_moq_send_object(conn, &object);
@@ -827,11 +824,9 @@ int main(int argc, char *argv[]) {
 
 	if(options.moq_version != NULL) {
 		if(!strcasecmp(options.moq_version, "any")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 11 and %d\n", IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between %d and %d\n",
+				IMQUIC_MOQ_VERSION_MIN - IMQUIC_MOQ_VERSION_BASE, IMQUIC_MOQ_VERSION_MAX - IMQUIC_MOQ_VERSION_BASE);
 			moq_version = IMQUIC_MOQ_VERSION_ANY;
-		} else if(!strcasecmp(options.moq_version, "legacy")) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ between 6 and 10\n");
-			moq_version = IMQUIC_MOQ_VERSION_ANY_LEGACY;
 		} else {
 			moq_version = IMQUIC_MOQ_VERSION_BASE + atoi(options.moq_version);
 			if(moq_version < IMQUIC_MOQ_VERSION_MIN || moq_version > IMQUIC_MOQ_VERSION_MAX) {
@@ -893,6 +888,7 @@ int main(int argc, char *argv[]) {
 		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
 		IMQUIC_CONFIG_EARLY_DATA, options.early_data,
 		IMQUIC_CONFIG_MOQ_VERSION, moq_version,
+		IMQUIC_CONFIG_MOQ_GREASE, options.test_grease,
 		IMQUIC_CONFIG_DONE, NULL);
 	if(server == NULL) {
 		ret = 1;
@@ -940,8 +936,8 @@ int main(int argc, char *argv[]) {
 	default_test[TUPLE_FIELD_GROUP_INC] = 1;
 	default_test[TUPLE_FIELD_OBJ_INC] = 1;
 	default_test[TUPLE_FIELD_SEND_EOG] = 0;
-	default_test[TUPLE_FIELD_EXT_INT] = -1;					/* Don't add any numeric extension by default */
-	default_test[TUPLE_FIELD_EXT_VAR] = -1;					/* Don't add any variable extension by default */
+	default_test[TUPLE_FIELD_EXT_INT] = -1;					/* Don't add any numeric property by default */
+	default_test[TUPLE_FIELD_EXT_VAR] = -1;					/* Don't add any variable property by default */
 	default_test[TUPLE_FIELD_TIMEOUT] = -1;					/* No delivery timeout by default */
 
 	/* Initialize the resources we'll need */

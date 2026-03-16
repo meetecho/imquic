@@ -10,6 +10,7 @@
 
 #include <picoquic.h>
 #include <picoquic_config.h>
+#include <picoquic_internal.h>
 #include <autoqlog.h>
 
 #include "internal/quic.h"
@@ -206,9 +207,18 @@ gboolean imquic_quic_queued_event(imquic_connection *conn, imquic_connection_eve
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error resetting STREAM %"SCNu64": %d\n",
 				conn->name, event->stream_id, ret);
 		}
+	} else if(event->type == IMQUIC_CONNECTION_EVENT_STOP_SENDING) {
+		/* Send a STOP_SENDING */
+		int ret = picoquic_stop_sending(conn->piconn, event->stream_id, event->error_code);
+		if(ret != 0) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error stopping STREAM %"SCNu64": %d\n",
+				conn->name, event->stream_id, ret);
+		}
 	} else if(event->type == IMQUIC_CONNECTION_EVENT_CLOSE_CONN) {
 		/* Send a CONNECTION_CLOSE */
-		int ret = picoquic_close(conn->piconn, event->error_code);
+		g_free(conn->local_reason);
+		conn->local_reason = event->reason ? g_strdup(event->reason) : NULL;
+		int ret = picoquic_close_ex(conn->piconn, event->error_code, conn->local_reason);
 		if(ret != 0) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error sending CLOSE_CONNECTION: %d\n",
 				conn->name, ret);
@@ -231,7 +241,7 @@ void imquic_quic_next_step(imquic_network_endpoint *endpoint) {
 static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		uint64_t stream_id, uint8_t *bytes, size_t blen,
 		picoquic_call_back_event_t fin_or_event, void *callback_ctx, void *v_stream_ctx) {
-	/* TODO */
+	/* Check what the callback is about */
 	imquic_network_endpoint *endpoint = (imquic_network_endpoint *)callback_ctx;
 	imquic_connection *conn = pconn ? g_hash_table_lookup(endpoint->connections_by_cnx, pconn) : NULL;
 	char *name = conn ? conn->name : endpoint->name;
@@ -258,14 +268,12 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		}
 	} else if(fin_or_event == picoquic_callback_almost_ready) {
 		/* A connection was established for a specific ALPN */
-		const char *alpn = picoquic_tls_get_negotiated_alpn(pconn);
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection established (%s)\n",
-			name, alpn);
 		picoquic_connection_id_t initial_cid = picoquic_get_initial_cnxid(pconn);
 		if(endpoint->is_server && conn == NULL) {
 			/* New connection */
 			conn = imquic_connection_create(endpoint, pconn);
 		}
+		name = conn->name;
 		imquic_connection_id_str(&initial_cid, conn->initial_cid_str, sizeof(conn->initial_cid_str));
 #ifdef HAVE_QLOG
 		if(endpoint->qlog_path && (endpoint->qlog_http3 || endpoint->qlog_roq || endpoint->qlog_moq)) {
@@ -275,15 +283,18 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 				endpoint->qlog_moq, endpoint->qlog_moq_messages, endpoint->qlog_moq_objects);
 		}
 #endif
+		const char *alpn = picoquic_tls_get_negotiated_alpn(pconn);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection established (ALPN=%s)\n",
+			name, alpn);
 		conn->alpn_negotiated = TRUE;
 		conn->chosen_alpn = g_strdup(alpn);
 		if(endpoint->webtransport && !strcasecmp(alpn, "h3"))
 			conn->http3 = imquic_http3_connection_create(conn, endpoint->wt_protocols);
 		if(conn->http3 != NULL) {
 			if(conn->is_server) {
-				/* FIXME If this is an HTTP/3 connection, as a server wait for a SETTINGS */
+				/* If this is an HTTP/3 connection, as a server wait for a SETTINGS */
 			} else {
-				/* FIXME If this is an HTTP/3 connection, as a client send a SETTINGS */
+				/* If this is an HTTP/3 connection, as a client send a SETTINGS */
 				imquic_http3_prepare_settings(conn->http3);
 			}
 		} else if(endpoint->new_connection) {
@@ -319,6 +330,42 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 			/* Pass the data to the application callback */
 			imquic_connection_notify_stream_incoming(conn, stream, bytes, blen);
 		}
+	} else if(fin_or_event == picoquic_callback_stream_reset) {
+		/* Use the picoquic internal API to obtain the error_code */
+		uint64_t error_code = 0;
+		picoquic_stream_head_t *ps = picoquic_find_stream(pconn, stream_id);
+		if(ps != NULL)
+			error_code = ps->remote_error;
+		/* Update the local state of the stream */
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Stream %"SCNu64" has been reset by the peer\n", stream_id);
+			if(stream->in_state != IMQUIC_STREAM_COMPLETE)
+				stream->in_state = IMQUIC_STREAM_RESET;
+		}
+		imquic_mutex_unlock(&conn->mutex);
+		/* Pass the data to the application callback */
+		if(endpoint->reset_stream_incoming)
+			endpoint->reset_stream_incoming(conn, stream_id, error_code);
+	} else if(fin_or_event == picoquic_callback_stop_sending) {
+		/* Use the picoquic internal API to obtain the error_code */
+		uint64_t error_code = 0;
+		picoquic_stream_head_t *ps = picoquic_find_stream(pconn, stream_id);
+		if(ps != NULL)
+			error_code = ps->remote_stop_error;
+		/* Update the local state of the stream */
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		if(stream != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "We've been asked to stop sending on stream %"SCNu64"\n", stream_id);
+			if(stream->out_state != IMQUIC_STREAM_COMPLETE)
+				stream->out_state = IMQUIC_STREAM_RESET;
+		}
+		imquic_mutex_unlock(&conn->mutex);
+		/* Pass the data to the application callback */
+		if(endpoint->stop_sending_incoming)
+			endpoint->stop_sending_incoming(conn, stream_id, error_code);
 	} else if(fin_or_event == picoquic_callback_application_close) {
 		/* TODO Should we handle this somehow? */
 	} else if(fin_or_event == picoquic_callback_close) {
@@ -328,15 +375,21 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		picoquic_get_close_reasons(pconn, &local_reason, &remote_reason,
 			&local_application_reason, &remote_application_reason);
 		if(conn != NULL) {
+			uint64_t error_code = 0;
+			const char *reason = NULL;
 			if(g_atomic_int_get(&conn->closing)) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed (%"SCNu64"/%"SCNu64")\n",
-					name, local_reason, local_application_reason);
+				error_code = local_application_reason ? local_application_reason : local_reason;
+				reason = pconn->local_error_reason;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed: %"SCNu64" (%s)\n",
+					name, error_code, reason ? reason : "no reason");
 			} else if(g_atomic_int_compare_and_exchange(&conn->closed, 0, 1)) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed by peer (%"SCNu64"/%"SCNu64")\n",
-					name, remote_reason, remote_application_reason);
+				error_code = remote_application_reason ? remote_application_reason : remote_reason;
+				reason = pconn->remote_error_reason;
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection closed by peer: %"SCNu64" (%s)\n",
+					name, error_code, reason ? reason : "no reason");
 			}
 			g_atomic_int_set(&conn->closed, 1);
-			imquic_connection_notify_gone(conn);
+			imquic_connection_notify_gone(conn, error_code, reason);
 		}
 	}
 	imquic_quic_next_step(endpoint);

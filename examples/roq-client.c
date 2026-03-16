@@ -115,7 +115,7 @@ static void imquic_demo_connection_failed(void *user_data) {
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_connection_gone(imquic_connection *conn) {
+static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection gone\n", imquic_get_connection_name(conn));
 	if(conn == roq_conn)

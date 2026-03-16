@@ -18,6 +18,7 @@
 /*! \brief Struct containing the parsed command line options */
 typedef struct demo_options {
 	char *moq_version;
+	gboolean test_grease;
 	const char **track_namespace;
 	const char *track_name;
 	uint64_t first_group;
@@ -27,7 +28,7 @@ typedef struct demo_options {
 	const char *delivery;
 	gboolean publish;
 	uint64_t track_alias;
-	gboolean extensions;
+	gboolean properties;
 	const char *ip;
 	int port;
 	const char *remote_host;

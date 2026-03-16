@@ -18,6 +18,7 @@
 /*! \brief Struct containing the parsed command line options */
 typedef struct demo_options {
 	char *moq_version;
+	gboolean test_grease;
 	const char **track_namespace;
 	const char **track_name;
 	const char *relay_auth_info;

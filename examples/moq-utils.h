@@ -21,10 +21,12 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object);
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object);
 
-/* Helper to duplicate a list of extensions */
-GList *imquic_moq_object_extensions_duplicate(GList *extensions);
-/* Helper to destroy an object extension */
-void imquic_moq_object_extension_cleanup(imquic_moq_object_extension *extension);
+/* Helper to print a list of properties */
+void imquic_moq_properties_print(GList *properties);
+/* Helper to duplicate a list of properties */
+GList *imquic_moq_properties_duplicate(GList *properties);
+/* Helper to destroy an object property */
+void imquic_moq_property_cleanup(imquic_moq_property *property);
 
 /* Helpers to deal with auth info */
 int imquic_moq_auth_info_to_bytes(imquic_connection *conn, const char *auth_info, uint8_t *auth, size_t *authlen);
