@@ -1122,9 +1122,10 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
  * @param blen The size of the buffer
  * @param properties The buffer containing the properties, if any
  * @param prlen The size of the properties buffer
+ * @param prefix If we need the length prefix (for object properties) or not (track properties)
  * @returns The size of the generated properties block, if successful, or 0 otherwise */
 size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint8_t *properties, size_t prlen);
+	uint8_t *properties, size_t prlen, gboolean prefix);
 ///@}
 
 /** @name Parsing and building MoQ setup options (TLV)

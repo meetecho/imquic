@@ -2546,14 +2546,10 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH parameters");
 	}
-	size_t prop_offset = 0, prop_len = 0;
-	prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || (prop_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken PUBLISH");
-	offset += length;
+	size_t prop_len = blen-offset;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), prop_len);
-	prop_offset = offset;
-	IMQUIC_MOQ_CHECK_ERR(prop_len > blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	size_t prop_offset = prop_len > 0 ? offset : 0;
 	offset += prop_len;
 	GList *track_properties = NULL;
 	if(prop_offset > 0 && prop_len > 0) {
@@ -2867,14 +2863,10 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream 
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_OK parameters");
 	}
-	size_t prop_offset = 0, prop_len = 0;
-	prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || (prop_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken SUBSCRIBE_OK");
-	offset += length;
+	size_t prop_len = blen-offset;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), prop_len);
-	prop_offset = offset;
-	IMQUIC_MOQ_CHECK_ERR(prop_len > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
+	size_t prop_offset = prop_len > 0 ? offset : 0;
 	offset += prop_len;
 	GList *track_properties = NULL;
 	if(prop_offset > 0 && prop_len > 0) {
@@ -3450,14 +3442,10 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing FETCH_OK parameters");
 	}
-	size_t prop_offset = 0, prop_len = 0;
-	prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || (prop_len > 0 && length >= blen-offset), NULL, 0, 0, "Broken FETCH_OK");
-	offset += length;
+	size_t prop_len = blen-offset;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), prop_len);
-	prop_offset = offset;
-	IMQUIC_MOQ_CHECK_ERR(prop_len > blen-offset, NULL, 0, 0, "Broken FETCH_OK");
+	size_t prop_offset = prop_len > 0 ? offset : 0;
 	offset += prop_len;
 	GList *track_properties = NULL;
 	if(prop_offset > 0 && prop_len > 0) {
@@ -4408,7 +4396,7 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	uint8_t properties[256];
 	size_t properties_len = 0;
 	properties_len = imquic_moq_build_properties(moq->version, track_properties, properties, sizeof(properties));
-	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len);
+	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len, FALSE);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4553,7 +4541,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	uint8_t properties[256];
 	size_t properties_len = 0;
 	properties_len = imquic_moq_build_properties(moq->version, track_properties, properties, sizeof(properties));
-	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len);
+	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len, FALSE);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4847,7 +4835,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq_s
 	uint8_t properties[256];
 	size_t properties_len = 0;
 	properties_len = imquic_moq_build_properties(moq->version, track_properties, properties, sizeof(properties));
-	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len);
+	offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len, FALSE);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4963,7 +4951,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 		offset++;
 	}
 	if(has_prop)
-		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
 	if(payload != NULL && plen > 0) {
 		memcpy(&bytes[offset], payload, plen);
 		offset += plen;
@@ -4998,7 +4986,7 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
 		offset++;
 	}
 	if(has_prop)
-		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
 	offset += imquic_write_moqint(moq->version, object_status, &bytes[offset], blen-offset);
 	return offset;
 }
@@ -5040,7 +5028,7 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq
 	gboolean has_prop = FALSE;
 	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_prop, NULL, NULL, NULL);
 	if(has_prop)
-		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_moqint(moq->version, plen, &bytes[offset], blen-offset);
@@ -5089,7 +5077,7 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 		offset++;
 	}
 	if(has_prop)
-		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen);
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_moqint(moq->version, plen, &bytes[offset], blen-offset);
@@ -5103,7 +5091,7 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 }
 
 size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint8_t *properties, size_t prlen) {
+		uint8_t *properties, size_t prlen, gboolean prefix) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't serialize MoQ properties: invalid arguments\n",
 			imquic_get_connection_name(moq->conn));
@@ -5114,7 +5102,8 @@ size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t
 		prlen = 0;
 	}
 	size_t offset = 0;
-	offset += imquic_write_moqint(moq->version, prlen, &bytes[offset], blen-offset);
+	if(prefix)
+		offset += imquic_write_moqint(moq->version, prlen, &bytes[offset], blen-offset);
 	if(properties != NULL && prlen > 0) {
 		memcpy(&bytes[offset], properties, prlen);
 		offset += prlen;
