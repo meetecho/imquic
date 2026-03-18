@@ -440,6 +440,7 @@ void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_i
 		imquic_mutex_unlock(&moq->mutex);
 		return;
 	}
+	imquic_mutex_unlock(&moq->mutex);
 	/* If we got here, a request bidirectional STREAM was closed */
 	imquic_moq_request_stream_closed(moq, moq_stream);
 }
@@ -467,6 +468,7 @@ void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_i
 		imquic_mutex_unlock(&moq->mutex);
 		return;
 	}
+	imquic_mutex_unlock(&moq->mutex);
 	/* If we got here, a request bidirectional STREAM was closed */
 	imquic_moq_request_stream_closed(moq, moq_stream);
 }
