@@ -39,8 +39,8 @@ void imquic_moq_deinit(void);
 
 /*! \brief MoQ messages */
 typedef enum imquic_moq_message_type {
-	IMQUIC_MOQ_REQUEST_OK = 0x5,
-	IMQUIC_MOQ_REQUEST_ERROR = 0x7,
+	IMQUIC_MOQ_REQUEST_OK = 0x7,
+	IMQUIC_MOQ_REQUEST_ERROR = 0x5,
 	IMQUIC_MOQ_REQUEST_UPDATE = 0x2,
 	IMQUIC_MOQ_SUBSCRIBE = 0x3,
 	IMQUIC_MOQ_SUBSCRIBE_OK = 0x4,
