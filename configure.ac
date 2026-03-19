@@ -101,14 +101,16 @@ PICOQUIC_DIR="$ROOT_FOLDER/picoquic"
 PICOTLS_DIR="$PICOQUIC_DIR/_deps/picotls-build/"
 PICOQUIC_CFLAGS="-I$PICOQUIC_DIR/picoquic -I$PICOQUIC_DIR/loglib"
 AC_SUBST(PICOQUIC_CFLAGS)
-PICOQUIC_LIBS="-L$PICOQUIC_DIR -L$PICOTLS_DIR -lpicohttp-core -lpicoquic-log -lpicoquic-core -lpicotls-core -lpicotls-minicrypto -lpicotls-fusion -lpicotls-openssl"
-AC_SUBST(PICOQUIC_LIBS)
 AC_CHECK_HEADERS([${PICOQUIC_DIR}/picoquic/picoquic.h],
                  [],
 	             [AC_MSG_ERROR([picoquic headers not found in ${PICOQUIC_DIR}. See README.md for installation instructions])])
 AC_CHECK_FILE([${PICOQUIC_DIR}/libpicoquic-core.a],
               [],
 	          [AC_MSG_ERROR([picoquic not found in ${PICOQUIC_DIR}. See README.md for installation instructions])])
+AC_CHECK_FILE([${PICOQUIC_DIR}/_deps/picotls-build/libpicotls-fusion.a],
+              [PICOQUIC_LIBS="-L$PICOQUIC_DIR -L$PICOTLS_DIR -lpicohttp-core -lpicoquic-log -lpicoquic-core -lpicotls-core -lpicotls-minicrypto -lpicotls-fusion -lpicotls-openssl"],
+	          [PICOQUIC_LIBS="-L$PICOQUIC_DIR -L$PICOTLS_DIR -lpicohttp-core -lpicoquic-log -lpicoquic-core -lpicotls-core -lpicotls-minicrypto -lpicotls-openssl"])
+AC_SUBST(PICOQUIC_LIBS)
 
 AC_ARG_ENABLE([qlog],
               [AS_HELP_STRING([--enable-qlog],
