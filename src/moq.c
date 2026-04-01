@@ -462,7 +462,6 @@ void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_i
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Got STOP_SENDING for STREAM %"SCNu64": %"SCNu64" (%s)\n",
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
-	imquic_mutex_unlock(&moq->mutex);
 	if(moq_stream->request_type == 0) {
 		/* FIXME Not a request stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
