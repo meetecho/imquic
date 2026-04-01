@@ -6721,7 +6721,7 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
 	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || moq_stream->request_sender ||
 			(moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT) ||
-			!imquic_moq_namespace_contains(moq_stream->namespace_prefix, tns)) {
+			!imquic_moq_namespace_contains(moq_stream->namespace_prefix_size > 0 ? moq_stream->namespace_prefix : NULL, tns)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 			imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
 		imquic_mutex_unlock(&moq->mutex);
@@ -6761,7 +6761,7 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
 	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || moq_stream->request_sender ||
 			(moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT) ||
-			!imquic_moq_namespace_contains(moq_stream->namespace_prefix, tns)) {
+			!imquic_moq_namespace_contains(moq_stream->namespace_prefix_size > 0 ? moq_stream->namespace_prefix : NULL, tns)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 			imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
 		imquic_mutex_unlock(&moq->mutex);
@@ -6802,7 +6802,7 @@ int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_
 	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
 	if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE || moq_stream->request_sender ||
 			(moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT) ||
-			!imquic_moq_namespace_contains(moq_stream->namespace_prefix, tns)) {
+			!imquic_moq_namespace_contains(moq_stream->namespace_prefix_size > 0 ? moq_stream->namespace_prefix : NULL, tns)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 			imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
 		imquic_mutex_unlock(&moq->mutex);
