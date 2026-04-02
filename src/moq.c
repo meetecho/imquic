@@ -1793,6 +1793,10 @@ next:
 					imquic_refcount_decrease(&moq_stream->ref);
 				return -1;
 			}
+			if(parsed == 0) {
+				/* We don't have enough data yet */
+				goto done;
+			}
 		}
 		if(parsed == parsed_prev) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Broken MoQ message (didn't advance from offset %zu/%zu)\n",
@@ -3721,10 +3725,10 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 }
 
 size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error) {
-	if(error)
-		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 4)
 		return 0;
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -3885,10 +3889,10 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 }
 
 size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error) {
-	if(error)
-		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
 		return 0;
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
