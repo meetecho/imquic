@@ -172,7 +172,6 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating QLOG file(s) in '%s'\n", options.qlog_path);
 		if(options.qlog_sequential)
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using sequential JSON\n");
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Logging QUIC events\n");
 		int i = 0;
 		while(options.qlog_logging != NULL && options.qlog_logging[i] != NULL) {
 			if(!strcasecmp(options.qlog_logging[i], "quic")) {
