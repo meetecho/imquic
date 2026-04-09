@@ -305,7 +305,13 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		/* FIXME We have incoming DATAGRAM data */
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Incoming DATAGRAM data (%zu bytes)\n",
 			name, blen);
-		imquic_connection_notify_datagram_incoming(conn, bytes, blen);
+		if(conn->http3 != NULL) {
+			/* Process the data as HTTP/3 */
+			imquic_http3_process_datagram(conn, bytes, blen);
+		} else {
+			/* Pass the data to the application callback */
+			imquic_connection_notify_datagram_incoming(conn, bytes, blen);
+		}
 	} else if(fin_or_event == picoquic_callback_stream_data || fin_or_event == picoquic_callback_stream_fin) {
 		/* FIXME We have incoming STREAM data */
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Incoming STREAM data (stream %"SCNu64", %zu bytes)\n",

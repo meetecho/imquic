@@ -182,6 +182,11 @@ void imquic_http3_connection_destroy(imquic_http3_connection *h3c);
  * @param blen Size of the data to process
  * @param new_stream Whether this data opened a new stream  */
 void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *stream, uint8_t *bytes, size_t blen, gboolean new_stream);
+/*! \brief Callback invoked by the core when there's incoming \c DATAGRAM data to process on an existing connection
+ * @param conn The imquic_connection instance the data has been received on
+ * @param bytes Data to process
+ * @param blen Size of the data to process  */
+void imquic_http3_process_datagram(imquic_connection *conn, uint8_t *bytes, size_t blen);
 
 /** @name Parsing HTTP/3 messages
  */

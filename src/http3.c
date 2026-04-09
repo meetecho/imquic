@@ -405,6 +405,20 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 	}
 }
 
+void imquic_http3_process_datagram(imquic_connection *conn, uint8_t *bytes, size_t blen) {
+	if(conn == NULL || conn->http3 == NULL || bytes == NULL || blen == 0)
+		return;
+	imquic_http3_connection *h3c = conn->http3;
+	/* FIXME Skip the Quarter Stream ID */
+	uint8_t length = 0;
+	uint64_t qs_id = imquic_read_varint(bytes, blen, &length);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Skipping Quarter Stream ID (%"SCNu64")\n",
+		imquic_get_connection_name(h3c->conn), qs_id);
+	/* Pass the data to the application callback */
+	if(blen-length > 0)
+		imquic_connection_notify_datagram_incoming(conn, &bytes[length], blen-length);
+}
+
 /* HTTP/3 request/response parsing */
 int imquic_http3_parse_request(imquic_http3_connection *h3c, imquic_stream *stream, uint8_t *bytes, size_t blen) {
 	if(bytes == NULL || blen < 1)
