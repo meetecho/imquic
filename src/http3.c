@@ -287,7 +287,7 @@ const char *imquic_http3_error_code_str(imquic_http3_error_code type) {
 
 /* Processing incoming data */
 void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *stream, uint8_t *bytes, size_t blen, gboolean new_stream) {
-	if(conn == NULL || conn->http3 == NULL || stream == NULL || bytes == NULL || blen == 0)
+	if(conn == NULL || conn->http3 == NULL || stream == NULL)
 		return;
 	imquic_http3_connection *h3c = conn->http3;
 	if(new_stream) {
