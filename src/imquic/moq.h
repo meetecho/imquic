@@ -461,6 +461,18 @@ typedef struct imquic_moq_request_parameters {
 	gboolean delivery_timeout_set;
 	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
 	uint64_t delivery_timeout;
+	/*! \brief Whether the OBJECT_DELIVERY_TIMEOUT parameter is set */
+	gboolean object_delivery_timeout_set;
+	/*! \brief Value of the OBJECT_DELIVERY_TIMEOUT parameter */
+	uint64_t object_delivery_timeout;
+	/*! \brief Whether the SUBGROUP_DELIVERY_TIMEOUT parameter is set */
+	gboolean subgroup_delivery_timeout_set;
+	/*! \brief Value of the SUBGROUP_DELIVERY_TIMEOUT parameter */
+	uint64_t subgroup_delivery_timeout;
+	/*! \brief Whether the FILL_TIMEOUT parameter is set */
+	gboolean fill_timeout_set;
+	/*! \brief Value of the FILL_TIMEOUT parameter */
+	uint64_t fill_timeout;
 	/*! \brief Whether the RENDEZVOUS_TIMEOUT parameter is set */
 	gboolean rendezvous_timeout_set;
 	/*! \brief Value of the RENDEZVOUS_TIMEOUT parameter */
@@ -493,6 +505,10 @@ typedef struct imquic_moq_request_parameters {
 	gboolean new_group_request_set;
 	/*! \brief Value of the NEW_GROUP_REQUEST parameter */
 	uint64_t new_group_request;
+	/*! \brief Whether the TRACK_NAMESPACE_PREFIX parameter is set */
+	gboolean track_namespace_prefix_set;
+	/*! \brief Value of the TRACK_NAMESPACE_PREFIX parameter */
+	imquic_moq_namespace track_namespace_prefix[32];
 	/*! \brief Whether there's unknown parameters
 	 * \note Only set by the stack, ignored if set by the application */
 	gboolean unknown;
@@ -554,10 +570,14 @@ typedef struct imquic_moq_property {
  * \note The library will not try to interpret properties and their
  * payload: this is always left up to applications */
 typedef enum imquic_moq_property_type {
-	/* Delivery Timeout */
-	IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT = 0x02,
+	/* Object Delivery Timeout (added in v18) */
+	IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT = 0x02,
+		/* Delivery Timeout (deprecated in v18) */
+		IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT = 0x02,
 	/* Max Cache Duration */
 	IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION = 0x04,
+	/* Subgroup Delivery Timeout (added in v18) */
+	IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT = 0x06,
 	/* Default Publisher Priority */
 	IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
 	/* Default Group Order */
@@ -572,9 +592,10 @@ typedef enum imquic_moq_property_type {
 	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
+ * @param version The version of the connection
  * @param type The imquic_moq_property_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_property_type_str(imquic_moq_property_type type);
+const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_property_type type);
 
 /*! \brief MoQ Object
  * \note This may contain info related to different MoQ versions, and so
@@ -716,6 +737,8 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,
 	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
 	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
+	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
+	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
 } imquic_moq_request_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
  * @param code The imquic_moq_request_error_code value
@@ -729,8 +752,8 @@ typedef enum imquic_moq_pub_done_code {
 	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
 	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,
 	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
-	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x5,
-	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x6,
+	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,	/* Swapped in v18 */
+	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,	/* Swapped in v18 */
 	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
 	IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD = 0x9,
 	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
@@ -746,8 +769,10 @@ typedef enum imquic_moq_reset_stream_code {
 	IMQUIC_MOQ_RESET_CANCELLED = 0x1,
 	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
 	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
-	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x4,
+	IMQUIC_MOQ_RESET_GOING_AWAY = 0x4,	/* Added in v18 */
 	IMQUIC_MOQ_RESET_TOO_FAR_BEHIND = 0x5,
+	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x6,	/* Value changed in v18 */
+	IMQUIC_MOQ_RESET_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v18 */
 	IMQUIC_MOQ_RESET_EXCESSIVE_LOAD = 0x9,
 	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
 } imquic_moq_reset_stream_code;

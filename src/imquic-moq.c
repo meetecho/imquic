@@ -880,12 +880,14 @@ const char *imquic_moq_object_status_str(imquic_moq_object_status status) {
 }
 
 /* Property types  */
-const char *imquic_moq_property_type_str(imquic_moq_property_type type) {
+const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_property_type type) {
 	switch(type) {
-		case IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT:
-			return "Delivery Timeout";
+		case IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT:
+			return (version >= IMQUIC_MOQ_VERSION_18 ? "Object Delivery Timeout" : "Delivery Timeout");
 		case IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION:
 			return "Max Cache Duration";
+		case IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT:
+			return "Subgroup Delivery Timeout";
 		case IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY:
 			return "Default Publisher Priority";
 		case IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER:

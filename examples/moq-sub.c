@@ -336,7 +336,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 			parameters->largest_object.group, parameters->largest_object.object);
 	}
 	if(track_properties != NULL)
-		imquic_moq_properties_print(track_properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
 	if(options.fetch != NULL && options.join_offset >= 0) {
 		/* Send a Joining Fetch referencing this subscription */
 		imquic_moq_request_parameters fparams;
@@ -393,7 +393,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
 	if(track_properties != NULL)
-		imquic_moq_properties_print(track_properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
@@ -432,7 +432,7 @@ static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request
 		imquic_moq_group_order_str(parameters->group_order),
 		largest->group, largest->object, g_list_length(track_properties));
 	if(track_properties != NULL)
-		imquic_moq_properties_print(track_properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
 }
 
 static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
@@ -474,7 +474,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		return;
 	}
 	if(object->properties != NULL)
-		imquic_moq_properties_print(object->properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), object->properties);
 	if(file != NULL)
 		fwrite(object->payload, 1, object->payload_len, file);
 	if(payload_type == DEMO_TYPE_TEXT) {

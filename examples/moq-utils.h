@@ -22,7 +22,7 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object);
 void imquic_moq_object_cleanup(imquic_moq_object *object);
 
 /* Helper to print a list of properties */
-void imquic_moq_properties_print(GList *properties);
+void imquic_moq_properties_print(imquic_moq_version version, GList *properties);
 /* Helper to duplicate a list of properties */
 GList *imquic_moq_properties_duplicate(GList *properties);
 /* Helper to destroy an object property */

@@ -27,11 +27,11 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 }
 
 /* Helper to print a list of properties */
-void imquic_moq_properties_print(GList *properties) {
+void imquic_moq_properties_print(imquic_moq_version version, GList *properties) {
 	GList *temp = properties;
 	while(temp) {
 		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
-		const char *prop_name = imquic_moq_property_type_str(prop->id);
+		const char *prop_name = imquic_moq_property_type_str(version, prop->id);
 		if(prop->id % 2 == 0) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Property '%"SCNu32"' (%s) = %"SCNu64"\n",
 				prop->id, (prop_name ? prop_name : "unknown"), prop->value.number);
