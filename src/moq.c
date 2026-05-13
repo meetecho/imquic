@@ -2367,7 +2367,7 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, imquic_moq_st
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
+	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 		offset += length;
@@ -2397,7 +2397,7 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, imquic_moq_st
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "publish_namespace");
 		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0], "track_namespace");
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
@@ -2419,7 +2419,7 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, imquic_moq_st
 	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish_namespace) {
-		moq->conn->socket->callbacks.moq.incoming_publish_namespace(moq->conn, request_id, required_id_delta, &tns[0], &parameters);
+		moq->conn->socket->callbacks.moq.incoming_publish_namespace(moq->conn, request_id, &tns[0], &parameters);
 	} else {
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_publish_namespace(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0);
@@ -2519,7 +2519,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
+	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
 		offset += length;
@@ -2567,7 +2567,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "publish");
 		json_t *message = imquic_qlog_moq_message_prepare("publish");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0], "track_namespace");
 		imquic_qlog_moq_message_add_track(message, &tn);
@@ -2593,7 +2593,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish) {
 		moq->conn->socket->callbacks.moq.incoming_publish(moq->conn,
-			request_id, required_id_delta, &tns[0], &tn, track_alias, &parameters, track_properties);
+			request_id, &tns[0], &tn, track_alias, &parameters, track_properties);
 	} else {
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_publish(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0);
@@ -2675,7 +2675,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
+	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += length;
@@ -2709,7 +2709,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subscribe");
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0], "track_namespace");
 		imquic_qlog_moq_message_add_track(message, &tn);
@@ -2738,7 +2738,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe) {
 		moq->conn->socket->callbacks.moq.incoming_subscribe(moq->conn,
-			request_id, required_id_delta, &tns[0], &tn, &parameters);
+			request_id, &tns[0], &tn, &parameters);
 	} else {
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0);
@@ -2771,7 +2771,7 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subscription Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), sub_request_id);
-	} else {
+	} else if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
 		offset += length;
@@ -2798,7 +2798,7 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 			json_object_set_new(message, "subscription_request_id", json_integer(sub_request_id));
-		} else {
+		} else if(moq->version == IMQUIC_MOQ_VERSION_17) {
 			json_object_set_new(message, "required_request_id_delta", json_integer(sub_request_id));
 		}
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
@@ -2819,7 +2819,7 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		g_hash_table_insert(moq->update_requests, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
 		imquic_mutex_unlock(&moq->mutex);
 		moq->conn->socket->callbacks.moq.request_updated(moq->conn,
-			request_id, sub_request_id, required_id_delta, &parameters);
+			request_id, sub_request_id, &parameters);
 	} else {
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_request_update(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0);
@@ -3027,7 +3027,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
+	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
 		offset += length;
@@ -3060,7 +3060,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subscribe_namespace");
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_namespace");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
 		imquic_qlog_moq_message_add_namespace(message, &tns[0], "track_namespace_prefix");
 		json_object_set_new(message, "subscribe_options", json_integer(subscribe_options));
@@ -3088,7 +3088,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_namespace) {
 		moq->conn->socket->callbacks.moq.incoming_subscribe_namespace(moq->conn,
-			request_id, required_id_delta,
+			request_id,
 			(tns_num > 0 ? &tns[0] : NULL),
 			subscribe_options, &parameters);
 	} else {
@@ -3224,7 +3224,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
+	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
 		offset += length;
@@ -3297,7 +3297,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "fetch");
 		json_t *message = imquic_qlog_moq_message_prepare("fetch");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
 		json_object_set_new(message, "fetch_type", json_integer(type));
 		if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
@@ -3338,7 +3338,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_standalone_fetch) {
 			moq->conn->socket->callbacks.moq.incoming_standalone_fetch(moq->conn,
-				request_id, required_id_delta, &tns[0], &tn, &range, &parameters);
+				request_id, &tns[0], &tn, &range, &parameters);
 		} else {
 			/* No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_fetch(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0);
@@ -3346,7 +3346,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	} else {
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_joining_fetch) {
 			moq->conn->socket->callbacks.moq.incoming_joining_fetch(moq->conn,
-				request_id, required_id_delta, joining_request_id,
+				request_id, joining_request_id,
 				(type == IMQUIC_MOQ_FETCH_JOINING_ABSOLUTE), joining_start, &parameters);
 		} else {
 			/* No handler for this request, let's reject it ourselves */
@@ -4293,7 +4293,7 @@ size_t imquic_moq_add_request_error(imquic_moq_context *moq, imquic_moq_stream *
 }
 
 size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
-		uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *track_namespace, imquic_moq_request_parameters *parameters) {
+		uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
 			 (moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
@@ -4303,8 +4303,8 @@ size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, imquic_moq_stre
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_PUBLISH_NAMESPACE);
 	offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
-	if(moq->version >= IMQUIC_MOQ_VERSION_17)
-		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
+	if(moq->version == IMQUIC_MOQ_VERSION_17)
+		offset += imquic_write_moqint(moq->version, 0, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_NAMESPACE);
 	uint8_t params_num = 0;
 	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_PUBLISH_NAMESPACE, parameters, &bytes[offset], blen-offset, &params_num);
@@ -4315,8 +4315,8 @@ size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, imquic_moq_stre
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, TRUE, moq_stream->stream_id, "publish_namespace");
 		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
-			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "required_request_id_delta", json_integer(0));
 		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace");
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
@@ -4378,7 +4378,7 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
 	return offset;
 }
 
-size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t required_id_delta,
+size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint64_t request_id,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
 			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0) ||
@@ -4390,8 +4390,8 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_PUBLISH);
 	offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
-	if(moq->version >= IMQUIC_MOQ_VERSION_17)
-		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
+	if(moq->version == IMQUIC_MOQ_VERSION_17)
+		offset += imquic_write_moqint(moq->version, 0, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH);
 	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_PUBLISH);
 	offset += imquic_write_moqint(moq->version, track_alias, &bytes[offset], blen-offset);
@@ -4409,8 +4409,8 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_st
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, TRUE, moq_stream->stream_id, "publish");
 		json_t *message = imquic_qlog_moq_message_prepare("publish");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
-			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "required_request_id_delta", json_integer(0));
 		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace");
 		imquic_qlog_moq_message_add_track(message, track_name);
 		json_object_set_new(message, "track_alias", json_integer(track_alias));
@@ -4454,7 +4454,7 @@ size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 }
 
 size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-		uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t required_id_delta,
+		uint8_t *bytes, size_t blen, uint64_t request_id,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
 			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0) ||
@@ -4466,8 +4466,8 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_SUBSCRIBE);
 	offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
-	if(moq->version >= IMQUIC_MOQ_VERSION_17)
-		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
+	if(moq->version == IMQUIC_MOQ_VERSION_17)
+		offset += imquic_write_moqint(moq->version, 0, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE);
 	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_SUBSCRIBE);
 	uint8_t params_num = 0;
@@ -4479,8 +4479,8 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, TRUE, moq_stream->stream_id, "subscribe");
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
-			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "required_request_id_delta", json_integer(0));
 		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace");
 		imquic_qlog_moq_message_add_track(message, track_name);
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
@@ -4493,7 +4493,7 @@ size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_
 }
 
 size_t imquic_moq_add_request_update(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
-		uint64_t request_id, uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters) {
+		uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || (moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_REQUEST_UPDATE, moq->version));
@@ -4504,8 +4504,8 @@ size_t imquic_moq_add_request_update(imquic_moq_context *moq, imquic_moq_stream 
 	offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		offset += imquic_write_moqint(moq->version, sub_request_id, &bytes[offset], blen-offset);
-	} else {
-		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
+	} else if(moq->version == IMQUIC_MOQ_VERSION_17) {
+		offset += imquic_write_moqint(moq->version, 0, &bytes[offset], blen-offset);
 	}
 	uint8_t params_num = 0;
 	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_REQUEST_UPDATE, parameters, &bytes[offset], blen-offset, &params_num);
@@ -4516,8 +4516,8 @@ size_t imquic_moq_add_request_update(imquic_moq_context *moq, imquic_moq_stream 
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 			json_object_set_new(message, "subscription_request_id", json_integer(sub_request_id));
-		} else {
-			json_object_set_new(message, "required_request_id_delta", json_integer(sub_request_id));
+		} else if(moq->version == IMQUIC_MOQ_VERSION_17) {
+			json_object_set_new(message, "required_request_id_delta", json_integer(0));
 		}
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog,
@@ -4623,7 +4623,7 @@ size_t imquic_moq_add_publish_done(imquic_moq_context *moq, imquic_moq_stream *m
 }
 
 size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-		uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *track_namespace,
+		uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_namespace *track_namespace,
 		imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || moq_stream == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
@@ -4633,8 +4633,8 @@ size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, imquic_moq_st
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_SUBSCRIBE_NAMESPACE);
 	offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
-	if(moq->version >= IMQUIC_MOQ_VERSION_17)
-		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
+	if(moq->version == IMQUIC_MOQ_VERSION_17)
+		offset += imquic_write_moqint(moq->version, 0, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE_NAMESPACE);
 	offset += imquic_write_moqint(moq->version, subscribe_options, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
@@ -4645,8 +4645,8 @@ size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, imquic_moq_st
 		imquic_moq_qlog_stream_type_set(moq->conn->qlog, TRUE, moq_stream->stream_id, "subscribe_namespace");
 		json_t *message = imquic_qlog_moq_message_prepare("subscribe_namespace");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
-			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "required_request_id_delta", json_integer(0));
 		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace_prefix");
 		json_object_set_new(message, "subscribe_options", json_integer(subscribe_options));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
@@ -4730,7 +4730,7 @@ size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream
 
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 		uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
-		uint64_t request_id, uint64_t required_id_delta, uint64_t joining_request_id, uint64_t preceding_group_offset,
+		uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
 		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name,
 		imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || (range == NULL && type == IMQUIC_MOQ_FETCH_STANDALONE) ||
@@ -4753,8 +4753,8 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stre
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_FETCH);
 	offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
-	if(moq->version >= IMQUIC_MOQ_VERSION_17)
-		offset += imquic_write_moqint(moq->version, required_id_delta, &bytes[offset], blen-offset);
+	if(moq->version == IMQUIC_MOQ_VERSION_17)
+		offset += imquic_write_moqint(moq->version, 0, &bytes[offset], blen-offset);
 	offset += imquic_write_moqint(moq->version, type, &bytes[offset], blen-offset);
 	if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
 		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_FETCH);
@@ -4776,8 +4776,8 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stre
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, TRUE, moq_stream->stream_id, "fetch");
 		json_t *message = imquic_qlog_moq_message_prepare("fetch");
 		json_object_set_new(message, "request_id", json_integer(request_id));
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
-			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
+		if(moq->version == IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "required_request_id_delta", json_integer(0));
 		if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
 			imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace");
 			imquic_qlog_moq_message_add_track(message, track_name);
@@ -5786,7 +5786,7 @@ size_t imquic_moq_build_auth_token(imquic_moq_version version, imquic_moq_auth_t
 }
 
 /* Namespaces and subscriptions */
-int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -5826,7 +5826,7 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id, u
 	}
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t ann_len = imquic_moq_add_publish_namespace(moq, moq_stream, buffer, blen, request_id, required_id_delta, tns, parameters);
+	size_t ann_len = imquic_moq_add_publish_namespace(moq, moq_stream, buffer, blen, request_id, tns, parameters);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, ann_len, FALSE);
@@ -5963,7 +5963,7 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_
 	return 0;
 }
 
-int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *tns, imquic_moq_name *tn,
+int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -6012,7 +6012,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, uint64_t re
 	size_t blen = sizeof(buffer);
 	size_t sb_len = 0;
 	sb_len = imquic_moq_add_publish(moq, moq_stream, buffer, blen,
-		request_id, required_id_delta, tns, tn, track_alias, parameters, track_properties);
+		request_id, tns, tn, track_alias, parameters, track_properties);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, sb_len, FALSE);
@@ -6116,7 +6116,7 @@ int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
 	return 0;
 }
 
-int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -6168,7 +6168,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t 
 	size_t blen = sizeof(buffer);
 	size_t sb_len = 0;
 	sb_len = imquic_moq_add_subscribe(moq, moq_stream, buffer, blen,
-		request_id, required_id_delta, tns, tn, parameters);
+		request_id, tns, tn, parameters);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, sb_len, FALSE);
@@ -6272,7 +6272,7 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
 	return 0;
 }
 
-int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters) {
+int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
@@ -6318,7 +6318,7 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
 	size_t su_len = imquic_moq_add_request_update(moq, moq_stream, buffer, blen,
-		request_id, sub_request_id, required_id_delta, parameters);
+		request_id, sub_request_id, parameters);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, su_len, FALSE);
@@ -6532,7 +6532,7 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 	return 0;
 }
 
-int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -6580,7 +6580,7 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
 	size_t sb_len = 0;
-	sb_len = imquic_moq_add_subscribe_namespace(moq, moq_stream, buffer, blen, request_id, required_id_delta, tns, subscribe_options, parameters);
+	sb_len = imquic_moq_add_subscribe_namespace(moq, moq_stream, buffer, blen, request_id, tns, subscribe_options, parameters);
 	/* Track the request, and map it to the dedicated bidirectional STREAM */
 	moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_SENT;
 	moq_stream->request_id = request_id;
@@ -6832,7 +6832,7 @@ int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_
 	return 0;
 }
 
-int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -6875,7 +6875,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id, ui
 	size_t f_len = 0;
 	f_len = imquic_moq_add_fetch(moq, moq_stream, buffer, blen,
 		IMQUIC_MOQ_FETCH_STANDALONE,
-		request_id, required_id_delta,
+		request_id,
 		0, 0,	/* Ignored, as they're only used for Joining Fetch */
 		tns, tn,
 		range, parameters);
@@ -6887,7 +6887,7 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id, ui
 	return 0;
 }
 
-int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, uint64_t joining_request_id,
+int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -6930,7 +6930,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 	size_t f_len = 0;
 	f_len = imquic_moq_add_fetch(moq, moq_stream, buffer, blen,
 		(absolute ? IMQUIC_MOQ_FETCH_JOINING_ABSOLUTE : IMQUIC_MOQ_FETCH_JOINING_RELATIVE),
-		request_id, required_id_delta, joining_request_id, joining_start,
+		request_id, joining_request_id, joining_start,
 		NULL, NULL,	/* Ignored, as namespaces/track are only used for Standalone Fetch */
 		NULL,	/* Ignored, as the fetch range is only used for Standalone Fetch */
 		parameters);

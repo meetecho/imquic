@@ -307,7 +307,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
@@ -396,7 +396,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 }
 
 static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id,
-		uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters) {
+		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for subscription%"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id);
 	/* Find the subscriber */
@@ -438,7 +438,7 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
@@ -524,7 +524,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	}
 }
 
-static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, uint64_t joining_request_id ,
+static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id ,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters) {
 	/* We received a joining fetch */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",
