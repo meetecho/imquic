@@ -7469,7 +7469,7 @@ static uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, s
 		*length = 0;
 	if(bytes == NULL || blen == 0)
 		return 0;
-	if(bytes[0] == 0xFC) {
+	if(bytes[0] == 0xFC && version < IMQUIC_MOQ_VERSION_18) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid moqint code point\n");
 		return 0;
 	}
@@ -7490,6 +7490,8 @@ static uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, s
 		len = 5;
 	} else if((bytes[0] >> 2) == 0x3E) {
 		len = 6;
+	} else if((bytes[0] >> 1) == 0x7E) {
+		len = 7;
 	} else if((bytes[0]) == 0xFE) {
 		len = 8;
 	} else if((bytes[0]) == 0xFF) {
@@ -7574,6 +7576,16 @@ static uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, 
 		memcpy(bytes, ((uint8_t*)&number) + 2, 6);
 		*bytes += 31 << 3;
 		return 6;
+	} else if(number <= 562949953421311 && version >= IMQUIC_MOQ_VERSION_18) {
+		/* Let's use seven bytes */
+		if(blen < 7) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough room to write moqint '%"SCNu64"' (need at least 7 bytes)\n", number);
+			return 0;
+		}
+		number = htonll(number);
+		memcpy(bytes, ((uint8_t*)&number) + 1, 7);
+		*bytes += 63 << 2;
+		return 7;
 	} else if(number <= 72057594037927935) {
 		/* Let's use eight bytes */
 		if(blen < 8) {
