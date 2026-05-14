@@ -51,7 +51,9 @@ typedef enum imquic_moq_message_type {
 		IMQUIC_MOQ_PUBLISH_NAMESPACE_CANCEL = 0xc,	/* Deprecated in v17 */
 	IMQUIC_MOQ_TRACK_STATUS = 0xd,
 	IMQUIC_MOQ_GOAWAY = 0x10,
-	IMQUIC_MOQ_SUBSCRIBE_NAMESPACE = 0x11,
+	IMQUIC_MOQ_SUBSCRIBE_NAMESPACE = 0x50,			/* Added in v18 */
+		IMQUIC_MOQ_SUBSCRIBE_NAMESPACE_v17 = 0x11,	/* Deprecated in v18 */
+	IMQUIC_MOQ_SUBSCRIBE_TRACKS = 0x51,				/* Added in v18 */
 	IMQUIC_MOQ_NAMESPACE = 0x8,
 	IMQUIC_MOQ_NAMESPACE_DONE = 0xe,
 	IMQUIC_MOQ_PUBLISH_BLOCKED = 0xf,
@@ -620,6 +622,14 @@ size_t imquic_moq_parse_publish_done(imquic_moq_context *moq, imquic_moq_stream 
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c SUBSCRIBE_TRACKS message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] moq_stream The imquic_moq_stream instance the message came from
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c NAMESPACE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_stream instance the message came from
@@ -939,12 +949,24 @@ size_t imquic_moq_add_publish_done(imquic_moq_context *moq, imquic_moq_stream *m
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
  * @param track_namespace The namespace to put in the message
- * @param subscribe_options The subscribe options to put in the message
+ * @param subscribe_options The subscribe options to put in the message (deprecated in v18)
  * @param parameters The parameters to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t request_id,
 	imquic_moq_namespace *track_namespace, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters);
+/*! \brief Helper to add a \c SUBSCRIBE_TRACKS message to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param moq_stream The imquic_moq_stream instance the message is for
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message
+ * @param track_namespace The namespace to put in the message
+ * @param parameters The parameters to add, if any
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_subscribe_tracks(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+	uint8_t *bytes, size_t blen, uint64_t request_id,
+	imquic_moq_namespace *track_namespace, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c NAMESPACE_DONE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -1325,6 +1347,15 @@ typedef struct imquic_moq_callbacks {
 	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c UNSUBSCRIBE_NAMESPACE messages, or when the bidirectional stream is closed */
 	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id);
+	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_TRACKS messages */
+	void (* incoming_subscribe_tracks)(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
+	/*! \brief Callback function to be notified when a \c SUBSCRIBE_TRACKS has been accepted */
+	void (* subscribe_tracks_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
+	/*! \brief Callback function to be notified when a \c SUBSCRIBE_TRACKS returned an error */
+	void (* subscribe_tracks_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	/*! \brief Callback function to be notified the \c SUBSCRIBE_TRACKS bidirectional stream is closed */
+	void (* incoming_unsubscribe_tracks)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c NAMESPACE messages */
 	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c NAMESPACE_DONE messages */

@@ -181,13 +181,20 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		}
 	}
 	if(options.subscribe_namespace) {
-		/* Only send a SUBSCRIBE_NAMESPACE: the relay will send us a
-		 * PUBLISH request when there's something we can subscribe to */
+		/* Only send a SUBSCRIBE_NAMESPACE and/or a SUBSCRIBE_TRACKS: the relay will
+		 * send us a PUBLISH request when there's something we can subscribe to */
 		params.forward_set = TRUE;
 		params.forward = TRUE;
 		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
 			params.forward = FALSE;
-		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), sub_namespace, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
+		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
+			/* Older versions of MoQ used SUBSCRIBE_NAMESPACE to get PUBLISH too */
+			imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), sub_namespace, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
+		} else {
+			/* Use SUBSCRIBE_TRACKS for PUBLISH, but send a SUBSCRIBE_NAMESPACE too just for testing */
+			imquic_moq_subscribe_tracks(conn, imquic_moq_get_next_request_id(conn), sub_namespace, &params);
+			imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), sub_namespace, IMQUIC_MOQ_WANT_NAMESPACE, &params);
+		}
 		return;
 	}
 	/* Parameters in case we need to FETCH */
@@ -446,12 +453,29 @@ static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id
 }
 
 static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
-		imquic_get_connection_name(conn), request_id);
+	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' accepted, waiting for NAMESPACE events and PUBLISH requests\n",
+			imquic_get_connection_name(conn), request_id);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' accepted, waiting for NAMESPACE events\n",
+			imquic_get_connection_name(conn), request_id);
+	}
 }
 
 static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
+		imquic_get_connection_name(conn), request_id, error_code, reason);
+	/* Stop here */
+	g_atomic_int_inc(&stop);
+}
+
+static void imquic_demo_subscribe_tracks_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' tracks accepted, waiting for PUBLISH requests\n",
+		imquic_get_connection_name(conn), request_id);
+}
+
+static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace tracks in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
@@ -933,6 +957,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_fetch_error_cb(client, imquic_demo_fetch_error);
 	imquic_set_subscribe_namespace_accepted_cb(client, imquic_demo_subscribe_namespace_accepted);
 	imquic_set_subscribe_namespace_error_cb(client, imquic_demo_subscribe_namespace_error);
+	imquic_set_subscribe_tracks_accepted_cb(client, imquic_demo_subscribe_tracks_accepted);
+	imquic_set_subscribe_tracks_error_cb(client, imquic_demo_subscribe_tracks_error);
 	imquic_set_incoming_object_cb(client, imquic_demo_incoming_object);
 	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
 	imquic_set_connection_failed_cb(client, imquic_demo_connection_failed);

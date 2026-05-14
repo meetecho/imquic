@@ -1178,6 +1178,64 @@ static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, 
 	imquic_mutex_unlock(&mutex);
 }
 
+static void imquic_demo_incoming_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
+	/* We received a subscribe for a namespace tuple's tracks */
+	char tns_buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe_tracks(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for tracks of namespace prefix '%s'\n",
+		imquic_get_connection_name(conn), ns);
+	if(parameters->auth_token_set)
+		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
+	/* Keep track of this as a monitor */
+	imquic_mutex_lock(&mutex);
+	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns, IMQUIC_MOQ_WANT_PUBLISH);
+	if(parameters->forward_set)
+		mon->forward = parameters->forward;
+	monitors = g_list_prepend(monitors, mon);
+	imquic_moq_accept_subscribe_tracks(conn, request_id, NULL);
+	/* Check if there's events we can push and already tracks we can publish */
+	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	if(annc != NULL) {
+		imquic_demo_alert_monitors(annc, NULL, FALSE);
+		if(annc->tracks) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, annc->tracks);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				imquic_demo_moq_track *track = value;
+				imquic_demo_alert_monitors(NULL, track, FALSE);
+			}
+		}
+	}
+	imquic_mutex_unlock(&mutex);
+}
+
+static void imquic_demo_incoming_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id) {
+	/* We received an unsubscribe */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for namespace's tracks via ID %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id);
+	/* FIXME Get rid of the associated monitor */
+	imquic_demo_moq_monitor *mon = NULL;
+	imquic_mutex_lock(&mutex);
+	GList *temp = monitors;
+	while(temp) {
+		mon = (imquic_demo_moq_monitor *)temp->data;
+		if(conn == mon->conn && request_id == mon->request_id) {
+			monitors = g_list_delete_link(monitors, temp);
+			imquic_demo_moq_monitor_destroy(mon);
+			break;
+		}
+		temp = temp->next;
+	}
+	imquic_mutex_unlock(&mutex);
+}
+
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 		//~ gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
@@ -1622,6 +1680,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_subscribe_namespace_cb(server, imquic_demo_incoming_subscribe_namespace);
 	imquic_set_incoming_unsubscribe_namespace_cb(server, imquic_demo_incoming_unsubscribe_namespace);
+	imquic_set_incoming_subscribe_tracks_cb(server, imquic_demo_incoming_subscribe_tracks);
+	imquic_set_incoming_unsubscribe_tracks_cb(server, imquic_demo_incoming_unsubscribe_tracks);
 	imquic_set_incoming_standalone_fetch_cb(server, imquic_demo_incoming_standalone_fetch);
 	imquic_set_incoming_joining_fetch_cb(server, imquic_demo_incoming_joining_fetch);
 	imquic_set_incoming_fetch_cancel_cb(server, imquic_demo_incoming_fetch_cancel);

@@ -699,6 +699,51 @@ void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_incoming_subscribe_tracks_cb(imquic_endpoint *endpoint,
+		void (* incoming_subscribe_tracks)(imquic_connection *conn, uint64_t request_id,
+			imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_subscribe_tracks = incoming_subscribe_tracks;
+	}
+}
+
+void imquic_set_subscribe_tracks_accepted_cb(imquic_endpoint *endpoint,
+		void (* subscribe_tracks_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.subscribe_tracks_accepted = subscribe_tracks_accepted;
+	}
+}
+
+void imquic_set_subscribe_tracks_error_cb(imquic_endpoint *endpoint,
+		void (* subscribe_tracks_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.subscribe_tracks_error = subscribe_tracks_error;
+	}
+}
+
+void imquic_set_incoming_unsubscribe_tracks_cb(imquic_endpoint *endpoint,
+		void (* incoming_unsubscribe_tracks)(imquic_connection *conn, uint64_t request_id)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_unsubscribe_tracks = incoming_unsubscribe_tracks;
+	}
+}
+
 void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
 		void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns)) {
 	if(endpoint != NULL) {

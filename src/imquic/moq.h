@@ -443,7 +443,8 @@ typedef struct imquic_moq_subscription_filter {
 	uint64_t end_group;
 } imquic_moq_subscription_filter;
 
-/*! \brief Subscribe options for namespaces */
+/*! \brief Subscribe options for namespaces
+ * \note Deprecated in v18, since there's a separate \c SUBSRIBE_TRACK now */
 typedef enum imquic_moq_subscribe_namespace_options {
 	IMQUIC_MOQ_WANT_PUBLISH = 0x0,
 	IMQUIC_MOQ_WANT_NAMESPACE = 0x1,
@@ -1039,6 +1040,34 @@ void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_unsubscribe_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when there's
+ * an incoming \c SUBSCRIBE_TRACKS request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_subscribe_tracks Pointer to the function that will handle the incoming \c SUBSCRIBE_TRACKS */
+void imquic_set_incoming_subscribe_tracks_cb(imquic_endpoint *endpoint,
+	void (* incoming_subscribe_tracks)(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
+/*! \brief Configure the callback function to be notified when an
+ * \c SUBSCRIBE_TRACKS we previously sent was accepted
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param subscribe_tracks_accepted Pointer to the function that will fire when an \c SUBSCRIBE_TRACKS is accepted */
+void imquic_set_subscribe_tracks_accepted_cb(imquic_endpoint *endpoint,
+	void (* subscribe_tracks_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
+/*! \brief Configure the callback function to be notified when an
+ * \c SUBSCRIBE_TRACKS we previously sent was rejected with an error
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param subscribe_tracks_error Pointer to the function that will fire when an \c SUBSCRIBE_TRACKS is rejected */
+void imquic_set_subscribe_tracks_error_cb(imquic_endpoint *endpoint,
+	void (* subscribe_tracks_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c UNSUBSCRIBE_TRACKS request.
+ * \note On newer versions, \c UNSUBSCRIBE_TRACKS doesn't exist anymore,
+ * so this callback is only fired if the endpoint that sent the
+ * \c SUBSCRIBE_TRACKS closed the associated bidirectiomal stream.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_unsubscribe_tracks Pointer to the function that will handle the incoming \c UNSUBSCRIBE_TRACKS */
+void imquic_set_incoming_unsubscribe_tracks_cb(imquic_endpoint *endpoint,
+	void (* incoming_unsubscribe_tracks)(imquic_connection *conn, uint64_t request_id));
+/*! \brief Configure the callback function to be notified when there's
  * an incoming \c NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_namespace Pointer to the function that will handle the incoming \c NAMESPACE */
@@ -1297,7 +1326,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID
- * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
+ * @param tns The imquic_moq_namespace namespace to subscribe for
  * @param subscribe_options The subscribe options to add to the request
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1326,6 +1355,37 @@ int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t requ
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_id);
+/*! \brief Function to send a \c SUBSCRIBE_TRACKS request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id A unique request ID
+ * @param tns The imquic_moq_namespace namespace to subscribe for
+ * @param parameters The parameters to add to the request
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
+/*! \brief Function to accept an incoming \c SUBSCRIBE_TRACKS request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_TRACKS request
+ * @param parameters The parameters to add to the request
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_accept_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_request_parameters *parameters);
+/*! \brief Function to reject an incoming \c SUBSCRIBE_TRACKS request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_TRACKS request
+ * @param error_code The error code to send back
+ * @param reason A string representation of the error, if needed
+ * @param retry_interval Retry interval in ms
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_reject_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+/*! \brief Function to send a \c UNSUBSCRIBE_TRACKS request
+ * \note Starting in v16, this doesn't actually send a request, but simply
+ * closes the bidirectional STREAM that was created for the subscription
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The request ID of the original \c SUBSCRIBE_TRACKS request
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id);
 /*! \brief Function to send a \c NAMESPACE request
  * \note While the request itself doesn't contain the request ID, we use
  * it to find the subscription and use the right STREAM.
@@ -1352,7 +1412,7 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
  * Notice the method expects the full track namespace: the stack will strip
  * the prefix itself, before sending the actual message.
  * @param conn The imquic_connection to send the request on
- * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
+ * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE or \c SUBSCRIBE_TRACKS request
  * @param tns The imquic_moq_namespace namespace this request refers to
  * @param tn The imquic_moq_track track this request refers to
  * @returns 0 in case of success, a negative integer otherwise */
