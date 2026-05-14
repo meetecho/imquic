@@ -66,7 +66,7 @@ typedef enum imquic_moq_message_type {
 		IMQUIC_MOQ_CLIENT_SETUP = 0x20,				/* Deprecated in v17 */
 		IMQUIC_MOQ_SERVER_SETUP = 0x21,				/* Deprecated in v17 */
 	IMQUIC_MOQ_PUBLISH = 0x1D,
-	IMQUIC_MOQ_PUBLISH_OK = 0x1E,
+		IMQUIC_MOQ_PUBLISH_OK = 0x1E,				/* Deprecated in v18 */
 } imquic_moq_message_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_message_type value.
  * @param type The imquic_moq_message_type value
@@ -567,6 +567,7 @@ size_t imquic_moq_parse_publish_namespace_cancel(imquic_moq_context *moq, uint8_
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c PUBLISH_OK message
+ * \note Deprecated in v18
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_stream instance the message came from
  * @param[in] bytes The buffer containing the message to parse
@@ -875,6 +876,7 @@ size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, uint64_t track_alias,
 	imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Helper method to add a \c PUBLISH_OK message to a buffer
+ * \note Deprecated in v18
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
  * @param bytes The buffer to add the message to

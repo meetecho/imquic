@@ -1191,7 +1191,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		}
 		if(parameters->object_delivery_timeout_set && parameters->object_delivery_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT));
 		}
 		if(parameters->rendezvous_timeout_set && parameters->rendezvous_timeout > 0 &&
@@ -1200,19 +1200,20 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		}
 		if(parameters->subgroup_delivery_timeout_set && parameters->subgroup_delivery_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT));
 		}
 		if(parameters->subscriber_priority_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH ||
+					request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
 		}
 		if(parameters->group_order_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH)) {
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
 		}
 		if(parameters->subscription_filter_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER));
 		}
 		if(parameters->expires_set &&
@@ -1225,16 +1226,16 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		}
 		if(parameters->fill_timeout_set && parameters->fill_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT));
 		}
 		if(parameters->forward_set &&
-				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE ||
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE ||
 					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
 		}
 		if(parameters->new_group_request_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
 		}
 		if(parameters->track_namespace_prefix_set && moq->version >= IMQUIC_MOQ_VERSION_18 &&
@@ -1810,7 +1811,7 @@ next:
 			} else if(type == IMQUIC_MOQ_PUBLISH) {
 				/* Parse this PUBLISH message */
 				parsed = imquic_moq_parse_publish(moq, moq_stream, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_PUBLISH_OK) {
+			} else if(type == IMQUIC_MOQ_PUBLISH_OK && moq->version < IMQUIC_MOQ_VERSION_18) {
 				/* Parse this PUBLISH_OK message */
 				parsed = imquic_moq_parse_publish_ok(moq, moq_stream, &bytes[offset], plen, &error);
 			} else if(type == IMQUIC_MOQ_PUBLISH_DONE) {
@@ -2342,6 +2343,10 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	g_hash_table_remove(moq->requests, &request_id);
 	imquic_mutex_unlock(&moq->mutex);
 	switch(type) {
+		case IMQUIC_MOQ_PUBLISH:
+			if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_accepted)
+				moq->conn->socket->callbacks.moq.publish_accepted(moq->conn, request_id, &parameters);
+			break;
 		case IMQUIC_MOQ_PUBLISH_NAMESPACE:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_namespace_accepted)
 				moq->conn->socket->callbacks.moq.publish_namespace_accepted(moq->conn, request_id, &parameters);
@@ -6406,7 +6411,10 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
 	size_t sb_len = 0;
-	sb_len = imquic_moq_add_publish_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+	if(moq->version < IMQUIC_MOQ_VERSION_18)
+		sb_len = imquic_moq_add_publish_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+	else
+		sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, sb_len, FALSE);
