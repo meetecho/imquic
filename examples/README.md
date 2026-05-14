@@ -69,7 +69,6 @@ To build the Media Over QUIC (MoQ) examples, pass `--enable-moq-examples` to the
 
 * `imquic-moq-pob`, a basic MoQ publisher (basically a clone on `moq-clock` in [moq-rs](https://github.com/kixelated/moq-rs));
 * `imquic-moq-sub`, a basic MoQ subscriber (with support for a few different kinds of media);
-* `imquic-moq-test`, a basic MoQ publisher/subscriber that implements the [testing protocol](https://afrind.github.io/moq-test/draft-afrind-moq-test.html) draft (still WIP);
 * `imquic-moq-interop-test`, a client-side implementation of the [MoQ Interop Runner](https://github.com/englishm/moq-interop-runner/);
 * `imquic-moq-relay`, a basic MoQ relay.
 
@@ -94,13 +93,5 @@ Assuming Meta's [moxygen](https://github.com/facebookexperimental/moxygen) relay
 `imquic-moq-sub` also supports `FETCH` to obtain objects from a relay, both in standalone and (assuming v08 of the draft is used) joining mode. You enable `FETCH` by specifying the order you want using `-f`: by default this enables standalone fetch, but if you want a joining one (meaning a `SUBSCRIBE` is sent too) you also need to specify the preceding group offset via the `-j` property. This is an example of subscribing to the current time with a joining fetch that's just interested in all objects from the latest group (`-j 0`):
 
 	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -w -n clock -N now -t text -M 8 -f ascending -j 0
-
-`imquic-moq-test` implements the publisher side of the [MoQT tester draft](https://afrind.github.io/moq-test/). At the time of writing, even though it's a publisher, it acts as a QUIC and/or WebTransport server and never publish_namespaces any namespace, meaning it's expected that subscribers interested in testing it will need to connect to it directly, as part of point-to-point functional tests. This is an example of how it can be launched as a server that supports both raw QUIC and WebTransport (since both `-q` and `-w` are passed):
-
-	./examples/imquic-moq-test -c ../localhost.crt -k ../localhost.key -p 9000 -q -w
-
-You can then use the demo subscriber to specify which objects should be delivered and how by using the namespace tuple as specified in the draft, e.g.:
-
-	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -w -n moq-test-00 -n 0 -n 2 -n 1 -n 10 -n "" -n 6 -n 10 -n 2 -n 500 -n 2 -n 2 -n 1 -n 3 -n 3 -N ""
 
 `imquic-moq-interop-test` implements the client side of the [MoQ Interop Runner](https://github.com/englishm/moq-interop-runner/) framework. Its interface is standardized: you can find more details [here](https://github.com/meetecho/imquic/pull/21).
