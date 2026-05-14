@@ -266,6 +266,11 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 	/* We received an PUBLISH_NAMESPACE (older MoQ version) */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace via ID %"SCNu64": '%s'\n",
 		imquic_get_connection_name(conn), request_id, ns);
 	/* Accept the request */
@@ -377,6 +382,11 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
@@ -576,19 +586,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		/* FIXME Ugly hack: if this is mp4, and our response to request ID 0, subscribe to another track */
 		uint64_t request_id = 1;
 		const char *track_name = "1.m4s";
-		imquic_moq_namespace tns[32];	/* FIXME */
-		int i = 0;
-		while(options.track_namespace[i] != NULL) {
-			const char *track_namespace = options.track_namespace[i];
-			tns[i].buffer = (uint8_t *)track_namespace;
-			tns[i].length = strlen(track_namespace);
-			tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
-			i++;
-		}
-		char tns_buffer[256];
-		const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"\n",
-			imquic_get_connection_name(conn), ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
+			imquic_get_connection_name(conn), sub_tns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
 		imquic_moq_track tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
@@ -615,7 +614,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		params.subscription_filter.type = filter_type;
 		params.subscription_filter.start_location = start_location;
 		params.subscription_filter.end_group = end_location_sub.group;
-		imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
+		imquic_moq_subscribe(conn, request_id, sub_namespace, &tn, &params);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",

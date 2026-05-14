@@ -479,6 +479,11 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 	/* We received an publish_namespace */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace: '%s'\n",
 		imquic_get_connection_name(conn), ns);
 	/* Check if this was published already */
@@ -574,6 +579,11 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
@@ -710,6 +720,11 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 	/* We received a request to return the track status */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming request to return the track status for '%s--%s' (ID %"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id);
@@ -790,6 +805,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id);
@@ -1103,6 +1123,11 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 	/* We received a subscribe for a namespace tuple */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe_namespace(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for namespace prefix '%s'\n",
 		imquic_get_connection_name(conn), ns);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Subscriber wants to know about '%s'\n",
@@ -1159,6 +1184,11 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	if(range->end.object == 0)
 		range->end.object = IMQUIC_MAX_VARINT;
