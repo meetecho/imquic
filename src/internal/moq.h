@@ -862,7 +862,7 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias,
+	imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, uint64_t track_alias,
 	imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Helper method to add a \c PUBLISH_OK message to a buffer
  * @param moq The imquic_moq_context generating the message
@@ -886,7 +886,7 @@ size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, imquic_moq_stream *moq
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c REQUEST_UPDATE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -972,7 +972,7 @@ size_t imquic_moq_add_namespace_done(imquic_moq_context *moq, imquic_moq_stream 
  * @param track Track that is blocked
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-	uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace_suffix, imquic_moq_name *track);
+	uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace_suffix, imquic_moq_track *track);
 /*! \brief Helper to add a \c FETCH message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -990,7 +990,7 @@ size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 	uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name,
+	imquic_moq_namespace *track_namespace, imquic_moq_track *track_name,
 	imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add an \c FETCH_CANCEL message to a buffer
  * \note This message was deprecated in v17
@@ -1026,7 +1026,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq_s
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_track_status(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t request_id,
-	imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c GOAWAY message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the message to
@@ -1290,7 +1290,7 @@ typedef struct imquic_moq_callbacks {
 	 * \note This message was deprecated in v17 */
 	void (* publish_namespace_done)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH messages */
-	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ACCEPTED messages */
 	void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
@@ -1298,7 +1298,7 @@ typedef struct imquic_moq_callbacks {
 	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ACCEPTED messages */
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
@@ -1330,10 +1330,10 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c NAMESPACE_DONE messages */
 	void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_BLOCKED messages */
-	void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn);
+	void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c FETCH_CANCEL messages, or when the bidirectional stream is closed */
@@ -1344,7 +1344,7 @@ typedef struct imquic_moq_callbacks {
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
 	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ACCEPTED messages */
 	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ERROR messages */
@@ -1414,7 +1414,7 @@ void imquic_qlog_moq_message_add_namespace(json_t *message, imquic_moq_namespace
  * @note This automatically fills in the \c track_name property
  * @param message The message object to update
  * @param track_name The track name to add */
-void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_name *track_name);
+void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_track *track_name);
 /*! \brief Helper to add a stringified array of setup parameters to a message
  * @note This automatically fills in a property with the specified name
  * @param message The message object to update

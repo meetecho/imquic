@@ -46,6 +46,9 @@ static uint64_t max_request_id = 100;
 static imquic_moq_filter_type filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 static imquic_moq_location start_location = { 0 }, end_location = { 0 }, end_location_sub = { 0 };
 static int64_t update_time = 0;
+static imquic_moq_namespace sub_namespace[32] = { 0 };
+static char sub_tns_buffer[256];
+static const char *sub_tns = NULL;
 static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
@@ -164,19 +167,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 	moq_version = imquic_moq_get_version(conn);
 	/* Let's subscribe to the provided namespace/name(s) */
-	int i = 0;
 	uint64_t request_id = 0;
-	imquic_moq_namespace tns[32];	/* FIXME */
-	while(options.track_namespace[i] != NULL) {
-		const char *track_namespace = options.track_namespace[i];
-		tns[i].buffer = (uint8_t *)track_namespace;
-		tns[i].length = strlen(track_namespace);
-		tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
-		i++;
-	}
-	char tns_buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
-	i = 0;
 	/* Check if we need to prepare an auth token */
 	imquic_moq_request_parameters params;
 	imquic_moq_request_parameters_init_defaults(&params);
@@ -196,7 +187,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		params.forward = TRUE;
 		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
 			params.forward = FALSE;
-		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), tns, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
+		imquic_moq_subscribe_namespace(conn, imquic_moq_get_next_request_id(conn), sub_namespace, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
 		return;
 	}
 	/* Parameters in case we need to FETCH */
@@ -223,26 +214,27 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	/* If we got here, we're sending either a SUBSCRIBE or a TRACK_STATUS
 	 * manually to the specified tracks: when subscribing, we do it either
 	 * via SUBSCRIBE or FETCH. As such, we iterate on all track names */
+	int i = 0;
 	while(options.track_name[i] != NULL) {
 		request_id = imquic_moq_get_next_request_id(conn);
 		const char *track_name = options.track_name[i];
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s to '%s--%s' (%s), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			((options.fetch != NULL && options.join_offset < 0) ? "Fetching" : "Subscribing"),
-			ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
-		imquic_moq_name tn = {
+			sub_tns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
+		imquic_moq_track tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
 		if(options.fetch == NULL) {
 			if(!options.track_status) {
 				/* Send a SUBSCRIBE */
-				imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
+				imquic_moq_subscribe(conn, request_id, sub_namespace, &tn, &params);
 				if(!params.forward)
 					request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 			} else {
 				/* Send a TRACK_STATUS */
-				imquic_moq_track_status(conn, request_id, &tns[0], &tn, &params);
+				imquic_moq_track_status(conn, request_id, sub_namespace, &tn, &params);
 			}
 		} else {
 			/* Send a FETCH */
@@ -252,10 +244,10 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					.start = start_location,
 					.end = end_location
 				};
-				imquic_moq_standalone_fetch(conn, request_id, &tns[0], &tn, &range, &fparams);
+				imquic_moq_standalone_fetch(conn, request_id, sub_namespace, &tn, &range, &fparams);
 			} else {
 				/* Send a SUBSCRIBE first, we'll send the joining FETCH when the subscription is accepted */
-				imquic_moq_subscribe(conn, request_id, &tns[0], &tn, &params);
+				imquic_moq_subscribe(conn, request_id, sub_namespace, &tn, &params);
 				if(!params.forward)
 					request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
 			}
@@ -381,7 +373,7 @@ static void imquic_demo_request_update_error(imquic_connection *conn, uint64_t r
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -597,7 +589,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), ns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
-		imquic_moq_name tn = {
+		imquic_moq_track tn = {
 			.buffer = (uint8_t *)track_name,
 			.length = strlen(track_name)
 		};
@@ -743,11 +735,29 @@ int main(int argc, char *argv[]) {
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a SUBSCRIBE for the subscription\n");
 	}
+
 	if(options.track_namespace == NULL || options.track_namespace[0] == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track namespace (s)\n");
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track namespace(s)\n");
 		ret = 1;
 		goto done;
 	}
+	int i = 0;
+	while(options.track_namespace[i] != NULL) {
+		const char *track_namespace = options.track_namespace[i];
+		sub_namespace[i].buffer = (uint8_t *)track_namespace;
+		sub_namespace[i].length = strlen(track_namespace);
+		sub_namespace[i].next = (options.track_namespace[i+1] != NULL) ? &sub_namespace[i+1] : NULL;
+		i++;
+	}
+	uint64_t tns_num = 0;
+	if(!imquic_moq_namespace_is_valid(&sub_namespace[0], TRUE, &tns_num)) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid track namespace\n");
+		ret = 1;
+		goto done;
+	}
+	sub_tns = imquic_moq_namespace_str(sub_namespace, sub_tns_buffer, sizeof(sub_tns_buffer), TRUE);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", sub_tns, tns_num);
+
 	if(!options.subscribe_namespace && (options.track_name == NULL || options.track_name[0] == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
 		ret = 1;

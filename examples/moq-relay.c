@@ -406,7 +406,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			s->sub_end.group = IMQUIC_MAX_VARINT;
 			s->sub_end.object = IMQUIC_MAX_VARINT;
 			/* Send the request */
-			imquic_moq_name tn = {
+			imquic_moq_track tn = {
 				.buffer = (uint8_t *)track->track_name,
 				.length = strlen(track->track_name),
 			};
@@ -569,7 +569,7 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
@@ -706,7 +706,7 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 }
 
 static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a request to return the track status */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -786,7 +786,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 }
 
 static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
@@ -1154,7 +1154,7 @@ static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, 
 }
 
 static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 		//~ gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];

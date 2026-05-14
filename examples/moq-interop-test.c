@@ -143,7 +143,7 @@ static void imquic_moq_interop_publish_namespace_accepted(imquic_connection *con
 static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
 static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
 static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint64_t request_id,
 	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t request_id,
@@ -529,7 +529,7 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		tns[1].buffer = (uint8_t *)"namespace";
 		tns[1].length = strlen("namespace");
 		tns[1].next = NULL;
-		imquic_moq_name tn = {
+		imquic_moq_track tn = {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
@@ -547,7 +547,7 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		tns[1].buffer = (uint8_t *)"interop";
 		tns[1].length = strlen("interop");
 		tns[1].next = NULL;
-		imquic_moq_name tn = {
+		imquic_moq_track tn = {
 			.buffer = (uint8_t *)"test-track",
 			.length = strlen("test-track")
 		};
@@ -617,7 +617,7 @@ static void imquic_moq_interop_publish_namespace_error(imquic_connection *conn, 
 }
 
 static void imquic_moq_interop_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	/* Depending on the test, we may or may not be done */
 	imquic_mutex_lock(&mutex);
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);

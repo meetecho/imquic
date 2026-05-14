@@ -1481,13 +1481,13 @@ void imquic_moq_stream_destroy(imquic_moq_stream *moq_stream) {
 
 #define IMQUIC_MOQ_ADD_TRACKNAME(request) \
 	do { \
-		if(track_name->length > 4096) { \
+		if(track_name != NULL && track_name->length > 4096) { \
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n", \
 				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(request, moq->version)); \
 			return 0; \
 		} \
-		offset += imquic_write_moqint(moq->version, track_name->length, &bytes[offset], blen-offset); \
-		if(track_name->length > 0) { \
+		offset += imquic_write_moqint(moq->version, track_name ? track_name->length : 0, &bytes[offset], blen-offset); \
+		if(track_name != NULL && track_name->length > 0) { \
 			memcpy(&bytes[offset], track_name->buffer, track_name->length); \
 			offset += track_name->length; \
 		} \
@@ -2634,7 +2634,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_PUBLISH, tns_num, i, "Broken PUBLISH", FALSE);
-	imquic_moq_name tn = { 0 };
+	imquic_moq_track tn = { 0 };
 	IMQUIC_MOQ_PARSE_TRACKNAME("Broken PUBLISH", FALSE);
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
@@ -2791,7 +2791,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_SUBSCRIBE, tns_num, i, "Broken SUBSCRIBE", FALSE);
-	imquic_moq_name tn = { 0 };
+	imquic_moq_track tn = { 0 };
 	IMQUIC_MOQ_PARSE_TRACKNAME("Broken SUBSCRIBE", FALSE);
 	imquic_moq_request_parameters parameters;
 	imquic_moq_request_parameters_init_defaults(&parameters);
@@ -3289,7 +3289,7 @@ size_t imquic_moq_parse_publish_blocked(imquic_moq_context *moq, imquic_moq_stre
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE_DONE, tns_num, i, "Broken PUBLISH_BLOCKED", TRUE);
 	IMQUIC_MOQ_CHECK_ERR((tns_num + moq_stream->namespace_prefix_size) > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces");
-	imquic_moq_name tn = { 0 };
+	imquic_moq_track tn = { 0 };
 	IMQUIC_MOQ_PARSE_TRACKNAME("Broken PUBLISH_BLOCKED", FALSE);
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3338,7 +3338,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	/* Move on */
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
-	imquic_moq_name tn = { 0 };
+	imquic_moq_track tn = { 0 };
 	imquic_moq_fetch_type type = IMQUIC_MOQ_FETCH_STANDALONE;
 	imquic_moq_location_range range = { 0 };
 	uint64_t joining_request_id = 0, joining_start = 0;
@@ -3607,7 +3607,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
 	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_TRACK_STATUS, tns_num, i, "Broken TRACK_STATUS", FALSE);
-	imquic_moq_name tn = { 0 };
+	imquic_moq_track tn = { 0 };
 	IMQUIC_MOQ_PARSE_TRACKNAME("Broken TRACK_STATUS", FALSE);
 	imquic_moq_request_parameters parameters;
 	imquic_moq_request_parameters_init_defaults(&parameters);
@@ -4455,8 +4455,7 @@ size_t imquic_moq_add_request_error(imquic_moq_context *moq, imquic_moq_stream *
 
 size_t imquic_moq_add_publish_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
 		uint64_t request_id, imquic_moq_namespace *track_namespace, imquic_moq_request_parameters *parameters) {
-	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
-			 (moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
+	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_NAMESPACE, moq->version));
 		return 0;
@@ -4540,9 +4539,8 @@ size_t imquic_moq_add_publish_namespace_cancel(imquic_moq_context *moq, uint8_t 
 }
 
 size_t imquic_moq_add_publish(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint64_t request_id,
-		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
-	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
-			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0) ||
+		imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
+	if(bytes == NULL || blen < 1 ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH, moq->version));
@@ -4616,9 +4614,8 @@ size_t imquic_moq_add_publish_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 
 size_t imquic_moq_add_subscribe(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 		uint8_t *bytes, size_t blen, uint64_t request_id,
-		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_request_parameters *parameters) {
-	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
-			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0) ||
+		imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, imquic_moq_request_parameters *parameters) {
+	if(bytes == NULL || blen < 1 ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_SUBSCRIBE, moq->version));
@@ -4865,7 +4862,7 @@ size_t imquic_moq_add_namespace_done(imquic_moq_context *moq, imquic_moq_stream 
 }
 
 size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-		uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace, imquic_moq_name *track_name) {
+		uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace, imquic_moq_track *track_name) {
 	if(bytes == NULL || blen < 1 || moq_stream == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_NAMESPACE_DONE, moq->version));
@@ -4892,7 +4889,7 @@ size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream
 size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 		uint8_t *bytes, size_t blen, imquic_moq_fetch_type type,
 		uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
-		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name,
+		imquic_moq_namespace *track_namespace, imquic_moq_track *track_name,
 		imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || (range == NULL && type == IMQUIC_MOQ_FETCH_STANDALONE) ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
@@ -5022,7 +5019,7 @@ size_t imquic_moq_add_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq_s
 }
 
 size_t imquic_moq_add_track_status(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint64_t request_id,
-		imquic_moq_namespace *track_namespace, imquic_moq_name *track_name, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || blen < 1 || track_namespace == NULL ||
 			track_name == NULL || (track_name->buffer == NULL && track_name->length > 0) ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
@@ -5994,7 +5991,7 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6167,12 +6164,12 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_
 	return 0;
 }
 
-int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
-			tn == NULL || (tn->buffer == NULL && tn->length > 0)) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) ||
+			!imquic_moq_track_is_valid(tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6321,11 +6318,11 @@ int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
 }
 
 int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
-			tn == NULL || (tn->buffer == NULL && tn->length > 0)) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) ||
+			!imquic_moq_track_is_valid(tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6747,16 +6744,10 @@ int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 		return -1;
 	}
 	uint64_t tns_num = 0;
-	imquic_moq_namespace *temp = tns;
-	while(temp) {
-		if(temp->length > 0 && temp->buffer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
-				imquic_get_connection_name(moq->conn));
-			imquic_mutex_unlock(&moq_mutex);
-			return -1;
-		}
-		tns_num++;
-		temp = temp->next;
+	if(!imquic_moq_namespace_is_valid(tns, FALSE, &tns_num)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(moq->conn));
+		imquic_mutex_unlock(&moq_mutex);
 	}
 	/* Make sure we can send this */
 	if(!moq_is_request_id_valid(moq, request_id, TRUE)) {
@@ -6918,7 +6909,7 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_i
 int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6958,7 +6949,7 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -6995,11 +6986,11 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	return 0;
 }
 
-int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn) {
+int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
-			tn == NULL || tn->buffer == 0 || tn->length == 0) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) ||
+			!imquic_moq_track_is_valid(tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -7037,10 +7028,10 @@ int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_
 }
 
 int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tn == NULL || range == NULL) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) || range == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -7260,11 +7251,11 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id) {
 }
 
 int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || tns == NULL || tns->buffer == 0 || tns->length == 0 ||
-			tn == NULL || (tn->buffer == NULL && tn->length > 0)) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) ||
+			!imquic_moq_track_is_valid(tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -7895,7 +7886,7 @@ void imquic_qlog_moq_message_add_namespace(json_t *message, imquic_moq_namespace
 	json_object_set_new(message, name, tns_list);
 }
 
-void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_name *track_name) {
+void imquic_qlog_moq_message_add_track(json_t *message, imquic_moq_track *track_name) {
 	if(message == NULL)
 		return;
 	char tn_buffer[256];

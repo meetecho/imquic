@@ -116,7 +116,7 @@
  * tuple of 1, with no further part set in the \c next pointer.
  *
  * Track names are simpler to address, instead, and can be addressed using
- * the \ref imquic_moq_name structure.
+ * the \ref imquic_moq_track structure.
  *
  * Both namespaces and tuples are formatted in the respective structures
  * as array of bytes of a specific length: while most of the times they'll
@@ -172,7 +172,7 @@
  * it can be rejected with \ref imquic_moq_reject_subscribe.
  * While an incoming subscribe will include more info to address a specific
  * resource (most importantly the namespace in \ref imquic_moq_namespace
- * and the track name in \ref imquic_moq_name), a \c request_id integer
+ * and the track name in \ref imquic_moq_track), a \c request_id integer
  * will act as a "shortcut" to address that specific subscription, both
  * in upcoming events (e.g., when notified about a will to unsubscribe)
  * and when sending responses or delivering objects.
@@ -251,7 +251,7 @@
  * Coming to active requests, to issue a \c SUBSCRIBE request the subscriber
  * must provided the information to uniquely address the resource
  * they're interested in (the namespace via \ref imquic_moq_namespace,
- * the track name via \ref imquic_moq_name and, if needed, the authentication
+ * the track name via \ref imquic_moq_track and, if needed, the authentication
  * info via a string), but at the same time they should
  * also provide unique \c request_id and \c track_alias numeric identifiers
  * to act as shortcuts to address that subscription in subsequent responses,
@@ -359,6 +359,14 @@ gboolean imquic_moq_namespace_contains(imquic_moq_namespace *parent, imquic_moq_
  * @param tns The namespace to duplicate
  * @returns A pointer to a new imquic_moq_namespace, if successful, NULL otherwise */
 imquic_moq_namespace *imquic_moq_namespace_duplicate(imquic_moq_namespace *tns);
+/*! \brief Helper check if a imquic_moq_namespace instance is valid
+ * \note This also checks for the reserved '.' namespaces, and will fail
+ * for namespaces whose first tuple is is '.' or '.session'
+ * @param[in] tns The namespace to validate
+ * @param[in] fail_if_empty Also fail if the namespace is empty
+ * @param[out] tns_num Output variable where to write the number of tuples in the namespace
+ * @returns TRUE if the namespace is valid, FALSE otherwise */
+gboolean imquic_moq_namespace_is_valid(imquic_moq_namespace *tns, gboolean fail_if_empty, uint64_t *tns_num);
 /*! \brief Helper to free a imquic_moq_namespace instance
  * \note This should only be used if everything in the namespace, including
  * buffers, were allocated, e.g., via a call to imquic_moq_namespace_duplicate
@@ -366,23 +374,27 @@ imquic_moq_namespace *imquic_moq_namespace_duplicate(imquic_moq_namespace *tns);
 void imquic_moq_namespace_free(imquic_moq_namespace *tns);
 
 /*! \brief MoQ Track Name */
-typedef struct imquic_moq_name {
+typedef struct imquic_moq_track {
 	/*! \brief Name data (typically a non-null terminated string) */
 	uint8_t *buffer;
 	/*! \brief Size of the name data */
 	size_t length;
-} imquic_moq_name;
+} imquic_moq_track;
 /* Helper to stringify a track name
  * @param[in] tn The track name to stringify
  * @param[out] buffer The buffer to write the string to
  * @param[in] blen The size of the output buffer
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
-const char *imquic_moq_track_str(imquic_moq_name *tn, char *buffer, size_t blen);
+const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen);
 /*! \brief Helper to check whether two track names are the sames
  * @param first The first track name to check
  * @param second The second track name to check
  * @returns TRUE if the second track name is part of the secondm, FALSE otherwise */
-gboolean imquic_moq_name_equals(imquic_moq_name *first, imquic_moq_name *second);
+gboolean imquic_moq_track_equals(imquic_moq_track *first, imquic_moq_track *second);
+/*! \brief Helper check if a imquic_moq_track instance is valid
+ * @param tn The track name to validate
+ * @returns TRUE if the track name is valid, FALSE otherwise */
+gboolean imquic_moq_track_is_valid(imquic_moq_track *tn);
 
 /*! \brief Group ordering for tracks */
 typedef enum imquic_moq_group_order {
@@ -925,7 +937,7 @@ void imquic_set_publish_namespace_done_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_publish Pointer to the function that will handle the incoming \c PUBLISH */
 void imquic_set_incoming_publish_cb(imquic_endpoint *endpoint,
-	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+	void (* incoming_publish)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we previously sent was accepted
@@ -945,7 +957,7 @@ void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
  * @param incoming_subscribe Pointer to the function that will handle the incoming \c SUBSCRIBE */
 void imquic_set_incoming_subscribe_cb(imquic_endpoint *endpoint,
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters));
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when a
  * \c SUBSCRIBE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1043,14 +1055,14 @@ void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_publish_blocked Pointer to the function that will handle the incoming \c PUBLISH_BLOCKED */
 void imquic_set_incoming_publish_blocked_cb(imquic_endpoint *endpoint,
-	void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn));
+	void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters));
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1086,7 +1098,7 @@ void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
  * @param incoming_track_status Pointer to the function that will handle the incoming \c TRACK_STATUS */
 void imquic_set_incoming_track_status_cb(imquic_endpoint *endpoint,
 	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters));
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when a
  * \c TRACK_STATUS we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1194,13 +1206,13 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription
  * @param tns The imquic_moq_namespace namespace the track to publish to belongs to
- * @param tn The imquic_moq_name track name to publish to
+ * @param tn The imquic_moq_track track name to publish to
  * @param track_alias A unique numeric identifier to associate to the track in this subscription
  * @param parameters The parameters to add to the request
  * @param track_properties List of track properties to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_publish(imquic_connection *conn,
-	uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+	uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 	uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Function to accept an incoming \c PUBLISH request
  * @param conn The imquic_connection to send the request on
@@ -1221,11 +1233,11 @@ int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription
  * @param tns The imquic_moq_namespace namespace the track to subscribe to belongs to
- * @param tn The imquic_moq_name track name to subscribe to
+ * @param tn The imquic_moq_track track name to subscribe to
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
@@ -1342,19 +1354,19 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @param tns The imquic_moq_namespace namespace this request refers to
- * @param tn The imquic_moq_name track this request refers to
+ * @param tn The imquic_moq_track track this request refers to
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn);
+int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
 /*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
  * @param tns The imquic_moq_namespace namespace the track to fetch to belongs to
- * @param tn The imquic_moq_name track name to fetch to
+ * @param tn The imquic_moq_track track name to fetch to
  * @param range The range of groups/objects to fetch
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_standalone_fetch(imquic_connection *conn,
-	uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_name *tn,
+	uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 	imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a joining \c FETCH request
  * @param conn The imquic_connection to send the request on
@@ -1396,11 +1408,11 @@ int imquic_moq_cancel_fetch(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this request
  * @param tns The imquic_moq_namespace namespace the track to track_status to belongs to
- * @param tn The imquic_moq_name track name to track_status to
+ * @param tn The imquic_moq_track track name to track_status to
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c TRACK_STATUS request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to query
