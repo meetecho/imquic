@@ -27,6 +27,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "publish", 'X', 0, G_OPTION_ARG_NONE, &options->publish, "Use a PUBLISH right away instead of waiting for a SUBSCRIBE (default=no; only supported for v12 and later)", NULL },
 		{ "track-alias", 't', 0, G_OPTION_ARG_INT64, &options->track_alias, "Track alias to use for subscriptions (default=0; only supported for v12 and later)", NULL },
 		{ "properties", 'x', 0, G_OPTION_ARG_NONE, &options->properties, "Send some properties along objects (default=no)", NULL },
+		{ "padding", 'P', 0, G_OPTION_ARG_INT, &options->padding, "Send some padding too, along objects (default=none)", NULL },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },
 		{ "remote-host", 'r', 0, G_OPTION_ARG_STRING, &options->remote_host, "QUIC server to connect to (default=none)", "IP" },

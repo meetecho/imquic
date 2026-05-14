@@ -78,6 +78,7 @@ typedef enum imquic_moq_datagram_message_type {
 	IMQUIC_MOQ_OBJECT_DATAGRAM_STATUS = 0x20,
 		IMQUIC_MOQ_OBJECT_DATAGRAM_RANGE_MIN = 0x00,
 		IMQUIC_MOQ_OBJECT_DATAGRAM_RANGE_MAX = 0x2D,
+	IMQUIC_MOQ_PADDING_DATAGRAM = 0x132B3E29,		/* Added in v18 */
 } imquic_moq_datagram_message_type;
 /*! \brief Helper function to check if a type used for \c OBJECT_DATAGRAM or \c OBJECT_DATAGRAM_STATUS is valid.
  * @param[in] version The version of the connection
@@ -111,7 +112,7 @@ void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t 
  * @param type The type value
  * @param version The version of the connection
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_datagram_message_type_str(uint8_t type, imquic_moq_version version);
+const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_type type, imquic_moq_version version);
 
 /*! \brief MoQ \c STREAM data messages */
 typedef enum imquic_moq_data_message_type {
@@ -123,12 +124,14 @@ typedef enum imquic_moq_data_message_type {
 		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX = 0x3D,
 	/* IMQUIC_MOQ_FETCH_HEADER */
 	IMQUIC_MOQ_FETCH_HEADER = 0x5,
+	/* Padding */
+	IMQUIC_MOQ_PADDING_STREAM = 0x132B3E28,				/* Added in v18 */
 } imquic_moq_data_message_type;
 /*! \brief Helper function to check if a type used for \c SUBRGOUP_HEADER is valid.
  * @param[in] version The version of the connection
  * @param[in] type The type to parse
  * @returns TRUE if the type is valid, FALSE otherwise */
-gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8_t type);
+gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, imquic_moq_data_message_type type);
 /*! \brief Helper function to return the type to use for \c SUBRGOUP_HEADER out of the individual properties.
  * @param[in] version The version of the connection
  * @param[in] subgroup Whether the Subgroup ID field is present
@@ -724,6 +727,20 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete, uint8_t *error);
+/*! \brief Helper to parse a \c PADDING_DATAGRAM message
+ * @param[in] moq The imquic_moq_context instance the padding data is for
+ * @param[in] bytes The buffer containing the padding data to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_padding_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c PADDING_STREAM message
+ * @param[in] moq The imquic_moq_context instance the padding data is for
+ * @param[in] moq_stream The imquic_moq_stream instance the padding data is from
+ * @param[in] complete Whether this data marks the completion of the QUIC stream it came from
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns 0 in case of success, or a negative integer otherwise */
+int imquic_moq_parse_padding_stream(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete, uint8_t *error);
 /*! \brief Helper to parse a \c GOAWAY message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -1114,6 +1131,15 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
 	uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
+/*! \brief Helper to add padding data to a buffer, formatted as expected
+ * for \c PADDING_STREAM or \c PADDING_DATAGRAM
+ * @param moq The imquic_moq_context generating the object
+ * @param bytes The buffer to add the data to
+ * @param blen The size of the buffer
+ * @param padding How much padding data to send
+ * @param datagram Whether this is meant to be sent on a \c DATAGRAM or \c STREAM
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_padding(imquic_moq_context *moq, uint8_t *bytes, size_t blen, size_t padding, gboolean datagram);
 /*! \brief Helper method to add properties to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param bytes The buffer to add the properties to

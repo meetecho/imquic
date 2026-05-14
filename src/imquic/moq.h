@@ -1428,6 +1428,17 @@ int imquic_moq_reject_track_status(imquic_connection *conn, uint64_t request_id,
  * @param object The imquic_moq_object object to send, including all relevant identifiers and the payload
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object);
+/*! \brief Function to send padding via MoQ
+ * @note This function allows to send padding via either \c STREAM or
+ * \c DATAGRAM . In both cases, the padding is self contained, meaning
+ * that, e.g., for \c STREAM this means that a new unidirectional stream
+ * is created to send the data and then is closed right away. In case
+ * data is too large to fit a \c DATAGRAM the function will silently fail.
+ * @param conn The imquic_connection to send the padding data on
+ * @param padding The amount of padding data to send
+ * @param datagram Whether the padding data should be sent on \c DATAGRAM or \c STREAM
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_send_padding(imquic_connection *conn, size_t padding, gboolean datagram);
 /*! \brief Function to send a \c REQUESTS_BLOCKED request
  * @param conn The imquic_connection to send the request on
  * @returns 0 in case of success, a negative integer otherwise */

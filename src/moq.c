@@ -791,16 +791,19 @@ void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t 
 		*violation = ((type > 0x0F && type < 0x20) || type > 0x2D || (type >= 0x20 && (type & 0x02)));
 }
 
-const char *imquic_moq_datagram_message_type_str(uint8_t type, imquic_moq_version version) {
+const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_type type, imquic_moq_version version) {
 	if(type <= 0x0F)
 		return "OBJECT_DATAGRAM";
 	else if(type >= 0x20 && type <= 0x2D)
 		return "OBJECT_DATAGRAM_STATUS";
+	else if(version >= IMQUIC_MOQ_VERSION_18 && type == IMQUIC_MOQ_PADDING_DATAGRAM)
+		return "PADDING_DATAGRAM";
 	return NULL;
 }
 
-gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, uint8_t type) {
-	if(type == IMQUIC_MOQ_FETCH_HEADER)
+gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, imquic_moq_data_message_type type) {
+	if(type == IMQUIC_MOQ_FETCH_HEADER ||
+			(version >= IMQUIC_MOQ_VERSION_18 && type == IMQUIC_MOQ_PADDING_STREAM))
 		return TRUE;
 	if((type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) ||
 			(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX))
@@ -855,6 +858,8 @@ void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version,
 const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, imquic_moq_version version) {
 	if(type == IMQUIC_MOQ_FETCH_HEADER)
 		return "FETCH_HEADER";
+	else if(version >= IMQUIC_MOQ_VERSION_18 && type == IMQUIC_MOQ_PADDING_STREAM)
+		return "PADDING_STREAM";
 	else if(imquic_moq_is_data_message_type_valid(version, type))
 		return "SUBGROUP_HEADER";
 	return NULL;
@@ -1515,10 +1520,15 @@ static gboolean imquic_moq_is_control_stream(imquic_moq_context *moq, uint64_t s
 int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_t *bytes, size_t blen, gboolean complete, gboolean datagram) {
 	size_t offset = 0, parsed = 0, parsed_prev = 0;
 	uint8_t tlen = 0, error = 0;
-	/* If this is a datagram, it can only be OBJECT_DATAGRAM or OBJECT_DATAGRAM_STATUS */
+	/* If this is a datagram, it can only be OBJECT_DATAGRAM, OBJECT_DATAGRAM_STATUS or PADDING_DATAGRAM */
 	if(datagram) {
 		imquic_moq_datagram_message_type dtype = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &tlen);
 		offset += tlen;
+		if(moq->version >= IMQUIC_MOQ_VERSION_18 && dtype == IMQUIC_MOQ_PADDING_DATAGRAM) {
+			parsed = imquic_moq_parse_padding_datagram(moq, &bytes[offset], blen-offset, &error);
+			/* Done */
+			return 0;
+		}
 		gboolean valid = FALSE, payload = FALSE, violation = FALSE;
 		valid = imquic_moq_is_datagram_message_type_valid(moq->version, dtype);
 		if(valid)
@@ -1565,8 +1575,8 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_VERB, "[%s][MoQ][%zu] >> %s (%02x, %u)\n",
 			imquic_get_connection_name(moq->conn), offset, imquic_moq_message_type_str(type, moq->version), type, tlen);
 		if(!imquic_moq_is_control_stream(moq, stream_id) && moq_stream == NULL) {
-			/* Not the control stream, check what it's for (request
-			 * or objects) and then make sure it's a supported message */
+			/* Not the control stream, check what it's for (request, objects
+			 * or padding) and then make sure it's a supported message */
 			gboolean bidirectional = FALSE;
 			imquic_parse_stream_id(stream_id, NULL, NULL, &bidirectional);
 			imquic_moq_data_message_type dtype = (imquic_moq_data_message_type)type;
@@ -1595,6 +1605,8 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				moq_stream->stream_id = stream_id;
 				moq_stream->type = dtype;
 				moq_stream->priority = 128;	/* FIXME */
+				if(dtype == IMQUIC_MOQ_PADDING_STREAM)
+					moq_stream->priority = 255;
 				imquic_mutex_lock(&moq->mutex);
 				g_hash_table_insert(moq->streams, imquic_dup_uint64(stream_id), moq_stream);
 				imquic_mutex_unlock(&moq->mutex);
@@ -1861,11 +1873,17 @@ next:
 				parsed = imquic_moq_parse_fetch_header(moq, moq_stream, &bytes[offset], blen-offset, &error);
 				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 				offset += parsed;
-			} else if(imquic_moq_is_data_message_type_valid(moq->version, type)) {
+			} else if((imquic_moq_data_message_type)type != IMQUIC_MOQ_PADDING_STREAM &&
+					imquic_moq_is_data_message_type_valid(moq->version, (imquic_moq_data_message_type)type)) {
 				/* Parse this SUBGROUP_HEADER message */
 				parsed = imquic_moq_parse_subgroup_header(moq, moq_stream, &bytes[offset], blen-offset, (imquic_moq_data_message_type)type, &error);
 				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
 				offset += parsed;
+			} else if((imquic_moq_data_message_type)type == IMQUIC_MOQ_PADDING_STREAM &&
+					moq->version >= IMQUIC_MOQ_VERSION_18) {
+				/* Nothing to do, for now, we'll parse padding data later */
+				moq_stream->buffer = imquic_buffer_create(NULL, 0);
+				break;
 			} else {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported data message '%02x'\n",
 					imquic_get_connection_name(moq->conn), type);
@@ -1898,6 +1916,14 @@ next:
 				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ][%zu] >> %s object\n",
 					imquic_get_connection_name(moq->conn), offset, imquic_moq_data_message_type_str(moq_stream->type, moq->version));
 				if(imquic_moq_parse_fetch_header_object(moq, moq_stream, complete, &error) < 0) {
+					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Not enough data, trying again later\n",
+						imquic_get_connection_name(moq->conn));
+					break;
+				}
+			} else if(moq_stream->type == IMQUIC_MOQ_PADDING_STREAM) {
+				IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ][%zu] >> %s object\n",
+					imquic_get_connection_name(moq->conn), offset, imquic_moq_data_message_type_str(moq_stream->type, moq->version));
+				if(imquic_moq_parse_padding_stream(moq, moq_stream, complete, &error) < 0) {
 					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Not enough data, trying again later\n",
 						imquic_get_connection_name(moq->conn));
 					break;
@@ -4146,6 +4172,63 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	return 0;
 }
 
+size_t imquic_moq_parse_padding_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
+	if(bytes == NULL || blen < 1)
+		return 0;
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	size_t offset = 0;
+	gboolean ok = TRUE;
+	while(offset < blen) {
+		if(bytes[offset] != 0 && ok)
+			ok = FALSE;
+		offset++;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got PADDING_DATAGRAM (%zu bytes)\n",
+		imquic_get_connection_name(moq->conn), offset);
+	if(!ok) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Not all paddings data is set to zero\n",
+			imquic_get_connection_name(moq->conn));
+	}
+#ifdef HAVE_QLOG
+	/* TODO Add padding to QLOG */
+#endif
+	if(error)
+		*error = 0;
+	return offset;
+}
+
+int imquic_moq_parse_padding_stream(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete, uint8_t *error) {
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	if(moq_stream == NULL || moq_stream->buffer == NULL || moq_stream->buffer->bytes == NULL || moq_stream->buffer->length < 2)
+		return -1;	/* Not enough data, try again later */
+	uint8_t *bytes = moq_stream->buffer->bytes;
+	size_t blen = moq_stream->buffer->length;
+	size_t offset = 0;
+	gboolean ok = TRUE;
+	while(offset < blen) {
+		if(bytes[offset] != 0 && ok)
+			ok = FALSE;
+		offset++;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got PADDING_STREAM (%zu bytes)\n",
+		imquic_get_connection_name(moq->conn), offset);
+	if(!ok) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Not all paddings data is set to zero\n",
+			imquic_get_connection_name(moq->conn));
+	}
+#ifdef HAVE_QLOG
+	/* TODO Add padding to QLOG */
+#endif
+	/* Move on */
+	imquic_buffer_shift(moq_stream->buffer, offset);
+	if(complete)
+		moq_stream->closed = TRUE;
+	/* Done */
+	return 0;
+}
+
 size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
@@ -5170,6 +5253,21 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 		memcpy(&bytes[offset], payload, plen);
 		offset += plen;
 	}
+	return offset;
+}
+
+size_t imquic_moq_add_padding(imquic_moq_context *moq, uint8_t *bytes, size_t blen, size_t padding, gboolean datagram) {
+	if(bytes == NULL || blen < (4 + padding) || moq->version < IMQUIC_MOQ_VERSION_18) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), datagram ?
+				imquic_moq_datagram_message_type_str(IMQUIC_MOQ_PADDING_DATAGRAM, moq->version) :
+				imquic_moq_data_message_type_str(IMQUIC_MOQ_PADDING_STREAM, moq->version));
+		return 0;
+	}
+	size_t offset = imquic_write_moqint(moq->version, datagram ?
+		IMQUIC_MOQ_PADDING_DATAGRAM : IMQUIC_MOQ_PADDING_STREAM, bytes, blen);
+	memset(&bytes[offset], 0, padding);
+	offset += padding;
 	return offset;
 }
 
@@ -7564,6 +7662,45 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
 	g_free(buffer);
+	return 0;
+}
+
+/* Padding */
+int imquic_moq_send_padding(imquic_connection *conn, size_t padding, gboolean datagram) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || moq->version < IMQUIC_MOQ_VERSION_18) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	/* FIXME */
+	uint8_t buffer[4096];
+	size_t pd_len = imquic_moq_add_padding(moq, buffer, sizeof(buffer), padding, datagram);
+	if(pd_len == 0) {
+		imquic_refcount_decrease(&moq->ref);
+		return -2;
+	}
+	if(datagram) {
+		/* Send on a DATAGRAM */
+#ifdef HAVE_QLOG
+		/* TODO Add padding to QLOG */
+#endif
+		imquic_connection_send_on_datagram(conn, buffer, pd_len);
+	} else {
+		/* Create a new STREAM and send it there */
+		uint64_t padding_stream_id = 0;
+		imquic_connection_new_stream_id(conn, FALSE, &padding_stream_id);
+#ifdef HAVE_QLOG
+		/* TODO Add padding to QLOG */
+#endif
+		imquic_connection_send_on_stream(conn, padding_stream_id, buffer, pd_len, TRUE);
+	}
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
 	return 0;
 }
 

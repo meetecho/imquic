@@ -363,6 +363,10 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		object.end_of_stream = TRUE;
 		imquic_moq_send_object(moq_conn, &object);
 	}
+	/* If padding is enabled and the MoQ version is high enough,
+	 * send some padding data occasionally too, every few seconds */
+	if(options.padding > 0 && (object_id % 7) == 0)
+		imquic_moq_send_padding(moq_conn, options.padding, delivery == IMQUIC_MOQ_USE_DATAGRAM);
 	if(group_id == sub_end.group && object_id == sub_end.object) {
 		/* We've sent the last object */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
@@ -458,12 +462,13 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %"SCNu64" (will send the 'Prior Group ID Gap' property)\n", options.first_group);
 	if(options.first_object > 0)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' property)\n", options.first_object);
-	if(options.publish) {
+	if(options.publish)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
-	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64"\n",
 		options.track_alias);
 	moq_track_alias	= options.track_alias;
+	if(options.padding > 0)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send padding data too (%d bytes\n", options.padding);
 
 	/* Check if we need to create a QLOG file, and which we should save */
 	gboolean qlog_quic = FALSE, qlog_http3 = FALSE, qlog_moq = FALSE;
