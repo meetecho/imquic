@@ -129,7 +129,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], NULL, moq_track_alias, &params, NULL);
+		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], &pub_trackname, moq_track_alias, &params, NULL);
 	}
 }
 
