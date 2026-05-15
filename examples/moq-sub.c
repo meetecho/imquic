@@ -311,15 +311,17 @@ static void imquic_demo_incoming_namespace_done(imquic_connection *conn, uint64_
 		imquic_get_connection_name(conn), ns);
 }
 
-static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Track status %"SCNu64" accepted (expires=%"SCNu64"; %s order)\n",
+static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters, GList *track_properties) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Track status %"SCNu64" accepted (expires=%"SCNu64"; %s order; %d properties)\n",
 		imquic_get_connection_name(conn), request_id, parameters->expires,
-		imquic_moq_group_order_str(parameters->group_order));
+		imquic_moq_group_order_str(parameters->group_order), g_list_length(track_properties));
 	if(parameters->largest_object_set) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
 	}
+	if(track_properties != NULL)
+		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }

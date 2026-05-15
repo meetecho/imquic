@@ -2324,6 +2324,18 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing REQUEST_OK parameters");
 	}
+	size_t prop_len = blen-offset;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
+		imquic_get_connection_name(moq->conn), prop_len);
+	size_t prop_offset = prop_len > 0 ? offset : 0;
+	offset += prop_len;
+	GList *track_properties = NULL;
+	if(moq->version >= IMQUIC_MOQ_VERSION_18) {
+		if(prop_offset > 0 && prop_len > 0) {
+			/* TODO Check Protocol Violation cases */
+			track_properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len);
+		}
+	}
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("request_ok");
@@ -2331,6 +2343,8 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
+		if(moq->version >= IMQUIC_MOQ_VERSION_18)
+			imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog,
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
@@ -2342,6 +2356,9 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	imquic_moq_message_type type = GPOINTER_TO_UINT(g_hash_table_lookup(moq->requests, &request_id));
 	g_hash_table_remove(moq->requests, &request_id);
 	imquic_mutex_unlock(&moq->mutex);
+	if(type != IMQUIC_MOQ_TRACK_STATUS)
+		g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
+	IMQUIC_MOQ_CHECK_ERR((prop_len > 0 && type != IMQUIC_MOQ_TRACK_STATUS), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Track properties not empty");
 	switch(type) {
 		case IMQUIC_MOQ_PUBLISH:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_accepted)
@@ -2365,7 +2382,8 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 			break;
 		case IMQUIC_MOQ_TRACK_STATUS:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.track_status_accepted)
-				moq->conn->socket->callbacks.moq.track_status_accepted(moq->conn, request_id, &parameters);
+				moq->conn->socket->callbacks.moq.track_status_accepted(moq->conn, request_id, &parameters, track_properties);
+			g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
 			break;
 		default:
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Couldn't find a request associated to ID %"SCNu64" (%d, %s), can't notify success\n",
@@ -4541,7 +4559,7 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
 }
 
 size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
-		uint64_t request_id, imquic_moq_request_parameters *parameters) {
+		uint64_t request_id, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	if(bytes == NULL || blen < 1 || (moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_REQUEST_OK, moq->version));
@@ -4553,6 +4571,13 @@ size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 		offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
 	uint8_t params_num = 0;
 	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_REQUEST_OK, parameters, &bytes[offset], blen-offset, &params_num);
+	/* Check if there are properties to encode */
+	if(moq->version >= IMQUIC_MOQ_VERSION_18) {
+		uint8_t properties[256];
+		size_t properties_len = 0;
+		properties_len = imquic_moq_build_properties(moq->version, track_properties, properties, sizeof(properties));
+		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, properties_len, FALSE);
+	}
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4561,6 +4586,8 @@ size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
+		if(moq->version >= IMQUIC_MOQ_VERSION_18)
+			imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog,
 			(moq_stream ? moq_stream->stream_id : moq->control_stream_id), bytes, offset, message);
 	}
@@ -6270,7 +6297,7 @@ int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t reques
 	}
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t ann_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+	size_t ann_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters, NULL);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, ann_len, FALSE);
@@ -6470,7 +6497,7 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
 	if(moq->version < IMQUIC_MOQ_VERSION_18)
 		sb_len = imquic_moq_add_publish_ok(moq, moq_stream, buffer, blen, request_id, parameters);
 	else
-		sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+		sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters, NULL);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, sb_len, FALSE);
@@ -6780,7 +6807,7 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
 	}
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+	size_t sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters, NULL);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, sb_len, FALSE);
@@ -7032,7 +7059,7 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
 	imquic_mutex_unlock(&moq->mutex);
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+	size_t sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters, NULL);
 	/* Send on the dedicated bidirectional STREAM */
 	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 		buffer, sb_len, FALSE);
@@ -7205,7 +7232,7 @@ int imquic_moq_accept_subscribe_tracks(imquic_connection *conn, uint64_t request
 	imquic_mutex_unlock(&moq->mutex);
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+	size_t sb_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters, NULL);
 	/* Send on the dedicated bidirectional STREAM */
 	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 		buffer, sb_len, FALSE);
@@ -7699,7 +7726,7 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 }
 
 int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_request_parameters *parameters) {
+		imquic_moq_request_parameters *parameters, GList *track_properties) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL) {
@@ -7729,7 +7756,7 @@ int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
 	}
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t tso_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters);
+	size_t tso_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters, track_properties);
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, tso_len, FALSE);

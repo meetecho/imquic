@@ -798,7 +798,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		rparams.largest_object_set = TRUE;
 		rparams.largest_object = start;
 	}
-	imquic_moq_accept_track_status(conn, request_id, &rparams);
+	imquic_moq_accept_track_status(conn, request_id, &rparams, track->properties);
 }
 
 static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,

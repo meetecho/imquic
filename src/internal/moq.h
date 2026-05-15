@@ -813,9 +813,10 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
  * @param blen The size of the buffer
  * @param request_id The request ID to put in the message
  * @param parameters The parameters to add, if any
+ * @param track_properties List of track properties to add, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-	uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_request_parameters *parameters);
+	uint8_t *bytes, size_t blen, uint64_t request_id, imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Helper method to add a \c REQUEST_ERROR message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -1387,7 +1388,7 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ACCEPTED messages */
-	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
+	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ERROR messages */
 	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
 		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);

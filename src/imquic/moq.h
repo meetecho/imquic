@@ -1166,7 +1166,7 @@ void imquic_set_incoming_track_status_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param track_status_accepted Pointer to the function that will fire when a \c TRACK_STATUS is accepted */
 void imquic_set_track_status_accepted_cb(imquic_endpoint *endpoint,
-	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
+	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters, GList *track_properties));
 /*! \brief Configure the callback function to be notified when a
  * \c TRACK_STATUS we previously sent was rejected with an error
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1518,9 +1518,10 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to query
  * @param parameters The parameters to add to the request
+ * @param track_properties List of track properties to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_parameters *parameters);
+	imquic_moq_request_parameters *parameters, GList *track_properties);
 /*! \brief Function to reject an incoming \c TRACK_STATUS request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to reject
