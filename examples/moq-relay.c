@@ -1358,6 +1358,14 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID, "Subscription not found", 0, NULL);
 		return;
 	}
+	/* Make sure forwarding is enabled on the subscription */
+	if(!s->forward) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Forwarding not enabled on subscription with ID %"SCNu64"\n",
+			imquic_get_connection_name(conn), joining_request_id);
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "Forwarding not enabled", 0, NULL);
+		return;
+	}
 	/* Make sure we don't know this subscription already */
 	if(g_hash_table_lookup(sub->subscriptions_by_id, &request_id) != NULL) {
 		imquic_mutex_unlock(&mutex);
