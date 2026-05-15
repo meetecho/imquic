@@ -44,9 +44,9 @@ static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t moq_tns_request_id = 0, moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
 static imquic_moq_namespace pub_namespace[32] = { 0 };
-static imquic_moq_track pub_trackname = { 0 };
-static char pub_tns_buffer[256], pub_tn_buffer[256];
-static const char *pub_tns = NULL, *pub_tn = NULL;
+static imquic_moq_track pub_trackname = { 0 }, pub_trackname_redirect = { 0 };
+static char pub_tns_buffer[256], pub_tn_buffer[256], pub_redirect_buffer[256];
+static const char *pub_tns = NULL, *pub_tn = NULL, *pub_redirect = NULL;
 static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
@@ -138,7 +138,8 @@ static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace: error %d (%s)\n",
 		imquic_get_connection_name(conn), error_code, reason);
 	/* Stop here */
@@ -156,7 +157,8 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	g_atomic_int_set(&send_objects, 1);
 }
 
-static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
@@ -169,22 +171,36 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	if(!strcasecmp(ns, ".2e")) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
 		return;
 	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id);
-	if(pub_tns == NULL || strcasecmp(ns, pub_tns) || strcasecmp(name, pub_tn)) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace or track\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", 0);
+	if(pub_tns == NULL || strcasecmp(ns, pub_tns)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace", 0, NULL);
+		return;
+	}
+	if(!strcasecmp(name, pub_redirect)) {
+		/* Someone hit our alias, let's test the redirect error */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Returning redirect to our track name\n", imquic_get_connection_name(conn));
+		imquic_moq_redirect redirect = {
+			.track_name = &pub_trackname
+		};
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_REDIRECT, "Redirecting alias", 0, &redirect);
+		return;
+	}
+	if(strcasecmp(name, pub_tn)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown track\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown track", 0, NULL);
 		return;
 	}
 	if(options.publish || g_atomic_int_get(&send_objects)) {
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] We already have a subscriber\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", 0, NULL);
 		return;
 	}
 	/* TODO Check if it matches our published namespace */
@@ -459,13 +475,29 @@ int main(int argc, char *argv[]) {
 	}
 	pub_trackname.buffer = (uint8_t *)options.track_name;
 	pub_trackname.length = strlen(options.track_name);
-	if(!imquic_moq_namespace_is_valid(&pub_namespace[0], TRUE, &tns_num)) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid track namespace\n");
+	if(!imquic_moq_track_is_valid(&pub_trackname)) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid track name\n");
 		ret = 1;
 		goto done;
 	}
 	pub_tn = imquic_moq_track_str(&pub_trackname, pub_tn_buffer, sizeof(pub_tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s'\n", pub_tn);
+	if(options.track_name_redirect != NULL) {
+		if(!strcasecmp(options.track_name_redirect, options.track_name)) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Redirect can't be the same as track name\n");
+			ret = 1;
+			goto done;
+		}
+		pub_trackname_redirect.buffer = (uint8_t *)options.track_name_redirect;
+		pub_trackname_redirect.length = strlen(options.track_name_redirect);
+		if(!imquic_moq_track_is_valid(&pub_trackname_redirect)) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid redirect track name\n");
+			ret = 1;
+			goto done;
+		}
+		pub_redirect = imquic_moq_track_str(&pub_trackname_redirect, pub_redirect_buffer, sizeof(pub_redirect));
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' as an alias, to test redirects\n", pub_redirect);
+	}
 
 	if(options.delivery != NULL) {
 		if(!strcasecmp(options.delivery, "datagram")) {

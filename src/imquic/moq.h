@@ -355,7 +355,7 @@ gboolean imquic_moq_namespace_equals(imquic_moq_namespace *first, imquic_moq_nam
  * @returns TRUE if the child namespace is part of the parent, FALSE otherwise */
 gboolean imquic_moq_namespace_contains(imquic_moq_namespace *parent, imquic_moq_namespace *child);
 /*! \brief Helper to duplicate a namespace
- * \note This will allocate a new buffer, that must be freed with imquic_moq_namespace
+ * \note This will allocate a new buffer, that must be freed with imquic_moq_namespace_free
  * @param tns The namespace to duplicate
  * @returns A pointer to a new imquic_moq_namespace, if successful, NULL otherwise */
 imquic_moq_namespace *imquic_moq_namespace_duplicate(imquic_moq_namespace *tns);
@@ -391,10 +391,31 @@ const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen
  * @param second The second track name to check
  * @returns TRUE if the second track name is part of the secondm, FALSE otherwise */
 gboolean imquic_moq_track_equals(imquic_moq_track *first, imquic_moq_track *second);
+/*! \brief Helper to duplicate a track name
+ * \note This will allocate a new buffer, that must be freed with imquic_moq_track_free
+ * @param tns The track to duplicate
+ * @returns A pointer to a new imquic_moq_track, if successful, NULL otherwise */
+imquic_moq_track *imquic_moq_track_duplicate(imquic_moq_track *tn);
 /*! \brief Helper check if a imquic_moq_track instance is valid
  * @param tn The track name to validate
  * @returns TRUE if the track name is valid, FALSE otherwise */
 gboolean imquic_moq_track_is_valid(imquic_moq_track *tn);
+/*! \brief Helper to free a imquic_moq_track instance
+ * \note This should only be used if everything in the track, including
+ * buffers, were allocated, e.g., via a call to imquic_moq_track_duplicate
+ * @param tns The track to free */
+void imquic_moq_track_free(imquic_moq_track *tn);
+
+/*! \brief MoQ Redirect Structure
+ * \note Added in v18 */
+typedef struct imquic_moq_redirect {
+	/* Connect URI */
+	char *connect_uri;
+	/* Track Namespace */
+	imquic_moq_namespace *track_namespace;
+	/* Track Name */
+	imquic_moq_track *track_name;
+} imquic_moq_redirect;
 
 /*! \brief Group ordering for tracks */
 typedef enum imquic_moq_group_order {
@@ -642,6 +663,9 @@ typedef struct imquic_moq_object {
 } imquic_moq_object;
 ///@}
 
+/** @name MoQ authorization and tokens
+ */
+///@{
 /*! \brief MoQ Authorization Token Alias Type */
 typedef enum imquic_moq_auth_token_alias_type {
 	/*! \brief DELETE */
@@ -693,6 +717,8 @@ int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size
  * @param[in] blen The size of the buffer to write to
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_auth_token(imquic_moq_version version, imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
+///@}
+
 
 /** @name MoQ error and status codes
  */
@@ -922,7 +948,8 @@ void imquic_set_publish_namespace_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_namespace_error Pointer to the function that will fire when a \c PUBLISH_NAMESPACE is rejected */
 void imquic_set_publish_namespace_error_cb(imquic_endpoint *endpoint,
-	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c PUBLISH_NAMESPACE_DONE request.
  * \note Starting in v17, \c PUBLISH_NAMESPACE_DONE doesn't exist anymore,
@@ -951,7 +978,8 @@ void imquic_set_publish_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_error Pointer to the function that will fire when a \c PUBLISH is rejected */
 void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
-	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -970,7 +998,8 @@ void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
 void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when an update
  * is received for a request (e.g., a \c SUBSCRIBE ) we previously sent
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -988,7 +1017,8 @@ void imquic_set_request_update_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param request_update_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
 void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
-	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1029,7 +1059,8 @@ void imquic_set_subscribe_namespace_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_namespace_error Pointer to the function that will fire when an \c SUBSCRIBE_NAMESPACE is rejected */
 void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_NAMESPACE request.
  * \note On newer versions, \c UNSUBSCRIBE_NAMESPACE doesn't exist anymore,
@@ -1057,7 +1088,8 @@ void imquic_set_subscribe_tracks_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param subscribe_tracks_error Pointer to the function that will fire when an \c SUBSCRIBE_TRACKS is rejected */
 void imquic_set_subscribe_tracks_error_cb(imquic_endpoint *endpoint,
-	void (* subscribe_tracks_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* subscribe_tracks_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_TRACKS request.
  * \note On newer versions, \c UNSUBSCRIBE_TRACKS doesn't exist anymore,
@@ -1120,7 +1152,8 @@ void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param fetch_error Pointer to the function that will fire when an \c FETCH is rejected */
 void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
-	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c TRACK_STATUS request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1139,7 +1172,8 @@ void imquic_set_track_status_accepted_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param track_status_error Pointer to the function that will fire when a \c TRACK_STATUS is rejected */
 void imquic_set_track_status_error_cb(imquic_endpoint *endpoint,
-	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval));
+	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming MoQ object, independently of how it was multiplexed on the wire.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1223,9 +1257,10 @@ int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t reques
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_publish_namespace(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a \c PUBLISH_NAMESPACE_DONE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the original \c PUBLISH_NAMESPACE
@@ -1255,9 +1290,10 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription
@@ -1282,9 +1318,10 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a \c REQUEST_UPDATE request
  * @param conn The imquic_connection to send the request on
  * @param request_id Unique \c request_id value
@@ -1306,9 +1343,10 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on
@@ -1345,9 +1383,10 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a \c UNSUBSCRIBE_NAMESPACE request
  * \note Starting in v16, this doesn't actually send a request, but simply
  * closes the bidirectional STREAM that was created for the subscription
@@ -1376,9 +1415,10 @@ int imquic_moq_accept_subscribe_tracks(imquic_connection *conn, uint64_t request
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a \c UNSUBSCRIBE_TRACKS request
  * \note Starting in v16, this doesn't actually send a request, but simply
  * closes the bidirectional STREAM that was created for the subscription
@@ -1455,9 +1495,10 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a \c FETCH_CANCEL request (legacy) or close
  * the stream associated with the \c FETCH subscription (new draft versions)
  * @param conn The imquic_connection to send the request on
@@ -1486,9 +1527,10 @@ int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
+ * @param redirect Redirect structure, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_track_status(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
 /*! \brief Function to send a MoQ object
  * @note Depending on the delivery mode, to close the stream set the
  * \c end_of_stream property to \c TRUE in the object. There's no need to

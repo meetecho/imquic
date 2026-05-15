@@ -19,6 +19,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "test-grease", '9', 0, G_OPTION_ARG_NONE, &options->test_grease, "If set, will add GREASE to SETUP options (default=no; only available for v17 and beyond)", NULL},
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to publish (can be called multiple times to create a tuple; default=none)", "namespace" },
 		{ "track-name", 'N', 0, G_OPTION_ARG_STRING, &options->track_name, "MoQ track name to publish (default=none)", "name" },
+		{ "redirect", 'T', 0, G_OPTION_ARG_STRING, &options->track_name_redirect, "Alias for the main track-name, to test redirect (default=none)", "name" },
 		{ "first-group", 'f', 0, G_OPTION_ARG_INT64, &options->first_group, "First group ID to send (default=0; sends 'Prior Group ID Gap' property for the first sent object in that group, if set))", "group_id" },
 		{ "first-object", 'F', 0, G_OPTION_ARG_INT64, &options->first_object, "First object ID to send (default=0; sends 'Prior Object ID Gap' property for the first sent object in that group, if set))", "object_id" },
 		{ "relay-auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->relay_auth_info, "Auth info required to connect to the relay, if any (default=none)", "string" },
