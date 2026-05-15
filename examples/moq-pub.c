@@ -182,7 +182,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace", 0, NULL);
 		return;
 	}
-	if(!strcasecmp(name, pub_redirect)) {
+	if(pub_redirect != NULL && !strcasecmp(name, pub_redirect)) {
 		/* Someone hit our alias, let's test the redirect error */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Returning redirect to our track name\n", imquic_get_connection_name(conn));
 		imquic_moq_redirect redirect = {
