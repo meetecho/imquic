@@ -411,6 +411,8 @@ typedef struct imquic_moq_stream {
 	uint64_t object_id;
 	/*! \brief Object status */
 	imquic_moq_object_status object_status;
+	/*! \brief If this is a FETCH stream, whether it's in ascending or descending order */
+	gboolean ascending;
 	/*! \brief Publisher priority */
 	uint8_t priority;
 	/*! \brief Buffer to process incoming messages/objects */
@@ -447,6 +449,8 @@ typedef struct imquic_moq_subscription {
 	uint64_t track_alias;
 	/*! \brief Whether this is a FETCH */
 	gboolean fetch;
+	/*! \brief If this is a FETCH stream, whether it's in ascending or descending order */
+	gboolean ascending;
 	/*! \brief Stream for this subscription, in case it's a single one */
 	imquic_moq_stream *stream;
 	/*! \brief Streams for this subscription, indexed by subgroup */

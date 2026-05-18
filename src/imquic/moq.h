@@ -393,7 +393,7 @@ const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen
 gboolean imquic_moq_track_equals(imquic_moq_track *first, imquic_moq_track *second);
 /*! \brief Helper to duplicate a track name
  * \note This will allocate a new buffer, that must be freed with imquic_moq_track_free
- * @param tns The track to duplicate
+ * @param tn The track to duplicate
  * @returns A pointer to a new imquic_moq_track, if successful, NULL otherwise */
 imquic_moq_track *imquic_moq_track_duplicate(imquic_moq_track *tn);
 /*! \brief Helper check if a imquic_moq_track instance is valid
@@ -403,7 +403,7 @@ gboolean imquic_moq_track_is_valid(imquic_moq_track *tn);
 /*! \brief Helper to free a imquic_moq_track instance
  * \note This should only be used if everything in the track, including
  * buffers, were allocated, e.g., via a call to imquic_moq_track_duplicate
- * @param tns The track to free */
+ * @param tn The track to free */
 void imquic_moq_track_free(imquic_moq_track *tn);
 
 /*! \brief MoQ Redirect Structure
@@ -1189,7 +1189,7 @@ void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c GOAWAY request associated with an existing request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_goaway Pointer to the function that will handle the incoming \c GOAWAY */
+ * @param incoming_request_goaway Pointer to the function that will handle the incoming \c GOAWAY */
 void imquic_set_incoming_request_goaway_cb(imquic_endpoint *endpoint,
 	void (* incoming_request_goaway)(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout));
 /*! \brief Configure the callback function to be notified when an existing

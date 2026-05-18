@@ -3601,6 +3601,9 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	if(moq_stream != NULL) {
 		moq_stream->request_id = request_id;
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_SENT;
+		moq_stream->ascending = TRUE;
+		if(parameters.group_order_set && parameters.group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
+			moq_stream->ascending = FALSE;
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
@@ -3608,6 +3611,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	/* Track this fetch subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, 0);
 	moq_sub->fetch = TRUE;
+	if(moq_stream != NULL)
+		moq_sub->ascending = moq_stream->ascending;
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->subscriptions_by_id, imquic_dup_uint64(request_id), moq_sub);
 	imquic_mutex_unlock(&moq->mutex);
@@ -3749,8 +3754,11 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 #endif
-	if(moq_stream != NULL)
+	if(moq_stream != NULL) {
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_OK;
+		if(parameters.group_order_set)
+			moq_stream->ascending = (parameters.group_order != IMQUIC_MOQ_ORDERING_DESCENDING);
+	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.fetch_accepted)
 		moq->conn->socket->callbacks.moq.fetch_accepted(moq->conn, request_id, &largest, &parameters, track_properties);
@@ -4179,10 +4187,22 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID:      %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
+	/* Make sure this request ID is related to a FETCH we got before */
+	imquic_mutex_lock(&moq->mutex);
+	imquic_moq_stream *req_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
+	if(req_stream == NULL || req_stream->request_type != IMQUIC_MOQ_FETCH || !req_stream->request_sender) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Not a FETCH request ID (%s, %s)\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(req_stream->request_type, moq->version),
+			req_stream ? imquic_media_stream_request_state_str(req_stream->request_state) : "No stream");
+		imquic_mutex_unlock(&moq->mutex);
+		return 0;
+	}
+	imquic_mutex_unlock(&moq->mutex);
 	/* Track these properties */
 	if(moq_stream != NULL) {
 		moq_stream->request_id = request_id;
 		moq_stream->buffer = imquic_buffer_create(NULL, 0);
+		moq_stream->ascending = req_stream->ascending;
 #ifdef HAVE_QLOG
 		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "fetch_header");
@@ -4223,10 +4243,17 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
 		offset += length;
+		if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream->got_objects) {
+			/* Group IDs are a delta */
+			if(moq_stream->ascending)
+				group_id += moq_stream->last_group_id;
+			else
+				group_id = moq_stream->last_group_id - group_id;
+		}
 	} else {
-		/* TODO The group ID references a previous object */
+		/* The group ID references a previous object */
 		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
-		group_id = moq_stream->group_id;
+		group_id = moq_stream->last_group_id;
 	}
 	uint64_t subgroup_id = 0;
 	if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_ID) {
@@ -4248,6 +4275,10 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
 		offset += length;
+		if(moq->version >= IMQUIC_MOQ_VERSION_18 && (!has_group)) {
+			/* Object IDs are a delta, unless the group is not a delta */
+			object_id += moq_stream->last_object_id;
+		}
 	} else {
 		/* The object ID references a previous object */
 		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
@@ -7508,6 +7539,9 @@ int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
 		moq_stream->request_id = request_id;
 		moq_stream->request_sender = TRUE;
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_SENT;
+		moq_stream->ascending = TRUE;
+		if(parameters != NULL && parameters->group_order_set && parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
+			moq_stream->ascending = FALSE;
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams, imquic_dup_uint64(moq_stream->stream_id), moq_stream);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
@@ -7563,6 +7597,9 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 		moq_stream->request_id = request_id;
 		moq_stream->request_sender = TRUE;
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_SENT;
+		moq_stream->ascending = TRUE;
+		if(parameters != NULL && parameters->group_order_set && parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
+			moq_stream->ascending = FALSE;
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams, imquic_dup_uint64(moq_stream->stream_id), moq_stream);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
@@ -7612,6 +7649,11 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, imquic
 			return -1;
 		}
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_OK;
+		if(parameters != NULL && parameters->group_order_set)
+			moq_stream->ascending = (parameters->group_order != IMQUIC_MOQ_ORDERING_DESCENDING);
+		imquic_moq_subscription *sub_stream = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
+		if(sub_stream != NULL)
+			sub_stream->ascending = moq_stream->ascending;
 		imquic_mutex_unlock(&moq->mutex);
 	}
 	uint8_t buffer[200];
@@ -8091,6 +8133,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream = imquic_moq_stream_create();
 			moq_stream->type = IMQUIC_MOQ_FETCH_HEADER;
 			moq_stream->priority = 128;	/* FIXME */
+			moq_stream->ascending = moq_sub->ascending;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			moq_sub->stream = moq_stream;
 			moq_sub->streams_count++;
@@ -8113,17 +8156,45 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Send the object */
 		size_t shto_len = 0;
 		if(valid_pkt) {
-			/* TODO Compute which flags we should use, rather than hardcoding them */
+			/* For older versions, we hardcode the properties we'll use to
+			 * create the serialization flags: specifically, we write
+			 * all IDs explicitly, and we assume that the forwarding
+			 * preference is NOT set to DATAGRAM. For newer versions, where
+			 * some IDs can be delta encoded, we try to be a bit smarter */
+			imquic_moq_fetch_subgroup_type sg_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
+			gboolean has_oid = TRUE, has_gid = TRUE,
+				has_priority = TRUE, has_properties = TRUE,
+				datagram = FALSE;
+			/* Some properties may need to be delta encoded */
+			uint64_t group_id = object->group_id;
+			uint64_t object_id = object->object_id;
+			if(moq->version >= IMQUIC_MOQ_VERSION_18) {
+				/* Starting from v18, object and group IDs are deltas,
+				 * when written explicitly in the object serialization */
+				has_gid = !moq_stream->got_objects || (object->group_id != moq_stream->last_group_id);
+				if(has_gid && moq_stream->got_objects) {
+					group_id = moq_stream->ascending ? (object->group_id - moq_stream->last_group_id) :
+						(moq_stream->last_group_id - object->group_id);
+				}
+				has_oid = !moq_stream->got_objects || (object->group_id != moq_stream->last_group_id) ||
+					(object_id - moq_stream->last_object_id > 1);
+				if(has_oid && moq_stream->got_objects && object->group_id == moq_stream->last_group_id) {
+					object_id -= moq_stream->last_object_id;
+				}
+			}
 			uint64_t flags = imquic_moq_generate_fetch_serialization_flags(moq->version,
-				IMQUIC_MOQ_FETCH_SUBGROUP_ID,	/* We write the Subgroup ID */
-				TRUE,	/* We write the Object ID */
-				TRUE,	/* We write the Group ID */
-				TRUE,	/* We write the Priority */
-				TRUE,	/* We add properties */
-				FALSE,	/* We assume Forwarding Preference is not DATAGRAM */
+				sg_type,
+				has_oid,
+				has_gid,
+				has_priority,
+				has_properties,
+				datagram,
 				FALSE, FALSE);	/* We don't use the "end of range" flags */
+			moq_stream->got_objects = TRUE;
+			moq_stream->last_group_id = object->group_id;
+			moq_stream->last_object_id = object->object_id;
 			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize, flags,
-				object->group_id, object->subgroup_id, object->object_id, object->priority,
+				group_id, object->subgroup_id, object_id, object->priority,
 				object->object_status, object->payload, object->payload_len,
 				properties, properties_len);
 #ifdef HAVE_QLOG
