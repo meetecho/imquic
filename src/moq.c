@@ -1850,6 +1850,9 @@ next:
 			} else if(type == IMQUIC_MOQ_PUBLISH_BLOCKED) {
 				/* Parse this PUBLISH_BLOCKED message */
 				parsed = imquic_moq_parse_publish_blocked(moq, moq_stream, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_GOAWAY) {
+				/* Parse this GOAWAY message */
+				parsed = imquic_moq_parse_goaway(moq, moq_stream, &bytes[offset], plen, &error);
 			} else {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported message '%02x' (%s) on a %s request stream\n",
 					imquic_get_connection_name(moq->conn), type,
