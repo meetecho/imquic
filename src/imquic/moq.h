@@ -1181,11 +1181,17 @@ void imquic_set_track_status_error_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_object_cb(imquic_endpoint *endpoint,
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c GOAWAY request.
+ * an incoming \c GOAWAY request for the whole connection.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_goaway Pointer to the function that will handle the incoming \c GOAWAY */
 void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
 	void (* incoming_goaway)(imquic_connection *conn, const char *uri, uint64_t timeout));
+/*! \brief Configure the callback function to be notified when there's
+ * an incoming \c GOAWAY request associated with an existing request.
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param incoming_goaway Pointer to the function that will handle the incoming \c GOAWAY */
+void imquic_set_incoming_request_goaway_cb(imquic_endpoint *endpoint,
+	void (* incoming_request_goaway)(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout));
 /*! \brief Configure the callback function to be notified when an existing
  * MoQ connection handled by this endpoint has been closed/shut down.
  * @note This is a good place to release the last reference to the connection
@@ -1558,12 +1564,19 @@ int imquic_moq_send_padding(imquic_connection *conn, size_t padding, gboolean da
  * @param conn The imquic_connection to send the request on
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_requests_blocked(imquic_connection *conn);
-/*! \brief Function to send a \c GOAWAY request
+/*! \brief Function to send a \c GOAWAY request for the whole connection
  * @param conn The imquic_connection to send the request on
  * @param uri Where the client can connect to continue the session
  * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout);
+/*! \brief Function to send a \c GOAWAY for an existing request
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the request to address
+ * @param uri Where the client can connect to continue the session
+ * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_request_goaway(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout);
 ///@}
 
 #endif

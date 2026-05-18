@@ -917,6 +917,17 @@ void imquic_set_incoming_goaway_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_incoming_request_goaway_cb(imquic_endpoint *endpoint,
+		void (* incoming_request_goaway)(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.incoming_request_goaway = incoming_request_goaway;
+	}
+}
+
 void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
 		void (* moq_connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason)) {
 	if(endpoint != NULL) {

@@ -711,10 +711,18 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	}
 }
 
-static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri, uint64_t timeout) {
+static void imquic_demo_incoming_goaway(imquic_connection *conn, const char *uri, uint64_t timeout) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY: %s (timeout=%"SCNu64"ms)\n",
 		imquic_get_connection_name(conn), uri, timeout);
+	/* Stop here */
+	g_atomic_int_inc(&stop);
+}
+
+static void imquic_demo_incoming_request_goaway(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout) {
+	/* Connection was closed */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a GOAWAY for request %"SCNu64": %s (timeout=%"SCNu64"ms)\n",
+		imquic_get_connection_name(conn), request_id, uri, timeout);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -1026,7 +1034,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_tracks_accepted_cb(client, imquic_demo_subscribe_tracks_accepted);
 	imquic_set_subscribe_tracks_error_cb(client, imquic_demo_subscribe_tracks_error);
 	imquic_set_incoming_object_cb(client, imquic_demo_incoming_object);
-	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
+	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_goaway);
+	imquic_set_incoming_request_goaway_cb(client, imquic_demo_incoming_request_goaway);
 	imquic_set_connection_failed_cb(client, imquic_demo_connection_failed);
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);

@@ -754,11 +754,12 @@ size_t imquic_moq_parse_padding_datagram(imquic_moq_context *moq, uint8_t *bytes
 int imquic_moq_parse_padding_stream(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete, uint8_t *error);
 /*! \brief Helper to parse a \c GOAWAY message
  * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] moq_stream The imquic_moq_stream instance the request data is from, if not from the control stream
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 ///@}
 
 /** @name Building MoQ messages
@@ -1055,12 +1056,15 @@ size_t imquic_moq_add_track_status(imquic_moq_context *moq, imquic_moq_stream *m
 	imquic_moq_namespace *track_namespace, imquic_moq_track *track_name, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c GOAWAY message to a buffer
  * @param moq The imquic_moq_context generating the message
+ * @param moq_stream The imquic_moq_stream instance the message is for, if not on the control stream
  * @param bytes The buffer to add the message to
  * @param blen The size of the buffer
+ * @param request_id The request ID to put in the message
  * @param new_session_uri New uri value to put in the message, if any
  * @param timeout Timeout to put in the message (added in v17, ignored for older versions)
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_goaway(imquic_moq_context *moq, uint8_t *bytes, size_t blen, const char *new_session_uri, uint64_t timeout);
+size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+	uint8_t *bytes, size_t blen, uint64_t request_id, const char *new_session_uri, uint64_t timeout);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -1396,6 +1400,8 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
 	void (* incoming_goaway)(imquic_connection *conn, const char *uri, uint64_t timeout);
+	/*! \brief Callback function to be notified about incoming requests \c GOAWAY messages */
+	void (* incoming_request_goaway)(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout);
 	/*! \brief Callback function to be notified about MoQ connections being closed */
 	void (* connection_gone)(imquic_connection *conn, uint64_t error_code, const char *reason);
 } imquic_moq_callbacks;
