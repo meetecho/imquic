@@ -658,6 +658,8 @@ typedef struct imquic_moq_object {
 	GList *properties;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
+	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
+	gboolean first_of_subgroup;
 	/*! \brief Whether this signals the end of the stream */
 	gboolean end_of_stream;
 } imquic_moq_object;

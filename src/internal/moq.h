@@ -124,6 +124,10 @@ typedef enum imquic_moq_data_message_type {
 		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX = 0x1D,
 		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN = 0x30,
 		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX = 0x3D,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE3_MIN = 0x50,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE3_MAX = 0x5D,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE4_MIN = 0x70,
+		IMQUIC_MOQ_SUBGROUP_HEADER_RANGE4_MAX = 0x7D,
 	/* IMQUIC_MOQ_FETCH_HEADER */
 	IMQUIC_MOQ_FETCH_HEADER = 0x5,
 	/* Padding */
@@ -141,9 +145,10 @@ gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, imqui
  * @param[in] prop Whether there are properties
  * @param[in] eog Whether there is an End of Group
  * @param[in] priority Whether there is a Publisher Priority
+ * @param[in] first_object Whether the first object in the stream contains the first object in the subgroup
  * @returns The type as a bitmask flag */
 uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version,
-	gboolean subgroup, gboolean sgid0, gboolean prop, gboolean eog, gboolean priority);
+	gboolean subgroup, gboolean sgid0, gboolean prop, gboolean eog, gboolean priority, gboolean first_object);
 /*! \brief Helper function to parse a type value for \c SUBRGOUP_HEADER to the individual properties.
  * @param[in] version The version of the connection
  * @param[in] type The type to parse
@@ -152,9 +157,10 @@ uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version ver
  * @param[out] prop Output variable to write whether there are properties
  * @param[out] eog Output variable to write whether there is an End of Group
  * @param[out] priority Output variable to write whether there is a Publisher Priority
+ * @param[in] first_object Output variable to write whether the first object in the stream contains the first object in the subgroup
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
-	gboolean *subgroup, gboolean *sgid0, gboolean *prop, gboolean *eog, gboolean *priority, gboolean *violation);
+	gboolean *subgroup, gboolean *sgid0, gboolean *prop, gboolean *eog, gboolean *priority, gboolean *first_object, gboolean *violation);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_data_message_type value.
  * @param type The imquic_data_moq_message_type value
  * @param version The version of the connection
@@ -415,6 +421,8 @@ typedef struct imquic_moq_stream {
 	gboolean ascending;
 	/*! \brief Publisher priority */
 	uint8_t priority;
+	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
+	gboolean first_of_subgroup;
 	/*! \brief Buffer to process incoming messages/objects */
 	imquic_buffer *buffer;
 	/*! \brief Whether we got at least an object on this stream */

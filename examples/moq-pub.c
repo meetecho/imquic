@@ -356,6 +356,7 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
 		.properties = props,
+		.first_of_subgroup = first,
 		.delivery = delivery,
 		.end_of_stream = FALSE
 	};

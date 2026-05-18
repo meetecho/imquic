@@ -814,12 +814,16 @@ gboolean imquic_moq_is_data_message_type_valid(imquic_moq_version version, imqui
 	if((type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) ||
 			(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX))
 		return TRUE;
+	if(version >= IMQUIC_MOQ_VERSION_18 &&
+			((type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE3_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE3_MAX) ||
+			(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE4_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE4_MAX)))
+		return TRUE;
 	return FALSE;
 }
 
 uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version version,
-		gboolean subgroup, gboolean sgid0, gboolean prop, gboolean eog, gboolean priority) {
-	uint8_t type = 0;
+		gboolean subgroup, gboolean sgid0, gboolean prop, gboolean eog, gboolean priority, gboolean first_object) {
+	uint8_t type = 0x10;
 	if(subgroup) {
 		sgid0 = FALSE;
 		type |= 0x04;
@@ -830,35 +834,34 @@ uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version ver
 		type |= 0x01;
 	if(eog)
 		type |= 0x08;
-	type |= (priority ? 0x10 : 0x30);
+	if(version >= IMQUIC_MOQ_VERSION_18 && first_object)
+		type |= 0x40;
+	if(priority)
+		type |= 0x20;
 	return type;
 }
 
 void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
-		gboolean *subgroup, gboolean *sgid0, gboolean *prop, gboolean *eog, gboolean *priority, gboolean *violation) {
-	uint8_t base = 0x10;
-	if(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) {
-		base = 0x10;
-	} else if(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX) {
-		base = 0x30;
-	}
-	uint8_t bitmask = type - base;
-	if(bitmask == 0x06 || bitmask == 0x07) {
+		gboolean *subgroup, gboolean *sgid0, gboolean *prop, gboolean *eog, gboolean *priority, gboolean *first_object, gboolean *violation) {
+	//~ if(type & 0x06 || type & 0x07) {
+	if(!(type & 0x10)) {
 		/* If these bits are set, it's a protocol violation */
 		if(violation)
 			*violation = TRUE;
 		return;
 	}
-	if(priority)
-		*priority = (base == 0x10);
 	if(subgroup)
-		*subgroup = (bitmask & 0x04);
+		*subgroup = (type & 0x04);
 	if(sgid0)
-		*sgid0 = (bitmask & 0x02);
+		*sgid0 = (type & 0x02);
 	if(prop)
-		*prop = (bitmask & 0x01);
+		*prop = (type & 0x01);
 	if(eog)
-		*eog = (bitmask & 0x08);
+		*eog = (type & 0x08);
+	if(priority)
+		*priority = (type & 0x20);
+	if(version >= IMQUIC_MOQ_VERSION_18 && first_object)
+		*first_object = (type & 0x40);
 }
 
 const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, imquic_moq_version version) {
@@ -876,6 +879,10 @@ imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_mes
 		return IMQUIC_MOQ_USE_FETCH;
 	else if((type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE1_MAX) ||
 			(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE2_MAX))
+		return IMQUIC_MOQ_USE_SUBGROUP;
+	else if(version >= IMQUIC_MOQ_VERSION_18 &&
+			((type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE3_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE3_MAX) ||
+			(type >= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE4_MIN && type <= IMQUIC_MOQ_SUBGROUP_HEADER_RANGE4_MAX)))
 		return IMQUIC_MOQ_USE_SUBGROUP;
 	return -1;
 }
@@ -4030,11 +4037,12 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 		imquic_get_connection_name(moq->conn), group_id);
 	uint64_t subgroup_id = 0;
 	/* Starting from v11, the subgroup ID property is optional */
-	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_prop = FALSE, is_eog = FALSE, has_priority = FALSE, violation = FALSE;
+	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_prop = FALSE, is_eog = FALSE,
+		has_priority = FALSE, first_object = FALSE, violation = FALSE;
 	imquic_moq_data_message_type_to_subgroup_header(moq->version, dtype,
-		&has_subgroup, &is_sgid0, &has_prop, &is_eog, &has_priority, &violation);
-	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, prop=%d, eog=%d, pri=%d, viol=%d\n",
-		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_prop, is_eog, has_priority, violation);
+		&has_subgroup, &is_sgid0, &has_prop, &is_eog, &has_priority, &first_object, &violation);
+	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, prop=%d, eog=%d, pri=%d, fobj=%d, viol=%d\n",
+		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_prop, is_eog, has_priority, first_object, violation);
 	IMQUIC_MOQ_CHECK_ERR(violation, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid SUBGROUP_HEADER type");
 	if(has_subgroup) {
 		subgroup_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -4059,6 +4067,7 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 		moq_stream->group_id = group_id;
 		moq_stream->subgroup_id = subgroup_id;
 		moq_stream->priority = priority;
+		moq_stream->first_of_subgroup = (first_object > 0);
 		moq_stream->buffer = imquic_buffer_create(NULL, 0);
 #ifdef HAVE_QLOG
 		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4089,7 +4098,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	/* TODO We can optimize this by only doing it once, when we parse the header */
 	/* TODO Check EOG too */
 	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_prop = FALSE, has_priority = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_subgroup, &is_sgid0, &has_prop, NULL, &has_priority, NULL);
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_subgroup, &is_sgid0, &has_prop, NULL, &has_priority, NULL, NULL);
 	if(has_prop) {
 		/* The object contains properties */
 		prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -4153,6 +4162,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		.object_id = object_id,
 		.object_status = object_status,
 		.priority = moq_stream->priority,
+		.first_of_subgroup = moq_stream->first_of_subgroup,
 		.payload = bytes + offset,
 		.payload_len = p_len,
 		.properties = properties,
@@ -5460,7 +5470,7 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
 	}
 	imquic_moq_data_message_type dtype = moq_stream->type;
 	gboolean has_sg = FALSE, has_priority = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_sg, NULL, NULL, NULL, &has_priority, NULL);
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_sg, NULL, NULL, NULL, &has_priority, NULL, NULL);
 	size_t offset = imquic_write_moqint(moq->version, dtype, bytes, blen);
 	offset += imquic_write_moqint(moq->version, track_alias, &bytes[offset], blen-offset);
 	offset += imquic_write_moqint(moq->version, group_id, &bytes[offset], blen-offset);
@@ -5486,7 +5496,7 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq
 	/* TODO We can optimize this by only doing it once, when we parse the header */
 	/* TODO Involve EOG too */
 	gboolean has_prop = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_prop, NULL, NULL, NULL);
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_prop, NULL, NULL, NULL, NULL);
 	if(has_prop)
 		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
 	if(payload == NULL)
@@ -8053,7 +8063,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				FALSE,	/* Whether the default Subgroup ID is 0 (ignored, since we set it) */
 				TRUE,	/* We'll add the properties block, whether there are properties or not */
 				TRUE,	/* End-of-Group is set */
-				TRUE);	/* We'll add the Publisher Priority property */
+				TRUE,	/* We'll add the Publisher Priority property */
+				object->first_of_subgroup);	/* We take this from the object provided by the user */
 			moq_stream->priority = 128;	/* FIXME */
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);
