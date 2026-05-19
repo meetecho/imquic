@@ -2642,7 +2642,7 @@ size_t imquic_moq_parse_publish_namespace_done(imquic_moq_context *moq, uint8_t 
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_DONE");
 	offset += length;
 #ifdef HAVE_QLOG
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
