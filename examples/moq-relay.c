@@ -1027,10 +1027,77 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 
 static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id,
 		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for request %"SCNu64"\n",
-		imquic_get_connection_name(conn), request_id);
-	/* Find the subscriber */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id, sub_request_id);
+	/* Find what the original request was about */
+	gboolean found = FALSE;
+	imquic_demo_moq_monitor *mon = NULL;
 	imquic_mutex_lock(&mutex);
+	GList *temp = monitors;
+	while(temp) {
+		mon = (imquic_demo_moq_monitor *)temp->data;
+		if(conn == mon->conn && sub_request_id == mon->request_id) {
+			/* Found: update this subscription */
+			found = TRUE;
+			break;
+		}
+		temp = temp->next;
+	}
+	if(found) {
+		/* Update this namespaces/tracks subscription, if valid */
+		if(parameters == NULL || !parameters->track_namespace_prefix_set) {
+			/* Nothing we can do */
+			imquic_mutex_unlock(&mutex);
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No track namespace prefix provided\n",
+				imquic_get_connection_name(conn));
+			imquic_moq_accept_request_update(conn, request_id, NULL);
+			return;
+		}
+		char tns_buffer[256];
+		const char *ns = imquic_moq_namespace_str(parameters->track_namespace_prefix, tns_buffer, sizeof(tns_buffer), TRUE);
+		if(!strcasecmp(ns, ".2e")) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+			imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+			return;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update, subscribe for namespace prefix '%s' (was '%s')\n",
+			imquic_get_connection_name(conn), ns, mon->ns);
+		/* TODO Check overlapping prefixes across the whole session */
+		if(!strcasecmp(mon->ns, ns) || imquic_moq_namespace_contains(mon->tns, parameters->track_namespace_prefix) ||
+				imquic_moq_namespace_contains(parameters->track_namespace_prefix, mon->tns)) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Overlapping namespaces\n", imquic_get_connection_name(conn));
+			imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_PREFIX_OVERLAP, "Overlapping namespaces", 0, NULL);
+			return;
+		}
+		/* Clean up the previous info */
+		mon->published = FALSE;
+		g_hash_table_remove_all(mon->known_tracks);
+		if(parameters->forward_set)
+			mon->forward = parameters->forward;
+		g_free(mon->ns);
+		imquic_moq_namespace_free(mon->tns);
+		mon->tns = imquic_moq_namespace_duplicate(parameters->track_namespace_prefix);
+		mon->ns = g_strdup(ns);
+		/* Check if there's events we can push and already tracks we can publish */
+		imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+		if(annc != NULL) {
+			imquic_demo_alert_monitors(annc, NULL, FALSE);
+			if(annc->tracks) {
+				GHashTableIter iter;
+				gpointer value;
+				g_hash_table_iter_init(&iter, annc->tracks);
+				while(g_hash_table_iter_next(&iter, NULL, &value)) {
+					imquic_demo_moq_track *track = value;
+					imquic_demo_alert_monitors(NULL, track, FALSE);
+				}
+			}
+		}
+		imquic_mutex_unlock(&mutex);
+		/* Done */
+		imquic_moq_accept_request_update(conn, request_id, NULL);
+		return;
+	}
+	/* Not a SUBSCRIBE_NAMESPACE or SUBSCRIBE_TRACKS, let's try SUBSCRIBE */
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
 		imquic_mutex_unlock(&mutex);
