@@ -4,24 +4,29 @@
  * Author:  Lorenzo Miniero <lorenzo@meetecho.com>
  * License: MIT
  *
- * Command line options for imquic-roq-server
+ * Command line options for imquic-roq-receiver
  *
  */
 
-#ifndef ROQ_SERVER_OPTIONS
-#define ROQ_SERVER_OPTIONS
+#ifndef ROQ_RECEIVER_OPTIONS
+#define ROQ_RECEIVER_OPTIONS
 
 #include <glib.h>
 
 /*! \brief Struct containing the parsed command line options */
 typedef struct demo_options {
+	gboolean client;
 	const char *ip;
 	int port;
+	const char *remote_host;
+	int remote_port;
+	const char *sni;
 	gboolean raw_quic;
 	gboolean webtransport;
+	const char *path;
 	const char *cert_pem;
 	const char *cert_key;
-	gboolean early_data;
+	const char *ticket_file;
 	const char *secrets_log;
 	const char *qlog_path;
 	const char **qlog_logging;

@@ -4,12 +4,12 @@
  * Author:  Lorenzo Miniero <lorenzo@meetecho.com>
  * License: MIT
  *
- * Command line options for imquic-roq-client
+ * Command line options for imquic-roq-sender
  *
  */
 
-#ifndef ROQ_CLIENT_OPTIONS
-#define ROQ_CLIENT_OPTIONS
+#ifndef ROQ_SENDER_OPTIONS
+#define ROQ_SENDER_OPTIONS
 
 #include <glib.h>
 
@@ -20,6 +20,8 @@ typedef struct demo_options {
 	int video_flow;
 	int video_port;
 	const char *multiplexing;
+	int timeout;
+	gboolean client;
 	const char *ip;
 	int port;
 	const char *remote_host;

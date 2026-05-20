@@ -112,33 +112,33 @@ endif
 
 if ENABLE_ROQ_EXAMPLES
 
-bin_PROGRAMS += imquic-roq-server imquic-roq-client
+bin_PROGRAMS += imquic-roq-receiver imquic-roq-sender
 
-imquic_roq_server_SOURCES = \
-	roq-server.c \
-	roq-server-options.c \
-	roq-server-options.h
-imquic_roq_server_CFLAGS = \
+imquic_roq_receiver_SOURCES = \
+	roq-receiver.c \
+	roq-receiver-options.c \
+	roq-receiver-options.h
+imquic_roq_receiver_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(IMQUIC_CFLAGS) \
 	-I ../src \
 	$(NULL)
-imquic_roq_server_LDADD = \
+imquic_roq_receiver_LDADD = \
 	$(IMQUIC_LIBS) \
 	$(IMQUIC_MANUAL_LIBS) \
 	-L../src/.libs -limquic \
 	$(NULL)
 
-imquic_roq_client_SOURCES = \
-	roq-client.c \
-	roq-client-options.c \
-	roq-client-options.h
-imquic_roq_client_CFLAGS = \
+imquic_roq_sender_SOURCES = \
+	roq-sender.c \
+	roq-sender-options.c \
+	roq-sender-options.h
+imquic_roq_sender_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(IMQUIC_CFLAGS) \
 	-I ../src \
 	$(NULL)
-imquic_roq_client_LDADD = \
+imquic_roq_sender_LDADD = \
 	$(IMQUIC_LIBS) \
 	$(IMQUIC_MANUAL_LIBS) \
 	-L../src/.libs -limquic \

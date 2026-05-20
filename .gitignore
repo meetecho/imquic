@@ -1,7 +1,7 @@
 imquic-echo-client
 imquic-echo-server
-imquic-roq-client
-imquic-roq-server
+imquic-roq-sender
+imquic-roq-receiver
 imquic-moq-pub
 imquic-moq-sub
 imquic-moq-chat
