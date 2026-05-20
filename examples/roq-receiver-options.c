@@ -4,39 +4,36 @@
  * Author:  Lorenzo Miniero <lorenzo@meetecho.com>
  * License: MIT
  *
- * Command line options for imquic-roq-client
+ * Command line options for imquic-roq-receiver
  *
  */
 
-#include "roq-client-options.h"
+#include "roq-receiver-options.h"
 
 static GOptionContext *opts = NULL;
 
 gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 	/* Supported command-line arguments */
 	GOptionEntry opt_entries[] = {
-		{ "audio-port", 'a', 0, G_OPTION_ARG_INT, &options->audio_port, "Port to bind to for incoming audio RTP packets (default=none)", "port" },
-		{ "audio-flow", 'A', 0, G_OPTION_ARG_INT, &options->audio_flow, "Flow ID of the audio RTP stream (default=none)", "number" },
-		{ "video-port", 'v', 0, G_OPTION_ARG_INT, &options->video_port, "Port to bind to for incoming video RTP packets (default=none)", "port" },
-		{ "video-flow", 'V', 0, G_OPTION_ARG_INT, &options->video_flow, "Flow ID of the video RTP stream (default=none)", "number" },
-		{ "multiplexing", 'm', 0, G_OPTION_ARG_STRING, &options->multiplexing, "RTP multiplexing (datagram, stream or streams; default=datagram)", "mode" },
+		{ "client", 'o', 0, G_OPTION_ARG_NONE, &options->client, "Act as a QUIC client, not as a server (default=server)", NULL },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },
-		{ "remote-host", 'r', 0, G_OPTION_ARG_STRING, &options->remote_host, "QUIC server to connect to (default=none)", "IP" },
-		{ "remote-port", 'R', 0, G_OPTION_ARG_INT, &options->remote_port, "Port of the QUIC server (default=none)", "port" },
+		{ "remote-host", 'r', 0, G_OPTION_ARG_STRING, &options->remote_host, "When acting as a client, QUIC server to connect to (default=none)", "IP" },
+		{ "remote-port", 'R', 0, G_OPTION_ARG_INT, &options->remote_port, "When acting as a client, port of the QUIC server (default=none)", "port" },
 		{ "sni", 'S', 0, G_OPTION_ARG_STRING, &options->sni, "SNI to use (default=localhost)", "sni" },
-		{ "raw-quic", 'q', 0, G_OPTION_ARG_NONE, &options->raw_quic, "Whether raw QUIC should be offered for the RoQ connection or not (default=no)", NULL },
+		{ "raw-quic", 'q', 0, G_OPTION_ARG_NONE, &options->raw_quic, "Whether raw QUIC should be offered for RoQ connections or not (default=no)", NULL },
 		{ "webtransport", 'w', 0, G_OPTION_ARG_NONE, &options->webtransport, "Whether WebTransport should be offered for the RoQ connection or not (default=no)", NULL },
 		{ "path", 'H', 0, G_OPTION_ARG_STRING, &options->path, "In case WebTransport is used, path to use for the HTTP/3 request (default=/)", "HTTP/3 path" },
 		{ "cert-pem", 'c', 0, G_OPTION_ARG_STRING, &options->cert_pem, "Certificate to use (default=none)", "path" },
 		{ "cert-key", 'k', 0, G_OPTION_ARG_STRING, &options->cert_key, "Certificate key to use (default=none)", "path" },
-		{ "zero-rtt", '0', 0, G_OPTION_ARG_STRING, &options->ticket_file, "Whether early data via 0-RTT should be supported, and what file to use for writing/reading the session ticket (default=none)", "path" },
+		{ "zero-rtt", '0', 0, G_OPTION_ARG_STRING, &options->ticket_file, "Whether early data via 0-RTT should be supported, and, when acting as client, what file to use for writing/reading the session ticket (default=none)", "path" },
 		{ "secrets-log", 's', 0, G_OPTION_ARG_STRING, &options->secrets_log, "Save the exchanged secrets to a file compatible with Wireshark (default=none)", "path" },
-		{ "qlog-path", 'Q', 0, G_OPTION_ARG_STRING, &options->qlog_path, "Path to a folder where to save QLOG files for this connection (default=none)", "path" },
+		{ "qlog-path", 'Q', 0, G_OPTION_ARG_STRING, &options->qlog_path, "Path to a folder where to save QLOG files for all connections (default=none)", "path" },
 		{ "qlog-logging", 'l', 0, G_OPTION_ARG_STRING_ARRAY, &options->qlog_logging, "Save these events to QLOG (can be called multiple times to save multiple things; default=none)", "quic|http3|roq" },
 		{ "qlog-sequential", 'J', 0, G_OPTION_ARG_NONE, &options->qlog_sequential, "Whether sequential JSON should be used for the QLOG file, instead of regular JSON (default=no)", NULL },
 		{ "qlog-rtp-packets", 'y', 0, G_OPTION_ARG_NONE, &options->qlog_roq_packets, "Whether the payload of RoQ RTP packets should be saved to QLOG file (default=no)", NULL },
-		{ "quiet", 'Z', 0, G_OPTION_ARG_NONE, &options->quiet, "If set, don't print about incoming/outgoing RTP packets on stdout (default=no)", NULL },
+		{ "quiet", 'Z', 0, G_OPTION_ARG_NONE, &options->quiet, "If set, don't print about incoming/outgoing packets on stdout (default=no)", NULL },
+		{ "echo", 'e', 0, G_OPTION_ARG_NONE, &options->echo, "If set, the receiver will echo incoming RTP packets back to the sender (default=no)", NULL },
 		{ "debug-level", 'd', 0, G_OPTION_ARG_INT, &options->debug_level, "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)", "1-7" },
 		{ "debug-locks", 'L', 0, G_OPTION_ARG_NONE, &options->debug_locks, "Whether to verbosely debug mutex/lock accesses (default=no)", NULL },
 		{ "debug-refcounts", 'C', 0, G_OPTION_ARG_NONE, &options->debug_refcounts, "Whether to verbosely debug reference counting (default=no)", NULL },

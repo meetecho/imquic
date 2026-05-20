@@ -4,7 +4,7 @@
  * Author:  Lorenzo Miniero <lorenzo@meetecho.com>
  * License: MIT
  *
- * Basic RoQ client
+ * Basic RoQ sender (client or server)
  *
  */
 
@@ -24,7 +24,7 @@
 #include <imquic/imquic.h>
 #include <imquic/roq.h>
 
-#include "roq-client-options.h"
+#include "roq-sender-options.h"
 
 /* Command line options */
 static demo_options options = { 0 };
@@ -34,7 +34,7 @@ static volatile int stop = 0;
 static void imquic_demo_handle_signal(int signum) {
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
-			IMQUIC_PRINT("Stopping server, please wait...\n");
+			IMQUIC_PRINT("Stopping sender, please wait...\n");
 			break;
 		case 1:
 			IMQUIC_PRINT("In a hurry? I'm trying to free resources cleanly, here!\n");
@@ -47,6 +47,10 @@ static void imquic_demo_handle_signal(int signum) {
 	if(g_atomic_int_get(&stop) > 2)
 		exit(1);
 }
+
+/* Handled connections */
+static GHashTable *connections = NULL;
+static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
 
 /* RTP header */
 typedef struct imquic_rtp_header {
@@ -77,24 +81,23 @@ static gboolean imquic_is_rtp(uint8_t *buf, guint len) {
 	return ((header->type < 64) || (header->type >= 96));
 }
 
-/* Our connection */
-static imquic_connection *roq_conn = NULL;
-
 /* Callbacks */
 static void imquic_demo_new_connection(imquic_connection *conn, void *user_data) {
 	/* Got new connection */
 	imquic_connection_ref(conn);
+	imquic_mutex_lock(&mutex);
+	g_hash_table_insert(connections, conn, conn);
+	imquic_mutex_unlock(&mutex);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New connection\n", imquic_get_connection_name(conn));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	roq_conn = conn;
 }
 
 static void imquic_demo_rtp_incoming(imquic_connection *conn, imquic_roq_multiplexing multiplexing,
 		uint64_t flow_id, uint8_t *bytes, size_t blen) {
-	/* If this is called, it means the server we're sending RTP packets to
-	 * sent us something back (e.g., the imquic RoQ server in echo mode) */
+	/* If this is called, it means the receiver we're sending RTP packets to
+	 * sent us something back (e.g., the imquic RoQ receiver in echo mode) */
 	if(!imquic_is_rtp(bytes, blen)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s]  -- [flow=%"SCNu64"][%zu] Not an RTP packet\n",
 			imquic_get_connection_name(conn), flow_id, blen);
@@ -111,17 +114,23 @@ static void imquic_demo_rtp_incoming(imquic_connection *conn, imquic_roq_multipl
 static void imquic_demo_connection_failed(void *user_data) {
 	/* Connection failed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Connection failed\n");
-	/* Stop here */
-	g_atomic_int_inc(&stop);
+	if(options.client) {
+		/* Stop here */
+		g_atomic_int_inc(&stop);
+	}
 }
 
 static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason) {
 	/* Connection was closed */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection gone\n", imquic_get_connection_name(conn));
-	if(conn == roq_conn)
+	imquic_mutex_lock(&mutex);
+	if(g_hash_table_remove(connections, conn))
 		imquic_connection_unref(conn);
-	/* Stop here */
-	g_atomic_int_inc(&stop);
+	imquic_mutex_unlock(&mutex);
+	if(options.client) {
+		/* Stop here */
+		g_atomic_int_inc(&stop);
+	}
 }
 
 int main(int argc, char *argv[]) {
@@ -154,8 +163,14 @@ int main(int argc, char *argv[]) {
 		imquic_set_refcount_debugging(TRUE);
 
 	int ret = 0, audio_fd = -1, video_fd = -1;
-	if(options.remote_host == NULL || options.remote_port == 0) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid QUIC server address\n");
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "RoQ sender will act as a %s\n", options.client ? "client (single connection)" : "server (multiple connections)");
+	if(options.client && (options.remote_host == NULL || options.remote_port == 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid QUIC server address (required when acting as client)\n");
+		ret = 1;
+		goto done;
+	}
+	if(!options.client && (options.cert_pem == NULL || strlen(options.cert_pem) == 0 || options.cert_key == NULL || strlen(options.cert_key) == 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing certificate/key (required when acting as server)\n");
 		ret = 1;
 		goto done;
 	}
@@ -169,8 +184,11 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	if(options.ticket_file != NULL)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled (ticket file '%s')\n", options.ticket_file);
+	if(options.ticket_file != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Early data support enabled\n");
+		if(options.client)
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Ticket file '%s'\n", options.ticket_file);
+	}
 	if(options.audio_port <= 0 && options.video_port <= 0) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "No local audio/video RTP port specified\n");
 		ret = 1;
@@ -191,7 +209,7 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	/* Since this is a RoQ server, we use a static ALPN */
+	/* We support different multiplexing modes for RoQ */
 	imquic_roq_multiplexing multiplexing;
 	const char *mode = NULL;
 	gboolean one_stream_per_packet = FALSE;
@@ -271,60 +289,82 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Quiet mode (won't print RTP packets)\n");
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 
-	/* Initialize the library and create a server */
+	/* Initialize the library and create a client or server endpoint */
 	if(imquic_init(options.secrets_log) < 0) {
 		ret = 1;
 		goto done;
 	}
-	imquic_client *client = imquic_create_roq_client("roq-client",
-		IMQUIC_CONFIG_INIT,
-		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
-		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
-		IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
-		IMQUIC_CONFIG_LOCAL_BIND, options.ip,
-		IMQUIC_CONFIG_LOCAL_PORT, options.port,
-		IMQUIC_CONFIG_REMOTE_HOST, options.remote_host,
-		IMQUIC_CONFIG_REMOTE_PORT, options.remote_port,
-		IMQUIC_CONFIG_SNI, options.sni,
-		IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
-		IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
-		IMQUIC_CONFIG_EARLY_DATA, (options.ticket_file != NULL),
-		IMQUIC_CONFIG_TICKET_FILE, options.ticket_file,
-		IMQUIC_CONFIG_HTTP3_PATH, options.path,
-		IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
-		IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
-		IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
-		IMQUIC_CONFIG_QLOG_ROQ, qlog_roq,
-		IMQUIC_CONFIG_QLOG_ROQ_PACKETS, options.qlog_roq_packets,
-		IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
-		IMQUIC_CONFIG_DONE, NULL);
-	if(client == NULL) {
+	imquic_endpoint *endpoint = NULL;
+	if(options.client) {
+		endpoint = imquic_create_roq_client("roq-sender-client",
+			IMQUIC_CONFIG_INIT,
+			IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
+			IMQUIC_CONFIG_TLS_KEY, options.cert_key,
+			IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
+			IMQUIC_CONFIG_LOCAL_BIND, options.ip,
+			IMQUIC_CONFIG_LOCAL_PORT, options.port,
+			IMQUIC_CONFIG_REMOTE_HOST, options.remote_host,
+			IMQUIC_CONFIG_REMOTE_PORT, options.remote_port,
+			IMQUIC_CONFIG_SNI, options.sni,
+			IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
+			IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
+			IMQUIC_CONFIG_EARLY_DATA, (options.ticket_file != NULL),
+			IMQUIC_CONFIG_TICKET_FILE, options.ticket_file,
+			IMQUIC_CONFIG_HTTP3_PATH, options.path,
+			IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
+			IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
+			IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
+			IMQUIC_CONFIG_QLOG_ROQ, qlog_roq,
+			IMQUIC_CONFIG_QLOG_ROQ_PACKETS, options.qlog_roq_packets,
+			IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
+			IMQUIC_CONFIG_DONE, NULL);
+	} else {
+		endpoint = imquic_create_roq_server("roq-sender-server",
+			IMQUIC_CONFIG_INIT,
+			IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
+			IMQUIC_CONFIG_TLS_KEY, options.cert_key,
+			IMQUIC_CONFIG_TLS_NO_VERIFY, TRUE,
+			IMQUIC_CONFIG_LOCAL_BIND, options.ip,
+			IMQUIC_CONFIG_LOCAL_PORT, options.port,
+			IMQUIC_CONFIG_RAW_QUIC, options.raw_quic,
+			IMQUIC_CONFIG_WEBTRANSPORT, options.webtransport,
+			IMQUIC_CONFIG_QLOG_PATH, options.qlog_path,
+			IMQUIC_CONFIG_QLOG_QUIC, qlog_quic,
+			IMQUIC_CONFIG_QLOG_HTTP3, qlog_http3,
+			IMQUIC_CONFIG_QLOG_ROQ, qlog_roq,
+			IMQUIC_CONFIG_QLOG_ROQ_PACKETS, options.qlog_roq_packets,
+			IMQUIC_CONFIG_QLOG_SEQUENTIAL, options.qlog_sequential,
+			IMQUIC_CONFIG_EARLY_DATA, (options.ticket_file != NULL),
+			IMQUIC_CONFIG_DONE, NULL);
+	}
+	if(endpoint == NULL) {
 		ret = 1;
 		goto done;
 	}
 	if(options.raw_quic) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "ALPN(s):\n");
 		int i = 0;
-		const char **alpns = imquic_get_endpoint_alpns(client);
+		const char **alpns = imquic_get_endpoint_alpns(endpoint);
 		while(alpns[i] != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", alpns[i]);
 			i++;
 		}
 	}
-	if(options.webtransport && imquic_get_endpoint_wt_protocols(client) != NULL) {
+	if(options.webtransport && imquic_get_endpoint_wt_protocols(endpoint) != NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "WebTransport Protocol(s):\n");
 		int i = 0;
-		const char **wt_protocols = imquic_get_endpoint_wt_protocols(client);
+		const char **wt_protocols = imquic_get_endpoint_wt_protocols(endpoint);
 		while(wt_protocols[i] != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s\n", wt_protocols[i]);
 			i++;
 		}
 	}
-	imquic_set_new_roq_connection_cb(client, imquic_demo_new_connection);
-	imquic_set_rtp_incoming_cb(client, imquic_demo_rtp_incoming);
-	imquic_set_connection_failed_cb(client, imquic_demo_connection_failed);
-	imquic_set_roq_connection_gone_cb(client, imquic_demo_connection_gone);
-	imquic_start_endpoint(client);
+	imquic_set_new_roq_connection_cb(endpoint, imquic_demo_new_connection);
+	imquic_set_rtp_incoming_cb(endpoint, imquic_demo_rtp_incoming);
+	imquic_set_connection_failed_cb(endpoint, imquic_demo_connection_failed);
+	imquic_set_roq_connection_gone_cb(endpoint, imquic_demo_connection_gone);
+	connections = g_hash_table_new(NULL, NULL);
+	imquic_start_endpoint(endpoint);
 
 	/* Wait for incoming RTP packets */
 	socklen_t addrlen;
@@ -338,8 +378,9 @@ int main(int argc, char *argv[]) {
 	/* Loop */
 	while(!g_atomic_int_get(&stop)) {
 		now = g_get_monotonic_time();
-		if(now - before >= 5*G_USEC_PER_SEC) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "5 seconds with no RTP traffic, shutting down...\n");
+		if(options.timeout > 0 && (now - before >= options.timeout*G_USEC_PER_SEC)) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "%d seconds with no RTP traffic, shutting down...\n",
+				options.timeout);
 			break;
 		}
 		num = 0;
@@ -390,24 +431,34 @@ int main(int argc, char *argv[]) {
 					continue;
 				}
 				before = g_get_monotonic_time();
-				if(roq_conn != NULL) {
-					/* Send the RTP packet using the specified multiplexing mode */
-					flow_id = (fds[i].fd == audio_fd ? options.audio_flow : options.video_flow);
+				/* Pick the right flow ID */
+				flow_id = (fds[i].fd == audio_fd ? options.audio_flow : options.video_flow);
+				/* Send the RTP packet on all connections using the specified multiplexing mode */
+				GHashTableIter iter;
+				gpointer value;
+				imquic_mutex_lock(&mutex);
+				g_hash_table_iter_init(&iter, connections);
+				while(g_hash_table_iter_next(&iter, NULL, &value)) {
+					imquic_connection *roq_conn = (imquic_connection *)value;
 					sent = imquic_roq_send_rtp(roq_conn, multiplexing, flow_id, buffer, bytes, one_stream_per_packet);
 					if(sent == 0) {
-						IMQUIC_LOG(IMQUIC_LOG_WARN, "Couldn't send RTP packet...\n");
+						IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't send RTP packet...\n",
+							imquic_get_connection_name(roq_conn));
 					} else if(!options.quiet) {
 						imquic_rtp_header *rtp = (imquic_rtp_header *)buffer;
-						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- [%s][flow=%"SCNu64"][%d] ssrc=%"SCNu32", pt=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32"\n",
-							mode, flow_id, bytes, ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
+						IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- [%s][flow=%"SCNu64"][%d] ssrc=%"SCNu32", pt=%"SCNu16", seq=%"SCNu16", ts=%"SCNu32"\n",
+							imquic_get_connection_name(roq_conn),
+							mode, flow_id, bytes,
+							ntohl(rtp->ssrc), rtp->type, ntohs(rtp->seq_number), ntohl(rtp->timestamp));
 					}
 				}
+				imquic_mutex_unlock(&mutex);
 			}
 		}
 	}
 
 	/* We're done */
-	imquic_shutdown_endpoint(client);
+	imquic_shutdown_endpoint(endpoint);
 
 done:
 	if(audio_fd > -1)
@@ -415,6 +466,8 @@ done:
 	if(video_fd > -1)
 		close(video_fd);
 	imquic_deinit();
+	if(connections != NULL)
+		g_hash_table_unref(connections);
 	if(ret == 1)
 		demo_options_show_usage();
 	demo_options_destroy();
