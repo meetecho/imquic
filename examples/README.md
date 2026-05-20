@@ -44,24 +44,26 @@ In both cases, the client will then send a single `ciao` buffer on a bidirection
 
 To build the RTP Over QUIC (RoQ) examples, pass `--enable-roq-examples` to the `./configure` script. This will build two command line applications, namely:
 
-* `imquic-roq-server`, a basic RoQ server, that can print the flow ID and RTP headers of the incoming packets, and/or echo packets back;
-* `imquic-roq-client`, a basic RoQ client, that will listen for RTP packets on some UDP ports, and restream them via QUIC.
+* `imquic-roq-sender`, a basic RoQ sender, that will listen for RTP packets on some UDP ports, and restream them via QUIC.
+* `imquic-roq-receiver`, a basic RoQ receiver, that can print the flow ID and RTP headers of the incoming packets, and/or echo packets back;
 
-Both provide a few configuration options: pass `-h` or `--help` for more information.
+Both demos can act as either a server or a client, and provide a few configuration options: pass `-h` or `--help` for more information.
 
-This launches the RoQ server on port `9000`, using the provided certificate; raw QUIC is used (`-q`), but unlike before the ALPN is omitted, since it will automatically be set by the RoQ stack in the library:
+This launches the RoQ receiver as a server (`-o` is omitted, so the default behaviour applies) on port `9000`, using the provided certificate; raw QUIC is used (`-q`), but unlike before the ALPN is omitted, since it will automatically be set by the RoQ stack in the library:
 
-	./examples/imquic-roq-server -q -p 9000 -c ../localhost.crt -k ../localhost.key
+	./examples/imquic-roq-receiver -q -p 9000 -c ../localhost.crt -k ../localhost.key
 
-Since no other parameter is provided, the default behaviour is just to print some detail about incoming packets. To not show such information, the `-Z` or `--quiet` flag can be passed. The RoQ server can also be configured to echo packets back to the client via `-e` or `--echo`. This launches the same RoQ server as before, but in quiet (`-Z`) and echo (`-e`) mode and on WebTransport too (`-w`):
+Since no other parameter is provided, the default behaviour is just to print some detail about incoming packets. To not show such information, the `-Z` or `--quiet` flag can be passed. The RoQ receiver can also be configured to echo packets back to the client via `-e` or `--echo`. This launches the same RoQ server as before, but in quiet (`-Z`) and echo (`-e`) mode and on WebTransport too (`-w`):
 
-	./examples/imquic-roq-server -w -q -p 9000 -Z -e -c ../localhost.crt -k ../localhost.key
+	./examples/imquic-roq-receiver -w -q -p 9000 -Z -e -c ../localhost.crt -k ../localhost.key
 
-This instead launches the RoQ client to connect to that server (whether in echo mode or not), waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate `STREAM` for each RTP packet:
+This instead launches the RoQ sender as a client (`-o`) to connect to that server (whether in echo mode or not), waiting for audio RTP packets on port `15002` (whose flow ID on RoQ will be `0`) and for video RTP packets on port `15004` (whose flow ID on RoQ will be `1`), and using a separate `STREAM` for each RTP packet:
 
-	./examples/imquic-roq-client -q -a 15002 -A 0 -v 15004 -V 1 -r 127.0.0.1 -R 9000 -m streams
+	./examples/imquic-roq-sender -o -q -a 15002 -A 0 -v 15004 -V 1 -r 127.0.0.1 -R 9000 -m streams
 
-Sending RTP traffic to those ports (e.g., from GStreamer, FFmpeg, Janus RTP forwarders or others), will have the RoQ client send them to the RoQ server.
+Sending RTP traffic to those ports (e.g., from GStreamer, FFmpeg, Janus RTP forwarders or others), will have the RoQ sender send them to the RoQ receiver.
+
+Since both demos can act as both client and server, it's possible to reverse the QUIC roles of this demo. When a sender acts as a server, it will relay RTP packets via RoQ to all the receiver clients that connect.
 
 ## Media Over QUIC (MoQ) examples
 
