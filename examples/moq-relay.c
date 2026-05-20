@@ -406,13 +406,13 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			s->sub_end.group = IMQUIC_MAX_VARINT;
 			s->sub_end.object = IMQUIC_MAX_VARINT;
 			/* Send the request */
-			imquic_moq_name tn = {
+			imquic_moq_track tn = {
 				.buffer = (uint8_t *)track->track_name,
 				.length = strlen(track->track_name),
 			};
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
-			imquic_moq_publish(mon->conn, relay_request_id, 0, tns, &tn, relay_track_alias, &params, track->properties);
+			imquic_moq_publish(mon->conn, relay_request_id, tns, &tn, relay_track_alias, &params, track->properties);
 		}
 		temp = temp->next;
 	}
@@ -475,10 +475,15 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 }
 
-static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
 	/* We received an publish_namespace */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace: '%s'\n",
 		imquic_get_connection_name(conn), ns);
 	/* Check if this was published already */
@@ -487,7 +492,7 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 		/* Already published, reject */
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Namespace already published\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "Namespace already published", 0);
+		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "Namespace already published", 0, NULL);
 		return;
 	}
 	/* Find the publisher from this connection */
@@ -569,11 +574,16 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, imquic_moq_namespace *tns, imquic_moq_name *tn,
+static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 		uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties) {
 	/* We received a publish */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
@@ -603,7 +613,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	if(g_hash_table_lookup(annc->tracks, name) != NULL) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Track '%s' already published\n", name);
-		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Track already published", 0);
+		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Track already published", 0, NULL);
 		return;
 	}
 	imquic_demo_moq_track *track = imquic_demo_moq_track_create(annc, name);
@@ -684,7 +694,8 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Find the subscriber */
@@ -706,10 +717,15 @@ static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_
 }
 
 static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a request to return the track status */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming request to return the track status for '%s--%s' (ID %"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id);
@@ -719,7 +735,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 			parameters->auth_token_set ? parameters->auth_token : NULL,
 			parameters->auth_token_set ? parameters->auth_token_len : 0)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0);
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0, NULL);
 		return;
 	}
 	if(name == NULL || strlen(name) == 0)
@@ -731,7 +747,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0);
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0, NULL);
 		return;
 	}
 	/* Do we know this track already? */
@@ -743,7 +759,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0);
+		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0, NULL);
 		return;
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
@@ -782,14 +798,19 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		rparams.largest_object_set = TRUE;
 		rparams.largest_object = start;
 	}
-	imquic_moq_accept_track_status(conn, request_id, &rparams);
+	imquic_moq_accept_track_status(conn, request_id, &rparams, track->properties);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id);
@@ -799,7 +820,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			parameters->auth_token_set ? parameters->auth_token : NULL,
 			parameters->auth_token_set ? parameters->auth_token_len : 0)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0, NULL);
 		return;
 	}
 	if(name == NULL || strlen(name) == 0)
@@ -811,7 +832,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0, NULL);
 		return;
 	}
 	/* Do we know this track already? */
@@ -835,7 +856,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		/* FIXME Should we return an error? */
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "Already subscribed with ID %"SCNu64"\n", request_id);
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "Already subscribed", 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "Already subscribed", 0, NULL);
 		return;
 	}
 	/* Generate a track_alias */
@@ -911,9 +932,9 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		params.forward = TRUE;
 		params.subscription_filter_set = TRUE;
 		params.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
-		if(imquic_moq_subscribe(annc->pub->conn, track->request_id, 0, tns, tn, &params) < 0) {
+		if(imquic_moq_subscribe(annc->pub->conn, track->request_id, tns, tn, &params) < 0) {
 			g_hash_table_remove(annc->pub->subscriptions_by_id, &track->request_id);
-			imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "Error creating upstream subscription", 0);
+			imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "Error creating upstream subscription", 0, NULL);
 		}
 	}
 	imquic_mutex_unlock(&mutex);
@@ -969,7 +990,8 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	/* Our subscription to a publisher was rejected */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
@@ -993,7 +1015,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && s->sub && s->sub->conn)
-			imquic_moq_reject_subscribe(s->sub->conn, s->request_id, error_code, reason, 0);
+			imquic_moq_reject_subscribe(s->sub->conn, s->request_id, error_code, reason, retry_interval, redirect);
 		temp = temp->next;
 	}
 	imquic_mutex_unlock(&track->mutex);
@@ -1004,17 +1026,84 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 }
 
 static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id,
-		uint64_t sub_request_id, uint64_t required_id_delta, imquic_moq_request_parameters *parameters) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update for request %"SCNu64"\n",
-		imquic_get_connection_name(conn), request_id);
-	/* Find the subscriber */
+		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id, sub_request_id);
+	/* Find what the original request was about */
+	gboolean found = FALSE;
+	imquic_demo_moq_monitor *mon = NULL;
 	imquic_mutex_lock(&mutex);
+	GList *temp = monitors;
+	while(temp) {
+		mon = (imquic_demo_moq_monitor *)temp->data;
+		if(conn == mon->conn && sub_request_id == mon->request_id) {
+			/* Found: update this subscription */
+			found = TRUE;
+			break;
+		}
+		temp = temp->next;
+	}
+	if(found) {
+		/* Update this namespaces/tracks subscription, if valid */
+		if(parameters == NULL || !parameters->track_namespace_prefix_set) {
+			/* Nothing we can do */
+			imquic_mutex_unlock(&mutex);
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No track namespace prefix provided\n",
+				imquic_get_connection_name(conn));
+			imquic_moq_accept_request_update(conn, request_id, NULL);
+			return;
+		}
+		char tns_buffer[256];
+		const char *ns = imquic_moq_namespace_str(parameters->track_namespace_prefix, tns_buffer, sizeof(tns_buffer), TRUE);
+		if(!strcasecmp(ns, ".2e")) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+			imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+			return;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update, subscribe for namespace prefix '%s' (was '%s')\n",
+			imquic_get_connection_name(conn), ns, mon->ns);
+		/* TODO Check overlapping prefixes across the whole session */
+		if(!strcasecmp(mon->ns, ns) || imquic_moq_namespace_contains(mon->tns, parameters->track_namespace_prefix) ||
+				imquic_moq_namespace_contains(parameters->track_namespace_prefix, mon->tns)) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Overlapping namespaces\n", imquic_get_connection_name(conn));
+			imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_PREFIX_OVERLAP, "Overlapping namespaces", 0, NULL);
+			return;
+		}
+		/* Clean up the previous info */
+		mon->published = FALSE;
+		g_hash_table_remove_all(mon->known_tracks);
+		if(parameters->forward_set)
+			mon->forward = parameters->forward;
+		g_free(mon->ns);
+		imquic_moq_namespace_free(mon->tns);
+		mon->tns = imquic_moq_namespace_duplicate(parameters->track_namespace_prefix);
+		mon->ns = g_strdup(ns);
+		/* Check if there's events we can push and already tracks we can publish */
+		imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+		if(annc != NULL) {
+			imquic_demo_alert_monitors(annc, NULL, FALSE);
+			if(annc->tracks) {
+				GHashTableIter iter;
+				gpointer value;
+				g_hash_table_iter_init(&iter, annc->tracks);
+				while(g_hash_table_iter_next(&iter, NULL, &value)) {
+					imquic_demo_moq_track *track = value;
+					imquic_demo_alert_monitors(NULL, track, FALSE);
+				}
+			}
+		}
+		imquic_mutex_unlock(&mutex);
+		/* Done */
+		imquic_moq_accept_request_update(conn, request_id, NULL);
+		return;
+	}
+	/* Not a SUBSCRIBE_NAMESPACE or SUBSCRIBE_TRACKS, let's try SUBSCRIBE */
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription", 0);
+		imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription", 0, NULL);
 		/* TODO We should terminate with a PUBLISH_DONE with code UPDATE_FAILED */
 		return;
 	}
@@ -1024,7 +1113,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Subscriber not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription", 0);
+		imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "No such subscription", 0, NULL);
 		/* TODO We should terminate with a PUBLISH_DONE with code UPDATE_FAILED */
 		return;
 	}
@@ -1098,11 +1187,16 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
+static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters) {
 	/* We received a subscribe for a namespace tuple */
 	char tns_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe_namespace(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for namespace prefix '%s'\n",
 		imquic_get_connection_name(conn), ns);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Subscriber wants to know about '%s'\n",
@@ -1153,12 +1247,75 @@ static void imquic_demo_incoming_unsubscribe_namespace(imquic_connection *conn, 
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_incoming_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
+	/* We received a subscribe for a namespace tuple's tracks */
+	char tns_buffer[256];
+	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe_tracks(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for tracks of namespace prefix '%s'\n",
+		imquic_get_connection_name(conn), ns);
+	if(parameters->auth_token_set)
+		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
+	/* Keep track of this as a monitor */
+	imquic_mutex_lock(&mutex);
+	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns, IMQUIC_MOQ_WANT_PUBLISH);
+	if(parameters->forward_set)
+		mon->forward = parameters->forward;
+	monitors = g_list_prepend(monitors, mon);
+	imquic_moq_accept_subscribe_tracks(conn, request_id, NULL);
+	/* Check if there's events we can push and already tracks we can publish */
+	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	if(annc != NULL) {
+		imquic_demo_alert_monitors(annc, NULL, FALSE);
+		if(annc->tracks) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, annc->tracks);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				imquic_demo_moq_track *track = value;
+				imquic_demo_alert_monitors(NULL, track, FALSE);
+			}
+		}
+	}
+	imquic_mutex_unlock(&mutex);
+}
+
+static void imquic_demo_incoming_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id) {
+	/* We received an unsubscribe */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for namespace's tracks via ID %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id);
+	/* FIXME Get rid of the associated monitor */
+	imquic_demo_moq_monitor *mon = NULL;
+	imquic_mutex_lock(&mutex);
+	GList *temp = monitors;
+	while(temp) {
+		mon = (imquic_demo_moq_monitor *)temp->data;
+		if(conn == mon->conn && request_id == mon->request_id) {
+			monitors = g_list_delete_link(monitors, temp);
+			imquic_demo_moq_monitor_destroy(mon);
+			break;
+		}
+		temp = temp->next;
+	}
+	imquic_mutex_unlock(&mutex);
+}
+
+static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 		//~ gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
 	/* We received a standalone fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	if(range->end.object == 0)
 		range->end.object = IMQUIC_MAX_VARINT;
@@ -1177,7 +1334,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0);
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0, NULL);
 		return;
 	}
 	/* Do we know this track? */
@@ -1187,7 +1344,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Track not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Track not found", 0);
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Track not found", 0, NULL);
 		return;
 	}
 	/* Create a subscriber, if needed */
@@ -1242,7 +1399,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta, uint64_t joining_request_id,
+static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters) {
 	/* We received a joining fetch */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming %s joining fetch for subscription %"SCNu64" (ID %"SCNu64"; start=%"SCNu64"; %s order)\n",
@@ -1265,7 +1422,15 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] No subscription with ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), joining_request_id);
-		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID, "Subscription not found", 0);
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID, "Subscription not found", 0, NULL);
+		return;
+	}
+	/* Make sure forwarding is enabled on the subscription */
+	if(!s->forward) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Forwarding not enabled on subscription with ID %"SCNu64"\n",
+			imquic_get_connection_name(conn), joining_request_id);
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "Forwarding not enabled", 0, NULL);
 		return;
 	}
 	/* Make sure we don't know this subscription already */
@@ -1592,6 +1757,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_subscribe_namespace_cb(server, imquic_demo_incoming_subscribe_namespace);
 	imquic_set_incoming_unsubscribe_namespace_cb(server, imquic_demo_incoming_unsubscribe_namespace);
+	imquic_set_incoming_subscribe_tracks_cb(server, imquic_demo_incoming_subscribe_tracks);
+	imquic_set_incoming_unsubscribe_tracks_cb(server, imquic_demo_incoming_unsubscribe_tracks);
 	imquic_set_incoming_standalone_fetch_cb(server, imquic_demo_incoming_standalone_fetch);
 	imquic_set_incoming_joining_fetch_cb(server, imquic_demo_incoming_joining_fetch);
 	imquic_set_incoming_fetch_cancel_cb(server, imquic_demo_incoming_fetch_cancel);

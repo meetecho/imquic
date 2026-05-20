@@ -21,6 +21,7 @@ typedef struct demo_options {
 	gboolean test_grease;
 	const char **track_namespace;
 	const char *track_name;
+	const char *track_name_redirect;
 	uint64_t first_group;
 	uint64_t first_object;
 	const char *relay_auth_info;
@@ -29,6 +30,7 @@ typedef struct demo_options {
 	gboolean publish;
 	uint64_t track_alias;
 	gboolean properties;
+	int padding;
 	const char *ip;
 	int port;
 	const char *remote_host;

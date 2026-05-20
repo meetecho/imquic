@@ -31,6 +31,7 @@ typedef struct demo_options {
 	uint64_t end_group;
 	uint64_t end_object;
 	int update_subscribe;
+	int update_subscribe_namespace;
 	const char *fetch;
 	int join_offset;
 	const char *payload_type;

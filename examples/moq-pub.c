@@ -43,8 +43,10 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t moq_tns_request_id = 0, moq_request_id = 0, moq_track_alias = 0;
 static imquic_moq_delivery delivery = IMQUIC_MOQ_USE_SUBGROUP;
-static char pub_tns_buffer[256], pub_tn_buffer[256];
-static const char *pub_tns = NULL, *pub_tn = NULL;
+static imquic_moq_namespace pub_namespace[32] = { 0 };
+static imquic_moq_track pub_trackname = { 0 }, pub_trackname_redirect = { 0 };
+static char pub_tns_buffer[256], pub_tn_buffer[256], pub_redirect_buffer[256];
+static const char *pub_tns = NULL, *pub_tn = NULL, *pub_redirect = NULL;
 static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
@@ -88,21 +90,6 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		peer ? peer : "unknown implementation");
 	g_atomic_int_set(&connected, 1);
 	/* Let's publish our namespace or publish right away */
-	imquic_moq_namespace tns[32];	/* FIXME */
-	int i = 0;
-	while(options.track_namespace[i] != NULL) {
-		const char *track_namespace = options.track_namespace[i];
-		tns[i].buffer = (uint8_t *)track_namespace;
-		tns[i].length = strlen(track_namespace);
-		tns[i].next = (options.track_namespace[i+1] != NULL) ? &tns[i+1] : NULL;
-		i++;
-	}
-	pub_tns = imquic_moq_namespace_str(tns, pub_tns_buffer, sizeof(pub_tns_buffer), TRUE);
-	imquic_moq_name tn = {
-		.buffer = (uint8_t *)options.track_name,
-		.length = strlen(options.track_name)
-	};
-	pub_tn = imquic_moq_track_str(&tn, pub_tn_buffer, sizeof(pub_tn_buffer));
 	if(!options.publish) {
 		/* We use PUBLISH_NAMESPACE + incoming SUBSCRIBE */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
@@ -120,7 +107,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			}
 		}
 		moq_tns_request_id = imquic_moq_get_next_request_id(conn);
-		imquic_moq_publish_namespace(conn, moq_tns_request_id, 0, &tns[0], &params);
+		imquic_moq_publish_namespace(conn, moq_tns_request_id, &pub_namespace[0], &params);
 	} else {
 		/* We use PUBLISH */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, pub_tn);
@@ -142,7 +129,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish(conn, moq_request_id, 0, &tns[0], &tn, moq_track_alias, &params, NULL);
+		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], &pub_trackname, moq_track_alias, &params, NULL);
 	}
 }
 
@@ -151,7 +138,8 @@ static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace: error %d (%s)\n",
 		imquic_get_connection_name(conn), error_code, reason);
 	/* Stop here */
@@ -169,30 +157,50 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	g_atomic_int_set(&send_objects, 1);
 }
 
-static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval) {
+static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
+		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
 
-static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id, uint64_t required_id_delta,
-		imquic_moq_namespace *tns, imquic_moq_name *tn, imquic_moq_request_parameters *parameters) {
+static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t request_id,
+		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters) {
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
+	if(!strcasecmp(ns, ".2e")) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
+		return;
+	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id);
-	if(pub_tns == NULL || strcasecmp(ns, pub_tns) || strcasecmp(name, pub_tn)) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace or track\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace or track", 0);
+	if(pub_tns == NULL || strcasecmp(ns, pub_tns)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown namespace\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace", 0, NULL);
+		return;
+	}
+	if(pub_redirect != NULL && !strcasecmp(name, pub_redirect)) {
+		/* Someone hit our alias, let's test the redirect error */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Returning redirect to our track name\n", imquic_get_connection_name(conn));
+		imquic_moq_redirect redirect = {
+			.track_name = &pub_trackname
+		};
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_REDIRECT, "Redirecting alias", 0, &redirect);
+		return;
+	}
+	if(strcasecmp(name, pub_tn)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown track\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown track", 0, NULL);
 		return;
 	}
 	if(options.publish || g_atomic_int_get(&send_objects)) {
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] We already have a subscriber\n", imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", 0);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION, "We already have a subscriber", 0, NULL);
 		return;
 	}
 	/* TODO Check if it matches our published namespace */
@@ -348,6 +356,7 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
 		.properties = props,
+		.first_of_subgroup = first,
 		.delivery = delivery,
 		.end_of_stream = FALSE
 	};
@@ -363,6 +372,10 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		object.end_of_stream = TRUE;
 		imquic_moq_send_object(moq_conn, &object);
 	}
+	/* If padding is enabled and the MoQ version is high enough,
+	 * send some padding data occasionally too, every few seconds */
+	if(options.padding > 0 && (object_id % 7) == 0)
+		imquic_moq_send_padding(moq_conn, options.padding, delivery == IMQUIC_MOQ_USE_DATAGRAM);
 	if(group_id == sub_end.group && object_id == sub_end.object) {
 		/* We've sent the last object */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
@@ -433,16 +446,60 @@ int main(int argc, char *argv[]) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %d\n", moq_version - IMQUIC_MOQ_VERSION_BASE);
 		}
 	}
+
 	if(options.track_namespace == NULL || options.track_namespace[0] == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track namespace(s)\n");
 		ret = 1;
 		goto done;
 	}
+	int i = 0;
+	while(options.track_namespace[i] != NULL) {
+		const char *track_namespace = options.track_namespace[i];
+		pub_namespace[i].buffer = (uint8_t *)track_namespace;
+		pub_namespace[i].length = strlen(track_namespace);
+		pub_namespace[i].next = (options.track_namespace[i+1] != NULL) ? &pub_namespace[i+1] : NULL;
+		i++;
+	}
+	uint64_t tns_num = 0;
+	if(!imquic_moq_namespace_is_valid(&pub_namespace[0], TRUE, &tns_num)) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid track namespace\n");
+		ret = 1;
+		goto done;
+	}
+	pub_tns = imquic_moq_namespace_str(pub_namespace, pub_tns_buffer, sizeof(pub_tns_buffer), TRUE);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", pub_tns, tns_num);
+
 	if(options.track_name == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name\n");
 		ret = 1;
 		goto done;
 	}
+	pub_trackname.buffer = (uint8_t *)options.track_name;
+	pub_trackname.length = strlen(options.track_name);
+	if(!imquic_moq_track_is_valid(&pub_trackname)) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid track name\n");
+		ret = 1;
+		goto done;
+	}
+	pub_tn = imquic_moq_track_str(&pub_trackname, pub_tn_buffer, sizeof(pub_tn_buffer));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s'\n", pub_tn);
+	if(options.track_name_redirect != NULL) {
+		if(!strcasecmp(options.track_name_redirect, options.track_name)) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Redirect can't be the same as track name\n");
+			ret = 1;
+			goto done;
+		}
+		pub_trackname_redirect.buffer = (uint8_t *)options.track_name_redirect;
+		pub_trackname_redirect.length = strlen(options.track_name_redirect);
+		if(!imquic_moq_track_is_valid(&pub_trackname_redirect)) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid redirect track name\n");
+			ret = 1;
+			goto done;
+		}
+		pub_redirect = imquic_moq_track_str(&pub_trackname_redirect, pub_redirect_buffer, sizeof(pub_redirect));
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' as an alias, to test redirects\n", pub_redirect);
+	}
+
 	if(options.delivery != NULL) {
 		if(!strcasecmp(options.delivery, "datagram")) {
 			delivery = IMQUIC_MOQ_USE_DATAGRAM;
@@ -458,12 +515,13 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First group: %"SCNu64" (will send the 'Prior Group ID Gap' property)\n", options.first_group);
 	if(options.first_object > 0)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "First object: %"SCNu64" (will send the 'Prior Object ID Gap' property)\n", options.first_object);
-	if(options.publish) {
+	if(options.publish)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use PUBLISH instead of PUBLISH_NAMESPACE + SUBSCRIBE\n");
-	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use track_alias=%"SCNu64"\n",
 		options.track_alias);
 	moq_track_alias	= options.track_alias;
+	if(options.padding > 0)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will send padding data too (%d bytes\n", options.padding);
 
 	/* Check if we need to create a QLOG file, and which we should save */
 	gboolean qlog_quic = FALSE, qlog_http3 = FALSE, qlog_moq = FALSE;
