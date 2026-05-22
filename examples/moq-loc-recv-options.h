@@ -8,8 +8,8 @@
  *
  */
 
-#ifndef MOQ_SUB_OPTIONS
-#define MOQ_SUB_OPTIONS
+#ifndef MOQ_LOC_RECV_OPTIONS
+#define MOQ_LOR_RECV_OPTIONS
 
 #include <stdint.h>
 
