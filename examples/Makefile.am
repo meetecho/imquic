@@ -108,6 +108,31 @@ imquic_moq_interop_test_LDADD = \
 	-L../src/.libs -limquic \
 	$(NULL)
 
+if ENABLE_LOC_DEMOS
+
+bin_PROGRAMS += imquic-moq-loc-recv
+
+imquic_moq_loc_recv_SOURCES = \
+	moq-loc-recv.c \
+	moq-loc-recv-options.c \
+	moq-loc-recv-options.h \
+	moq-utils.c \
+	moq-utils.h
+imquic_moq_loc_recv_CFLAGS = \
+	$(AM_CFLAGS) \
+	$(IMQUIC_CFLAGS) \
+	$(MOQAV_CFLAGS) \
+	-I ../src \
+	$(NULL)
+imquic_moq_loc_recv_LDADD = \
+	$(IMQUIC_LIBS) \
+	$(IMQUIC_MANUAL_LIBS) \
+	$(MOQAV_LIBS) \
+	-L../src/.libs -limquic \
+	$(NULL)
+
+endif
+
 endif
 
 if ENABLE_ROQ_EXAMPLES

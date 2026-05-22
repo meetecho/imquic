@@ -27,17 +27,20 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 }
 
 /* Helper to print a list of properties */
-void imquic_moq_properties_print(imquic_moq_version version, GList *properties) {
+void imquic_moq_properties_print(imquic_moq_version version, int level, GList *properties) {
 	GList *temp = properties;
 	while(temp) {
 		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
 		const char *prop_name = imquic_moq_property_type_str(version, prop->id);
 		if(prop->id % 2 == 0) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Property '%"SCNu32"' (%s) = %"SCNu64"\n",
+			IMQUIC_LOG(level, "  >> Property '%"SCNu32"' (%s) = %"SCNu64"\n",
 				prop->id, (prop_name ? prop_name : "unknown"), prop->value.number);
 		} else {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Property '%"SCNu32"' (%s) = %.*s\n",
-				prop->id, (prop_name ? prop_name : "unknown"), (int)prop->value.data.length, prop->value.data.buffer);
+			IMQUIC_LOG(level, "  >> Property '%"SCNu32"' (%s) = ",
+				prop->id, (prop_name ? prop_name : "unknown"));
+			for(size_t i=0; i<prop->value.data.length; ++i)
+				IMQUIC_LOG(level, "%02x", prop->value.data.buffer[i]);
+			IMQUIC_LOG(level, "\n");
 		}
 		temp = temp->next;
 	}
@@ -140,4 +143,59 @@ gboolean imquic_moq_check_auth_info(imquic_connection *conn, const char *auth_in
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Parsed Authorization Token Value: %s\n",
 		imquic_get_connection_name(conn), auth_str);
 	return !strcmp(auth_info, auth_str);
+}
+
+/* Object processing type */
+const char *imquic_demo_payload_type_str(imquic_demo_payload_type type) {
+	switch(type) {
+		case DEMO_TYPE_NONE:
+			return "none";
+		case DEMO_TYPE_TEXT:
+			return "text";
+		case DEMO_TYPE_HEX:
+			return "hex";
+		case DEMO_TYPE_LOC:
+			return "loc";
+		case DEMO_TYPE_MP4:
+			return "mp4";
+		default:
+			break;
+	}
+	return NULL;
+}
+
+const char *imquic_demo_media_type_str(imquic_demo_media_type type) {
+	switch(type) {
+		case DEMO_MEDIA_NONE:
+			return "none";
+		case DEMO_MEDIA_H264:
+			return "H.264 video (AVCC)";
+		case DEMO_MEDIA_OPUS:
+			return "Opus bitstream";
+		case DEMO_MEDIA_TEXT:
+			return "UTF-8 text";
+		case DEMO_MEDIA_AAC:
+			return "AAC-LC audio";
+		default:
+			break;
+	}
+	return NULL;
+}
+
+const char *imquic_demo_loc_property_str(imquic_demo_loc_property type) {
+	switch(type) {
+		case DEMO_LOC_MEDIA_TYPE:
+			return "Media type property";
+		case DEMO_LOC_H264_HEADER:
+			return "Video H264 in AVCC metadata";
+		case DEMO_LOC_H264_EXTRADATA:
+			return "Video H264 in AVCC extradata";
+		case DEMO_LOC_OPUS_HEADER:
+			return "Audio Opus bitstream data";
+		case DEMO_LOC_AAC_HEADER:
+			return "Audio AAC-LC in MPEG4 bitstream data";
+		default:
+			break;
+	}
+	return NULL;
 }

@@ -148,9 +148,21 @@ AM_CONDITIONAL([ENABLE_ECHO_EXAMPLES], [test "x$enable_echo_examples" = "xyes"])
 AC_ARG_ENABLE([moq-examples],
               [AS_HELP_STRING([--enable-moq-examples],
                               [Build the MoQ (Media Over QUIC) examples])],
-              [],
+              [
+               PKG_CHECK_MODULES([MOQAV],
+                                 [
+                                  libavutil
+                                  libavcodec
+                                  libavformat
+                                  opus
+                                  sdl2
+                                 ],
+                                 [enable_loc_demos=yes],
+                                 [AC_MSG_WARN([Some dependencies not met, LOC demos will not be built])])
+              ],
               [enable_moq_examples=no])
 AM_CONDITIONAL([ENABLE_MOQ_EXAMPLES], [test "x$enable_moq_examples" = "xyes"])
+AM_CONDITIONAL([ENABLE_LOC_DEMOS], [test "x$enable_loc_demos" = "xyes"])
 
 AC_ARG_ENABLE([roq-examples],
               [AS_HELP_STRING([--enable-roq-examples],
@@ -226,7 +238,12 @@ AM_COND_IF([ENABLE_ECHO_EXAMPLES],
 	[echo "  -- Echo examples: yes"],
 	[echo "  -- Echo examples: no"])
 AM_COND_IF([ENABLE_MOQ_EXAMPLES],
-	[echo "  -- MoQ examples:  yes"],
+	[
+	 echo "  -- MoQ examples:  yes"
+     AM_COND_IF([ENABLE_LOC_DEMOS],
+	     [echo "  -- -- LOC demos:  yes"],
+	     [echo "  -- -- LOC demos:  no"])
+	],
 	[echo "  -- MoQ examples:  no"])
 AM_COND_IF([ENABLE_ROQ_EXAMPLES],
 	[echo "  -- RoQ examples:  yes"],

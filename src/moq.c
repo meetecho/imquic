@@ -8008,7 +8008,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 	gboolean has_payload = (object->payload_len > 0 && object->payload != NULL);
 	gboolean valid_pkt = has_payload || (object->object_status != IMQUIC_MOQ_NORMAL_OBJECT);
 	/* Check if there are properties to encode */
-	uint8_t properties[256];
+	uint8_t properties[512];
 	size_t properties_len = 0;
 	if(object->properties != NULL)
 		properties_len = imquic_moq_build_properties(moq->version, object->properties, properties, sizeof(properties));
