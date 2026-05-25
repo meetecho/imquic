@@ -107,7 +107,7 @@ static int imquic_demo_create_audio_decoder(void) {
 	want.freq = 48000;
 	want.format = AUDIO_S16SYS;
 	want.channels = 1;
-	want.samples = 1024;
+	want.samples = 960;
 	dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
 	if(!dev) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening audio device: %s\n", SDL_GetError());
@@ -154,7 +154,15 @@ static int imquic_demo_decode_audio(uint8_t *buffer, size_t length) {
 	}
 	/* Queue the samples for playback */
 	IMQUIC_LOG(IMQUIC_LOG_VERB, "Decoded %zu bytes to %d samples\n", length, ret);
+	Uint32 queued = SDL_GetQueuedAudioSize(dev);
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Have %d chunks available, %"SCNu32" are still queued\n",
+		ret*2, queued);
+	if(queued >= 10000) {
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Too many chunks in queue, clearing\n");
+		SDL_ClearQueuedAudio(dev);
+	}
 	SDL_QueueAudio(dev, (uint8_t *)samples, ret*2);
+
 	return 0;
 
 }

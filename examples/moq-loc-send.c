@@ -139,7 +139,6 @@ static int imquic_demo_create_audio_encoder(void) {
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Opened audio device %d: %"SCNu16", %"SCNu8" channels, %s, %"SCNu16" samples\n",
 		dev, have.freq, have.channels, imquic_demo_sdl_audioformat_str(have.format), have.samples);
-	//~ SDL_PauseAudioDevice(dev, 0);
 
 	GError *error = NULL;
 	audio_thread = g_thread_try_new("loc-send-audio", &imquic_demo_audio_thread, NULL, &error);
@@ -328,19 +327,95 @@ static size_t imquic_demo_h264_spspps_to_avcc(uint8_t *avcc_data, uint8_t *buffe
 /* Threads */
 static void *imquic_demo_audio_thread(void *user_data) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Starting audio thread\n");
+
+	gboolean paused = TRUE;
+	int samples = 960, length = 0;
+	uint8_t audio[1920], outgoing[500], buffer[200];
+	size_t outlen = sizeof(outgoing), blen = sizeof(buffer), offset = 0;
+	uint32_t avail = 0, want = samples*2, got = 0, cached = 0;
+
 	while(!stop) {
 		/* FIXME Loop */
 		if(!g_atomic_int_get(&audio_started)) {
+			if(!paused) {
+				paused = TRUE;
+				SDL_PauseAudioDevice(dev, 1);
+			}
 			g_usleep(100000);
 			continue;
 		}
+		if(paused) {
+			paused = FALSE;
+			SDL_PauseAudioDevice(dev, 0);
+		}
+
+		avail = SDL_GetQueuedAudioSize(dev);
+		if(avail == 0)
+			continue;
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "%"SCNu32" audio chunks available\n", avail);
+		if((cached + avail) >= want)
+			avail = want - cached;
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Dequeueing %"SCNu32" chunks (%d samples, current index %"SCNu32")\n",
+			avail, avail/2, cached);
+		got = SDL_DequeueAudio(dev, audio + cached, avail);
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- -- Got %"SCNu32"/%"SCNu32" chunks (%"SCNu32" samples)\n", got, avail, got/2);
+		cached += got;
+		if(cached == want) {
+			/* We have enough to send, encode the audio */
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- %"SCNu32" chunks cached, encoding to Opus\n", cached);
+			length = opus_encode(audioenc, (opus_int16 *)audio, cached/2, outgoing, outlen);
+			cached = 0;
+			if(length < 0) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Error encoding the Opus frame: %d (%s)\n", length, opus_strerror(length));
+				continue;
+			}
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- -- Encoded samples to %d bytes\n", length);
+			/* Write the LOC info first as extensions */
+			GList *exts = NULL;
+			imquic_moq_property type = { 0 };
+			type.id = DEMO_LOC_MEDIA_TYPE;
+			type.value.number = DEMO_MEDIA_OPUS;
+			exts = g_list_append(exts, &type);
+			imquic_moq_property header = { 0 };
+			header.id = DEMO_LOC_OPUS_HEADER;
+			offset = 0;
+			audio_seq++;
+			offset += imquic_varint_write(audio_seq, &buffer[offset], blen-offset);
+			offset += imquic_varint_write(audio_ts, &buffer[offset], blen-offset);
+			audio_ts += 20000;	/* FIXME */
+			offset += imquic_varint_write(1000000, &buffer[offset], blen-offset);
+			offset += imquic_varint_write(48000, &buffer[offset], blen-offset);
+			offset += imquic_varint_write(1, &buffer[offset], blen-offset);
+			offset += imquic_varint_write(20000, &buffer[offset], blen-offset);
+			offset += imquic_varint_write(g_get_real_time() / 1000, &buffer[offset], blen-offset);
+			header.value.data.buffer = buffer;
+			header.value.data.length = offset;
+			exts = g_list_append(exts, &header);
+			/* Prepare a MoQ object and send it */
+			imquic_moq_object object = {
+				.request_id = audio_request_id,
+				.track_alias = audio_track_alias,
+				.group_id = audio_group_id++,
+				.subgroup_id = 0,	/* FIXME */
+				.object_id = audio_object_id,
+				.payload = outgoing,
+				.payload_len = length,
+				.properties = exts,
+				.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+				.end_of_stream = TRUE
+			};
+			imquic_moq_send_object(moq_conn, &object);
+			g_list_free(exts);
+		}
 	}
+
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Leaving audio thread\n");
 	return NULL;
 }
 
 static void *imquic_demo_video_thread(void *user_data) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Starting video thread\n");
+
 	while(!stop) {
 		/* FIXME Loop */
 		if(!g_atomic_int_get(&video_started)) {
@@ -517,6 +592,7 @@ static void *imquic_demo_video_thread(void *user_data) {
 		}
 		av_packet_unref(&packet);
 	}
+
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Leaving video thread\n");
 	return NULL;
 }
