@@ -95,6 +95,10 @@ static AVFormatContext *webcam_fmt = NULL;
 static unsigned int video_stream = -1;
 static AVCodecContext *webcam_ctx = NULL, *videoenc_ctx = NULL;
 static struct SwsContext *sws = NULL;
+static GThread *audio_thread = NULL, *video_thread = NULL;
+
+static void *imquic_demo_audio_thread(void *user_data);
+static void *imquic_demo_video_thread(void *user_data);
 
 static gboolean imquic_demo_is_keyframe(uint8_t *buffer, size_t length) {
 	if(buffer == NULL || length == 0)
@@ -136,6 +140,15 @@ static int imquic_demo_create_audio_encoder(void) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Opened audio device %d: %"SCNu16", %"SCNu8" channels, %s, %"SCNu16" samples\n",
 		dev, have.freq, have.channels, imquic_demo_sdl_audioformat_str(have.format), have.samples);
 	//~ SDL_PauseAudioDevice(dev, 0);
+
+	GError *error = NULL;
+	audio_thread = g_thread_try_new("loc-send-audio", &imquic_demo_audio_thread, NULL, &error);
+	if(error != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Got error %d (%s) trying to start audio thread\n",
+			error->code, error->message ? error->message : "??");
+		return -3;
+	}
+	/* Done */
 	return 0;
 }
 
@@ -208,6 +221,15 @@ static int imquic_demo_create_video_encoder(void) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening video encoder\n");
 		return -1;
 	}
+
+	GError *error = NULL;
+	video_thread = g_thread_try_new("loc-send-video", &imquic_demo_video_thread, NULL, &error);
+	if(error != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Got error %d (%s) trying to start video thread\n",
+			error->code, error->message ? error->message : "??");
+		return -3;
+	}
+	/* Done */
 	return 0;
 }
 
@@ -301,6 +323,202 @@ static size_t imquic_demo_h264_spspps_to_avcc(uint8_t *avcc_data, uint8_t *buffe
 
 	/* Done */
 	return avcc_size;
+}
+
+/* Threads */
+static void *imquic_demo_audio_thread(void *user_data) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Starting audio thread\n");
+	while(!stop) {
+		/* FIXME Loop */
+		if(!g_atomic_int_get(&audio_started)) {
+			g_usleep(100000);
+			continue;
+		}
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Leaving audio thread\n");
+	return NULL;
+}
+
+static void *imquic_demo_video_thread(void *user_data) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Starting video thread\n");
+	while(!stop) {
+		/* FIXME Loop */
+		if(!g_atomic_int_get(&video_started)) {
+			g_usleep(100000);
+			continue;
+		}
+
+		/* FIXME Read from the video device (this should be done in a separate thread) */
+		AVPacket packet = { 0 };
+		packet.pts = AV_NOPTS_VALUE;
+		packet.dts = AV_NOPTS_VALUE;
+		packet.pos = -1;
+		int ret = av_read_frame(webcam_fmt, &packet);
+		if(ret < 0) {
+			av_packet_unref(&packet);
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error getting a frame from the video device: %d (%s)\n",
+				ret, av_err2str(ret));
+			break;
+		}
+		ret = avcodec_send_packet(webcam_ctx, &packet);
+		if(ret < 0) {
+			av_packet_unref(&packet);
+			if(ret == AVERROR(EAGAIN)) {
+				/* Decoder needs more input? */
+				continue;
+			}
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decoding frame from the video device: %d (%s)\n",
+				ret, av_err2str(ret));
+			break;
+		}
+		while(TRUE) {
+			AVFrame *video_frame = av_frame_alloc();
+			ret = avcodec_receive_frame(webcam_ctx, video_frame);
+			if(ret < 0) {
+				av_frame_free(&video_frame);
+				if(ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+					IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decoding frame from the video device: %d (%s)\n",
+						ret, av_err2str(ret));
+				}
+				break;
+			}
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "Frame resolution: %dx%d\n",
+				video_frame->width, video_frame->height);
+			/* Convert the video frame to the right format, if needed */
+			gboolean scaled = FALSE;
+			if(video_frame->format != AV_PIX_FMT_YUV420P) {
+				if(sws == NULL) {
+					sws = sws_getContext(video_frame->width, video_frame->height, video_frame->format,
+						video_frame->width, video_frame->height, AV_PIX_FMT_YUVA420P, SWS_BICUBIC, NULL, NULL, NULL);
+				}
+				AVFrame *scaled_frame = av_frame_alloc();
+				scaled_frame->width = video_frame->width;
+				scaled_frame->height = video_frame->height;
+				scaled_frame->format = AV_PIX_FMT_YUVA420P;
+				ret = av_image_alloc(scaled_frame->data, scaled_frame->linesize,
+					scaled_frame->width, scaled_frame->height, AV_PIX_FMT_YUVA420P, 1);
+				if(ret < 0) {
+					IMQUIC_LOG(IMQUIC_LOG_ERR, "Error allocating video frame: %d (%s)\n",
+						ret, av_err2str(ret));
+					av_frame_free(&video_frame);
+					av_frame_free(&scaled_frame);
+					break;
+				}
+				sws_scale(sws, (const uint8_t * const*)video_frame->data, video_frame->linesize,
+					0, video_frame->height, scaled_frame->data, scaled_frame->linesize);
+				av_frame_free(&video_frame);
+				video_frame = scaled_frame;
+				scaled = TRUE;
+			}
+			/* Encode the video frame */
+			AVPacket pkt = { 0 };
+			pkt.pts = AV_NOPTS_VALUE;
+			pkt.dts = AV_NOPTS_VALUE;
+			pkt.pos = -1;
+			ret = avcodec_send_frame(videoenc_ctx, video_frame);
+			if(ret < 0) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Error encoding video frame: %d (%s)\n",
+					ret, av_err2str(ret));
+			} else {
+				ret = avcodec_receive_packet(videoenc_ctx, &pkt);
+				if(ret == AVERROR(EAGAIN)) {
+					/* Encoder needs more input? */
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "Skipping encoding of video frame: %d (%s)\n",
+						ret, av_err2str(ret));
+				} else if(ret < 0) {
+					IMQUIC_LOG(IMQUIC_LOG_ERR, "Error encoding video frame: %d (%s)\n",
+						ret, av_err2str(ret));
+				}
+			}
+			if(ret == 0) {
+				/* Video frame encoded */
+				gboolean kf = imquic_demo_is_keyframe(pkt.data + 4, pkt.size - 4);
+				IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Encoded to %d bytes, %s\n",
+					pkt.size, kf ? "keyframe" : "NOT a keyframe");
+				/* Switch from Annex-B to AVCC */
+				size_t annexb_offset = 0, index = 4, nal_size = 0;
+				while((size_t)pkt.size >= index) {
+					if(pkt.data[index] == 0x00 && pkt.data[index+1] == 0x00 &&
+							pkt.data[index+2] == 0x00 && pkt.data[3] == 0x01) {
+						/* Found a start code, that determined the NAL size */
+						nal_size = index - annexb_offset + 4;
+						memcpy(pkt.data + annexb_offset, &nal_size, 4);
+						annexb_offset = index;
+						index += 4;
+					} else {
+						index++;
+					}
+				}
+				nal_size = pkt.size - annexb_offset + 4;
+				memcpy(pkt.data + annexb_offset, &nal_size, 4);
+				/* Write the LOC info first as extensions */
+				GList *exts = NULL;
+				imquic_moq_property type = { 0 };
+				type.id = DEMO_LOC_MEDIA_TYPE;
+				type.value.number = DEMO_MEDIA_H264;
+				exts = g_list_append(exts, &type);
+				imquic_moq_property header = { 0 };
+				header.id = DEMO_LOC_H264_HEADER;
+				uint8_t buffer[200];
+				size_t offset = 0, blen = sizeof(buffer);
+				video_seq++;
+				offset += imquic_varint_write(video_seq, &buffer[offset], blen-offset);
+				gint64 now = g_get_monotonic_time();
+				if(video_ts == 0)
+					video_ts = now;
+				uint64_t pts = now - video_ts, dts = pts;
+				offset += imquic_varint_write(pts, &buffer[offset], blen-offset);
+				offset += imquic_varint_write(dts, &buffer[offset], blen-offset);
+				offset += imquic_varint_write(1000000, &buffer[offset], blen-offset);
+				uint64_t duration = 30000;	/* FIXME */
+				offset += imquic_varint_write(duration, &buffer[offset], blen-offset);
+				video_ts = now;
+				offset += imquic_varint_write(g_get_real_time() / 1000, &buffer[offset], blen-offset);
+				header.value.data.buffer = buffer;
+				header.value.data.length = offset;
+				exts = g_list_append(exts, &header);
+				imquic_moq_property extradata = { 0 };
+				uint8_t avcc_data[1500];
+				if(kf && videoenc_ctx->extradata != NULL) {
+					size_t avcc_size = imquic_demo_h264_spspps_to_avcc(avcc_data, videoenc_ctx->extradata, videoenc_ctx->extradata_size);
+					if(avcc_size > 0) {
+						IMQUIC_LOG(IMQUIC_LOG_VERB, "Generated AVCC: %zu bytes\n    ", avcc_size);
+						for(size_t i=0; i<avcc_size; ++i)
+							IMQUIC_LOG(IMQUIC_LOG_VERB, "%02x", avcc_data[i]);
+						IMQUIC_LOG(IMQUIC_LOG_VERB, "\n");
+
+						extradata.id = DEMO_LOC_H264_EXTRADATA;
+						extradata.value.data.buffer = avcc_data;
+						extradata.value.data.length = avcc_size;
+						exts = g_list_append(exts, &extradata);
+					}
+				}
+				/* Prepare a MoQ object and send it */
+				imquic_moq_object object = {
+					.request_id = video_request_id,
+					.track_alias = video_track_alias,
+					.group_id = video_group_id,
+					.subgroup_id = 0,	/* FIXME */
+					.object_id = video_object_id,
+					.payload = pkt.data,
+					.payload_len = pkt.size,
+					.properties = exts,
+					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+					.end_of_stream = TRUE
+				};
+				video_object_id++;
+				imquic_moq_send_object(moq_conn, &object);
+				g_list_free(exts);
+			}
+			if(scaled)
+				av_freep(&video_frame->data[0]);
+			av_frame_free(&video_frame);
+			av_packet_unref(&pkt);
+		}
+		av_packet_unref(&packet);
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Leaving video thread\n");
+	return NULL;
 }
 
 /* Callbacks */
@@ -754,180 +972,7 @@ int main(int argc, char *argv[]) {
 	imquic_start_endpoint(client);
 
 	while(!stop) {
-		/* TODO Loop */
-		if(!g_atomic_int_get(&video_started)) {
-			g_usleep(100000);
-			continue;
-		}
-
-		/* FIXME Read from the video device (this should be done in a separate thread) */
-		AVPacket packet = { 0 };
-		packet.pts = AV_NOPTS_VALUE;
-		packet.dts = AV_NOPTS_VALUE;
-		packet.pos = -1;
-		int ret = av_read_frame(webcam_fmt, &packet);
-		if(ret < 0) {
-			av_packet_unref(&packet);
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error getting a frame from the video device: %d (%s)\n",
-				ret, av_err2str(ret));
-			break;
-		}
-		ret = avcodec_send_packet(webcam_ctx, &packet);
-		if(ret < 0) {
-			av_packet_unref(&packet);
-			if(ret == AVERROR(EAGAIN)) {
-				/* Decoder needs more input? */
-				continue;
-			}
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decoding frame from the video device: %d (%s)\n",
-				ret, av_err2str(ret));
-			break;
-		}
-		while(TRUE) {
-			AVFrame *video_frame = av_frame_alloc();
-			ret = avcodec_receive_frame(webcam_ctx, video_frame);
-			if(ret < 0) {
-				av_frame_free(&video_frame);
-				if(ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-					IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decoding frame from the video device: %d (%s)\n",
-						ret, av_err2str(ret));
-				}
-				break;
-			}
-			IMQUIC_LOG(IMQUIC_LOG_VERB, "Frame resolution: %dx%d\n",
-				video_frame->width, video_frame->height);
-			/* Convert the video frame to the right format, if needed */
-			gboolean scaled = FALSE;
-			if(video_frame->format != AV_PIX_FMT_YUV420P) {
-				if(sws == NULL) {
-					sws = sws_getContext(video_frame->width, video_frame->height, video_frame->format,
-						video_frame->width, video_frame->height, AV_PIX_FMT_YUVA420P, SWS_BICUBIC, NULL, NULL, NULL);
-				}
-				AVFrame *scaled_frame = av_frame_alloc();
-				scaled_frame->width = video_frame->width;
-				scaled_frame->height = video_frame->height;
-				scaled_frame->format = AV_PIX_FMT_YUVA420P;
-				ret = av_image_alloc(scaled_frame->data, scaled_frame->linesize,
-					scaled_frame->width, scaled_frame->height, AV_PIX_FMT_YUVA420P, 1);
-				if(ret < 0) {
-					IMQUIC_LOG(IMQUIC_LOG_ERR, "Error allocating video frame: %d (%s)\n",
-						ret, av_err2str(ret));
-					av_frame_free(&video_frame);
-					av_frame_free(&scaled_frame);
-					break;
-				}
-				sws_scale(sws, (const uint8_t * const*)video_frame->data, video_frame->linesize,
-					0, video_frame->height, scaled_frame->data, scaled_frame->linesize);
-				av_frame_free(&video_frame);
-				video_frame = scaled_frame;
-				scaled = TRUE;
-			}
-			/* Encode the video frame */
-			AVPacket pkt = { 0 };
-			pkt.pts = AV_NOPTS_VALUE;
-			pkt.dts = AV_NOPTS_VALUE;
-			pkt.pos = -1;
-			ret = avcodec_send_frame(videoenc_ctx, video_frame);
-			if(ret < 0) {
-				IMQUIC_LOG(IMQUIC_LOG_ERR, "Error encoding video frame: %d (%s)\n",
-					ret, av_err2str(ret));
-			} else {
-				ret = avcodec_receive_packet(videoenc_ctx, &pkt);
-				if(ret == AVERROR(EAGAIN)) {
-					/* Encoder needs more input? */
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "Skipping encoding of video frame: %d (%s)\n",
-						ret, av_err2str(ret));
-				} else if(ret < 0) {
-					IMQUIC_LOG(IMQUIC_LOG_ERR, "Error encoding video frame: %d (%s)\n",
-						ret, av_err2str(ret));
-				}
-			}
-			if(ret == 0) {
-				/* Video frame encoded */
-				gboolean kf = imquic_demo_is_keyframe(pkt.data + 4, pkt.size - 4);
-				IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Encoded to %d bytes, %s\n",
-					pkt.size, kf ? "keyframe" : "NOT a keyframe");
-				/* Switch from Annex-B to AVCC */
-				size_t annexb_offset = 0, index = 4, nal_size = 0;
-				while((size_t)pkt.size >= index) {
-					if(pkt.data[index] == 0x00 && pkt.data[index+1] == 0x00 &&
-							pkt.data[index+2] == 0x00 && pkt.data[3] == 0x01) {
-						/* Found a start code, that determined the NAL size */
-						nal_size = index - annexb_offset + 4;
-						memcpy(pkt.data + annexb_offset, &nal_size, 4);
-						annexb_offset = index;
-						index += 4;
-					} else {
-						index++;
-					}
-				}
-				nal_size = pkt.size - annexb_offset + 4;
-				memcpy(pkt.data + annexb_offset, &nal_size, 4);
-				/* Write the LOC info first as extensions */
-				GList *exts = NULL;
-				imquic_moq_property type = { 0 };
-				type.id = DEMO_LOC_MEDIA_TYPE;
-				type.value.number = DEMO_MEDIA_H264;
-				exts = g_list_append(exts, &type);
-				imquic_moq_property header = { 0 };
-				header.id = DEMO_LOC_H264_HEADER;
-				uint8_t buffer[200];
-				size_t offset = 0, blen = sizeof(buffer);
-				video_seq++;
-				offset += imquic_varint_write(video_seq, &buffer[offset], blen-offset);
-				gint64 now = g_get_monotonic_time();
-				if(video_ts == 0)
-					video_ts = now;
-				uint64_t pts = now - video_ts, dts = pts;
-				offset += imquic_varint_write(pts, &buffer[offset], blen-offset);
-				offset += imquic_varint_write(dts, &buffer[offset], blen-offset);
-				offset += imquic_varint_write(1000000, &buffer[offset], blen-offset);
-				uint64_t duration = 30000;	/* FIXME */
-				offset += imquic_varint_write(duration, &buffer[offset], blen-offset);
-				video_ts = now;
-				offset += imquic_varint_write(g_get_real_time() / 1000, &buffer[offset], blen-offset);
-				header.value.data.buffer = buffer;
-				header.value.data.length = offset;
-				exts = g_list_append(exts, &header);
-				imquic_moq_property extradata = { 0 };
-				uint8_t avcc_data[1500];
-				if(kf && videoenc_ctx->extradata != NULL) {
-					size_t avcc_size = imquic_demo_h264_spspps_to_avcc(avcc_data, videoenc_ctx->extradata, videoenc_ctx->extradata_size);
-					if(avcc_size > 0) {
-						IMQUIC_LOG(IMQUIC_LOG_INFO, "Generated AVCC: %zu bytes\n    ", avcc_size);
-						for(size_t i=0; i<avcc_size; ++i)
-							IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", avcc_data[i]);
-						IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
-
-						extradata.id = DEMO_LOC_H264_EXTRADATA;
-						extradata.value.data.buffer = avcc_data;
-						extradata.value.data.length = avcc_size;
-						exts = g_list_append(exts, &extradata);
-					}
-				}
-				/* Prepare a MoQ object and send it */
-				imquic_moq_object object = {
-					.request_id = video_request_id,
-					.track_alias = video_track_alias,
-					.group_id = video_group_id,
-					.subgroup_id = 0,	/* FIXME */
-					.object_id = video_object_id,
-					.payload = pkt.data,
-					.payload_len = pkt.size,
-					.properties = exts,
-					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
-					.end_of_stream = TRUE
-				};
-				video_object_id++;
-				imquic_moq_send_object(moq_conn, &object);
-				g_list_free(exts);
-			}
-			if(scaled)
-				av_freep(&video_frame->data[0]);
-			av_frame_free(&video_frame);
-			av_packet_unref(&pkt);
-		}
-		av_packet_unref(&packet);
+		g_usleep(100000);
 	}
 
 	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
@@ -947,6 +992,10 @@ done:
 	demo_options_destroy();
 
 	/* Decoder stuff */
+	if(audio_thread != NULL)
+		g_thread_join(audio_thread);
+	if(video_thread != NULL)
+		g_thread_join(video_thread);
 	avformat_network_deinit();
 	imquic_demo_destroy_audio_encoder();
 	imquic_demo_destroy_video_encoder();
