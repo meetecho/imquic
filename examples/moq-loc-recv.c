@@ -26,7 +26,6 @@
 #include <opus/opus.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
 
 #include "moq-loc-recv-options.h"
 #include "moq-utils.h"
@@ -90,6 +89,7 @@ static const char *imquic_demo_sdl_audioformat_str(SDL_AudioFormat format) {
 /* Decoder related stuff */
 static OpusDecoder *audiodec = NULL;
 static AVCodecContext *videodec_ctx = NULL;
+
 static int imquic_demo_create_audio_decoder(void) {
 	if(options.audio_track_name == NULL)
 		return -1;
@@ -630,7 +630,7 @@ int main(int argc, char *argv[]) {
 	sub_tns = imquic_moq_namespace_str(sub_namespace, sub_tns_buffer, sizeof(sub_tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", sub_tns, tns_num);
 
-	if(options.audio_track_name == NULL || options.video_track_name == NULL) {
+	if(options.audio_track_name == NULL && options.video_track_name == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
 		ret = 1;
 		goto done;
@@ -777,7 +777,7 @@ done:
 		demo_options_show_usage();
 	demo_options_destroy();
 
-	/* FFmpeg stuff */
+	/* Decoder stuff */
 	avformat_network_deinit();
 	imquic_demo_destroy_audio_decoder();
 	imquic_demo_destroy_video_decoder();

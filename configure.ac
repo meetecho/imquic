@@ -154,6 +154,8 @@ AC_ARG_ENABLE([moq-examples],
                                   libavutil
                                   libavcodec
                                   libavformat
+                                  libavdevice
+                                  libswscale
                                   opus
                                   sdl2
                                  ],
