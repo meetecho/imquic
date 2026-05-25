@@ -22,6 +22,11 @@ typedef struct demo_options {
 	const char **track_namespace;
 	const char *audio_track_name;
 	const char *video_track_name;
+	const char *video_format;
+	const char *video_device;
+	const char *video_resolution;
+	int width, height;
+	int video_framerate;
 	gboolean publish;
 	const char *ip;
 	int port;

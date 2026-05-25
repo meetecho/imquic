@@ -155,20 +155,20 @@ static int imquic_demo_create_video_encoder(void) {
 	if(options.video_track_name == NULL)
 		return -1;
 	/* FIXME Webcam capture (this currently assumes a Linux target) */
-	const AVInputFormat *v4l2 = av_find_input_format("v4l2");
-	if(v4l2 == NULL) {
+	const AVInputFormat *vf = av_find_input_format(options.video_format);
+	if(vf == NULL) {
 		/* v4l2 error */
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "Couldn't find v4l2 format\n");
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Couldn't find '%s' format\n", options.video_format);
 		return -1;
 	}
 	/* FIXME These should be configurable */
 	AVDictionary *opts = NULL;
-	av_dict_set(&opts, "framerate", "25", 0);
-	av_dict_set(&opts, "video_size", "640x480", 0);
-	int ret = avformat_open_input(&webcam_fmt, "/dev/video0", v4l2, &opts);
+	av_dict_set(&opts, "framerate", "30", 0);
+	av_dict_set(&opts, "video_size", options.video_resolution, 0);
+	int ret = avformat_open_input(&webcam_fmt, options.video_device, vf, &opts);
 	if(ret < 0) {
 		/* Webcam error */
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening video device\n");
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening video device '%s'\n", options.video_device);
 		return -1;
 	}
 	ret = avformat_find_stream_info(webcam_fmt, NULL);
@@ -194,7 +194,7 @@ static int imquic_demo_create_video_encoder(void) {
 	}
 
 	/* FIXME Video (H.264 using libx264, should we support openh264 too?) */
-	int width = 640, height = 480, fps = 25;
+	int width = options.width, height = options.height, fps = options.video_framerate;
 	AVCodec *video_codec = (AVCodec *)avcodec_find_encoder_by_name("libx264");
 	videoenc_ctx = avcodec_alloc_context3(video_codec);
 	videoenc_ctx->bit_rate = 1000 * 1024;
@@ -545,7 +545,7 @@ static void *imquic_demo_video_thread(void *user_data) {
 				offset += imquic_varint_write(pts, &buffer[offset], blen-offset);
 				offset += imquic_varint_write(dts, &buffer[offset], blen-offset);
 				offset += imquic_varint_write(1000000, &buffer[offset], blen-offset);
-				uint64_t duration = 30000;	/* FIXME */
+				uint64_t duration = G_USEC_PER_SEC / options.video_framerate;	/* FIXME */
 				offset += imquic_varint_write(duration, &buffer[offset], blen-offset);
 				video_ts = now;
 				offset += imquic_varint_write(g_get_real_time() / 1000, &buffer[offset], blen-offset);
@@ -929,6 +929,24 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for video\n", video_tn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use track_alias=%"SCNu64"\n",
 			video_track_alias);
+		if(options.video_format == NULL)
+			options.video_format = "v4l2";
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use the '%s' video format\n", options.video_format);
+		if(options.video_device == NULL)
+			options.video_device = "/dev/video0";
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use the '%s' video device\n", options.video_device);
+		if(options.video_resolution == NULL)
+			options.video_resolution = "640x480";
+		if(sscanf(options.video_resolution, "%dx%d", &options.width, &options.height) != 2 ||
+				options.width <= 0 || options.height <= 0) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid video resolution\n");
+			ret = 1;
+			goto done;
+		}
+		if(options.video_framerate <= 0)
+			options.video_framerate = 25;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will capture video at '%dx%d@%d'\n",
+			options.width, options.height, options.video_framerate);
 	}
 
 	if(options.publish)

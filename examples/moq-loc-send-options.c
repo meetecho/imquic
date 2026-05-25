@@ -20,6 +20,10 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to publish (can be called multiple times to create a tuple; default=none)", "namespace" },
 		{ "audio-track-name", 'A', 0, G_OPTION_ARG_STRING, &options->audio_track_name, "MoQ track name of the audio track to publish (default=no audio)", "name" },
 		{ "video-track-name", 'V', 0, G_OPTION_ARG_STRING, &options->video_track_name, "MoQ track name of the video track to publish (default=no video)", "name" },
+		{ "video-format", 'f', 0, G_OPTION_ARG_STRING, &options->video_format, "Video format to use as, using FFmpeg names (default=v4l2)", "format" },
+		{ "video-device", 'i', 0, G_OPTION_ARG_STRING, &options->video_device, "Video device to capture from (default=/dev/video0)", "device" },
+		{ "video-resolution", 'W', 0, G_OPTION_ARG_STRING, &options->video_resolution, "Video resolution to capture (default=640x480)", "resolution" },
+		{ "video-framerate", 'F', 0, G_OPTION_ARG_INT, &options->video_framerate, "Video framerate to capture at, in frames per second (default=25)", "fps" },
 		{ "publish", 'X', 0, G_OPTION_ARG_NONE, &options->publish, "Use a PUBLISH right away instead of waiting for a SUBSCRIBE (default=no; only supported for v12 and later)", NULL },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },
@@ -41,7 +45,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "debug-level", 'd', 0, G_OPTION_ARG_INT, &options->debug_level, "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)", "1-7" },
 		{ "debug-locks", 'L', 0, G_OPTION_ARG_NONE, &options->debug_locks, "Whether to verbosely debug mutex/lock accesses (default=no)", NULL },
 		{ "debug-refcounts", 'C', 0, G_OPTION_ARG_NONE, &options->debug_refcounts, "Whether to verbosely debug reference counting (default=no)", NULL },
-		{ "debug-ffmpeg", 'F', 0, G_OPTION_ARG_NONE, &options->debug_ffmpeg, "Whether to verbosely debug FFmpeg (default=no)", NULL },
+		{ "debug-ffmpeg", 'D', 0, G_OPTION_ARG_NONE, &options->debug_ffmpeg, "Whether to verbosely debug FFmpeg (default=no)", NULL },
 		{ NULL, 0, 0, 0, NULL, NULL, NULL },
 	};
 
