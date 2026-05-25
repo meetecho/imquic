@@ -71,6 +71,8 @@ To build the Media Over QUIC (MoQ) examples, pass `--enable-moq-examples` to the
 
 * `imquic-moq-pob`, a basic MoQ publisher (basically a clone on `moq-clock` in [moq-rs](https://github.com/kixelated/moq-rs));
 * `imquic-moq-sub`, a basic MoQ subscriber (with support for a few different kinds of media);
+* `imquic-moq-loc-send`, a MoQ publisher that can publish live audio/video using LOC;
+* `imquic-moq-loc-recv`, a MoQ subscriber that can subscribe to (and render) live audio/video using LOC;
 * `imquic-moq-interop-test`, a client-side implementation of the [MoQ Interop Runner](https://github.com/englishm/moq-interop-runner/);
 * `imquic-moq-relay`, a basic MoQ relay.
 
@@ -88,12 +90,22 @@ A MoQ subscriber for that namespace/track (with `-t text` to tell the applicatio
 
 	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -q -n clock -N now -t text
 
-Assuming Meta's [moxygen](https://github.com/facebookexperimental/moxygen) relay is running on that address and that a [moq-encoder-player](https://github.com/facebookexperimental/moq-encoder-player/) instance is publishing audio and video, this creates a MoQ subscriber (on WebTransport) to both tracks that prints the LOC header (`-t loc`) of each incoming object:
+Assuming a relay is available at that address and that a [moq-encoder-player](https://github.com/facebookexperimental/moq-encoder-player/) instance is publishing audio and video, this creates a MoQ subscriber (on WebTransport) to both tracks that prints the LOC header (`-t loc`) of each incoming object:
 
 	./examples/imquic-moq-sub -r 127.0.0.1 -R 4433 -w -H /moq -n vc -N 12345678-audio -N 12345678-video -A secret -t loc -w
 
 `imquic-moq-sub` also supports `FETCH` to obtain objects from a relay, both in standalone and (assuming v08 of the draft is used) joining mode. You enable `FETCH` by specifying the order you want using `-f`: by default this enables standalone fetch, but if you want a joining one (meaning a `SUBSCRIBE` is sent too) you also need to specify the preceding group offset via the `-j` property. This is an example of subscribing to the current time with a joining fetch that's just interested in all objects from the latest group (`-j 0`):
 
 	./examples/imquic-moq-sub -r 127.0.0.1 -R 9000 -w -n clock -N now -t text -M 8 -f ascending -j 0
+
+Live audio and/or video can also be tested using `imquic-moq-loc-send` (publisher) and `imquic-moq-loc-recv` (subscriber), both of which use LOC as a streaming format. This creates a publisher that uses the `vc` namespace (`-n), and then captures a microphone (that will be published to the trackname specified with `-A`) and a webcam (that will be published to the trackname specified with `-V`):
+
+	./examples/imquic-moq-loc-send -r 127.0.0.1 -R 9000 -w -q -n vc -A 12345678-audio -V 12345678-video
+
+A subscriber for those streams can be created this way instead:
+
+	./examples/imquic-moq-loc-recv -r 127.0.0.1 -R 9000 -w -q -n vc -A 12345678-audio -V 12345678-video
+
+By default, the receiver will print metadata associated to all objects it receives: to print the content of the LOC properties, `-P` can be passed. To hide all metadata and not make the logs too verbose, you can make them quiet using `-Z`.
 
 `imquic-moq-interop-test` implements the client side of the [MoQ Interop Runner](https://github.com/englishm/moq-interop-runner/) framework. Its interface is standardized: you can find more details [here](https://github.com/meetecho/imquic/pull/21).
