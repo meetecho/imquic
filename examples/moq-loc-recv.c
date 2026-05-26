@@ -56,12 +56,15 @@ static void imquic_demo_handle_signal(int signum) {
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t max_request_id = 100,
+	catalog_request_id = 0, catalog_fetch_request_id = 0,
 	audio_request_id = 0, video_request_id = 0,
-	audio_track_alias = 0, video_track_alias = 0;
+	catalog_track_alias = 0, audio_track_alias = 0, video_track_alias = 0;
 static imquic_moq_namespace sub_namespace[32] = { 0 };
-static imquic_moq_track audio_trackname = { 0 }, video_trackname = { 0 };
+static imquic_moq_track catalog_trackname = { 0 },
+	audio_trackname = { 0 }, video_trackname = { 0 };
 static char sub_tns_buffer[256], audio_tn_buffer[256], video_tn_buffer[256];
-static const char *sub_tns = NULL, *audio_tn = NULL, *video_tn = NULL;
+static const char *sub_tns = NULL, *catalog_tn = "catalog",
+	*audio_tn = NULL, *video_tn = NULL;
 static int IMQUIC_LOG_LOCPROP = IMQUIC_LOG_NONE;
 
 /* Global SDL resources */
@@ -87,6 +90,7 @@ static const char *imquic_demo_sdl_audioformat_str(SDL_AudioFormat format) {
 }
 
 /* Decoder related stuff */
+static imquic_moq_catalog *catalog = NULL;
 static OpusDecoder *audiodec = NULL;
 static AVCodecContext *videodec_ctx = NULL;
 
@@ -311,6 +315,16 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.forward = TRUE;
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
+	/* We always get the catalog track first, if available */
+	catalog_request_id = imquic_moq_get_next_request_id(conn);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (catalog), using ID %"SCNu64"\n",
+		imquic_get_connection_name(conn), sub_tns, catalog_tn, catalog_request_id);
+	imquic_moq_subscribe(conn, catalog_request_id, sub_namespace, &catalog_trackname, &params);
+	if(options.use_catalog) {
+		/* We wait for the catalog to subscribe to the media tracks */
+		return;
+	}
+	/* If we got here, we also subscribe to the audio and/or video tracks */
 	if(options.audio_track_name != NULL) {
 		audio_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (audio), using ID %"SCNu64"\n",
@@ -329,6 +343,30 @@ static void imquic_demo_ready(imquic_connection *conn) {
 
 static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
 		imquic_moq_request_parameters *parameters, GList *track_properties) {
+	if(request_id == catalog_request_id) {
+		/* This is the catalog track: check if we need to perform a
+		 * Joining FETCH too, in case objects are already available */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Catalog subscription %"SCNu64" accepted (expires=%"SCNu64"; %d properties)\n",
+			imquic_get_connection_name(conn), request_id, parameters->expires, g_list_length(track_properties));
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
+			imquic_get_connection_name(conn), track_alias);
+		catalog_track_alias = track_alias;
+		if(parameters->largest_object_set) {
+			/* There's a largest object, send a Joining FETCH */
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+				imquic_get_connection_name(conn),
+				parameters->largest_object.group, parameters->largest_object.object);
+			/* Send a Joining Fetch referencing this subscription */
+			imquic_moq_request_parameters fparams;
+			imquic_moq_request_parameters_init_defaults(&fparams);
+			catalog_fetch_request_id = imquic_moq_get_next_request_id(conn);
+			int join_offset = parameters->largest_object.group;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending Joining Fetch for subscription %"SCNu64", using ID %"SCNu64" (offset=%d)\n",
+				imquic_get_connection_name(conn), request_id, catalog_fetch_request_id, join_offset);
+			imquic_moq_joining_fetch(conn, catalog_fetch_request_id, request_id, FALSE, join_offset, &fparams);
+		}
+		return;
+	}
 	gboolean video = (options.video_track_name != NULL && request_id == video_request_id);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s subscription %"SCNu64" accepted (expires=%"SCNu64"; %d properties)\n",
 		imquic_get_connection_name(conn), video ? "Video" : "Audio",
@@ -394,6 +432,99 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
+	if(object->track_alias == catalog_track_alias || object->delivery == IMQUIC_MOQ_USE_FETCH) {
+		/* This is from the catalog track */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Catalog: %.*s\n",
+			imquic_get_connection_name(conn), (int)object->payload_len, (char *)object->payload);
+		if(options.use_catalog && catalog == NULL) {
+			/* Let's parse the catalog to see if there are tracks we can subscribe to */
+			char *json = g_malloc(object->payload_len + 1);
+			memcpy(json, object->payload, object->payload_len);
+			json[object->payload_len] = '\0';
+			catalog = imquic_moq_catalog_parse(json);
+			g_free(json);
+			if(catalog == NULL) {
+				/* Something went wrong */
+				g_atomic_int_set(&stop, 1);
+				return;
+			}
+			GList *temp = catalog->tracks;
+			while(temp) {
+				imquic_moq_catalog_track *track = (imquic_moq_catalog_track *)temp->data;
+				if(track->role && !strcasecmp(track->role, "audio")) {
+					/* Audio track */
+					if(audio_tn != NULL) {
+						IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- We already have an audio track, skipping '%s\n", track->track_name);
+						temp = temp->next;
+						continue;
+					}
+					/* FIXME This could be encoded already */
+					audio_trackname.buffer = (uint8_t *)track->track_name;
+					audio_trackname.length = strlen(track->track_name);
+					if(!imquic_moq_track_is_valid(&audio_trackname)) {
+						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Invalid audio track name '%s'\n", track->track_name);
+						g_atomic_int_set(&stop, 1);
+						return;
+					}
+					if(track->codec && strcasecmp(track->codec, "opus")) {
+						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Unsupported audio codec '%s'\n", track->codec);
+						g_atomic_int_set(&stop, 1);
+						return;
+					}
+					audio_tn = imquic_moq_track_str(&audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' for audio\n", audio_tn);
+				} else if(track->role && !strcasecmp(track->role, "video")) {
+					/* Video track */
+					if(video_tn != NULL) {
+						IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- We already have an video track, skipping '%s\n", track->track_name);
+						temp = temp->next;
+						continue;
+					}
+					/* FIXME This could be encoded already */
+					video_trackname.buffer = (uint8_t *)track->track_name;
+					video_trackname.length = strlen(track->track_name);
+					if(!imquic_moq_track_is_valid(&video_trackname)) {
+						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Invalid video track name '%s'\n", track->track_name);
+						g_atomic_int_set(&stop, 1);
+						return;
+					}
+					if(track->codec && strcasecmp(track->codec, "avc1.42001F")) {
+						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Unsupported video codec '%s'\n", track->codec);
+						g_atomic_int_set(&stop, 1);
+						return;
+					}
+					video_tn = imquic_moq_track_str(&video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' for video\n", video_tn);
+				} else {
+					IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- Unsupported '%s' track\n", track->role);
+				}
+				temp = temp->next;
+			}
+			/* Subscribe to the tracks we found */
+			imquic_moq_request_parameters params;
+			imquic_moq_request_parameters_init_defaults(&params);
+			params.forward_set = TRUE;
+			params.forward = TRUE;
+			params.subscriber_priority_set = TRUE;
+			params.subscriber_priority = 128;
+			if(audio_tn != NULL) {
+				audio_request_id = imquic_moq_get_next_request_id(conn);
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (audio), using ID %"SCNu64"\n",
+					imquic_get_connection_name(conn), sub_tns, audio_tn, audio_request_id);
+				/* Send a SUBSCRIBE */
+				imquic_moq_subscribe(conn, audio_request_id, sub_namespace, &audio_trackname, &params);
+			}
+			if(video_tn != NULL) {
+				video_request_id = imquic_moq_get_next_request_id(conn);
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (video), using ID %"SCNu64"\n",
+					imquic_get_connection_name(conn), sub_tns, video_tn, video_request_id);
+				/* Send a SUBSCRIBE */
+				imquic_moq_subscribe(conn, video_request_id, sub_namespace, &video_trackname, &params);
+			}
+		}
+		return;
+	}
+	/* If we got here, it's an audio or video object */
 	if(object->properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_VERB, object->properties);
 	/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
@@ -638,32 +769,42 @@ int main(int argc, char *argv[]) {
 	sub_tns = imquic_moq_namespace_str(sub_namespace, sub_tns_buffer, sizeof(sub_tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", sub_tns, tns_num);
 
-	if(options.audio_track_name == NULL && options.video_track_name == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
-		ret = 1;
-		goto done;
-	}
-	if(options.audio_track_name != NULL) {
-		audio_trackname.buffer = (uint8_t *)options.audio_track_name;
-		audio_trackname.length = strlen(options.audio_track_name);
-		if(!imquic_moq_track_is_valid(&audio_trackname)) {
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid audio track name\n");
+	/* Subscribe to the catalog track */
+	catalog_trackname.buffer = (uint8_t *)catalog_tn;
+	catalog_trackname.length = strlen(catalog_tn);
+	/* Depending on whether we'll rely on the catalog or not, we may
+	 * need to create track names for audio and/or video too */
+	if(options.use_catalog) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use the catalog to autodetect audio/video tracks\n");
+	} else {
+		/* Create tracknames for audio and/or video */
+		if(options.audio_track_name == NULL && options.video_track_name == NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
 			ret = 1;
 			goto done;
 		}
-		audio_tn = imquic_moq_track_str(&audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for audio\n", audio_tn);
-	}
-	if(options.video_track_name != NULL) {
-		video_trackname.buffer = (uint8_t *)options.video_track_name;
-		video_trackname.length = strlen(options.video_track_name);
-		if(!imquic_moq_track_is_valid(&video_trackname)) {
-			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid video track name\n");
-			ret = 1;
-			goto done;
+		if(options.audio_track_name != NULL) {
+			audio_trackname.buffer = (uint8_t *)options.audio_track_name;
+			audio_trackname.length = strlen(options.audio_track_name);
+			if(!imquic_moq_track_is_valid(&audio_trackname)) {
+				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid audio track name\n");
+				ret = 1;
+				goto done;
+			}
+			audio_tn = imquic_moq_track_str(&audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for audio\n", audio_tn);
 		}
-		video_tn = imquic_moq_track_str(&video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for video\n", video_tn);
+		if(options.video_track_name != NULL) {
+			video_trackname.buffer = (uint8_t *)options.video_track_name;
+			video_trackname.length = strlen(options.video_track_name);
+			if(!imquic_moq_track_is_valid(&video_trackname)) {
+				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid video track name\n");
+				ret = 1;
+				goto done;
+			}
+			video_tn = imquic_moq_track_str(&video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for video\n", video_tn);
+		}
 	}
 
 	/* Check if we need to create a QLOG file, and which we should save */
@@ -786,6 +927,7 @@ done:
 	demo_options_destroy();
 
 	/* Decoder stuff */
+	imquic_moq_catalog_destroy(catalog);
 	avformat_network_deinit();
 	imquic_demo_destroy_audio_decoder();
 	imquic_demo_destroy_video_decoder();

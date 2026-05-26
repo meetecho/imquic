@@ -18,6 +18,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any" },
 		{ "test-grease", '9', 0, G_OPTION_ARG_NONE, &options->test_grease, "If set, will add GREASE to SETUP options (default=no; only available for v17 and beyond)", NULL},
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to subscribe to (can be called multiple times to create a tuple; default=none)", "namespace" },
+		{ "use-catalog", 'u', 0, G_OPTION_ARG_NONE, &options->use_catalog, "If set, will get the published catalog to autodetect audio and video tracks to subscribe to (default=no)", NULL},
 		{ "audio-track-name", 'A', 0, G_OPTION_ARG_STRING, &options->audio_track_name, "MoQ track name of the audio track to subscribe to (default=no audio)", "name" },
 		{ "video-track-name", 'V', 0, G_OPTION_ARG_STRING, &options->video_track_name, "MoQ track name of the video track to subscribe to (default=no video)", "name" },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },

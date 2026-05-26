@@ -20,6 +20,7 @@ typedef struct demo_options {
 	char *moq_version;
 	gboolean test_grease;
 	const char **track_namespace;
+	gboolean use_catalog;
 	const char *audio_track_name;
 	const char *video_track_name;
 	const char *ip;
