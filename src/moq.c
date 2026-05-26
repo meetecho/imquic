@@ -3105,8 +3105,11 @@ size_t imquic_moq_parse_publish_done(imquic_moq_context *moq, imquic_moq_stream 
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
 		return 0;
-	IMQUIC_MOQ_CHECK_ERR((moq->version >= IMQUIC_MOQ_VERSION_17 && (moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_PUBLISH ||
-			moq_stream->request_sender || moq_stream->request_state == IMQUIC_MOQ_REQUEST_STATE_NEW ||
+	IMQUIC_MOQ_CHECK_ERR((moq->version >= IMQUIC_MOQ_VERSION_17 && (moq_stream == NULL ||
+			(moq_stream->request_type != IMQUIC_MOQ_PUBLISH && moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE) ||
+			(moq_stream->request_type == IMQUIC_MOQ_PUBLISH && moq_stream->request_sender) ||
+			(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE && !moq_stream->request_sender) ||
+			moq_stream->request_state == IMQUIC_MOQ_REQUEST_STATE_NEW ||
 			moq_stream->request_state == IMQUIC_MOQ_REQUEST_STATE_ERROR || moq_stream->request_state == IMQUIC_MOQ_REQUEST_STATE_DONE)),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of PUBLISH_DONE on bidirectional request");
 	size_t offset = 0;
@@ -6891,7 +6894,9 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
 		imquic_mutex_lock(&moq->mutex);
 		moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
-		if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_PUBLISH || !moq_stream->request_sender ||
+		if(moq_stream == NULL || (moq_stream->request_type != IMQUIC_MOQ_PUBLISH && moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE) ||
+				(moq_stream->request_type == IMQUIC_MOQ_PUBLISH && !moq_stream->request_sender) ||
+				(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE && moq_stream->request_sender) ||
 				(moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 				imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
@@ -8072,7 +8077,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 			buffer, shto_len,
 			(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_TRACK));
-		if(object->end_of_stream || object->object_status == IMQUIC_MOQ_END_OF_TRACK) {
+		if((object->end_of_stream && object->delivery == IMQUIC_MOQ_USE_FETCH) ||
+				object->object_status == IMQUIC_MOQ_END_OF_TRACK) {
 			imquic_mutex_lock(&moq->mutex);
 			g_hash_table_remove(moq->subscriptions_by_id, &object->request_id);
 			imquic_mutex_unlock(&moq->mutex);
