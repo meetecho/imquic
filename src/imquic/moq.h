@@ -1581,4 +1581,95 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout
 int imquic_moq_request_goaway(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout);
 ///@}
 
+/** @name MoQ Catalog helpers
+ */
+///@{
+/*! \brief MoQ Catalog */
+typedef struct imquic_moq_catalog {
+	/*! \brief Version of the catalog */
+	uint8_t version;
+	/*! \brief When the catalog was generated */
+	int64_t generated_at;
+	/*! \brief Array of tracks in the catalog */
+	GList *tracks;
+} imquic_moq_catalog;
+
+/*! \brief MoQ Catalog track */
+typedef struct imquic_moq_catalog_track {
+	/*! \brief Name of the track */
+	char *track_name;
+	/*! \brief Namespace the track belongs to */
+	char *track_namespace;
+	/*! \brief Packaging */
+	char *packaging;
+	/*! \brief Whether the track is live or not */
+	gboolean is_live;
+	/*! \brief Target latency */
+	uint64_t target_latency;
+	/*! \brief Role */
+	char *role;
+	/*! \brief Render group */
+	uint8_t render_group;
+	/*! \brief Codec */
+	char *codec;
+	/*! \brief Sampling rate (audio tracks only) */
+	uint32_t samplerate;
+	/*! \brief Channel configuration (audio tracks only) */
+	char *channel_config;
+	/*! \brief Width (video tracks only) */
+	uint16_t width;
+	/*! \brief Height (video tracks only) */
+	uint16_t height;
+	/*! \brief Framerate (video tracks only) */
+	uint8_t framerate;
+	/*! \brief Bitrate */
+	uint32_t bitrate;
+} imquic_moq_catalog_track;
+
+/*! \brief Helper to create a new empty imquic_moq_catalog instance
+ * @param version The version of the catalog
+ * @returns A pointer to a imquic_moq_catalog instance, if successful, or NULL otherwise */
+imquic_moq_catalog *imquic_moq_catalog_create(uint8_t version);
+/*! \brief Helper to parse a JSON catalog to a imquic_moq_catalog instance
+ * @param json The JSON string containing the serialized catalog
+ * @returns A pointer to a imquic_moq_catalog instance, if successful, or NULL otherwise */
+imquic_moq_catalog *imquic_moq_catalog_parse(const char *json);
+/*! \brief Helper to update a imquic_moq_catalog instance with a JSON delta
+ * @param catalog The imquic_moq_catalog instance to update
+ * @param json The JSON string containing the serialized catalog delta
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_catalog_update(imquic_moq_catalog *catalog, const char *json);
+/*! \brief Helper to create a new empty imquic_moq_catalog_track instance
+ * @param track_namespace The track namespace
+ * @param track_name The track name
+ * @param packaging The track packaging
+ * @param is_live Whether the track is live or not
+ * @returns A pointer to a imquic_moq_catalog_track instance, if successful, or NULL otherwise */
+imquic_moq_catalog_track *imquic_moq_catalog_create_track(const char *track_namespace,
+	const char *track_name, const char *packaging, gboolean is_live);
+/*! \brief Helper to add a imquic_moq_catalog_track to a imquic_moq_catalog instance
+ * @param catalog The imquic_moq_catalog instance to update
+ * @param track The imquic_moq_catalog_track instance to add
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_catalog_add_track(imquic_moq_catalog *catalog, imquic_moq_catalog_track *track);
+/*! \brief Helper to remove a track from a imquic_moq_catalog instance
+ * @param catalog The imquic_moq_catalog instance to update
+ * @param track_namespace The track namespace
+ * @param track_name The track name
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_catalog_remove_track(imquic_moq_catalog *catalog,
+	const char *track_namespace, const char *track_name);
+/*! \brief Helper to serialize a imquic_moq_catalog instance to a JSON string
+ * @param catalog The imquic_moq_catalog instance to update
+ * @returns A pointer to a JSON string, if successful, or NULL otherwise */
+char *imquic_moq_catalog_serialize(imquic_moq_catalog *catalog);
+/* Destroy an existing imquic_moq_catalog_track instance
+ * @param track The imquic_moq_catalog_track instance to destroy */
+void imquic_moq_catalog_track_destroy(imquic_moq_catalog_track *track);
+/* Destroy an existing imquic_moq_catalog instance
+ * @param catalog The imquic_moq_catalog instance to destroy */
+void imquic_moq_catalog_destroy(imquic_moq_catalog *catalog);
+
+///@}
+
 #endif

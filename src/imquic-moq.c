@@ -1023,3 +1023,255 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
 	}
 	return NULL;
 }
+
+/* Catalog support */
+static imquic_json_parameter catalog_parameters[] = {
+	{"version", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_REQUIRED | IMQUIC_JSON_PARAM_POSITIVE},
+	{"deltaUpdate", IMQUIC_JSON_BOOL, 0},
+	{"addTracks", IMQUIC_JSON_ARRAY, 0},
+	{"removeTracks", IMQUIC_JSON_ARRAY, 0},
+	{"cloneTracks", IMQUIC_JSON_ARRAY, 0},
+	{"generatedAt", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"isComplete", IMQUIC_JSON_BOOL, 0},
+	{"tracks", IMQUIC_JSON_ARRAY, IMQUIC_JSON_PARAM_REQUIRED},
+};
+static imquic_json_parameter track_parameters[] = {
+	{"namespace", IMQUIC_JSON_STRING, 0},
+	{"name", IMQUIC_JSON_STRING, IMQUIC_JSON_PARAM_REQUIRED},
+	{"packaging", IMQUIC_JSON_STRING, IMQUIC_JSON_PARAM_REQUIRED},
+	{"eventType", IMQUIC_JSON_STRING, 0},
+	{"isLive", IMQUIC_JSON_BOOL, IMQUIC_JSON_PARAM_REQUIRED},
+	{"targetLatency", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"role", IMQUIC_JSON_STRING, 0},
+	{"label", IMQUIC_JSON_STRING, 0},
+	{"renderGroup", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"altGroup", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"initData", IMQUIC_JSON_STRING, 0},
+	{"depends", IMQUIC_JSON_ARRAY, 0},
+	{"temporalId", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"spatialId", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"codec", IMQUIC_JSON_STRING, 0},
+	{"mimeType", IMQUIC_JSON_STRING, 0},
+	{"framerate", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"timescale", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"bitrate", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"width", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"height", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"samplerate", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"channelConfig", IMQUIC_JSON_STRING, 0},
+	{"displayWidth", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"displayHeight", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+	{"lang", IMQUIC_JSON_STRING, 0},
+	{"parentName", IMQUIC_JSON_STRING, 0},
+	{"trackDuration", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_POSITIVE},
+};
+
+
+imquic_moq_catalog *imquic_moq_catalog_create(uint8_t version) {
+	imquic_moq_catalog *catalog = g_malloc0(sizeof(imquic_moq_catalog));
+	catalog->version = 1;
+	catalog->generated_at = g_get_real_time();
+	return catalog;
+}
+
+imquic_moq_catalog *imquic_moq_catalog_parse(const char *json) {
+	if(json == NULL)
+		return NULL;
+	/* Parse the JSON */
+	json_error_t error;
+	json_t *root = json_loads(json, 0, &error);
+	if(root == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Catalog error: invalid JSON on line %d: %s\n",
+			error.line, error.text);
+		return NULL;
+	}
+	/* Validate the JSON */
+	int res = 0;
+	IMQUIC_VALIDATE_JSON_OBJECT(root, catalog_parameters, res);
+	if(res != 0) {
+		json_decref(root);
+		return NULL;
+	}
+	size_t i = 0;
+	json_t *tracks = json_object_get(root, "tracks");
+	for(i=0; i<json_array_size(tracks); i++) {
+		json_t *t = json_array_get(tracks, i);
+		IMQUIC_VALIDATE_JSON_OBJECT(t, track_parameters, res);
+		if(res != 0) {
+			json_decref(root);
+			return NULL;
+		}
+	}
+	/* Parse the JSON and create the catalog */
+	uint8_t version = json_integer_value(json_object_get(root, "version"));
+	if(version != 1) {
+		json_decref(root);
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Catalog error: invalid version\n");
+		return NULL;
+	}
+	imquic_moq_catalog *catalog = imquic_moq_catalog_create(version);
+	json_t *g = json_object_get(root, "generatedAt");
+	catalog->generated_at = g ? json_integer_value(g) : g_get_real_time();
+	/* Iterate on tracks */
+	for(i=0; i<json_array_size(tracks); i++) {
+		json_t *t = json_array_get(tracks, i);
+		/* Initialize the new track and add it */
+		const char *track_namespace = json_string_value(json_object_get(t, "namespace"));
+		const char *track_name = json_string_value(json_object_get(t, "name"));
+		const char *packaging = json_string_value(json_object_get(t, "packaging"));
+		gboolean is_live = json_is_true(json_object_get(t, "isLive"));
+		imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(track_namespace,
+			track_name, packaging, is_live);
+		if(track == NULL || imquic_moq_catalog_add_track(catalog, track) < 0) {
+			json_decref(root);
+			imquic_moq_catalog_destroy(catalog);
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Catalog error: error adding track\n");
+			return NULL;
+		}
+		/* Add the other fields we understand */
+		json_t *tl = json_object_get(t, "targetLatency");
+		track->target_latency = tl ? json_integer_value(tl) : 0;
+		json_t *r = json_object_get(t, "role");
+		track->role = r ? g_strdup(json_string_value(r)) : NULL;
+		json_t *rg = json_object_get(t, "renderGroup");
+		track->render_group = rg ? json_integer_value(rg) : 0;
+		json_t *c = json_object_get(t, "codec");
+		track->codec = c ? g_strdup(json_string_value(c)) : NULL;
+		json_t *s = json_object_get(t, "samplerate");
+		track->samplerate = s ? json_integer_value(s) : 0;
+		json_t *cc = json_object_get(t, "channelConfig");
+		track->channel_config = cc ? g_strdup(json_string_value(cc)) : NULL;
+		json_t *w = json_object_get(t, "width");
+		track->width = w ? json_integer_value(w) : 0;
+		json_t *h = json_object_get(t, "height");
+		track->height = h ? json_integer_value(h) : 0;
+		json_t *f = json_object_get(t, "framerate");
+		track->framerate = f ? json_integer_value(f) : 0;
+		json_t *b = json_object_get(t, "bitrate");
+		track->bitrate = b ? json_integer_value(b) : 0;
+	}
+	/* Done */
+	json_decref(root);
+	return catalog;
+}
+
+int imquic_moq_catalog_update(imquic_moq_catalog *catalog, const char *json) {
+	if(catalog == NULL)
+		return -1;
+	if(json == NULL)	/* Nothing to do */
+		return 0;
+	/* TODO */
+	IMQUIC_LOG(IMQUIC_LOG_WARN, "Catalog deltas not supported yet\n");
+	return -1;
+}
+
+imquic_moq_catalog_track *imquic_moq_catalog_create_track(const char *track_namespace,
+		const char *track_name, const char *packaging, gboolean is_live) {
+	if(track_name == NULL || packaging == NULL)
+		return NULL;
+	imquic_moq_catalog_track *track = g_malloc0(sizeof(imquic_moq_catalog_track));
+	track->track_name = g_strdup(track_name);
+	track->track_namespace = (track_namespace ? g_strdup(track_namespace) : NULL);
+	track->packaging = g_strdup(packaging);
+	track->is_live = is_live;
+	return track;
+}
+
+int imquic_moq_catalog_add_track(imquic_moq_catalog *catalog, imquic_moq_catalog_track *track) {
+	if(catalog == NULL || track == NULL)
+		return -1;
+	catalog->tracks = g_list_append(catalog->tracks, track);
+	/* TODO We should create deltas */
+	return 0;
+}
+
+int imquic_moq_catalog_remove_track(imquic_moq_catalog *catalog,
+		const char *track_namespace, const char *track_name) {
+	if(catalog == NULL || track_name == NULL)
+		return -1;
+	/* Look for the track in the catalog */
+	gboolean found = FALSE;
+	GList *temp = catalog->tracks;
+	while(temp) {
+		imquic_moq_catalog_track *track = (imquic_moq_catalog_track *)temp->data;
+		if(track->track_name != NULL && !strcasecmp(track->track_name, track_name) &&
+				((track_namespace == NULL && track->track_namespace == NULL) ||
+					(track->track_namespace != NULL && !strcasecmp(track->track_namespace, track_namespace)))) {
+			/* Found */
+			found = TRUE;
+			catalog->tracks = g_list_remove(catalog->tracks, track);
+			imquic_moq_catalog_track_destroy(track);
+			break;
+		}
+		temp = temp->next;
+	}
+	/* TODO We should create deltas */
+	return found ? 0 : -1;
+}
+
+char *imquic_moq_catalog_serialize(imquic_moq_catalog *catalog) {
+	if(catalog == NULL)
+		return NULL;
+	json_t *json = json_object();
+	json_object_set_new(json, "version", json_integer(catalog->version));
+	json_object_set_new(json, "generatedAt", json_integer(catalog->generated_at));
+	json_t *tracks = json_array();
+	GList *temp = catalog->tracks;
+	while(temp) {
+		imquic_moq_catalog_track *track = (imquic_moq_catalog_track *)temp->data;
+		json_t *t = json_object();
+		if(track->track_namespace != NULL)
+			json_object_set_new(t, "namespace", json_string(track->track_namespace));
+		if(track->track_name != NULL)
+			json_object_set_new(t, "name", json_string(track->track_name));
+		if(track->packaging != NULL)
+			json_object_set_new(t, "packaging", json_string(track->packaging));
+		json_object_set_new(t, "isLive", track->is_live ? json_true() : json_false());
+		if(track->target_latency > 0)
+			json_object_set_new(t, "targetLatency", json_integer(track->target_latency));
+		if(track->role != NULL)
+			json_object_set_new(t, "role", json_string(track->role));
+		if(track->render_group > 0)
+			json_object_set_new(t, "renderGroup", json_integer(track->render_group));
+		if(track->codec != NULL)
+			json_object_set_new(t, "codec", json_string(track->codec));
+		if(track->samplerate > 0)
+			json_object_set_new(t, "samplerate", json_integer(track->samplerate));
+		if(track->channel_config != NULL)
+			json_object_set_new(t, "channelConfig", json_string(track->channel_config));
+		if(track->width > 0)
+			json_object_set_new(t, "width", json_integer(track->width));
+		if(track->height > 0)
+			json_object_set_new(t, "height", json_integer(track->height));
+		if(track->framerate > 0)
+			json_object_set_new(t, "framerate", json_integer(track->framerate));
+		if(track->bitrate > 0)
+			json_object_set_new(t, "bitrate", json_integer(track->bitrate));
+		json_array_append_new(tracks, t);
+		temp = temp->next;
+	}
+	json_object_set_new(json, "tracks", tracks);
+	char *json_str = json_dumps(json, JSON_COMPACT | JSON_PRESERVE_ORDER);
+	json_decref(json);
+	return json_str;
+}
+
+void imquic_moq_catalog_track_destroy(imquic_moq_catalog_track *track) {
+	if(track == NULL)
+		return;
+	g_free(track->track_name);
+	g_free(track->track_namespace);
+	g_free(track->packaging);
+	g_free(track->role);
+	g_free(track->codec);
+	g_free(track->channel_config);
+	g_free(track);
+}
+
+void imquic_moq_catalog_destroy(imquic_moq_catalog *catalog) {
+	if(catalog == NULL)
+		return;
+	if(catalog->tracks != NULL)
+		g_list_free_full(catalog->tracks, (GDestroyNotify)imquic_moq_catalog_track_destroy);
+	g_free(catalog);
+}
