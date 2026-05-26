@@ -58,13 +58,17 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t max_request_id = 100,
 	moq_tns_request_id = 0,
-	audio_request_id = 0, video_request_id = 0,
-	audio_track_alias = 0, video_track_alias = 1;
+	catalog_request_id = 0, catalog_track_alias = 0,
+	audio_request_id = 0, audio_track_alias = 1,
+	video_request_id = 0, video_track_alias = 2;
 static imquic_moq_namespace pub_namespace[32] = { 0 };
-static imquic_moq_track audio_trackname = { 0 }, video_trackname = { 0 };
+static imquic_moq_track catalog_trackname = { 0 },
+	audio_trackname = { 0 }, video_trackname = { 0 };
 static char pub_tns_buffer[256], audio_tn_buffer[256], video_tn_buffer[256];
-static const char *pub_tns = NULL, *audio_tn = NULL, *video_tn = NULL;
-static volatile int audio_started = 0, audio_done = 0,
+static const char *pub_tns = NULL, *catalog_tn = "catalog",
+	*audio_tn = NULL, *video_tn = NULL;
+static volatile int catalog_started = 0, catalog_done = 0,
+	audio_started = 0, audio_done = 0,
 	video_started = 0, video_done = 0;
 static uint64_t audio_group_id = 0, audio_object_id = 0, audio_seq = 0, audio_ts = 0,
 	video_group_id = 0, video_object_id = 0, video_seq = 0, video_ts = 0;
@@ -90,6 +94,7 @@ static const char *imquic_demo_sdl_audioformat_str(SDL_AudioFormat format) {
 }
 
 /* Encoder related stuff */
+static imquic_moq_catalog *catalog = NULL;
 static OpusEncoder *audioenc = NULL;
 static AVFormatContext *webcam_fmt = NULL;
 static unsigned int video_stream = -1;
@@ -168,6 +173,7 @@ static int imquic_demo_create_video_encoder(void) {
 	int ret = avformat_open_input(&webcam_fmt, options.video_device, vf, &opts);
 	if(ret < 0) {
 		/* Webcam error */
+		av_dict_free(&opts);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening video device '%s'\n", options.video_device);
 		return -1;
 	}
@@ -401,7 +407,7 @@ static void *imquic_demo_audio_thread(void *user_data) {
 				.payload = outgoing,
 				.payload_len = length,
 				.properties = exts,
-				.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+				.delivery = IMQUIC_MOQ_USE_DATAGRAM,
 				.end_of_stream = TRUE
 			};
 			imquic_moq_send_object(moq_conn, &object);
@@ -510,6 +516,27 @@ static void *imquic_demo_video_thread(void *user_data) {
 				gboolean kf = imquic_demo_is_keyframe(pkt.data + 4, pkt.size - 4);
 				IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Encoded to %d bytes, %s\n",
 					pkt.size, kf ? "keyframe" : "NOT a keyframe");
+				if(kf) {
+					/* Keyframe, we'll start a new group */
+					if(video_group_id > 0) {
+						/* Close the previous stream first */
+						imquic_moq_object object = {
+							.request_id = video_request_id,
+							.track_alias = video_track_alias,
+							.group_id = video_group_id,
+							.subgroup_id = 0,	/* FIXME */
+							.object_id = video_object_id,
+							.payload = NULL,
+							.payload_len = 0,
+							.properties = NULL,
+							.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+							.end_of_stream = TRUE
+						};
+						imquic_moq_send_object(moq_conn, &object);
+					}
+					video_group_id++;
+					video_object_id = 0;
+				}
 				/* Switch from Annex-B to AVCC */
 				size_t annexb_offset = 0, index = 4, nal_size = 0;
 				while((size_t)pkt.size >= index) {
@@ -579,7 +606,7 @@ static void *imquic_demo_video_thread(void *user_data) {
 					.payload_len = pkt.size,
 					.properties = exts,
 					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
-					.end_of_stream = TRUE
+					.end_of_stream = FALSE
 				};
 				video_object_id++;
 				imquic_moq_send_object(moq_conn, &object);
@@ -625,6 +652,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	if(!options.publish) {
 		/* We use PUBLISH_NAMESPACE + incoming SUBSCRIBE */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Announcing namespace '%s'\n", imquic_get_connection_name(conn), pub_tns);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), catalog_tn);
 		if(options.audio_track_name != NULL)
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Will serve track '%s'\n", imquic_get_connection_name(conn), audio_tn);
 		if(options.video_track_name != NULL)
@@ -640,11 +668,17 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		params.forward_set = TRUE;
 		params.forward = forward;
+		/* Catalog track */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, catalog_tn);
+		catalog_request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_publish(conn, catalog_request_id, &pub_namespace[0], &catalog_trackname, catalog_track_alias, &params, NULL);
+		/* Audio track */
 		if(options.audio_track_name != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, audio_tn);
 			audio_request_id = imquic_moq_get_next_request_id(conn);
 			imquic_moq_publish(conn, audio_request_id, &pub_namespace[0], &audio_trackname, audio_track_alias, &params, NULL);
 		}
+		/* Video track */
 		if(options.video_track_name != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, video_tn);
 			video_request_id = imquic_moq_get_next_request_id(conn);
@@ -667,6 +701,14 @@ static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_
 }
 
 static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
+	if(request_id == catalog_request_id) {
+		/* Catalog track */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish '%"SCNu64"' (catalog) accepted\n",
+			imquic_get_connection_name(conn), request_id);
+		g_atomic_int_set(&catalog_started, 1);
+		return;
+	}
+	/* Audio or video */
 	gboolean video = (options.video_track_name != NULL && request_id == video_request_id);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish '%"SCNu64"' (%s) accepted\n",
 		imquic_get_connection_name(conn), request_id, video ? "video" : "audio");
@@ -704,6 +746,14 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown namespace", 0, NULL);
 		return;
 	}
+	if(!strcasecmp(name, catalog_tn)) {
+		/* Catalog track, accept the subscription */
+		catalog_request_id = request_id;
+		imquic_moq_accept_subscribe(conn, request_id, catalog_track_alias, NULL, NULL);
+		g_atomic_int_set(&catalog_started, 1);
+		return;
+	}
+	/* Audio or video */
 	if(strcasecmp(name, audio_tn) && strcasecmp(name, video_tn)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown track\n", imquic_get_connection_name(conn));
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown track", 0, NULL);
@@ -899,12 +949,21 @@ int main(int argc, char *argv[]) {
 	pub_tns = imquic_moq_namespace_str(pub_namespace, pub_tns_buffer, sizeof(pub_tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", pub_tns, tns_num);
 
+	/* Create a catalog track */
+	catalog_trackname.buffer = (uint8_t *)catalog_tn;
+	catalog_trackname.length = strlen(catalog_tn);
+	catalog = imquic_moq_catalog_create(1);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for catalog\n", catalog_tn);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use track_alias=%"SCNu64"\n",
+		catalog_track_alias);
+
 	if(options.audio_track_name == NULL || options.video_track_name == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
 		ret = 1;
 		goto done;
 	}
 	if(options.audio_track_name != NULL) {
+		/* Create an audio track */
 		audio_trackname.buffer = (uint8_t *)options.audio_track_name;
 		audio_trackname.length = strlen(options.audio_track_name);
 		if(!imquic_moq_track_is_valid(&audio_trackname)) {
@@ -916,8 +975,19 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for audio\n", audio_tn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use track_alias=%"SCNu64"\n",
 			audio_track_alias);
+		/* Add the audio track to the catalog */
+		imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(pub_tns, audio_tn, "loc", TRUE);
+		track->role = g_strdup("audio");
+		track->render_group = 1;
+		track->target_latency = 200;
+		track->codec = g_strdup("opus");
+		track->samplerate = 48000;
+		track->channel_config = g_strdup("1");
+		track->bitrate = 32000;
+		imquic_moq_catalog_add_track(catalog, track);
 	}
 	if(options.video_track_name != NULL) {
+		/* Create a video track */
 		video_trackname.buffer = (uint8_t *)options.video_track_name;
 		video_trackname.length = strlen(options.video_track_name);
 		if(!imquic_moq_track_is_valid(&video_trackname)) {
@@ -947,6 +1017,17 @@ int main(int argc, char *argv[]) {
 			options.video_framerate = 25;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will capture video at '%dx%d@%d'\n",
 			options.width, options.height, options.video_framerate);
+		/* Add the video track to the catalog */
+		imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(pub_tns, video_tn, "loc", TRUE);
+		track->role = g_strdup("video");
+		track->render_group = 1;
+		track->target_latency = 200;
+		track->codec = g_strdup("avc1.42001F");
+		track->width = options.width;
+		track->height = options.height;
+		track->framerate = options.video_framerate;
+		track->bitrate = 1000 * 1024;
+		imquic_moq_catalog_add_track(catalog, track);
 	}
 
 	if(options.publish)
@@ -999,10 +1080,14 @@ int main(int argc, char *argv[]) {
 	avformat_network_init();
 	if(options.debug_ffmpeg)
 		av_log_set_level(AV_LOG_DEBUG);
-	if(options.audio_track_name != NULL && imquic_demo_create_audio_encoder() < 0)
+	if(options.audio_track_name != NULL && imquic_demo_create_audio_encoder() < 0) {
+		g_atomic_int_set(&stop, 1);
 		goto done;
-	if(options.video_track_name != NULL && imquic_demo_create_video_encoder() < 0)
+	}
+	if(options.video_track_name != NULL && imquic_demo_create_video_encoder() < 0) {
+		g_atomic_int_set(&stop, 1);
 		goto done;
+	}
 
 	/* Create a client endpoint */
 	imquic_server *client = imquic_create_moq_client("moq-loc-send",
@@ -1066,16 +1151,45 @@ int main(int argc, char *argv[]) {
 	imquic_start_endpoint(client);
 
 	while(!stop) {
+		if(g_atomic_int_compare_and_exchange(&catalog_started, 1, 2)) {
+			/* Send the catalog */
+			char *json = imquic_moq_catalog_serialize(catalog);
+			if(json != NULL) {
+				imquic_moq_object object = {
+					.request_id = catalog_request_id,
+					.track_alias = catalog_track_alias,
+					.group_id = 0,	/* FIXME */
+					.subgroup_id = 0,
+					.object_id = 0,
+					.payload = (uint8_t *)json,
+					.payload_len = strlen(json),
+					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+					.end_of_stream = TRUE
+				};
+				imquic_moq_send_object(moq_conn, &object);
+				g_free(json);
+			}
+		}
 		g_usleep(100000);
 	}
 
 	/* We're done, check if we need to send a PUBLISH_DONE and/or an PUBLISH_NAMESPACE_DONE */
-	if(g_atomic_int_get(&audio_started) && !g_atomic_int_get(&audio_done))
+	if(g_atomic_int_get(&catalog_started) && !g_atomic_int_get(&catalog_done)) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Sending PUBLISH_DONE for catalog\n");
+		imquic_moq_publish_done(moq_conn, catalog_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
+	}
+	if(g_atomic_int_get(&audio_started) && !g_atomic_int_get(&audio_done)) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Sending PUBLISH_DONE for audio\n");
 		imquic_moq_publish_done(moq_conn, audio_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
-	if(g_atomic_int_get(&video_started) && !g_atomic_int_get(&video_done))
+	}
+	if(g_atomic_int_get(&video_started) && !g_atomic_int_get(&video_done)) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Sending PUBLISH_DONE for video\n");
 		imquic_moq_publish_done(moq_conn, video_request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Publisher left");
-	if(!options.publish)
+	}
+	if(!options.publish) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Sending PUBLISH_NAMESPACE_DONE\n");
 		imquic_moq_publish_namespace_done(moq_conn, moq_tns_request_id);
+	}
 	/* Shutdown the client */
 	imquic_shutdown_endpoint(client);
 
@@ -1086,6 +1200,7 @@ done:
 	demo_options_destroy();
 
 	/* Decoder stuff */
+	imquic_moq_catalog_destroy(catalog);
 	if(audio_thread != NULL)
 		g_thread_join(audio_thread);
 	if(video_thread != NULL)
