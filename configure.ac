@@ -88,9 +88,10 @@ PKG_CHECK_MODULES([IMQUIC],[
 	glib-2.0 >= $glib_version
 	libssl >= $ssl_version
 	libcrypto
+	jansson >= 2.5.0
 ])
 
-IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, libssl >= $ssl_version, libcrypto"
+IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, libssl >= $ssl_version, libcrypto, jansson >= 2.5.0"
 IMQUIC_PACKAGES_PRIVATE=""
 
 IMQUIC_MANUAL_LIBS="${IMQUIC_MANUAL_LIBS} -lm"
@@ -111,25 +112,6 @@ AC_CHECK_FILE([${PICOQUIC_DIR}/_deps/picotls-build/libpicotls-fusion.a],
               [PICOQUIC_LIBS="-L$PICOQUIC_DIR -L$PICOTLS_DIR -lpicohttp-core -lpicoquic-log -lpicoquic-core -lpicotls-core -lpicotls-minicrypto -lpicotls-fusion -lpicotls-openssl"],
 	          [PICOQUIC_LIBS="-L$PICOQUIC_DIR -L$PICOTLS_DIR -lpicohttp-core -lpicoquic-log -lpicoquic-core -lpicotls-core -lpicotls-minicrypto -lpicotls-openssl"])
 AC_SUBST(PICOQUIC_LIBS)
-
-AC_ARG_ENABLE([qlog],
-              [AS_HELP_STRING([--enable-qlog],
-                              [Enable QLOG support (requires Jansson)])],
-              [],
-              [enable_qlog=no])
-AM_CONDITIONAL([ENABLE_QLOG], false)
-AS_IF([test "x$enable_qlog" != "xno"],
-      [PKG_CHECK_MODULES([JANSSON],
-                         [jansson >= 2.5.0],
-                         [
-                          AC_DEFINE(HAVE_QLOG)
-                          enable_qlog=yes
-                          AM_CONDITIONAL([ENABLE_QLOG], true)
-                          IMQUIC_PACKAGES_PRIVATE="jansson >= 2.5.0"
-                         ],
-                         [
-                          AC_MSG_ERROR([Jansson headers not found])])
-                         ])
 
 AC_SUBST(IMQUIC_PACKAGES_PUBLIC)
 AC_SUBST(IMQUIC_PACKAGES_PRIVATE)
@@ -228,9 +210,6 @@ AC_OUTPUT
 
 echo
 echo "Compiler:      $CC"
-AM_COND_IF([ENABLE_QLOG],
-	[echo "QLOG Support:  yes"],
-	[echo "QLOG Support:  no"])
 AM_COND_IF([ENABLE_DOCS],
 	[echo "Documentation: yes"],
 	[echo "Documentation: no"])

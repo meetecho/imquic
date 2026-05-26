@@ -73,10 +73,8 @@ struct imquic_connection {
 	imquic_source *loop_source;
 	/*! \brief Incoming and outgoing datagram IDs */
 	uint32_t dgram_id_in, dgram_id_out;
-#ifdef HAVE_QLOG
 	/*! \brief QLOG instance, if any */
 	imquic_qlog *qlog;
-#endif
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this connection is being closed or has been closed */

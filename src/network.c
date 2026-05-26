@@ -432,14 +432,12 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		ne->wt_protocols = config->wt_protocols ? g_strsplit(config->wt_protocols, ",", -1) : NULL;
 	}
 	/* Check if we need to generate QLOG files */
-#ifndef HAVE_QLOG
 	if(config->qlog_path != NULL && (config->qlog_http3 || config->qlog_roq || config->qlog_moq)) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG support for application layers (HTTP/3, RoQ, MoQ) not compiled, ignoring\n", config->name);
 		config->qlog_http3 = FALSE;
 		config->qlog_roq = FALSE;
 		config->qlog_moq = FALSE;
 	}
-#endif
 	if(config->qlog_path != NULL && !config->qlog_quic && !config->qlog_http3 && !config->qlog_roq && !config->qlog_moq) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] QLOG folder provided but no protocols specified, ignoring\n", config->name);
 		config->qlog_path = NULL;

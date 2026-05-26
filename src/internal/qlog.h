@@ -7,11 +7,6 @@
  * for the HTTP/3, RoQ and MoQ layers: QUIC QLOG files will be created,
  * in a separate file, by picoquic instead, when required.
  *
- * \note Jansson is an optional dependency, meaning that the functionality
- * exposed by this code may not be available at runtime. When attempting
- * to enable QLOG usage in that case, a warning will be shown on the
- * console.
- *
  * \ingroup Core
  */
 
@@ -20,11 +15,6 @@
 
 #include <glib.h>
 
-/*! \brief Helper method to check if QLOG is supported at runtime
- * @returns TRUE if supported, FALSE otherwise */
-gboolean imquic_qlog_is_supported(void);
-
-#ifdef HAVE_QLOG
 #include <jansson.h>
 
 #include "refcount.h"
@@ -117,7 +107,5 @@ void imquic_qlog_event_add_raw(json_t *parent, const char *name, uint8_t *bytes,
  * @param event The event to add to the QLOG instance */
 void imquic_qlog_append_event(imquic_qlog *qlog, json_t *event);
 ///@}
-
-#endif
 
 #endif

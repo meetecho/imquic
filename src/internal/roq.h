@@ -96,7 +96,6 @@ void imquic_roq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
 void imquic_roq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 ///@}
 
-#ifdef HAVE_QLOG
 /** @name QLOG events tracing for RoQ
  */
 ///@{
@@ -137,6 +136,5 @@ void imquic_roq_qlog_datagram_packet_created(imquic_qlog *qlog, uint64_t flow_id
  * @param length The length of the RTP packet */
 void imquic_roq_qlog_datagram_packet_parsed(imquic_qlog *qlog, uint64_t flow_id, uint8_t *bytes, size_t length);
 ///@}
-#endif
 
 #endif

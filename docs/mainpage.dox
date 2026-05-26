@@ -197,7 +197,7 @@ ldd src/.libs/libimquic.so | grep asan
  * - \b GLib: http://library.gnome.org/devel/glib/
  * - \b pkg-config: http://www.freedesktop.org/wiki/Software/pkg-config/
  * - \b picoquic: https://github.com/private-octopus/picoquic
- * - \b Jansson: https://github.com/akheron/jansson (optional; QLOG support)
+ * - \b Jansson: https://github.com/akheron/jansson (QLOG and catalog support)
  */
 
 /*! \page license License

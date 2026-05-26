@@ -1456,7 +1456,6 @@ void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_i
 void imquic_moq_connection_gone(imquic_connection *conn, uint64_t error_code, const char *reason);
 ///@}
 
-#ifdef HAVE_QLOG
 /** @name QLOG events tracing for MoQT
  */
 ///@{
@@ -1576,6 +1575,5 @@ void imquic_moq_qlog_fetch_object_created(imquic_qlog *qlog, uint64_t stream_id,
  * @param object The object instance */
 void imquic_moq_qlog_fetch_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
 ///@}
-#endif
 
 #endif
