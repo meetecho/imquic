@@ -258,7 +258,6 @@ static void imquic_demo_destroy_video_encoder(void) {
 }
 
 /* Annex-B to AVCC translation for SPS/PPS (AVCC extradata) */
-/* Helpers to decode Exp-Golomb */
 static size_t imquic_demo_h264_spspps_to_avcc(uint8_t *avcc_data, uint8_t *buffer, size_t len) {
 	/* We use this function to return a metadata JSON object for AVC1 */
 	avcc_data[0] = 1;
