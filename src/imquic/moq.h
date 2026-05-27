@@ -604,26 +604,43 @@ typedef struct imquic_moq_property {
  * \note The library will not try to interpret properties and their
  * payload: this is always left up to applications */
 typedef enum imquic_moq_property_type {
-	/* Object Delivery Timeout (added in v18) */
+	/*! \brief Object Delivery Timeout (added in v18) */
 	IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT = 0x02,
-		/* Delivery Timeout (deprecated in v18) */
+		/*! \brief Delivery Timeout (deprecated in v18) */
 		IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT = 0x02,
-	/* Max Cache Duration */
+	/*! \brief Max Cache Duration */
 	IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION = 0x04,
-	/* Subgroup Delivery Timeout (added in v18) */
+	/*! \brief Subgroup Delivery Timeout (added in v18) */
 	IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT = 0x06,
-	/* Default Publisher Priority */
+	/*! \brief Default Publisher Priority */
 	IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
-	/* Default Group Order */
+	/*! \brief Default Group Order */
 	IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER = 0x22,
-	/* Dynamic Groups */
+	/*! \brief Dynamic Groups */
 	IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS = 0x30,
-	/* Prior Group ID Gap */
+	/*! \brief Prior Group ID Gap */
 	IMQUIC_MOQ_PROPERTY_PRIOR_GROUP_ID_GAP = 0x3C,
-	/* Prior Object ID Gap */
+	/*! \brief Prior Object ID Gap */
 	IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP = 0x3E,
-	/* Immutable Properties */
+	/*! \brief Immutable Properties */
 	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
+	/*! \brief LOC Timestamp (WIP)
+	 * \note This is actually 0x06 per loc-02, but that conflicts with
+	 * SUBGROUP_DELIVERY_TIMEOUT from moq-18, so for now we use 0x16 */
+	IMQUIC_MOQ_LOC_TIMESTAMP = 0x16,
+	/*! \brief LOC Timescale */
+	IMQUIC_MOQ_LOC_TIMESCALE = 0x08,
+	/*! \brief LOC Video Config */
+	IMQUIC_MOQ_LOC_VIDEO_CONFIG = 0x0D,
+	/*! \brief LOC Video Frame Marking (WIP)
+	 * \note This is actually 0x04 per loc-02, but that conflicts with
+	 * MAX_CACHE_DURATION, so for now we use 0x14 */
+	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x14,
+	/*! \brief LOC Audio Level (WIP)
+	 * \note This is actually 0x02 per loc-02, but that conflicts with
+	 * OBJECT_DELIVERY_TIMEOUT from moq-18, so for now we use 0x12 */
+	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x12,
+
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
  * @param version The version of the connection
@@ -720,7 +737,6 @@ int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_auth_token(imquic_moq_version version, imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
 ///@}
-
 
 /** @name MoQ error and status codes
  */

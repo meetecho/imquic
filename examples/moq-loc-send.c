@@ -70,8 +70,8 @@ static const char *pub_tns = NULL, *catalog_tn = "catalog",
 static volatile int catalog_started = 0, catalog_done = 0,
 	audio_started = 0, audio_done = 0,
 	video_started = 0, video_done = 0;
-static uint64_t audio_group_id = 0, audio_object_id = 0, audio_seq = 0, audio_ts = 0,
-	video_group_id = 0, video_object_id = 0, video_seq = 0, video_ts = 0;
+static uint64_t audio_group_id = 0, audio_object_id = 0, audio_ts = 0,
+	video_group_id = 0, video_object_id = 0, video_ts = 0;
 static imquic_moq_location audio_sub_start = { 0 }, audio_sub_end = { 0 },
 	video_sub_start = { 0 }, video_sub_end = { 0 };
 
@@ -336,8 +336,8 @@ static void *imquic_demo_audio_thread(void *user_data) {
 
 	gboolean paused = TRUE;
 	int samples = 960, length = 0;
-	uint8_t audio[1920], outgoing[500], buffer[200];
-	size_t outlen = sizeof(outgoing), blen = sizeof(buffer), offset = 0;
+	uint8_t audio[1920], outgoing[500];
+	size_t outlen = sizeof(outgoing);
 	uint32_t avail = 0, want = samples*2, got = 0, cached = 0;
 
 	while(!stop) {
@@ -376,27 +376,17 @@ static void *imquic_demo_audio_thread(void *user_data) {
 				continue;
 			}
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- -- Encoded samples to %d bytes\n", length);
-			/* Write the LOC info first as extensions */
-			GList *exts = NULL;
-			imquic_moq_property type = { 0 };
-			type.id = DEMO_LOC_MEDIA_TYPE;
-			type.value.number = DEMO_MEDIA_OPUS;
-			exts = g_list_append(exts, &type);
-			imquic_moq_property header = { 0 };
-			header.id = DEMO_LOC_OPUS_HEADER;
-			offset = 0;
-			audio_seq++;
-			offset += imquic_varint_write(audio_seq, &buffer[offset], blen-offset);
-			offset += imquic_varint_write(audio_ts, &buffer[offset], blen-offset);
+			/* Write the LOC info first as properties */
+			GList *props = NULL;
+			imquic_moq_property timescale = { 0 };
+			timescale.id = IMQUIC_MOQ_LOC_TIMESCALE;
+			timescale.value.number = G_USEC_PER_SEC;
+			props = g_list_append(props, &timescale);
+			imquic_moq_property timestamp = { 0 };
+			timestamp.id = IMQUIC_MOQ_LOC_TIMESTAMP;
+			timestamp.value.number = audio_ts;
+			props = g_list_append(props, &timestamp);
 			audio_ts += 20000;	/* FIXME */
-			offset += imquic_varint_write(1000000, &buffer[offset], blen-offset);
-			offset += imquic_varint_write(48000, &buffer[offset], blen-offset);
-			offset += imquic_varint_write(1, &buffer[offset], blen-offset);
-			offset += imquic_varint_write(20000, &buffer[offset], blen-offset);
-			offset += imquic_varint_write(g_get_real_time() / 1000, &buffer[offset], blen-offset);
-			header.value.data.buffer = buffer;
-			header.value.data.length = offset;
-			exts = g_list_append(exts, &header);
 			/* Prepare a MoQ object and send it */
 			imquic_moq_object object = {
 				.request_id = audio_request_id,
@@ -406,12 +396,12 @@ static void *imquic_demo_audio_thread(void *user_data) {
 				.object_id = audio_object_id,
 				.payload = outgoing,
 				.payload_len = length,
-				.properties = exts,
+				.properties = props,
 				.delivery = IMQUIC_MOQ_USE_DATAGRAM,
 				.end_of_stream = TRUE
 			};
 			imquic_moq_send_object(moq_conn, &object);
-			g_list_free(exts);
+			g_list_free(props);
 		}
 	}
 
@@ -554,31 +544,19 @@ static void *imquic_demo_video_thread(void *user_data) {
 				nal_size = pkt.size - annexb_offset + 4;
 				memcpy(pkt.data + annexb_offset, &nal_size, 4);
 				/* Write the LOC info first as extensions */
-				GList *exts = NULL;
-				imquic_moq_property type = { 0 };
-				type.id = DEMO_LOC_MEDIA_TYPE;
-				type.value.number = DEMO_MEDIA_H264;
-				exts = g_list_append(exts, &type);
-				imquic_moq_property header = { 0 };
-				header.id = DEMO_LOC_H264_HEADER;
-				uint8_t buffer[200];
-				size_t offset = 0, blen = sizeof(buffer);
-				video_seq++;
-				offset += imquic_varint_write(video_seq, &buffer[offset], blen-offset);
-				gint64 now = g_get_monotonic_time();
+				GList *props = NULL;
+				imquic_moq_property timescale = { 0 };
+				timescale.id = IMQUIC_MOQ_LOC_TIMESCALE;
+				timescale.value.number = G_USEC_PER_SEC;
+				props = g_list_append(props, &timescale);
+				int64_t now = g_get_monotonic_time();
 				if(video_ts == 0)
 					video_ts = now;
-				uint64_t pts = now - video_ts, dts = pts;
-				offset += imquic_varint_write(pts, &buffer[offset], blen-offset);
-				offset += imquic_varint_write(dts, &buffer[offset], blen-offset);
-				offset += imquic_varint_write(1000000, &buffer[offset], blen-offset);
-				uint64_t duration = G_USEC_PER_SEC / options.video_framerate;	/* FIXME */
-				offset += imquic_varint_write(duration, &buffer[offset], blen-offset);
-				video_ts = now;
-				offset += imquic_varint_write(g_get_real_time() / 1000, &buffer[offset], blen-offset);
-				header.value.data.buffer = buffer;
-				header.value.data.length = offset;
-				exts = g_list_append(exts, &header);
+				uint64_t pts = now - video_ts;
+				imquic_moq_property timestamp = { 0 };
+				timestamp.id = IMQUIC_MOQ_LOC_TIMESTAMP;
+				timestamp.value.number = pts;
+				props = g_list_append(props, &timestamp);
 				imquic_moq_property extradata = { 0 };
 				uint8_t avcc_data[1500];
 				if(kf && videoenc_ctx->extradata != NULL) {
@@ -588,11 +566,10 @@ static void *imquic_demo_video_thread(void *user_data) {
 						for(size_t i=0; i<avcc_size; ++i)
 							IMQUIC_LOG(IMQUIC_LOG_VERB, "%02x", avcc_data[i]);
 						IMQUIC_LOG(IMQUIC_LOG_VERB, "\n");
-
-						extradata.id = DEMO_LOC_H264_EXTRADATA;
+						extradata.id = IMQUIC_MOQ_LOC_VIDEO_CONFIG;
 						extradata.value.data.buffer = avcc_data;
 						extradata.value.data.length = avcc_size;
-						exts = g_list_append(exts, &extradata);
+						props = g_list_append(props, &extradata);
 					}
 				}
 				/* Prepare a MoQ object and send it */
@@ -604,13 +581,13 @@ static void *imquic_demo_video_thread(void *user_data) {
 					.object_id = video_object_id,
 					.payload = pkt.data,
 					.payload_len = pkt.size,
-					.properties = exts,
+					.properties = props,
 					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 					.end_of_stream = FALSE
 				};
 				video_object_id++;
 				imquic_moq_send_object(moq_conn, &object);
-				g_list_free(exts);
+				g_list_free(props);
 			}
 			if(scaled)
 				av_freep(&video_frame->data[0]);

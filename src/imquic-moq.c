@@ -1019,6 +1019,16 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
 			return "Prior Object ID Gap";
 		case IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES:
 			return "Immutable Extensions";
+		case IMQUIC_MOQ_LOC_TIMESTAMP:
+			return "LOC Timestamp";
+		case IMQUIC_MOQ_LOC_TIMESCALE:
+			return "LOC Timescale";
+		case IMQUIC_MOQ_LOC_VIDEO_CONFIG:
+			return "LOC Video Config";
+		case IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING:
+			return "LOC Video Frame Marking";
+		case IMQUIC_MOQ_LOC_AUDIO_LEVEL:
+			return "LOC Audio Level";
 		default: break;
 	}
 	return NULL;

@@ -163,39 +163,3 @@ const char *imquic_demo_payload_type_str(imquic_demo_payload_type type) {
 	}
 	return NULL;
 }
-
-const char *imquic_demo_media_type_str(imquic_demo_media_type type) {
-	switch(type) {
-		case DEMO_MEDIA_NONE:
-			return "none";
-		case DEMO_MEDIA_H264:
-			return "H.264 video (AVCC)";
-		case DEMO_MEDIA_OPUS:
-			return "Opus bitstream";
-		case DEMO_MEDIA_TEXT:
-			return "UTF-8 text";
-		case DEMO_MEDIA_AAC:
-			return "AAC-LC audio";
-		default:
-			break;
-	}
-	return NULL;
-}
-
-const char *imquic_demo_loc_property_str(imquic_demo_loc_property type) {
-	switch(type) {
-		case DEMO_LOC_MEDIA_TYPE:
-			return "Media type property";
-		case DEMO_LOC_H264_HEADER:
-			return "Video H264 in AVCC metadata";
-		case DEMO_LOC_H264_EXTRADATA:
-			return "Video H264 in AVCC extradata";
-		case DEMO_LOC_OPUS_HEADER:
-			return "Audio Opus bitstream data";
-		case DEMO_LOC_AAC_HEADER:
-			return "Audio AAC-LC in MPEG4 bitstream data";
-		default:
-			break;
-	}
-	return NULL;
-}
