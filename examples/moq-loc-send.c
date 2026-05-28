@@ -99,6 +99,8 @@ static imquic_moq_catalog *catalog = NULL;
 static OpusEncoder *audioenc = NULL;
 static AVFormatContext *webcam_fmt = NULL;
 static unsigned int video_stream = -1;
+static imquic_demo_video_codec codec = DEMO_H264_AVCC;
+static AVCodec *video_codec = NULL;
 static AVCodecContext *webcam_ctx = NULL, *videoenc_ctx = NULL;
 static struct SwsContext *sws = NULL;
 static GThread *audio_thread = NULL, *video_capture_thread = NULL, *video_enc_thread = NULL;
@@ -108,20 +110,6 @@ static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
 static void *imquic_demo_audio_thread(void *user_data);
 static void *imquic_demo_video_capture_thread(void *user_data);
 static void *imquic_demo_video_enc_thread(void *user_data);
-
-static gboolean imquic_demo_is_keyframe(uint8_t *buffer, size_t length) {
-	if(buffer == NULL || length == 0)
-		return FALSE;
-	/* Parse H264 header now */
-	uint8_t fragment = *buffer & 0x1F;
-	uint8_t nal = *(buffer+1) & 0x1F;
-	uint8_t start_bit = *(buffer+1) & 0x80;
-	if(fragment == 5 ||
-			((fragment == 28 || fragment == 29) && nal == 5 && start_bit == 128))
-		return TRUE;
-	/* If we got here it's not a key frame */
-	return FALSE;
-}
 
 static int imquic_demo_create_audio_encoder(void) {
 	if(options.audio_track_name == NULL)
@@ -211,9 +199,8 @@ static int imquic_demo_create_video_encoder(void) {
 		return -1;
 	}
 
-	/* FIXME Video (H.264 using libx264, should we support openh264 too?) */
+	/* Create a video encoder */
 	int width = options.width, height = options.height, fps = options.video_framerate;
-	AVCodec *video_codec = (AVCodec *)avcodec_find_encoder_by_name("libx264");
 	videoenc_ctx = avcodec_alloc_context3(video_codec);
 	videoenc_ctx->bit_rate = 1000 * 1024;
 	videoenc_ctx->rc_max_rate = videoenc_ctx->bit_rate + (videoenc_ctx->bit_rate/10);
@@ -224,15 +211,32 @@ static int imquic_demo_create_video_encoder(void) {
 	videoenc_ctx->gop_size = fps * 5;
 	videoenc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	videoenc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-	videoenc_ctx->profile = FF_PROFILE_H264_BASELINE;
-	videoenc_ctx->level = 41;
+	if(codec == DEMO_H264_AVCC || codec == DEMO_H264_ANNEXB) {
+		videoenc_ctx->profile = FF_PROFILE_H264_BASELINE;
+		videoenc_ctx->level = 41;
+	}
 	char br[20];
-	g_snprintf(br, sizeof(br), "%"SCNi64, videoenc_ctx->bit_rate/1024);
-	av_opt_set(videoenc_ctx->priv_data, "b", br, AV_OPT_SEARCH_CHILDREN);
-	av_opt_set(videoenc_ctx->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN);
-	av_opt_set(videoenc_ctx->priv_data, "profile", "baseline", 0);
-	av_opt_set(videoenc_ctx->priv_data, "preset", "ultrafast", 0);
-	av_opt_set(videoenc_ctx->priv_data, "tune", "zerolatency", 0);
+	if(codec == DEMO_H264_AVCC || codec == DEMO_H264_ANNEXB) {
+		g_snprintf(br, sizeof(br), "%"SCNi64, videoenc_ctx->bit_rate/1024);
+		av_opt_set(videoenc_ctx->priv_data, "b", br, AV_OPT_SEARCH_CHILDREN);
+		av_opt_set(videoenc_ctx->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN);
+		av_opt_set(videoenc_ctx->priv_data, "profile", "baseline", 0);
+		av_opt_set(videoenc_ctx->priv_data, "preset", "ultrafast", 0);
+		av_opt_set(videoenc_ctx->priv_data, "tune", "zerolatency", 0);
+	} else if(codec == DEMO_VP8) {
+		av_opt_set(videoenc_ctx->priv_data, "speed", "7", 0);
+		av_opt_set_double(videoenc_ctx->priv_data, "max-intra-rate", 300, 0);
+		av_opt_set(videoenc_ctx->priv_data, "quality", "realtime", 0);
+		av_opt_set(videoenc_ctx->priv_data, "threads", "2", 0);
+	} else if(codec == DEMO_VP9) {
+		av_opt_set(videoenc_ctx->priv_data, "speed", "7", 0);
+		av_opt_set_double(videoenc_ctx->priv_data, "max-intra-rate", 300, 0);
+		av_opt_set(videoenc_ctx->priv_data, "quality", "realtime", 0);
+		av_opt_set(videoenc_ctx->priv_data, "lag-in-frames", "0", 0);
+		av_opt_set(videoenc_ctx->priv_data, "tile-columns", "2", 0);
+		av_opt_set(videoenc_ctx->priv_data, "row-mt", "1", 0);
+		av_opt_set(videoenc_ctx->priv_data, "threads", "2", 0);
+	}
 	if(avcodec_open2(videoenc_ctx, video_codec, NULL) < 0) {
 		/* Error creating video encoder */
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening video encoder\n");
@@ -572,7 +576,7 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 			}
 		}
 		/* Video frame encoded */
-		gboolean kf = imquic_demo_is_keyframe(packet.data + 4, packet.size - 4);
+		gboolean kf = (packet.flags & AV_PKT_FLAG_KEY);
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Encoded to %d bytes, %s\n",
 			packet.size, kf ? "keyframe" : "NOT a keyframe");
 		if(kf) {
@@ -596,22 +600,24 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 			video_group_id++;
 			video_object_id = 0;
 		}
-		/* Switch from Annex-B to AVCC */
-		size_t annexb_offset = 0, index = 4, nal_size = 0;
-		while((size_t)packet.size >= index) {
-			if(packet.data[index] == 0x00 && packet.data[index+1] == 0x00 &&
-					packet.data[index+2] == 0x00 && packet.data[3] == 0x01) {
-				/* Found a start code, that determined the NAL size */
-				nal_size = index - annexb_offset + 4;
-				memcpy(packet.data + annexb_offset, &nal_size, 4);
-				annexb_offset = index;
-				index += 4;
-			} else {
-				index++;
+		/* Check if we need to switch from Annex-B to AVCC */
+		if(codec == DEMO_H264_AVCC) {
+			size_t annexb_offset = 0, index = 4, nal_size = 0;
+			while((size_t)packet.size >= index) {
+				if(packet.data[index] == 0x00 && packet.data[index+1] == 0x00 &&
+						packet.data[index+2] == 0x00 && packet.data[3] == 0x01) {
+					/* Found a start code, that determined the NAL size */
+					nal_size = index - annexb_offset + 4;
+					memcpy(packet.data + annexb_offset, &nal_size, 4);
+					annexb_offset = index;
+					index += 4;
+				} else {
+					index++;
+				}
 			}
+			nal_size = packet.size - annexb_offset + 4;
+			memcpy(packet.data + annexb_offset, &nal_size, 4);
 		}
-		nal_size = packet.size - annexb_offset + 4;
-		memcpy(packet.data + annexb_offset, &nal_size, 4);
 		/* Write the LOC info first as extensions */
 		GList *props = NULL;
 		imquic_moq_property timescale = { 0 };
@@ -623,20 +629,28 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 		timestamp.value.number = video_ts;
 		props = g_list_append(props, &timestamp);
 		video_ts += wait;
-		imquic_moq_property extradata = { 0 };
+		imquic_moq_property videoconfig = { 0 };
 		uint8_t avcc_data[1500];
 		if(kf && videoenc_ctx->extradata != NULL) {
-			size_t avcc_size = imquic_demo_h264_spspps_to_avcc(avcc_data, videoenc_ctx->extradata, videoenc_ctx->extradata_size);
-			if(avcc_size > 0) {
-				IMQUIC_LOG(IMQUIC_LOG_VERB, "Generated AVCC: %zu bytes\n    ", avcc_size);
-				for(size_t i=0; i<avcc_size; ++i)
-					IMQUIC_LOG(IMQUIC_LOG_VERB, "%02x", avcc_data[i]);
-				IMQUIC_LOG(IMQUIC_LOG_VERB, "\n");
-				extradata.id = IMQUIC_MOQ_LOC_VIDEO_CONFIG;
-				extradata.value.data.buffer = avcc_data;
-				extradata.value.data.length = avcc_size;
-				props = g_list_append(props, &extradata);
+			uint8_t *extradata = videoenc_ctx->extradata;
+			size_t extradata_size = videoenc_ctx->extradata_size;
+			if(codec == DEMO_H264_AVCC) {
+				/* We need to convert the extradata to AVCC format */
+				size_t avcc_size = imquic_demo_h264_spspps_to_avcc(avcc_data, videoenc_ctx->extradata, videoenc_ctx->extradata_size);
+				if(avcc_size > 0) {
+					extradata = avcc_data;
+					extradata_size = avcc_size;
+				}
+			} else {
+				/* Send the extradata as it is */
 			}
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "Generated AVCC: %zu bytes\n    ", extradata_size);
+			for(size_t i=0; i<extradata_size; ++i)
+				IMQUIC_LOG(IMQUIC_LOG_VERB, "%02x", extradata[i]);
+			videoconfig.id = IMQUIC_MOQ_LOC_VIDEO_CONFIG;
+			videoconfig.value.data.buffer = extradata;
+			videoconfig.value.data.length = extradata_size;
+			props = g_list_append(props, &videoconfig);
 		}
 		/* Prepare a MoQ object and send it */
 		imquic_moq_object object = {
@@ -930,6 +944,21 @@ int main(int argc, char *argv[]) {
 	if(options.debug_refcounts)
 		imquic_set_refcount_debugging(TRUE);
 
+	/* Initialize SDL backends */
+	if(SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error initializing SDL2: %s\n", SDL_GetError());
+		goto done;
+	}
+
+	/* FFmpeg initialization */
+#if (LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100))
+	av_register_all();
+#endif
+	avdevice_register_all();
+	if(options.debug_ffmpeg)
+		av_log_set_level(AV_LOG_DEBUG);
+
+	/* Parse the command line arguments*/
 	int ret = 0;
 	if(options.remote_host == NULL || options.remote_port == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid QUIC server address\n");
@@ -1054,12 +1083,46 @@ int main(int argc, char *argv[]) {
 			options.video_framerate = 25;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will capture video at '%dx%d@%d'\n",
 			options.width, options.height, options.video_framerate);
+		if(options.video_codec != NULL) {
+			codec = imquic_demo_video_codec_from_str(options.video_codec);
+			if(codec == DEMO_UNKOWN) {
+				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Unsupported video codec '%s'\n", options.video_codec);
+				ret = 1;
+				goto done;
+			}
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use video codec '%s'\n",
+			imquic_demo_video_codec_str(codec));
+		if(codec == DEMO_H264_AVCC || codec == DEMO_H264_ANNEXB) {
+			/* FIXME Should we try openh264 too? */
+			video_codec = (AVCodec *)avcodec_find_encoder_by_name("libx264");
+		} else if(codec == DEMO_VP8) {
+			video_codec = (AVCodec *)avcodec_find_encoder_by_name("libvpx");
+		} else if(codec == DEMO_VP9) {
+			video_codec = (AVCodec *)avcodec_find_encoder_by_name("libvpx-vp9");
+		} else if(codec == DEMO_AV1) {
+			video_codec = (AVCodec *)avcodec_find_encoder_by_name("libaom-av1");
+		}
+		if(video_codec == NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_FATAL, "Video codec '%s' not supported in provided libavcodec\n", options.video_codec);
+			ret = 1;
+			goto done;
+		}
 		/* Add the video track to the catalog */
 		imquic_moq_catalog_track *track = imquic_moq_catalog_create_track(pub_tns, video_tn, "loc", TRUE);
 		track->role = g_strdup("video");
 		track->render_group = 1;
 		track->target_latency = 200;
-		track->codec = g_strdup("avc1.42001F");
+		if(codec == DEMO_H264_AVCC)
+			track->codec = g_strdup("avc1.42001F");
+		else if(codec == DEMO_H264_ANNEXB)	/* FIXME */
+			track->codec = g_strdup("annexb.42001F");
+		else if(codec == DEMO_VP8)
+			track->codec = g_strdup("vp8");
+		else if(codec == DEMO_VP9)	/* FIXME */
+			track->codec = g_strdup("vp9");
+		else if(codec == DEMO_AV1)	/* FIXME */
+			track->codec = g_strdup("av1");
 		track->width = options.width;
 		track->height = options.height;
 		track->framerate = options.video_framerate;
@@ -1103,20 +1166,7 @@ int main(int argc, char *argv[]) {
 		goto done;
 	}
 
-	/* Initialize SDL backends */
-	if(SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error initializing SDL2: %s\n", SDL_GetError());
-		goto done;
-	}
-
-	/* FFmpeg initialization */
-#if (LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100))
-	av_register_all();
-#endif
-	avdevice_register_all();
-	avformat_network_init();
-	if(options.debug_ffmpeg)
-		av_log_set_level(AV_LOG_DEBUG);
+	/* Create encoders */
 	if(options.audio_track_name != NULL && imquic_demo_create_audio_encoder() < 0) {
 		g_atomic_int_set(&stop, 1);
 		goto done;

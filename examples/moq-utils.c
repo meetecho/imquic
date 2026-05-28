@@ -163,3 +163,40 @@ const char *imquic_demo_payload_type_str(imquic_demo_payload_type type) {
 	}
 	return NULL;
 }
+
+/* Video codecs */
+const char *imquic_demo_video_codec_str(imquic_demo_video_codec codec) {
+	switch(codec) {
+		case DEMO_UNKOWN:
+			return "unknown codec";
+		case DEMO_H264_AVCC:
+			return "h264-avcc";
+		case DEMO_H264_ANNEXB:
+			return "h264-annexb";
+		case DEMO_VP8:
+			return "vp8";
+		case DEMO_VP9:
+			return "vp9";
+		case DEMO_AV1:
+			return "av1";
+		default:
+			break;
+	}
+	return NULL;
+}
+
+imquic_demo_video_codec imquic_demo_video_codec_from_str(const char *codec) {
+	if(codec == NULL)
+		return DEMO_UNKOWN;
+	else if(codec == NULL || !strcasecmp(codec, imquic_demo_video_codec_str(DEMO_H264_AVCC)))
+		return DEMO_H264_AVCC;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_H264_ANNEXB)))
+		return DEMO_H264_ANNEXB;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_VP8)))
+		return DEMO_VP8;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_VP9)))
+		return DEMO_VP9;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_AV1)))
+		return DEMO_AV1;
+	return DEMO_UNKOWN;
+}

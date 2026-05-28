@@ -43,4 +43,16 @@ typedef enum imquic_demo_payload_type {
 } imquic_demo_payload_type;
 const char *imquic_demo_payload_type_str(imquic_demo_payload_type type);
 
+/* Video codecs */
+typedef enum imquic_demo_video_codec {
+	DEMO_UNKOWN = 0,	/* Unknown codec */
+	DEMO_H264_AVCC,		/* H.264 using AVCC format */
+	DEMO_H264_ANNEXB,	/* H.264 using Annex-B format */
+	DEMO_VP8,			/* VP8 */
+	DEMO_VP9,			/* VP9 */
+	DEMO_AV1,			/* AV1 */
+} imquic_demo_video_codec;
+const char *imquic_demo_video_codec_str(imquic_demo_video_codec codec);
+imquic_demo_video_codec imquic_demo_video_codec_from_str(const char *codec);
+
 #endif

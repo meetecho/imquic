@@ -93,11 +93,15 @@ static const char *imquic_demo_sdl_audioformat_str(SDL_AudioFormat format) {
 static imquic_moq_catalog *catalog = NULL;
 static OpusDecoder *audiodec = NULL;
 static AVCodecContext *videodec_ctx = NULL;
+static imquic_demo_video_codec codec = DEMO_H264_AVCC;
+static AVCodec *video_codec = NULL;
+static gboolean got_keyframe = FALSE;
 
 static int imquic_demo_create_audio_decoder(void) {
 	if(options.audio_track_name == NULL)
 		return -1;
 	/* Audio (Opus) */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating audio decoder (opus)\n");
 	int opus_error;
 	audiodec = opus_decoder_create(48000, 1, &opus_error);
 	if(opus_error != OPUS_OK) {
@@ -127,7 +131,7 @@ static int imquic_demo_create_video_decoder(uint8_t *extradata, size_t extradata
 	if(options.video_track_name == NULL)
 		return -1;
 	/* Video (H.264) */
-	AVCodec *video_codec = (AVCodec *)avcodec_find_decoder_by_name("h264");
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating video decoder (%s)\n", imquic_demo_video_codec_str(codec));
 	videodec_ctx = avcodec_alloc_context3(video_codec);
 	videodec_ctx->coded_width = 640;	/* Just a placeholder */
 	videodec_ctx->coded_height = 480;	/* Just a placeholder */
@@ -142,6 +146,10 @@ static int imquic_demo_create_video_decoder(uint8_t *extradata, size_t extradata
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening video decoder\n");
 		return -1;
 	}
+	/* FIXME Our keyframe detection currently relies on extradata being
+	 * present, which only happens when H.264 is used, though */
+	if(codec == DEMO_VP8 || codec == DEMO_VP9 || codec == DEMO_AV1)
+		got_keyframe = TRUE;
 	return 0;
 }
 
@@ -171,7 +179,6 @@ static int imquic_demo_decode_audio(uint8_t *buffer, size_t length) {
 
 }
 
-static gboolean got_keyframe = FALSE;
 static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean keyframe) {
 	if(videodec_ctx == NULL)
 		return -1;
@@ -183,18 +190,20 @@ static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean key
 		}
 		got_keyframe = TRUE;
 	}
-	/* Switch from AVCC to Annex-B */
-	size_t avcc_offset = 0, nal_size = 0;
-	while(length >= avcc_offset + 4) {
-		memcpy(&nal_size, buffer + avcc_offset, 4);
-		nal_size = ntohl(nal_size);
-		if(nal_size > 0) {
-			*(buffer + avcc_offset) = 0x00;
-			*(buffer + avcc_offset + 1) = 0x00;
-			*(buffer + avcc_offset + 2) = 0x00;
-			*(buffer + avcc_offset + 3) = 0x01;
+	/* Check of we need to switch from AVCC to Annex-B */
+	if(codec == DEMO_H264_AVCC) {
+		size_t avcc_offset = 0, nal_size = 0;
+		while(length >= avcc_offset + 4) {
+			memcpy(&nal_size, buffer + avcc_offset, 4);
+			nal_size = ntohl(nal_size);
+			if(nal_size > 0) {
+				*(buffer + avcc_offset) = 0x00;
+				*(buffer + avcc_offset + 1) = 0x00;
+				*(buffer + avcc_offset + 2) = 0x00;
+				*(buffer + avcc_offset + 3) = 0x01;
+			}
+			avcc_offset += 4 + nal_size;
 		}
-		avcc_offset += 4 + nal_size;
 	}
 	/* Decode the video frame */
 	AVPacket avpacket = { 0 };
@@ -480,13 +489,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						g_atomic_int_set(&stop, 1);
 						return;
 					}
+					audio_tn = imquic_moq_track_str(&audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' for audio\n", audio_tn);
 					if(track->codec && strcasecmp(track->codec, "opus")) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Unsupported audio codec '%s'\n", track->codec);
 						g_atomic_int_set(&stop, 1);
 						return;
 					}
-					audio_tn = imquic_moq_track_str(&audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' for audio\n", audio_tn);
 				} else if(track->role && !strcasecmp(track->role, "video")) {
 					/* Video track */
 					if(video_tn != NULL) {
@@ -498,17 +507,41 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 					video_trackname.buffer = (uint8_t *)track->track_name;
 					video_trackname.length = strlen(track->track_name);
 					if(!imquic_moq_track_is_valid(&video_trackname)) {
-						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Invalid video track name '%s'\n", track->track_name);
-						g_atomic_int_set(&stop, 1);
-						return;
-					}
-					if(track->codec && strcasecmp(track->codec, "avc1.42001F")) {
-						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Unsupported video codec '%s'\n", track->codec);
+						IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid video track name '%s'\n", track->track_name);
 						g_atomic_int_set(&stop, 1);
 						return;
 					}
 					video_tn = imquic_moq_track_str(&video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
 					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' for video\n", video_tn);
+					codec = DEMO_UNKOWN;
+					if(track->codec && strstr(track->codec, "avc1") != NULL) {
+						codec = DEMO_H264_AVCC;
+						video_codec = (AVCodec *)avcodec_find_decoder_by_name("h264");
+					} else if(track->codec && strstr(track->codec, "annexb") != NULL) {
+						codec = DEMO_H264_ANNEXB;
+						video_codec = (AVCodec *)avcodec_find_decoder_by_name("h264");
+					} else if(track->codec && strstr(track->codec, "vp8") != NULL) {
+						codec = DEMO_VP8;
+						video_codec = (AVCodec *)avcodec_find_decoder_by_name("libvpx");
+					} else if(track->codec && strstr(track->codec, "vp9") != NULL) {
+						codec = DEMO_VP8;
+						video_codec = (AVCodec *)avcodec_find_decoder_by_name("libvpx-vp9");
+					} else if(track->codec && strstr(track->codec, "av1") != NULL) {
+						codec = DEMO_VP8;
+						video_codec = (AVCodec *)avcodec_find_decoder_by_name("libaom-av1");
+					}
+					if(codec == DEMO_UNKOWN) {
+						IMQUIC_LOG(IMQUIC_LOG_ERR, "Unsupported video codec '%s'\n", track->codec);
+						g_atomic_int_set(&stop, 1);
+						return;
+					}
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use video codec '%s'\n",
+						imquic_demo_video_codec_str(codec));
+					if(video_codec == NULL) {
+						IMQUIC_LOG(IMQUIC_LOG_FATAL, "Video codec '%s' not supported in provided libavcodec\n", options.video_codec);
+						g_atomic_int_set(&stop, 1);
+						return;
+					}
 				} else {
 					IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- Unsupported '%s' track\n", track->role);
 				}
@@ -611,13 +644,17 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				/* Use the extradata to (re)create the video decoder context */
 				if(videodec_ctx != NULL)
 					imquic_demo_destroy_video_decoder();
-				if(imquic_demo_create_video_decoder(loc_extradata->buffer, loc_extradata->length) < -1) {
+			}
+			gboolean keyframe = (loc_extradata != NULL);
+			if(videodec_ctx == NULL && (keyframe || codec == DEMO_VP8 || codec == DEMO_VP9 || codec == DEMO_AV1)) {
+				if(imquic_demo_create_video_decoder(loc_extradata ? loc_extradata->buffer : NULL,
+						loc_extradata ? loc_extradata->length : 0) < -1) {
 					/* Stop here */
 					g_atomic_int_inc(&stop);
 					return;
 				}
 			}
-			imquic_demo_decode_video(object->payload, object->payload_len, loc_extradata != NULL);
+			imquic_demo_decode_video(object->payload, object->payload_len, keyframe);
 		}
 	}
 	if(!options.quiet && object->end_of_stream) {
@@ -678,6 +715,20 @@ int main(int argc, char *argv[]) {
 	if(options.debug_loc_properties && !options.quiet)
 		IMQUIC_LOG_LOCPROP = IMQUIC_LOG_INFO;
 
+	/* Initialize SDL backends */
+	if(SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error initializing SDL2: %s\n", SDL_GetError());
+		goto done;
+	}
+
+	/* FFmpeg initialization */
+#if (LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100))
+	av_register_all();
+#endif
+	if(options.debug_ffmpeg)
+		av_log_set_level(AV_LOG_DEBUG);
+
+	/* Parse the command line arguments*/
 	int ret = 0;
 	if(options.remote_host == NULL || options.remote_port == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid QUIC server address\n");
@@ -769,6 +820,30 @@ int main(int argc, char *argv[]) {
 			}
 			video_tn = imquic_moq_track_str(&video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for video\n", video_tn);
+			if(options.video_codec != NULL) {
+				codec = imquic_demo_video_codec_from_str(options.video_codec);
+				if(codec == DEMO_UNKOWN) {
+					IMQUIC_LOG(IMQUIC_LOG_FATAL, "Unsupported video codec '%s'\n", options.video_codec);
+					ret = 1;
+					goto done;
+				}
+			}
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use video codec '%s'\n",
+				imquic_demo_video_codec_str(codec));
+			if(codec == DEMO_H264_AVCC || codec == DEMO_H264_ANNEXB) {
+				video_codec = (AVCodec *)avcodec_find_decoder_by_name("h264");
+			} else if(codec == DEMO_VP8) {
+				video_codec = (AVCodec *)avcodec_find_decoder_by_name("libvpx");
+			} else if(codec == DEMO_VP9) {
+				video_codec = (AVCodec *)avcodec_find_decoder_by_name("libvpx-vp9");
+			} else if(codec == DEMO_AV1) {
+				video_codec = (AVCodec *)avcodec_find_decoder_by_name("libaom-av1");
+			}
+			if(video_codec == NULL) {
+				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Video codec '%s' not supported in provided libavcodec\n", options.video_codec);
+				ret = 1;
+				goto done;
+			}
 		}
 	}
 
@@ -804,20 +879,6 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-
-	/* Initialize SDL backends */
-	if(SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_VIDEO) < 0) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error initializing SDL2: %s\n", SDL_GetError());
-		goto done;
-	}
-
-	/* FFmpeg initialization */
-#if (LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100))
-	av_register_all();
-#endif
-	avformat_network_init();
-	if(options.debug_ffmpeg)
-		av_log_set_level(AV_LOG_DEBUG);
 
 	/* Create a client endpoint */
 	imquic_server *client = imquic_create_moq_client("moq-loc-recv",

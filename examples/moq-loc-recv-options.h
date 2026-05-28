@@ -23,6 +23,7 @@ typedef struct demo_options {
 	gboolean use_catalog;
 	const char *audio_track_name;
 	const char *video_track_name;
+	const char *video_codec;
 	const char *ip;
 	int port;
 	const char *remote_host;
