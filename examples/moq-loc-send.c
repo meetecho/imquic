@@ -239,6 +239,8 @@ static int imquic_demo_create_video_encoder(void) {
 		return -1;
 	}
 
+	/* Spawn threads: we use one to capture and one to encode in order
+	 * to allow us to separate capture rate and encoding rate properly */
 	GError *error = NULL;
 	video_capture_thread = g_thread_try_new("loc-cap-video", &imquic_demo_video_capture_thread, NULL, &error);
 	if(error != NULL) {
@@ -252,6 +254,7 @@ static int imquic_demo_create_video_encoder(void) {
 			error->code, error->message ? error->message : "??");
 		return -4;
 	}
+
 	/* Done */
 	return 0;
 }
@@ -373,8 +376,10 @@ static void *imquic_demo_audio_thread(void *user_data) {
 		}
 
 		avail = SDL_GetQueuedAudioSize(dev);
-		if(avail == 0)
+		if(avail == 0) {
+			g_usleep(1000);
 			continue;
+		}
 		IMQUIC_LOG(IMQUIC_LOG_VERB, "%"SCNu32" audio chunks available\n", avail);
 		if((cached + avail) >= want)
 			avail = want - cached;
