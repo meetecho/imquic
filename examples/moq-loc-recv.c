@@ -425,6 +425,20 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	}
+	/* Check if we need to leave */
+	SDL_Event e = { 0 };
+	while(SDL_PollEvent(&e) != 0) {
+		if(e.type == SDL_QUIT ||
+				(e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE) ||
+				(e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) {
+			/* Close the application */
+			g_atomic_int_set(&stop, 1);
+			break;
+		}
+	}
+	if(g_atomic_int_get(&stop))
+		return;
+	/* Make sure we have a payload to process*/
 	if(object->payload == NULL || object->payload_len == 0) {
 		if(!options.quiet && object->end_of_stream) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d on empty packet)\n",
@@ -863,8 +877,8 @@ int main(int argc, char *argv[]) {
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);
 
+	/* Loop */
 	while(!stop) {
-		/* TODO Loop */
 		g_usleep(100000);
 	}
 
