@@ -148,7 +148,7 @@ static int imquic_demo_create_video_decoder(uint8_t *extradata, size_t extradata
 	}
 	/* FIXME Our keyframe detection currently relies on extradata being
 	 * present, which only happens when H.264 is used, though */
-	if(codec == DEMO_VP9 || codec == DEMO_AV1)
+	if(codec == DEMO_AV1)
 		got_keyframe = TRUE;
 	return 0;
 }
@@ -645,14 +645,19 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				if(videodec_ctx != NULL)
 					imquic_demo_destroy_video_decoder();
 			}
+			/* Check if it's a keyframe, looking in the payload if needed */
 			gboolean keyframe = (loc_extradata != NULL);
-			if(codec == DEMO_VP8)
-				keyframe = imquic_demo_vp8_is_keyframe(object->payload, object->payload_len);
-			else if(codec == DEMO_VP9)
-				keyframe = imquic_demo_vp9_is_keyframe(object->payload, object->payload_len);
-			if(codec == DEMO_AV1)
-				keyframe = imquic_demo_av1_is_keyframe(object->payload, object->payload_len);
-			if(videodec_ctx == NULL && (keyframe || codec == DEMO_VP9 || codec == DEMO_AV1)) {
+			if(!keyframe) {
+				if(codec == DEMO_H264_ANNEXB)
+					keyframe = imquic_demo_h264_is_keyframe(object->payload, object->payload_len);
+				else if(codec == DEMO_VP8)
+					keyframe = imquic_demo_vp8_is_keyframe(object->payload, object->payload_len);
+				else if(codec == DEMO_VP9)
+					keyframe = imquic_demo_vp9_is_keyframe(object->payload, object->payload_len);
+				if(codec == DEMO_AV1)
+					keyframe = imquic_demo_av1_is_keyframe(object->payload, object->payload_len);
+			}
+			if(videodec_ctx == NULL && (keyframe || codec == DEMO_AV1)) {
 				if(imquic_demo_create_video_decoder(loc_extradata ? loc_extradata->buffer : NULL,
 						loc_extradata ? loc_extradata->length : 0) < -1) {
 					/* Stop here */

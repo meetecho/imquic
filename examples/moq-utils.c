@@ -213,6 +213,36 @@ imquic_demo_video_codec imquic_demo_video_codec_from_str(const char *codec) {
 	# define swap2(d) d
 #endif
 
+gboolean imquic_demo_h264_is_keyframe(uint8_t *buffer, size_t len) {
+	if(!buffer || len < 6)
+		return FALSE;
+	/* Parse H264 header now */
+	uint8_t fragment = *buffer & 0x1F;
+	uint8_t nal = *(buffer+1) & 0x1F;
+	if(fragment == 7 || ((fragment == 28 || fragment == 29) && nal == 7 && (*(buffer+1) & 0x80))) {
+		return TRUE;
+	} else if(fragment == 24) {
+		/* May we find it in this STAP-A? */
+		buffer++;
+		len--;
+		uint16_t psize = 0;
+		/* We're reading 3 bytes */
+		while(len > 2) {
+			memcpy(&psize, buffer, 2);
+			psize = ntohs(psize);
+			buffer += 2;
+			len -= 2;
+			int nal = *buffer & 0x1F;
+			if(nal == 7)
+				return TRUE;
+			buffer += psize;
+			len -= psize;
+		}
+	}
+	/* If we got here we didn't find it */
+	return FALSE;
+}
+
 gboolean imquic_demo_vp8_is_keyframe(uint8_t *buffer, size_t len) {
 	if(!buffer || len < 1)
 		return FALSE;
