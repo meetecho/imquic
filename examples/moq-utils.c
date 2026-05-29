@@ -8,6 +8,8 @@
  *
  */
 
+#include <arpa/inet.h>
+
 #include "moq-utils.h"
 
 /* Helper to duplicate an object */
@@ -199,4 +201,30 @@ imquic_demo_video_codec imquic_demo_video_codec_from_str(const char *codec) {
 	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_AV1)))
 		return DEMO_AV1;
 	return DEMO_UNKOWN;
+}
+
+/* Keyframe detection */
+/* The following code is more related to codec specific helpers */
+#if defined(__ppc__) || defined(__ppc64__)
+	# define swap2(d)  \
+	((d&0x000000ff)<<8) |  \
+	((d&0x0000ff00)>>8)
+#else
+	# define swap2(d) d
+#endif
+
+gboolean imquic_demo_vp8_is_keyframe(uint8_t *buffer, size_t len) {
+	if(!buffer || len < 1)
+		return FALSE;
+	return (buffer[0] & 0x01) == 0;
+}
+
+gboolean imquic_demo_vp9_is_keyframe(uint8_t *buffer, size_t len) {
+	/* TODO */
+	return FALSE;
+}
+
+gboolean imquic_demo_av1_is_keyframe(uint8_t *buffer, size_t len) {
+	/* TODO */
+	return FALSE;
 }
