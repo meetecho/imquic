@@ -297,6 +297,8 @@
 
 #include "imquic.h"
 
+#include <jansson.h>
+
 /** @name MoQ resources
  */
 ///@{
@@ -1679,6 +1681,10 @@ int imquic_moq_catalog_remove_track(imquic_moq_catalog *catalog,
  * @param catalog The imquic_moq_catalog instance to update
  * @returns A pointer to a JSON string, if successful, or NULL otherwise */
 char *imquic_moq_catalog_serialize(imquic_moq_catalog *catalog);
+/*! \brief Helper to serialize a imquic_moq_catalog instance to a Jansson JSON object
+ * @param catalog The imquic_moq_catalog instance to update
+ * @returns A pointer to a Jansson JSON object, if successful, or NULL otherwise */
+json_t *imquic_moq_catalog_serialize_obj(imquic_moq_catalog *catalog);
 /* Destroy an existing imquic_moq_catalog_track instance
  * @param track The imquic_moq_catalog_track instance to destroy */
 void imquic_moq_catalog_track_destroy(imquic_moq_catalog_track *track);

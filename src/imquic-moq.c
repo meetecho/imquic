@@ -1220,6 +1220,15 @@ int imquic_moq_catalog_remove_track(imquic_moq_catalog *catalog,
 }
 
 char *imquic_moq_catalog_serialize(imquic_moq_catalog *catalog) {
+	json_t *json = imquic_moq_catalog_serialize_obj(catalog);
+	if(json == NULL)
+		return NULL;
+	char *json_str = json_dumps(json, JSON_COMPACT | JSON_PRESERVE_ORDER);
+	json_decref(json);
+	return json_str;
+}
+
+json_t *imquic_moq_catalog_serialize_obj(imquic_moq_catalog *catalog) {
 	if(catalog == NULL)
 		return NULL;
 	json_t *json = json_object();
@@ -1261,9 +1270,7 @@ char *imquic_moq_catalog_serialize(imquic_moq_catalog *catalog) {
 		temp = temp->next;
 	}
 	json_object_set_new(json, "tracks", tracks);
-	char *json_str = json_dumps(json, JSON_COMPACT | JSON_PRESERVE_ORDER);
-	json_decref(json);
-	return json_str;
+	return json;
 }
 
 void imquic_moq_catalog_track_destroy(imquic_moq_catalog_track *track) {
