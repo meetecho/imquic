@@ -57,7 +57,7 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t max_request_id = 100,
 	catalog_request_id = 0, catalog_fetch_request_id = 0,
-	audio_request_id = 0, video_request_id = 0,
+	audio_request_id = 0, video_request_id = 0, video_fetch_request_id = 0,
 	catalog_track_alias = 0, audio_track_alias = 0, video_track_alias = 0;
 static imquic_moq_namespace sub_namespace[32] = { 0 };
 static imquic_moq_track catalog_trackname = { 0 },
@@ -390,6 +390,15 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
+		if(video) {
+			/* The first objects we receive may not be a keyframe, send a Joining FETCH */
+			imquic_moq_request_parameters fparams;
+			imquic_moq_request_parameters_init_defaults(&fparams);
+			video_fetch_request_id = imquic_moq_get_next_request_id(conn);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending Joining Fetch for video subscription %"SCNu64", using ID %"SCNu64" (offset=%d)\n",
+				imquic_get_connection_name(conn), request_id, video_fetch_request_id, 0);
+			imquic_moq_joining_fetch(conn, video_fetch_request_id, request_id, FALSE, 0, &fparams);
+		}
 	}
 	if(track_properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_VERB, track_properties);
@@ -455,7 +464,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
-	if(object->track_alias == catalog_track_alias || object->delivery == IMQUIC_MOQ_USE_FETCH) {
+	if((object->track_alias == catalog_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) ||
+			(object->request_id == catalog_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH)) {
 		/* This is from the catalog track */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Catalog: %.*s\n",
 			imquic_get_connection_name(conn), (int)object->payload_len, (char *)object->payload);
@@ -613,7 +623,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			}
 			temp = temp->next;
 		}
-		if(video_tn != NULL && object->track_alias == video_track_alias && loc_extradata != NULL) {
+		if(video_tn != NULL && loc_extradata != NULL &&
+				((object->track_alias == video_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) ||
+				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
 			/* We have AVCC extradata*/
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- LOC extradata (%zu bytes):\n", loc_extradata->length);
 			for(size_t i=0; i<loc_extradata->length; ++i)
@@ -630,7 +642,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- Payload: %zu bytes\n", object->payload_len);
 		/* Decode the frame */
-		if(audio_tn != NULL && object->track_alias == audio_track_alias) {
+		if(audio_tn != NULL && object->track_alias == audio_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) {
 			/* Decode audio, and create a decoder if we don't have one yet */
 			if(audiodec == NULL && imquic_demo_create_audio_decoder() < -1) {
 				/* Stop here */
@@ -638,7 +650,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				return;
 			}
 			imquic_demo_decode_audio(object->payload, object->payload_len);
-		} else if(video_tn != NULL && object->track_alias == video_track_alias) {
+		} else if(video_tn != NULL &&
+				((object->track_alias == video_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) ||
+				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
 			/* Decode video */
 			if(loc_extradata != NULL) {
 				/* Use the extradata to (re)create the video decoder context */
