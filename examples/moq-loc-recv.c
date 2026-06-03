@@ -66,6 +66,8 @@ static char sub_tns_buffer[256], audio_tn_buffer[256], video_tn_buffer[256];
 static const char *sub_tns = NULL, *catalog_tn = "catalog",
 	*audio_tn = NULL, *video_tn = NULL;
 static int IMQUIC_LOG_LOCPROP = IMQUIC_LOG_NONE;
+static GList *video_buffer = NULL;
+static gboolean video_fetch_completed = FALSE;
 
 /* Global SDL resources */
 static SDL_Window *window = NULL;
@@ -179,7 +181,7 @@ static int imquic_demo_decode_audio(uint8_t *buffer, size_t length) {
 
 }
 
-static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean keyframe) {
+static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean keyframe, gboolean render) {
 	if(videodec_ctx == NULL)
 		return -1;
 	/* We only start decoding after we receive the first keyframe */
@@ -291,6 +293,66 @@ static void imquic_demo_destroy_video_decoder(void) {
 	if(videodec_ctx != NULL)
 		avcodec_free_context(&videodec_ctx);
 	videodec_ctx = NULL;
+}
+
+/* Video buffer catch-up */
+static void imquic_demo_process_video_buffer(void) {
+	if(video_buffer == NULL)
+		return;
+	/* Reverse the objects list and process them in a row */
+	video_buffer = g_list_reverse(video_buffer);
+	imquic_moq_object *object = NULL;
+	struct imquic_moq_property_data *loc_extradata = NULL;
+	GList *temp = video_buffer;
+	while(temp != NULL) {
+		object = (imquic_moq_object *)temp->data;
+		loc_extradata = NULL;
+		/* Start by getting the extradata, if available */
+		GList *props = object->properties;
+		while(props) {
+			imquic_moq_property *prop = (imquic_moq_property *)props->data;
+			switch(prop->id) {
+				case IMQUIC_MOQ_LOC_VIDEO_CONFIG: {
+					loc_extradata = &prop->value.data;
+					break;
+				}
+				default: {
+					break;
+				}
+			}
+			props = props->next;
+		}
+		/* Decode video */
+		if(loc_extradata != NULL) {
+			/* Use the extradata to (re)create the video decoder context */
+			if(videodec_ctx != NULL)
+				imquic_demo_destroy_video_decoder();
+		}
+		gboolean keyframe = (loc_extradata != NULL);
+		if(!keyframe) {
+			if(codec == DEMO_H264_ANNEXB)
+				keyframe = imquic_demo_h264_is_keyframe(object->payload, object->payload_len);
+			else if(codec == DEMO_VP8)
+				keyframe = imquic_demo_vp8_is_keyframe(object->payload, object->payload_len);
+			else if(codec == DEMO_VP9)
+				keyframe = imquic_demo_vp9_is_keyframe(object->payload, object->payload_len);
+			if(codec == DEMO_AV1)
+				keyframe = imquic_demo_av1_is_keyframe(object->payload, object->payload_len);
+		}
+		if(videodec_ctx == NULL && (keyframe || codec == DEMO_AV1)) {
+			if(imquic_demo_create_video_decoder(loc_extradata ? loc_extradata->buffer : NULL,
+					loc_extradata ? loc_extradata->length : 0) < -1) {
+				/* Stop here */
+				g_atomic_int_inc(&stop);
+				return;
+			}
+		}
+		gboolean render = (temp->next == NULL);
+		imquic_demo_decode_video(object->payload, object->payload_len, keyframe, render);
+		temp = temp->next;
+	}
+	g_list_free_full(video_buffer, (GDestroyNotify)imquic_moq_object_cleanup);
+	video_buffer = NULL;
 }
 
 /* imquic callbacks */
@@ -461,6 +523,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		if(!options.quiet && object->end_of_stream) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d on empty packet)\n",
 				imquic_get_connection_name(conn), imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+		}
+		if(object->end_of_stream && object->delivery == IMQUIC_MOQ_USE_FETCH && object->request_id == video_fetch_request_id) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Video FETCH completed, fast-decoding %d buffered objects\n",
+				imquic_get_connection_name(conn), g_list_length(video_buffer));
+			/* FETCH completed, fast-decode video objects */
+			video_fetch_completed = TRUE;
+			imquic_demo_process_video_buffer();
 		}
 		return;
 	}
@@ -653,6 +722,15 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		} else if(video_tn != NULL &&
 				((object->track_alias == video_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) ||
 				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
+			/* Check if we're still caching stuff due to the FETCH catch-up */
+			if(object->delivery == IMQUIC_MOQ_USE_SUBGROUP && video_fetch_request_id > 0 && !video_fetch_completed) {
+				/* We need to just buffer this frame for a while, as we first have to
+				 * decode all the fetched objects and only then move to the live ones */
+				IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Buffering video object (still waiting for FETCH to finish)\n",
+					imquic_get_connection_name(conn));
+				video_buffer = g_list_prepend(video_buffer, imquic_moq_object_duplicate(object));
+				return;
+			}
 			/* Decode video */
 			if(loc_extradata != NULL) {
 				/* Use the extradata to (re)create the video decoder context */
@@ -679,12 +757,22 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 					return;
 				}
 			}
-			imquic_demo_decode_video(object->payload, object->payload_len, keyframe);
+			gboolean render = (object->delivery != IMQUIC_MOQ_USE_FETCH);
+			imquic_demo_decode_video(object->payload, object->payload_len, keyframe, render);
 		}
 	}
-	if(!options.quiet && object->end_of_stream) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
-			imquic_get_connection_name(conn), imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+	if(object->end_of_stream) {
+		if(!options.quiet) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
+				imquic_get_connection_name(conn), imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+		}
+		if(object->delivery == IMQUIC_MOQ_USE_FETCH && object->request_id == video_fetch_request_id) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Video FETCH completed, fast-decoding %d buffered objects\n",
+				imquic_get_connection_name(conn), g_list_length(video_buffer));
+			/* FETCH completed, fast-decode video objects */
+			video_fetch_completed = TRUE;
+			imquic_demo_process_video_buffer();
+		}
 	}
 }
 
@@ -982,6 +1070,8 @@ done:
 	avformat_network_deinit();
 	imquic_demo_destroy_audio_decoder();
 	imquic_demo_destroy_video_decoder();
+	if(video_buffer != NULL)
+		g_list_free_full(video_buffer, (GDestroyNotify)imquic_moq_object_cleanup);
 
 	/* SDL stuff */
 	if(texture != NULL)
