@@ -104,7 +104,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...) {
 	config.alpn = config.raw_quic ? imquic_moq_version_alpn(config.moq_version) : NULL;
 	config.wt_protocols = config.webtransport ? imquic_moq_version_alpn(config.moq_version) : NULL;
 	if(config.alpn == NULL && config.wt_protocols == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid MoQ version\n");
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Both raw QUIC and WebTransport disabled\n");
 		return NULL;
 	}
 	/* Create the server */
@@ -210,7 +210,7 @@ imquic_client *imquic_create_moq_client(const char *name, ...) {
 	config.alpn = config.raw_quic ? imquic_moq_version_alpn(config.moq_version) : NULL;
 	config.wt_protocols = config.webtransport ? imquic_moq_version_alpn(config.moq_version) : NULL;
 	if(config.alpn == NULL && config.wt_protocols == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid MoQ version\n");
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Both raw QUIC and WebTransport disabled\n");
 		return NULL;
 	}
 	/* Create the client */
