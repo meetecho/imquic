@@ -98,7 +98,7 @@ static AVCodec *video_codec = NULL;
 static gboolean got_keyframe = FALSE;
 
 static int imquic_demo_create_audio_decoder(void) {
-	if(options.audio_track_name == NULL)
+	if(audio_tn == NULL)
 		return -1;
 	/* Audio (Opus) */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating audio decoder (opus)\n");
@@ -128,7 +128,7 @@ static int imquic_demo_create_audio_decoder(void) {
 }
 
 static int imquic_demo_create_video_decoder(uint8_t *extradata, size_t extradata_size) {
-	if(options.video_track_name == NULL)
+	if(video_tn == NULL)
 		return -1;
 	/* Video (H.264) */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Creating video decoder (%s)\n", imquic_demo_video_codec_str(codec));
@@ -334,14 +334,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		return;
 	}
 	/* If we got here, we also subscribe to the audio and/or video tracks */
-	if(options.audio_track_name != NULL) {
+	if(audio_tn != NULL) {
 		audio_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (audio), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), sub_tns, audio_tn, audio_request_id);
 		/* Send a SUBSCRIBE */
 		imquic_moq_subscribe(conn, audio_request_id, sub_namespace, &audio_trackname, &params);
 	}
-	if(options.video_track_name != NULL) {
+	if(video_tn != NULL) {
 		video_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (video), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), sub_tns, video_tn, video_request_id);
@@ -376,7 +376,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		}
 		return;
 	}
-	gboolean video = (options.video_track_name != NULL && request_id == video_request_id);
+	gboolean video = (video_tn != NULL && request_id == video_request_id);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s subscription %"SCNu64" accepted (expires=%"SCNu64"; %d properties)\n",
 		imquic_get_connection_name(conn), video ? "Video" : "Audio",
 		request_id, parameters->expires, g_list_length(track_properties));
