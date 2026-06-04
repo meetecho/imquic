@@ -73,7 +73,8 @@ static gboolean video_fetch_completed = FALSE;
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDL_Texture *texture = NULL;
-static int screen_w = -1, screen_h = -1, texture_w = -1, texture_h = -1;
+static int screen_w = 640, screen_h = 360,
+	texture_w = -1, texture_h = -1;
 static SDL_AudioDeviceID dev;
 static const char *imquic_demo_sdl_audioformat_str(SDL_AudioFormat format) {
 	switch(format) {
@@ -98,6 +99,8 @@ static AVCodecContext *videodec_ctx = NULL;
 static imquic_demo_video_codec codec = DEMO_H264_AVCC;
 static AVCodec *video_codec = NULL;
 static gboolean got_keyframe = FALSE;
+static AVFrame *latest_frame = NULL;
+static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
 
 static int imquic_demo_create_audio_decoder(void) {
 	if(audio_tn == NULL)
@@ -220,6 +223,7 @@ static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean key
 	if(ret < 0) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decoding video frame: %d (%s)\n",
 			ret, av_err2str(ret));
+		av_packet_unref(&avpacket);
 		return -1;
 	}
 	AVFrame *decoded_frame = av_frame_alloc();
@@ -234,52 +238,21 @@ static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean key
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decoding video frame: %d (%s)\n",
 			ret, av_err2str(ret));
 		av_frame_free(&decoded_frame);
+		av_packet_unref(&avpacket);
 		return -1;
 	}
-	/* If we don't have a window yet, create one now */
-	if(window == NULL) {
-		screen_w = decoded_frame->width;
-		screen_h = decoded_frame->height;
-		window = SDL_CreateWindow("imquic-moq-loc-recv", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-			screen_w, screen_h, SDL_WINDOW_SHOWN);
-		if(window == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error creating window: %s\n", SDL_GetError());
-			av_frame_free(&decoded_frame);
-			return -2;
-		}
-		renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-		if(renderer == NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error creating renderer: %s\n", SDL_GetError());
-			av_frame_free(&decoded_frame);
-			return -3;
-		}
-	} else {
-		/* Check if we need to resize the window */
-		if(decoded_frame->width != screen_w || decoded_frame->height != screen_h) {
-			screen_w = decoded_frame->width;
-			screen_h = decoded_frame->height;
-			SDL_SetWindowSize(window, screen_w, screen_h);
-		}
+	if(!render) {
+		av_frame_free(&decoded_frame);
+		av_packet_unref(&avpacket);
+		return 0;
 	}
-	/* Copy the frame to the texture */
-	if(decoded_frame->width != texture_w || decoded_frame->height != texture_h) {
-		/* Regenerate the texture */
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Video resolution: %dx%d\n", decoded_frame->width, decoded_frame->height);
-		texture_w = decoded_frame->width;
-		texture_h = decoded_frame->height;
-		if(texture != NULL)
-			SDL_DestroyTexture(texture);
-		texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12,
-			SDL_TEXTUREACCESS_STATIC, texture_w, texture_h);
-	}
-	SDL_UpdateYUVTexture(texture, NULL,
-		decoded_frame->data[0], decoded_frame->linesize[0],
-		decoded_frame->data[1], decoded_frame->linesize[1],
-		decoded_frame->data[2], decoded_frame->linesize[2]);
-	SDL_RenderCopy(renderer, texture, NULL, NULL);
-	av_frame_free(&decoded_frame);
-	/* Done, render to the screen */
-	SDL_RenderPresent(renderer);
+	/* Update the latest frame, we'll render in the main thread */
+	imquic_mutex_lock(&mutex);
+	if(latest_frame != NULL)
+		av_frame_free(&latest_frame);
+	latest_frame = decoded_frame;
+	imquic_mutex_unlock(&mutex);
+	av_packet_unref(&avpacket);
 	return 0;
 }
 
@@ -506,16 +479,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	}
 	/* Check if we need to leave */
-	SDL_Event e = { 0 };
-	while(SDL_PollEvent(&e) != 0) {
-		if(e.type == SDL_QUIT ||
-				(e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE) ||
-				(e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) {
-			/* Close the application */
-			g_atomic_int_set(&stop, 1);
-			break;
-		}
-	}
 	if(g_atomic_int_get(&stop))
 		return;
 	/* Make sure we have a payload to process*/
@@ -801,6 +764,90 @@ static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_
 	g_atomic_int_inc(&stop);
 }
 
+/* SDL input handling and rendering */
+static int imquic_demo_handle_input(void) {
+	if(g_atomic_int_get(&stop))
+		return -1;
+	/* Poll for events */
+	SDL_Event e = { 0 };
+	while(SDL_PollEvent(&e) != 0) {
+		if(e.type == SDL_QUIT ||
+				(e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE) ||
+				(e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) {
+			/* Close the application */
+			g_atomic_int_set(&stop, 1);
+			break;
+		}
+	}
+	/* Done */
+	return 0;
+}
+
+static uint32_t last_tick = 0;
+static int imquic_demo_render(void) {
+	if(g_atomic_int_get(&stop))
+		return -1;
+	SDL_Rect rect = { 0 };
+	uint32_t ticks = SDL_GetTicks();
+	if(last_tick == 0)
+		last_tick = ticks;
+	/* Aim for about 30fps rendering independently of the video rate */
+	if(ticks - last_tick >= (1000/30)) {
+		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+		SDL_RenderClear(renderer);
+		imquic_mutex_lock(&mutex);
+		if(latest_frame == NULL) {
+			/* We don't have a video frame, render something else */
+			imquic_mutex_unlock(&mutex);
+			/* TODO */
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "No frame, rendering black screen\n");
+		} else {
+			/* Copy the frame to the texture */
+			if(latest_frame->width != texture_w || latest_frame->height != texture_h) {
+				/* Regenerate the texture */
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "Video resolution: %dx%d\n", latest_frame->width, latest_frame->height);
+				texture_w = latest_frame->width;
+				texture_h = latest_frame->height;
+				if(texture != NULL)
+					SDL_DestroyTexture(texture);
+				texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12,
+					SDL_TEXTUREACCESS_STATIC, texture_w, texture_h);
+			}
+			SDL_UpdateYUVTexture(texture, NULL,
+				latest_frame->data[0], latest_frame->linesize[0],
+				latest_frame->data[1], latest_frame->linesize[1],
+				latest_frame->data[2], latest_frame->linesize[2]);
+			imquic_mutex_unlock(&mutex);
+			/* Check the aspect ratio */
+			double screen_ratio = (double)screen_w / (double)screen_h;
+			double texture_ratio = (double)texture_w / (double)texture_h;
+			if(screen_ratio > texture_ratio) {
+				/* We'll need black bars on the side */
+				double new_w = (double)texture_w * ((double)screen_h / (double)texture_h);
+				rect.x = (screen_w - (int)new_w)/2;
+				rect.y = 0;
+				rect.w = (int)new_w;
+				rect.h = (int)screen_h;
+			} else if(screen_ratio < texture_ratio) {
+				/* We'll need black bars on top and bottom */
+				double new_h = (double)texture_h * ((double)screen_w / (double)texture_w);
+				rect.x = 0;
+				rect.y = (screen_h - (int)new_h)/2;
+				rect.w = (int)screen_w;
+				rect.h = (int)new_h;
+			}
+			/* Render the texture */
+			SDL_RenderCopy(renderer, texture, NULL, (screen_ratio != texture_ratio ? &rect : NULL));
+		}
+		/* Render to the screen */
+		SDL_RenderPresent(renderer);
+	}
+	SDL_Delay(10);
+	/* Done */
+	return 0;
+}
+
+/* Main */
 int main(int argc, char *argv[]) {
 	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
 	signal(SIGINT, imquic_demo_handle_signal);
@@ -1051,9 +1098,31 @@ int main(int argc, char *argv[]) {
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);
 	imquic_start_endpoint(client);
 
+	/* Create a window */
+	window = SDL_CreateWindow("imquic-moq-loc-recv", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+		screen_w, screen_h, SDL_WINDOW_SHOWN);
+	if(window == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error creating window: %s\n", SDL_GetError());
+		goto done;
+	}
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	if(renderer == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error creating renderer: %s\n", SDL_GetError());
+		goto done;
+	}
+
 	/* Loop */
-	while(!stop) {
-		g_usleep(100000);
+	while(!g_atomic_int_get(&stop)) {
+		/* Handle the user input */
+		if(imquic_demo_handle_input() < 0) {
+			g_atomic_int_set(&stop, 1);
+			break;
+		}
+		/* Render */
+		if(imquic_demo_render() < 0) {
+			g_atomic_int_set(&stop, 1);
+			break;
+		}
 	}
 
 	/* Shutdown the client */
@@ -1072,6 +1141,8 @@ done:
 	imquic_demo_destroy_video_decoder();
 	if(video_buffer != NULL)
 		g_list_free_full(video_buffer, (GDestroyNotify)imquic_moq_object_cleanup);
+	if(latest_frame != NULL)
+		av_frame_free(&latest_frame);
 
 	/* SDL stuff */
 	if(texture != NULL)
