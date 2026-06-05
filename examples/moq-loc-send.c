@@ -1018,7 +1018,7 @@ int main(int argc, char *argv[]) {
 	/* Create a catalog track */
 	catalog_trackname.buffer = (uint8_t *)catalog_tn;
 	catalog_trackname.length = strlen(catalog_tn);
-	catalog = imquic_moq_catalog_create(1);
+	catalog = imquic_moq_catalog_create("draft-01");
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for catalog\n", catalog_tn);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use track_alias=%"SCNu64"\n",
 		catalog_track_alias);

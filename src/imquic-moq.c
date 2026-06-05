@@ -1036,7 +1036,7 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
 
 /* Catalog support */
 static imquic_json_parameter catalog_parameters[] = {
-	{"version", IMQUIC_JSON_INTEGER, IMQUIC_JSON_PARAM_REQUIRED | IMQUIC_JSON_PARAM_POSITIVE},
+	{"version", IMQUIC_JSON_STRING, IMQUIC_JSON_PARAM_REQUIRED},
 	{"deltaUpdate", IMQUIC_JSON_BOOL, 0},
 	{"addTracks", IMQUIC_JSON_ARRAY, 0},
 	{"removeTracks", IMQUIC_JSON_ARRAY, 0},
@@ -1077,9 +1077,11 @@ static imquic_json_parameter track_parameters[] = {
 };
 
 
-imquic_moq_catalog *imquic_moq_catalog_create(uint8_t version) {
+imquic_moq_catalog *imquic_moq_catalog_create(const char *version) {
+	if(version == NULL)
+		return NULL;
 	imquic_moq_catalog *catalog = g_malloc0(sizeof(imquic_moq_catalog));
-	catalog->version = 1;
+	catalog->version = g_strdup(version);
 	catalog->generated_at = g_get_real_time();
 	return catalog;
 }
@@ -1113,8 +1115,8 @@ imquic_moq_catalog *imquic_moq_catalog_parse(const char *json) {
 		}
 	}
 	/* Parse the JSON and create the catalog */
-	uint8_t version = json_integer_value(json_object_get(root, "version"));
-	if(version != 1) {
+	const char *version = json_string_value(json_object_get(root, "version"));
+	if(version == NULL || strstr(version, "draft-") != version) {
 		json_decref(root);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Catalog error: invalid version\n");
 		return NULL;
@@ -1232,7 +1234,8 @@ json_t *imquic_moq_catalog_serialize_obj(imquic_moq_catalog *catalog) {
 	if(catalog == NULL)
 		return NULL;
 	json_t *json = json_object();
-	json_object_set_new(json, "version", json_integer(catalog->version));
+	if(catalog->version != NULL)
+		json_object_set_new(json, "version", json_string(catalog->version));
 	json_object_set_new(json, "generatedAt", json_integer(catalog->generated_at));
 	json_t *tracks = json_array();
 	GList *temp = catalog->tracks;
@@ -1288,6 +1291,7 @@ void imquic_moq_catalog_track_destroy(imquic_moq_catalog_track *track) {
 void imquic_moq_catalog_destroy(imquic_moq_catalog *catalog) {
 	if(catalog == NULL)
 		return;
+	g_free(catalog->version);
 	if(catalog->tracks != NULL)
 		g_list_free_full(catalog->tracks, (GDestroyNotify)imquic_moq_catalog_track_destroy);
 	g_free(catalog);

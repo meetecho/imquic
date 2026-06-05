@@ -1605,7 +1605,7 @@ int imquic_moq_request_goaway(imquic_connection *conn, uint64_t request_id, cons
 /*! \brief MoQ Catalog */
 typedef struct imquic_moq_catalog {
 	/*! \brief Version of the catalog */
-	uint8_t version;
+	char *version;
 	/*! \brief When the catalog was generated */
 	int64_t generated_at;
 	/*! \brief Array of tracks in the catalog */
@@ -1647,7 +1647,7 @@ typedef struct imquic_moq_catalog_track {
 /*! \brief Helper to create a new empty imquic_moq_catalog instance
  * @param version The version of the catalog
  * @returns A pointer to a imquic_moq_catalog instance, if successful, or NULL otherwise */
-imquic_moq_catalog *imquic_moq_catalog_create(uint8_t version);
+imquic_moq_catalog *imquic_moq_catalog_create(const char *version);
 /*! \brief Helper to parse a JSON catalog to a imquic_moq_catalog instance
  * @param json The JSON string containing the serialized catalog
  * @returns A pointer to a imquic_moq_catalog instance, if successful, or NULL otherwise */
