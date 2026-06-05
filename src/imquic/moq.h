@@ -346,6 +346,13 @@ typedef struct imquic_moq_namespace {
  * @param[in] tuple Whether the whole tuple should be stringified, or only the specific namespace
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple);
+/*! \brief Helper to parse a serialized string namespace to a imquic_moq_namespace tuple
+ * \note The resulting imquic_moq_namespace tuple will be allocated,
+ * and needs to be freed using imquic_moq_namespace_free.
+ * @param[in] ns The stringified namespace
+ * @param[out] tns_num How many fields are in the parsed namespace tuple
+ * @returns A pointer to a imquic_moq_namespace instance, if successful, or NULL otherwise */
+imquic_moq_namespace *imquic_moq_namespace_from_str(const char *ns, uint8_t *tns_num);
 /*! \brief Helper to check whether two namespaces are the sames
  * @param first The first namespace to check
  * @param second The second namespace to check
@@ -382,12 +389,25 @@ typedef struct imquic_moq_track {
 	/*! \brief Size of the name data */
 	size_t length;
 } imquic_moq_track;
+/*! \brief Helper to quickly create an imquic_moq_track instance out of an existing buffer
+ * \note The imquic_moq_track instance and a buffer will be allocated, and
+ * the content of the provided buffer copied into it
+ * @param buffer The content of the track name
+ * @param blen The size of the track name
+ * @returns A pointer to an imquic_moq_track instance, if successful, or NULL otherwise */
+imquic_moq_track *imquic_moq_track_create(uint8_t *buffer, size_t blen);
 /* Helper to stringify a track name
  * @param[in] tn The track name to stringify
  * @param[out] buffer The buffer to write the string to
  * @param[in] blen The size of the output buffer
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen);
+/*! \brief Helper to parse a serialized string track name to a imquic_moq_track instance
+ * \note The resulting imquic_moq_track instance will be allocated,
+ * and needs to be freed using imquic_moq_track_free.
+ * @param tn The stringified track name
+ * @returns A pointer to a imquic_moq_track instance, if successful, or NULL otherwise */
+imquic_moq_track *imquic_moq_track_from_str(const char *tn);
 /*! \brief Helper to check whether two track names are the sames
  * @param first The first track name to check
  * @param second The second track name to check

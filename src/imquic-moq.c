@@ -286,6 +286,72 @@ trunc:
 	return NULL;
 }
 
+imquic_moq_namespace *imquic_moq_namespace_from_str(const char *ns, uint8_t *tns_num) {
+	if(tns_num != NULL)
+		*tns_num = 0;
+	if(ns == NULL)
+		return NULL;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]\n", ns);
+	char **fields = g_strsplit(ns, "-", -1);
+	if(fields == NULL)
+		return NULL;
+	int i = 0, num = 0;
+	char *tn = 0, buffer[4096];
+	imquic_moq_namespace *root = NULL, *prev = NULL, *cur = NULL;
+	while((tn = fields[i]) != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%d] %s\n", i, tn);
+		size_t tn_len = strlen(tn), j = 0, offset = 0;
+		while(j < tn_len) {
+			if((tn[j] >= 0x30 && tn[j] <= 0x39) ||	/* 0-9 */
+					(tn[j] >= 0x41 && tn[j] <= 0x5a) ||	/* A-Z */
+					(tn[j] >= 0x61 && tn[j] <= 0x7a) ||	/* a-z */
+					(tn[j] == 0x5f)) {	/* underscore */
+				/* Write as is */
+				buffer[offset] = (uint8_t)tn[j];
+				offset++;
+				j++;
+			} else {
+				/* It should be a .XX (2-digit hex) */
+				if(tn[j] != '.' || (tn_len - j) < 3) {
+					IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid tuple field\n");
+					imquic_moq_namespace_free(root);
+					return NULL;
+				}
+				j++;
+				uint code = 0;
+				if(sscanf(tn + j, "%02x", &code) != 1) {
+					IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid hex code in tuple field\n");
+					imquic_moq_namespace_free(root);
+					return NULL;
+				}
+				buffer[offset] = code;
+				offset++;
+				j += 2;
+			}
+		}
+		cur = g_malloc(sizeof(imquic_moq_namespace));
+		cur->length = offset;
+		if(offset > 0) {
+			cur->buffer = g_malloc(offset);
+			memcpy(cur->buffer, buffer, offset);
+		}
+		cur->next = NULL;
+		if(root == NULL) {
+			root = cur;
+		} else {
+			prev->next = cur;
+		}
+		prev = cur;
+		num++;
+		i++;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[done][%d] %s\n", i, fields[i]);
+	g_strfreev(fields);
+	if(tns_num != NULL)
+		*tns_num = num;
+	return root;
+}
+
 gboolean imquic_moq_namespace_equals(imquic_moq_namespace *first, imquic_moq_namespace *second) {
 	if(first == NULL || second == NULL)
 		return FALSE;
@@ -380,12 +446,25 @@ gboolean imquic_moq_namespace_is_valid(imquic_moq_namespace *tns, gboolean fail_
 void imquic_moq_namespace_free(imquic_moq_namespace *tns) {
 	if(tns == NULL)
 		return;
-	imquic_moq_namespace *temp = tns;
-	while(temp != NULL) {
-		g_free(temp->buffer);
-		temp = temp->next;
+	imquic_moq_namespace *next = NULL;
+	while(tns != NULL) {
+		next = tns->next;
+		g_free(tns->buffer);
+		g_free(tns);
+		tns = next;
 	}
-	g_free(tns);
+}
+
+imquic_moq_track *imquic_moq_track_create(uint8_t *buffer, size_t blen) {
+	if(buffer == NULL)
+		blen = 0;
+	imquic_moq_track *track = g_malloc(sizeof(imquic_moq_track));
+	track->length = blen;
+	if(blen > 0) {
+		track->buffer = g_malloc(blen);
+		memcpy(track->buffer, buffer, blen);
+	}
+	return track;
 }
 
 const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen) {
@@ -401,6 +480,40 @@ const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen
 trunc:
 	IMQUIC_LOG(IMQUIC_LOG_ERR, "Insufficient buffer to render track name as a string (truncation would occur)\n");
 	return NULL;
+}
+
+imquic_moq_track *imquic_moq_track_from_str(const char *tn) {
+	if(tn == NULL)
+		return NULL;
+	uint8_t buffer[4096] = {0};
+	size_t tn_len = strlen(tn), i = 0, offset = 0;
+	while(i < tn_len) {
+		if((tn[i] >= 0x30 && tn[i] <= 0x39) ||	/* 0-9 */
+				(tn[i] >= 0x41 && tn[i] <= 0x5a) ||	/* A-Z */
+				(tn[i] >= 0x61 && tn[i] <= 0x7a) ||	/* a-z */
+				(tn[i] == 0x5f)) {	/* underscore */
+			/* Write as is */
+			buffer[offset] = (uint8_t)tn[i];
+			offset++;
+			i++;
+		} else {
+			/* It should be a .XX (2-digit hex) */
+			if(tn[i] != '.' || (tn_len - i) < 3) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid track name\n");
+				return NULL;
+			}
+			i++;
+			uint code = 0;
+			if(sscanf(tn + i, "%02x", &code) != 1) {
+				IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid hex code in track name\n");
+				return NULL;
+			}
+			buffer[offset] = code;
+			offset++;
+			i += 2;
+		}
+	}
+	return imquic_moq_track_create(buffer, offset);
 }
 
 gboolean imquic_moq_track_equals(imquic_moq_track *first, imquic_moq_track *second) {
@@ -420,13 +533,7 @@ gboolean imquic_moq_track_equals(imquic_moq_track *first, imquic_moq_track *seco
 imquic_moq_track *imquic_moq_track_duplicate(imquic_moq_track *tn) {
 	if(tn == NULL)
 		return NULL;
-	imquic_moq_track *dup = g_malloc0(sizeof(imquic_moq_track));
-	dup->length = tn->buffer ? tn->length : 0;
-	if(dup->length > 0) {
-		dup->buffer = g_malloc(dup->length);
-		memcpy(dup->buffer, tn->buffer, tn->length);
-	}
-	return dup;
+	return imquic_moq_track_create(tn->buffer, tn->length);
 }
 
 gboolean imquic_moq_track_is_valid(imquic_moq_track *tn) {

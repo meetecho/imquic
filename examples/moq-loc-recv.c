@@ -61,7 +61,7 @@ static uint64_t max_request_id = 100,
 	catalog_track_alias = 0, audio_track_alias = 0, video_track_alias = 0;
 static imquic_moq_namespace sub_namespace[32] = { 0 };
 static imquic_moq_track catalog_trackname = { 0 },
-	audio_trackname = { 0 }, video_trackname = { 0 };
+	*audio_trackname = NULL, *video_trackname = NULL;
 static char sub_tns_buffer[256], audio_tn_buffer[256], video_tn_buffer[256];
 static const char *sub_tns = NULL, *catalog_tn = "catalog",
 	*audio_tn = NULL, *video_tn = NULL;
@@ -374,14 +374,14 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (audio), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), sub_tns, audio_tn, audio_request_id);
 		/* Send a SUBSCRIBE */
-		imquic_moq_subscribe(conn, audio_request_id, sub_namespace, &audio_trackname, &params);
+		imquic_moq_subscribe(conn, audio_request_id, sub_namespace, audio_trackname, &params);
 	}
 	if(video_tn != NULL) {
 		video_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (video), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), sub_tns, video_tn, video_request_id);
 		/* Send a SUBSCRIBE */
-		imquic_moq_subscribe(conn, video_request_id, sub_namespace, &video_trackname, &params);
+		imquic_moq_subscribe(conn, video_request_id, sub_namespace, video_trackname, &params);
 	}
 }
 
@@ -523,15 +523,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						temp = temp->next;
 						continue;
 					}
-					/* FIXME This could be encoded already */
-					audio_trackname.buffer = (uint8_t *)track->track_name;
-					audio_trackname.length = strlen(track->track_name);
-					if(!imquic_moq_track_is_valid(&audio_trackname)) {
+					audio_trackname = imquic_moq_track_from_str(track->track_name);
+					if(audio_trackname == NULL || !imquic_moq_track_is_valid(audio_trackname)) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Invalid audio track name '%s'\n", track->track_name);
 						g_atomic_int_set(&stop, 1);
 						return;
 					}
-					audio_tn = imquic_moq_track_str(&audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
+					audio_tn = imquic_moq_track_str(audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
 					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' for audio\n", audio_tn);
 					if(track->codec && strcasecmp(track->codec, "opus")) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Unsupported audio codec '%s'\n", track->codec);
@@ -545,15 +543,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						temp = temp->next;
 						continue;
 					}
-					/* FIXME This could be encoded already */
-					video_trackname.buffer = (uint8_t *)track->track_name;
-					video_trackname.length = strlen(track->track_name);
-					if(!imquic_moq_track_is_valid(&video_trackname)) {
+					video_trackname = imquic_moq_track_from_str(track->track_name);
+					if(video_trackname == NULL || !imquic_moq_track_is_valid(video_trackname)) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid video track name '%s'\n", track->track_name);
 						g_atomic_int_set(&stop, 1);
 						return;
 					}
-					video_tn = imquic_moq_track_str(&video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
+					video_tn = imquic_moq_track_str(video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
 					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' for video\n", video_tn);
 					codec = DEMO_UNKOWN;
 					if(track->codec && strstr(track->codec, "avc1") != NULL) {
@@ -601,14 +597,14 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (audio), using ID %"SCNu64"\n",
 					imquic_get_connection_name(conn), sub_tns, audio_tn, audio_request_id);
 				/* Send a SUBSCRIBE */
-				imquic_moq_subscribe(conn, audio_request_id, sub_namespace, &audio_trackname, &params);
+				imquic_moq_subscribe(conn, audio_request_id, sub_namespace, audio_trackname, &params);
 			}
 			if(video_tn != NULL) {
 				video_request_id = imquic_moq_get_next_request_id(conn);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (video), using ID %"SCNu64"\n",
 					imquic_get_connection_name(conn), sub_tns, video_tn, video_request_id);
 				/* Send a SUBSCRIBE */
-				imquic_moq_subscribe(conn, video_request_id, sub_namespace, &video_trackname, &params);
+				imquic_moq_subscribe(conn, video_request_id, sub_namespace, video_trackname, &params);
 			}
 		}
 		return;
@@ -960,25 +956,23 @@ int main(int argc, char *argv[]) {
 			goto done;
 		}
 		if(options.audio_track_name != NULL) {
-			audio_trackname.buffer = (uint8_t *)options.audio_track_name;
-			audio_trackname.length = strlen(options.audio_track_name);
-			if(!imquic_moq_track_is_valid(&audio_trackname)) {
+			audio_trackname = imquic_moq_track_create((uint8_t *)options.audio_track_name, strlen(options.audio_track_name));
+			if(!imquic_moq_track_is_valid(audio_trackname)) {
 				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid audio track name\n");
 				ret = 1;
 				goto done;
 			}
-			audio_tn = imquic_moq_track_str(&audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
+			audio_tn = imquic_moq_track_str(audio_trackname, audio_tn_buffer, sizeof(audio_tn_buffer));
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for audio\n", audio_tn);
 		}
 		if(options.video_track_name != NULL) {
-			video_trackname.buffer = (uint8_t *)options.video_track_name;
-			video_trackname.length = strlen(options.video_track_name);
-			if(!imquic_moq_track_is_valid(&video_trackname)) {
+			video_trackname = imquic_moq_track_create((uint8_t *)options.video_track_name, strlen(options.video_track_name));
+			if(!imquic_moq_track_is_valid(video_trackname)) {
 				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid video track name\n");
 				ret = 1;
 				goto done;
 			}
-			video_tn = imquic_moq_track_str(&video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
+			video_tn = imquic_moq_track_str(video_trackname, video_tn_buffer, sizeof(video_tn_buffer));
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s' for video\n", video_tn);
 			if(options.video_codec != NULL) {
 				codec = imquic_demo_video_codec_from_str(options.video_codec);
@@ -1143,6 +1137,8 @@ done:
 		g_list_free_full(video_buffer, (GDestroyNotify)imquic_moq_object_cleanup);
 	if(latest_frame != NULL)
 		av_frame_free(&latest_frame);
+	imquic_moq_track_free(audio_trackname);
+	imquic_moq_track_free(video_trackname);
 
 	/* SDL stuff */
 	if(texture != NULL)
