@@ -114,21 +114,6 @@ static int imquic_demo_create_audio_decoder(void) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening audio decoder\n");
 		return -1;
 	}
-	/* SDL audio playback */
-	SDL_AudioSpec want, have;
-	SDL_zero(want);
-	want.freq = 48000;
-	want.format = AUDIO_S16SYS;
-	want.channels = 1;
-	want.samples = 960;
-	dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-	if(!dev) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening audio device: %s\n", SDL_GetError());
-		return -2;
-	}
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "Opened audio device %d: %"SCNu16", %"SCNu8" channels, %s, %"SCNu16" samples\n",
-		dev, have.freq, have.channels, imquic_demo_sdl_audioformat_str(have.format), have.samples);
-	SDL_PauseAudioDevice(dev, 0);
 	return 0;
 }
 
@@ -496,7 +481,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
-	if((object->track_alias == catalog_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) ||
+	if((object->track_alias == catalog_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
 			(object->request_id == catalog_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH)) {
 		/* This is from the catalog track */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Catalog: %.*s\n",
@@ -652,7 +637,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			temp = temp->next;
 		}
 		if(video_tn != NULL && loc_extradata != NULL &&
-				((object->track_alias == video_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) ||
+				((object->track_alias == video_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
 				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
 			/* We have AVCC extradata*/
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- LOC extradata (%zu bytes):\n", loc_extradata->length);
@@ -670,7 +655,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- Payload: %zu bytes\n", object->payload_len);
 		/* Decode the frame */
-		if(audio_tn != NULL && object->track_alias == audio_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) {
+		if(audio_tn != NULL && object->track_alias == audio_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) {
 			/* Decode audio, and create a decoder if we don't have one yet */
 			if(audiodec == NULL && imquic_demo_create_audio_decoder() < -1) {
 				/* Stop here */
@@ -679,7 +664,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			}
 			imquic_demo_decode_audio(object->payload, object->payload_len);
 		} else if(video_tn != NULL &&
-				((object->track_alias == video_track_alias && object->delivery == IMQUIC_MOQ_USE_SUBGROUP) ||
+				((object->track_alias == video_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
 				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
 			/* Check if we're still caching stuff due to the FETCH catch-up */
 			if(object->delivery == IMQUIC_MOQ_USE_SUBGROUP && video_fetch_request_id > 0 && !video_fetch_completed) {
@@ -1104,6 +1089,21 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error creating renderer: %s\n", SDL_GetError());
 		goto done;
 	}
+	/* SDL audio playback */
+	SDL_AudioSpec want, have;
+	SDL_zero(want);
+	want.freq = 48000;
+	want.format = AUDIO_S16SYS;
+	want.channels = 1;
+	want.samples = 960;
+	dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+	if(!dev) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error opening audio device: %s\n", SDL_GetError());
+		goto done;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Opened audio device %d: %"SCNu16", %"SCNu8" channels, %s, %"SCNu16" samples\n",
+		dev, have.freq, have.channels, imquic_demo_sdl_audioformat_str(have.format), have.samples);
+	SDL_PauseAudioDevice(dev, 0);
 
 	/* Loop */
 	while(!g_atomic_int_get(&stop)) {
