@@ -8,6 +8,8 @@
  *
  */
 
+#include <arpa/inet.h>
+
 #include "moq-utils.h"
 
 /* Helper to duplicate an object */
@@ -27,17 +29,20 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 }
 
 /* Helper to print a list of properties */
-void imquic_moq_properties_print(imquic_moq_version version, GList *properties) {
+void imquic_moq_properties_print(imquic_moq_version version, int level, GList *properties) {
 	GList *temp = properties;
 	while(temp) {
 		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
 		const char *prop_name = imquic_moq_property_type_str(version, prop->id);
 		if(prop->id % 2 == 0) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Property '%"SCNu32"' (%s) = %"SCNu64"\n",
+			IMQUIC_LOG(level, "  >> Property '%"SCNu32"' (%s) = %"SCNu64"\n",
 				prop->id, (prop_name ? prop_name : "unknown"), prop->value.number);
 		} else {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  >> Property '%"SCNu32"' (%s) = %.*s\n",
-				prop->id, (prop_name ? prop_name : "unknown"), (int)prop->value.data.length, prop->value.data.buffer);
+			IMQUIC_LOG(level, "  >> Property '%"SCNu32"' (%s) = ",
+				prop->id, (prop_name ? prop_name : "unknown"));
+			for(size_t i=0; i<prop->value.data.length; ++i)
+				IMQUIC_LOG(level, "%02x", prop->value.data.buffer[i]);
+			IMQUIC_LOG(level, "\n");
 		}
 		temp = temp->next;
 	}
@@ -140,4 +145,116 @@ gboolean imquic_moq_check_auth_info(imquic_connection *conn, const char *auth_in
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Parsed Authorization Token Value: %s\n",
 		imquic_get_connection_name(conn), auth_str);
 	return !strcmp(auth_info, auth_str);
+}
+
+/* Object processing type */
+const char *imquic_demo_payload_type_str(imquic_demo_payload_type type) {
+	switch(type) {
+		case DEMO_TYPE_NONE:
+			return "none";
+		case DEMO_TYPE_TEXT:
+			return "text";
+		case DEMO_TYPE_HEX:
+			return "hex";
+		case DEMO_TYPE_LOC:
+			return "loc";
+		case DEMO_TYPE_MP4:
+			return "mp4";
+		default:
+			break;
+	}
+	return NULL;
+}
+
+/* Video codecs */
+const char *imquic_demo_video_codec_str(imquic_demo_video_codec codec) {
+	switch(codec) {
+		case DEMO_UNKOWN:
+			return "unknown codec";
+		case DEMO_H264_AVCC:
+			return "h264-avcc";
+		case DEMO_H264_ANNEXB:
+			return "h264-annexb";
+		case DEMO_VP8:
+			return "vp8";
+		case DEMO_VP9:
+			return "vp9";
+		case DEMO_AV1:
+			return "av1";
+		default:
+			break;
+	}
+	return NULL;
+}
+
+imquic_demo_video_codec imquic_demo_video_codec_from_str(const char *codec) {
+	if(codec == NULL)
+		return DEMO_UNKOWN;
+	else if(codec == NULL || !strcasecmp(codec, imquic_demo_video_codec_str(DEMO_H264_AVCC)))
+		return DEMO_H264_AVCC;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_H264_ANNEXB)))
+		return DEMO_H264_ANNEXB;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_VP8)))
+		return DEMO_VP8;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_VP9)))
+		return DEMO_VP9;
+	else if(!strcasecmp(codec, imquic_demo_video_codec_str(DEMO_AV1)))
+		return DEMO_AV1;
+	return DEMO_UNKOWN;
+}
+
+/* Keyframe detection */
+/* The following code is more related to codec specific helpers */
+#if defined(__ppc__) || defined(__ppc64__)
+	# define swap2(d)  \
+	((d&0x000000ff)<<8) |  \
+	((d&0x0000ff00)>>8)
+#else
+	# define swap2(d) d
+#endif
+
+gboolean imquic_demo_h264_is_keyframe(uint8_t *buffer, size_t len) {
+	if(!buffer || len < 6)
+		return FALSE;
+	/* Parse H264 header now */
+	uint8_t fragment = *buffer & 0x1F;
+	uint8_t nal = *(buffer+1) & 0x1F;
+	if(fragment == 7 || ((fragment == 28 || fragment == 29) && nal == 7 && (*(buffer+1) & 0x80))) {
+		return TRUE;
+	} else if(fragment == 24) {
+		/* May we find it in this STAP-A? */
+		buffer++;
+		len--;
+		uint16_t psize = 0;
+		/* We're reading 3 bytes */
+		while(len > 2) {
+			memcpy(&psize, buffer, 2);
+			psize = ntohs(psize);
+			buffer += 2;
+			len -= 2;
+			int nal = *buffer & 0x1F;
+			if(nal == 7)
+				return TRUE;
+			buffer += psize;
+			len -= psize;
+		}
+	}
+	/* If we got here we didn't find it */
+	return FALSE;
+}
+
+gboolean imquic_demo_vp8_is_keyframe(uint8_t *buffer, size_t len) {
+	if(!buffer || len < 1)
+		return FALSE;
+	return (buffer[0] & 0x01) == 0;
+}
+
+gboolean imquic_demo_vp9_is_keyframe(uint8_t *buffer, size_t len) {
+	/* TODO */
+	return FALSE;
+}
+
+gboolean imquic_demo_av1_is_keyframe(uint8_t *buffer, size_t len) {
+	/* TODO */
+	return FALSE;
 }

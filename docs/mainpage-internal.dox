@@ -49,7 +49,7 @@
  * - basic buffers, mainly for parts of the code that may need it
  * (\ref buffer.c and \ref buffer.h);
  * - logging (\ref debug.h);
- * - optional QLOG support (\ref qlog.h);
+ * - QLOG support (\ref qlog.h);
  * - locking (\ref mutex.h);
  * - reference counting (\ref refcount.h);
  * - generic utilities (\ref utils.c and \ref utils.h).
@@ -439,13 +439,10 @@
  *
  * <hr>
  *
- * \section qlog QLOG support (optional)
+ * \section qlog QLOG support
  *
- * The library can optionally be built with <a target="_blank" href="https://quicwg.org/qlog/">QLOG</a>
- * support. In order to do that, the <a target="_blank" href="https://github.com/akheron/jansson">Jansson</a>
- * library must be found and linked, which can be done by passing the
- * <code>--enable-qlog</code> flag to the configure script. The code
- * for such integration is available in the core (see \ref qlog.c and
+ * The library supports <a target="_blank" href="https://quicwg.org/qlog/">QLOG</a>.
+ * The code for such integration is available in the core (see \ref qlog.c and
  * \ref qlog.h for the QLOG foundation, \ref http3.c and \ref internal/http3.h
  * for HTTP/3 events, \ref roq.c and \ref internal/roq.h for RoQ events,
  * and \ref moq.c and \ref internal/moq.h for MoQ events).
@@ -459,7 +456,7 @@
  * two files being generated, instead of just one, if the library user
  * is interested in logs related to both QUIC and any of the upper layers.
  *
- * That said, if compiled, QLOG support can be enabled programmatically and
+ * That said, QLOG support can be enabled programmatically and
  * separately per each created endpoint. To enable such a feature, the
  * configuration will need a folder to save QLOG files to: the library will not
  * create folders if they're missing, so it's important that the provided

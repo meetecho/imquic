@@ -13,3 +13,4 @@ All notable changes to this project will be documented in this file.
 - Added support for external logging functions
 - Added support for MoQT v17-v18, and dropped support for MoQT v11-v15
 - Refactored RoQ client/server examples to more generic sender/receiver
+- Added MoQ demos for live audio/video via LOC

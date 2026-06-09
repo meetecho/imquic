@@ -24,7 +24,7 @@ static volatile int stop = 0, connected = 0;
 static void imquic_demo_handle_signal(int signum) {
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
-			IMQUIC_PRINT("Stopping sub, please wait...\n");
+			IMQUIC_PRINT("Stopping publisher, please wait...\n");
 			break;
 		case 1:
 			IMQUIC_PRINT("In a hurry? I'm trying to free resources cleanly, here!\n");

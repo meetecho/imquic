@@ -12,6 +12,7 @@
 #define IMQUIC_UTILS_H
 
 #include <glib.h>
+#include <jansson.h>
 
 #ifndef htonll
 #define htonll(x) ((1==htonl(1)) ? (x) : ((guint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
@@ -187,6 +188,79 @@ uint8_t imquic_bitstream_peek(imquic_bitstream *bs, uint8_t *len);
  * @param bits Number of bits from the integer to actually write
  * @returns The number of bits written to the buffer */
 size_t imquic_bitstream_write(imquic_bitstream *bs, uint32_t value, uint8_t bits);
+///@}
+
+/** @name JSON utilities (mostly only used for MoQ catalogs, for now)
+ */
+///@{
+#define IMQUIC_JSON_STRING			JSON_STRING
+#define IMQUIC_JSON_INTEGER			JSON_INTEGER
+#define IMQUIC_JSON_OBJECT			JSON_OBJECT
+#define IMQUIC_JSON_ARRAY			JSON_ARRAY
+/* Use IMQUIC_JSON_BOOL instead of the non-existing JSON_BOOLEAN */
+#define IMQUIC_JSON_BOOL			JSON_TRUE
+#define IMQUIC_JSON_PARAM_REQUIRED	1
+#define IMQUIC_JSON_PARAM_POSITIVE	2
+#define IMQUIC_JSON_PARAM_NONEMPTY	4
+#define IMQUIC_JSON_MISSING_ELEMENT	404
+#define IMQUIC_JSON_INVALID_ELEMENT	400
+
+/*! \brief JSON validation parameter */
+typedef struct imquic_json_parameter {
+	const gchar *name;
+	json_type jtype;
+	unsigned int flags;
+} imquic_json_parameter;
+
+/*! \brief Creates a string describing the JSON type and constraint
+ * @param jtype The JSON type, e.g., JSON_STRING
+ * @param flags Indicates constraints for the described type
+ * @param[out] type_name The type description, e.g., "a positive integer"; required size is 19 characters */
+void imquic_get_json_type_name(int jtype, unsigned int flags, char *type_name);
+
+/*! \brief Checks whether the JSON value matches the type and constraint
+ * @param val The JSON value to be checked
+ * @param jtype The JSON type, e.g., JSON_STRING
+ * @param flags Indicates constraints for the described type
+ * @returns TRUE if the value is valid */
+gboolean imquic_json_is_valid(json_t *val, json_type jtype, unsigned int flags);
+
+/*! \brief Validates the JSON object against the description of its parameters
+ * @param missing_format printf format to indicate a missing required parameter; needs one %s for the parameter name
+ * @param invalid_format printf format to indicate an invalid parameter; needs two %s for parameter name and type description from imquic_get_json_type_name
+ * @param obj The JSON object to be validated
+ * @param params Array of struct imquic_json_parameter to describe the parameters; the array has to be a global or stack variable to make sizeof work
+ * @param[out] res Result of the validation (will be 0 if no error occurred) */
+#define IMQUIC_VALIDATE_JSON_OBJECT_FORMAT(missing_format, invalid_format, obj, params, res) \
+	do { \
+		res = 0; \
+		unsigned int i; \
+		for(i = 0; i < sizeof(params) / sizeof(struct imquic_json_parameter); i++) { \
+			json_t *val = json_object_get(obj, params[i].name); \
+			if(!val) { \
+				if((params[i].flags & IMQUIC_JSON_PARAM_REQUIRED) != 0) {	\
+					res = IMQUIC_JSON_MISSING_ELEMENT; \
+					IMQUIC_LOG(IMQUIC_LOG_ERR, missing_format "\n", params[i].name); \
+					break; \
+				} \
+				continue; \
+			} \
+			if(!imquic_json_is_valid(val, params[i].jtype, params[i].flags)) { \
+				res = IMQUIC_JSON_INVALID_ELEMENT; \
+				char type_name[20]; \
+				imquic_get_json_type_name(params[i].jtype, params[i].flags, type_name); \
+				IMQUIC_LOG(IMQUIC_LOG_ERR, invalid_format "\n", params[i].name, type_name); \
+				break; \
+			} \
+		} \
+	} while(0)
+
+/*! \brief Validates the JSON object against the description of its parameters
+ * @param obj The JSON object to be validated
+ * @param params Array of struct imquic_json_parameter to describe the parameters; the array has to be a global or stack variable to make sizeof work
+ * @param[out] res Result of the validation (will be 0 if no error occurred) */
+#define IMQUIC_VALIDATE_JSON_OBJECT(obj, params, res) \
+	IMQUIC_VALIDATE_JSON_OBJECT_FORMAT("Missing mandatory element (%s)", "Invalid element type (%s should be %s)", obj, params, res)
 ///@}
 
 #endif

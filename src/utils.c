@@ -332,3 +332,75 @@ size_t imquic_bitstream_write(imquic_bitstream *bs, uint32_t value, uint8_t bits
 	}
 	return bs->offset - initial_offset;
 }
+
+/* JSON utilities */
+void imquic_get_json_type_name(int jtype, unsigned int flags, char *type_name) {
+	/* Longest possible combination is "a non-empty boolean" plus one for null char */
+	gsize req_size = 20;
+	/* Don't allow for both "positive" and "non-empty" because that needlessly increases the size. */
+	if((flags & IMQUIC_JSON_PARAM_POSITIVE) != 0) {
+		g_strlcpy(type_name, "a positive ", req_size);
+	}
+	else if((flags & IMQUIC_JSON_PARAM_NONEMPTY) != 0) {
+		g_strlcpy(type_name, "a non-empty ", req_size);
+	}
+	else if(jtype == JSON_INTEGER || jtype == JSON_ARRAY || jtype == JSON_OBJECT) {
+		g_strlcpy(type_name, "an ", req_size);
+	}
+	else {
+		g_strlcpy(type_name, "a ", req_size);
+	}
+	switch(jtype) {
+		case JSON_TRUE:
+			imquic_strlcat(type_name, "boolean", req_size);
+			break;
+		case JSON_INTEGER:
+			imquic_strlcat(type_name, "integer", req_size);
+			break;
+		case JSON_REAL:
+			imquic_strlcat(type_name, "real", req_size);
+			break;
+		case JSON_STRING:
+			imquic_strlcat(type_name, "string", req_size);
+			break;
+		case JSON_ARRAY:
+			imquic_strlcat(type_name, "array", req_size);
+			break;
+		case JSON_OBJECT:
+			imquic_strlcat(type_name, "object", req_size);
+			break;
+		default:
+			break;
+	}
+}
+
+gboolean imquic_json_is_valid(json_t *val, json_type jtype, unsigned int flags) {
+	gboolean is_valid = (json_typeof(val) == jtype || (jtype == JSON_TRUE && json_typeof(val) == JSON_FALSE));
+	if(!is_valid)
+		return FALSE;
+	if((flags & IMQUIC_JSON_PARAM_POSITIVE) != 0) {
+		switch(jtype) {
+			case JSON_INTEGER:
+				is_valid = (json_integer_value(val) >= 0);
+				break;
+			case JSON_REAL:
+				is_valid = (json_real_value(val) >= 0);
+				break;
+			default:
+				break;
+		}
+	}
+	else if((flags & IMQUIC_JSON_PARAM_NONEMPTY) != 0) {
+		switch(jtype) {
+			case JSON_STRING:
+				is_valid = (strlen(json_string_value(val)) > 0);
+				break;
+			case JSON_ARRAY:
+				is_valid = (json_array_size(val) > 0);
+				break;
+			default:
+				break;
+		}
+	}
+	return is_valid;
+}

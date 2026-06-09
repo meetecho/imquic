@@ -24,7 +24,7 @@ static volatile int stop = 0;
 static void imquic_demo_handle_signal(int signum) {
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
-			IMQUIC_PRINT("Stopping sub, please wait...\n");
+			IMQUIC_PRINT("Stopping subscriber, please wait...\n");
 			break;
 		case 1:
 			IMQUIC_PRINT("In a hurry? I'm trying to free resources cleanly, here!\n");
@@ -52,83 +52,7 @@ static const char *sub_tns = NULL;
 static GHashTable *namespaces_by_reqid = NULL, *tracks_by_reqid = NULL;
 static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
-
-/* Object processing type */
-typedef enum imquic_demo_payload_type {
-	DEMO_TYPE_NONE = 0,	/* Don't print the object payload */
-	DEMO_TYPE_TEXT,		/* Print the object payload as text */
-	DEMO_TYPE_HEX,		/* Print the object payload as a hex string */
-	DEMO_TYPE_LOC,		/* Parse the object payload as LOC (moq-encoder-player's version) */
-	DEMO_TYPE_MP4		/* Save the object payload to an mp4 file (moq-rs's version) */
-} imquic_demo_payload_type;
-static const char *imquic_demo_payload_type_str(imquic_demo_payload_type type) {
-	switch(type) {
-		case DEMO_TYPE_NONE:
-			return "none";
-		case DEMO_TYPE_TEXT:
-			return "text";
-		case DEMO_TYPE_HEX:
-			return "hex";
-		case DEMO_TYPE_LOC:
-			return "loc";
-		case DEMO_TYPE_MP4:
-			return "mp4";
-		default:
-			break;
-	}
-	return NULL;
-}
 static imquic_demo_payload_type payload_type = DEMO_TYPE_NONE;
-
-typedef enum imquic_demo_media_type {
-	DEMO_MEDIA_NONE = 0xFF,		/* Unknown */
-	DEMO_MEDIA_H264 = 0x0,		/* H264/AVCC video */
-	DEMO_MEDIA_OPUS = 0x1,		/* Opus audio */
-	DEMO_MEDIA_TEXT = 0x2,		/* UTF-8 text */
-	DEMO_MEDIA_AAC = 0x3,		/* AAC-LC audio */
-} imquic_demo_media_type;
-static const char *imquic_demo_media_type_str(imquic_demo_media_type type) {
-	switch(type) {
-		case DEMO_MEDIA_NONE:
-			return "none";
-		case DEMO_MEDIA_H264:
-			return "H.264 video (AVCC)";
-		case DEMO_MEDIA_OPUS:
-			return "Opus bitstream";
-		case DEMO_MEDIA_TEXT:
-			return "UTF-8 text";
-		case DEMO_MEDIA_AAC:
-			return "AAC-LC audio";
-		default:
-			break;
-	}
-	return NULL;
-}
-
-typedef enum imquic_demo_loc_property {
-	DEMO_LOC_MEDIA_TYPE = 0x0A,		/* Media type header property */
-	DEMO_LOC_H264_HEADER = 0x0B,	/* Video H264 in AVCC metadata (TODO change to 0x15) */
-	DEMO_LOC_H264_EXTRADATA = 0x0D,	/* Video H264 in AVCC extradata */
-	DEMO_LOC_OPUS_HEADER = 0x0F,	/* Audio Opus bitstream data */
-	DEMO_LOC_AAC_HEADER = 0x13,		/* Audio AAC-LC in MPEG4 bitstream data */
-} imquic_demo_loc_property;
-static const char *imquic_demo_loc_property_str(imquic_demo_loc_property type) {
-	switch(type) {
-		case DEMO_LOC_MEDIA_TYPE:
-			return "Media type property";
-		case DEMO_LOC_H264_HEADER:
-			return "Video H264 in AVCC metadata";
-		case DEMO_LOC_H264_EXTRADATA:
-			return "Video H264 in AVCC extradata";
-		case DEMO_LOC_OPUS_HEADER:
-			return "Audio Opus bitstream data";
-		case DEMO_LOC_AAC_HEADER:
-			return "Audio AAC-LC in MPEG4 bitstream data";
-		default:
-			break;
-	}
-	return NULL;
-}
 
 /* File to save objects to, if any */
 static FILE *file = NULL;
@@ -329,7 +253,7 @@ static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t 
 			parameters->largest_object.group, parameters->largest_object.object);
 	}
 	if(track_properties != NULL)
-		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -356,7 +280,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 			parameters->largest_object.group, parameters->largest_object.object);
 	}
 	if(track_properties != NULL)
-		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
 	if(options.fetch != NULL && options.join_offset >= 0) {
 		/* Send a Joining Fetch referencing this subscription */
 		imquic_moq_request_parameters fparams;
@@ -468,7 +392,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
 	if(track_properties != NULL)
-		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
@@ -508,7 +432,7 @@ static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request
 		imquic_moq_group_order_str(parameters->group_order),
 		largest->group, largest->object, g_list_length(track_properties));
 	if(track_properties != NULL)
-		imquic_moq_properties_print(imquic_moq_get_version(conn), track_properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
 }
 
 static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
@@ -570,7 +494,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		return;
 	}
 	if(object->properties != NULL)
-		imquic_moq_properties_print(imquic_moq_get_version(conn), object->properties);
+		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, object->properties);
 	if(file != NULL)
 		fwrite(object->payload, 1, object->payload_len, file);
 	if(payload_type == DEMO_TYPE_TEXT) {
@@ -581,52 +505,32 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", object->payload[i]);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 	} else if(payload_type == DEMO_TYPE_LOC) {
-		/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
-		 * which uses the MoQ-MI draft: https://datatracker.ietf.org/doc/html/draft-cenzano-moq-media-interop */
+		/* FIXME Assuming LOC from https://www.ietf.org/archive/id/draft-ietf-moq-loc-02.html */
 		if(object->properties == NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No properties, missing LOC info?\n");
 		} else {
 			/* Parse the properties to get access to the LOC info */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %d properties\n", g_list_length(object->properties));
-			imquic_demo_media_type media_type = DEMO_MEDIA_NONE;
-			struct imquic_moq_property_data *loc_header = NULL, *loc_extradata = NULL;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- LOC: checking %d properties\n", g_list_length(object->properties));
+			struct imquic_moq_property_data *loc_extradata = NULL;
 			GList *temp = object->properties;
 			while(temp) {
 				imquic_moq_property *prop = (imquic_moq_property *)temp->data;
 				switch(prop->id) {
-					case DEMO_LOC_MEDIA_TYPE: {
-						media_type = prop->value.number;
-						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %s\n",
-							imquic_demo_loc_property_str(prop->id),
-							imquic_demo_media_type_str(media_type));
+					case IMQUIC_MOQ_LOC_TIMESCALE:
+					case IMQUIC_MOQ_LOC_TIMESTAMP:
+					case IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING:
+					case IMQUIC_MOQ_LOC_AUDIO_LEVEL: {
+						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %"SCNu64"\n",
+							imquic_moq_property_type_str(moq_version, prop->id), prop->value.number);
 						break;
 					}
-					case DEMO_LOC_H264_HEADER: {
-						loc_header = &prop->value.data;
-						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_property_str(prop->id),
-							loc_header->length);
-						break;
-					}
-					case DEMO_LOC_H264_EXTRADATA: {
+					case IMQUIC_MOQ_LOC_VIDEO_CONFIG: {
 						loc_extradata = &prop->value.data;
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_property_str(prop->id),
+							imquic_moq_property_type_str(moq_version, prop->id),
 							loc_extradata->length);
-						break;
-					}
-					case DEMO_LOC_OPUS_HEADER: {
-						loc_header = &prop->value.data;
-						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_property_str(prop->id),
-							loc_header->length);
-						break;
-					}
-					case DEMO_LOC_AAC_HEADER: {
-						loc_header = &prop->value.data;
-						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
-							imquic_demo_loc_property_str(prop->id),
-							loc_header->length);
+						for(size_t i=0; i<loc_extradata->length; ++i)
+							IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", loc_extradata->buffer[i]);
 						break;
 					}
 					default: {
@@ -636,45 +540,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				}
 				temp = temp->next;
 			}
-			if(loc_header != NULL && media_type != DEMO_MEDIA_NONE && media_type != DEMO_MEDIA_TEXT) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- LOC header (%zu bytes):\n", loc_header->length);
-				uint8_t length = 0;
-				size_t offset = 0;
-				uint64_t seq_id = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Sequence ID: %"SCNu64"\n", seq_id);
-				offset += length;
-				uint64_t pts = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- PTS: %"SCNu64"\n", pts);
-				offset += length;
-				if(media_type == DEMO_MEDIA_H264) {
-					uint64_t dts = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- DTS: %"SCNu64"\n", dts);
-					offset += length;
-				}
-				uint64_t timebase = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Timebase: %"SCNu64"\n", timebase);
-				offset += length;
-				if(media_type == DEMO_MEDIA_OPUS || media_type == DEMO_MEDIA_AAC) {
-					uint64_t sample_freq = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Sample Frequency: %"SCNu64"\n", sample_freq);
-					offset += length;
-					uint64_t channels = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Channels: %"SCNu64"\n", channels);
-					offset += length;
-				}
-				uint64_t duration = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Duration: %"SCNu64"\n", duration);
-				offset += length;
-				uint64_t Wallclock = imquic_varint_read(&loc_header->buffer[offset], loc_header->length-offset, &length);
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- Wallclock: %"SCNu64"\n", Wallclock);
-				offset += length;
-			}
-			if(loc_extradata != NULL && media_type == DEMO_MEDIA_H264) {
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- LOC extradata (%zu bytes):\n", loc_extradata->length);
-				for(size_t i=0; i<loc_extradata->length; ++i)
-					IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", loc_extradata->buffer[i]);
-			}
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Payload: %zu bytes\n", object->payload_len);
 		}
 	} else if(object->request_id == 0 && payload_type == DEMO_TYPE_MP4) {
 		/* FIXME Ugly hack: if this is mp4, and our response to request ID 0, subscribe to another track */

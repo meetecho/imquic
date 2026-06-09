@@ -245,14 +245,6 @@ void imquic_set_log_function(void (* log_cb)(int level, const char *format, ...)
 	G_GNUC_PRINTF(2, 3));
 ///@}
 
-/** @name QLOG
- */
-///@{
-/*! \brief Check if QLOG is supported at runtime
- * @returns TRUE if supported, FALSE otherwise */
-gboolean imquic_is_qlog_supported(void);
-///@}
-
 /** @name Debugging
  */
 ///@{

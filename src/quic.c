@@ -275,14 +275,12 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		}
 		name = conn->name;
 		imquic_connection_id_str(&initial_cid, conn->initial_cid_str, sizeof(conn->initial_cid_str));
-#ifdef HAVE_QLOG
 		if(endpoint->qlog_path && (endpoint->qlog_http3 || endpoint->qlog_roq || endpoint->qlog_moq)) {
 			conn->qlog = imquic_qlog_create(conn->name, conn->initial_cid_str,
 				endpoint->qlog_path, endpoint->qlog_sequential, endpoint->is_server,
 				endpoint->qlog_http3, endpoint->qlog_roq, endpoint->qlog_roq_packets,
 				endpoint->qlog_moq, endpoint->qlog_moq_messages, endpoint->qlog_moq_objects);
 		}
-#endif
 		const char *alpn = picoquic_tls_get_negotiated_alpn(pconn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection established (ALPN=%s)\n",
 			name, alpn);

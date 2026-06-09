@@ -103,6 +103,10 @@ imquic_server *imquic_create_roq_server(const char *name, ...) {
 	/* Check if we need raw RoQ and/or RoQ over WebTransport */
 	config.alpn = config.raw_quic ? IMQUIC_ROQ_ALPN : NULL;
 	config.wt_protocols = NULL;
+	if(!config.raw_quic && !config.webtransport) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Both raw QUIC and WebTransport disabled\n");
+		return NULL;
+	}
 	/* Create the server */
 	imquic_server *server = imquic_network_endpoint_create(&config);
 	if(server == NULL)
@@ -202,6 +206,10 @@ imquic_client *imquic_create_roq_client(const char *name, ...) {
 	/* Check if we need raw RoQ and/or RoQ over WebTransport */
 	config.alpn = config.raw_quic ? IMQUIC_ROQ_ALPN : NULL;
 	config.wt_protocols = NULL;
+	if(!config.raw_quic && !config.webtransport) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Both raw QUIC and WebTransport disabled\n");
+		return NULL;
+	}
 	/* Create the client */
 	imquic_client *client = imquic_network_endpoint_create(&config);
 	if(client == NULL)

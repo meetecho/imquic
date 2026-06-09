@@ -259,7 +259,6 @@ size_t imquic_http3_settings_add_int(uint8_t *bytes, size_t blen, imquic_http3_s
 void imquic_http3_check_send_connect(imquic_http3_connection *h3c);
 ///@}
 
-#ifdef HAVE_QLOG
 /** @name QLOG events tracing for HTTP/3
  */
 ///@{
@@ -301,6 +300,5 @@ void imquic_http3_qlog_frame_created(imquic_qlog *qlog, uint64_t stream_id, uint
  * @param frame The frame that was parsed */
 void imquic_http3_qlog_frame_parsed(imquic_qlog *qlog, uint64_t stream_id, uint64_t length, json_t *frame);
 ///@}
-#endif
 
 #endif

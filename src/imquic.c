@@ -131,11 +131,6 @@ void imquic_set_log_function(void (* log_cb)(int level, const char *format, ...)
 	imquic_log_function = log_cb;
 }
 
-/* QLOG */
-gboolean imquic_is_qlog_supported(void) {
-	return imquic_qlog_is_supported();
-}
-
 /* Debugging */
 void imquic_set_lock_debugging(gboolean enabled) {
 	imquic_lock_debug = enabled;

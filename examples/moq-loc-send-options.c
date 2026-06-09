@@ -4,11 +4,11 @@
  * Author:  Lorenzo Miniero <lorenzo@meetecho.com>
  * License: MIT
  *
- * Command line options for imquic-moq-pub
+ * Command line options for imquic-moq-loc-send
  *
  */
 
-#include "moq-pub-options.h"
+#include "moq-loc-send-options.h"
 
 static GOptionContext *opts = NULL;
 
@@ -18,17 +18,14 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any" },
 		{ "test-grease", '9', 0, G_OPTION_ARG_NONE, &options->test_grease, "If set, will add GREASE to SETUP options (default=no; only available for v17 and beyond)", NULL},
 		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to publish (can be called multiple times to create a tuple; default=none)", "namespace" },
-		{ "track-name", 'N', 0, G_OPTION_ARG_STRING, &options->track_name, "MoQ track name to publish (default=none)", "name" },
-		{ "redirect", 'T', 0, G_OPTION_ARG_STRING, &options->track_name_redirect, "Alias for the main track-name, to test redirect (default=none)", "name" },
-		{ "first-group", 'f', 0, G_OPTION_ARG_INT64, &options->first_group, "First group ID to send (default=0; sends 'Prior Group ID Gap' property for the first sent object in that group, if set)", "group_id" },
-		{ "first-object", 'F', 0, G_OPTION_ARG_INT64, &options->first_object, "First object ID to send (default=0; sends 'Prior Object ID Gap' property for the first sent object in that group, if set)", "object_id" },
-		{ "relay-auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->relay_auth_info, "Auth info required to connect to the relay, if any (default=none)", "string" },
-		{ "auth-info", 'A', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to publish_namespace/publish, if needed (default=none)", "string" },
-		{ "delivery", 'D', 0, G_OPTION_ARG_STRING, &options->delivery, "How MoQ objects should be sent (default=subgroup; supported=datagram,subgroup)", "type" },
-		{ "publish", 'X', 0, G_OPTION_ARG_NONE, &options->publish, "Use a PUBLISH right away instead of waiting for a SUBSCRIBE (default=no)", NULL },
-		{ "track-alias", 't', 0, G_OPTION_ARG_INT64, &options->track_alias, "Track alias to use for subscriptions (default=0)", NULL },
-		{ "properties", 'x', 0, G_OPTION_ARG_NONE, &options->properties, "Send some properties along objects (default=no)", NULL },
-		{ "padding", 'P', 0, G_OPTION_ARG_INT, &options->padding, "Send some padding too, along objects (default=none)", NULL },
+		{ "audio-track-name", 'A', 0, G_OPTION_ARG_STRING, &options->audio_track_name, "MoQ track name of the audio track to publish (default=no audio)", "name" },
+		{ "video-track-name", 'V', 0, G_OPTION_ARG_STRING, &options->video_track_name, "MoQ track name of the video track to publish (default=no video)", "name" },
+		{ "video-format", 'f', 0, G_OPTION_ARG_STRING, &options->video_format, "Video format to use as, using FFmpeg names (default=v4l2)", "format" },
+		{ "video-device", 'i', 0, G_OPTION_ARG_STRING, &options->video_device, "Video device to capture from (default=/dev/video0)", "device" },
+		{ "video-resolution", 'W', 0, G_OPTION_ARG_STRING, &options->video_resolution, "Video resolution to capture (default=640x480)", "resolution" },
+		{ "video-framerate", 'F', 0, G_OPTION_ARG_INT, &options->video_framerate, "Video framerate to capture at, in frames per second (default=25)", "fps" },
+		{ "video-codec", 'e', 0, G_OPTION_ARG_STRING, &options->video_codec, "Video codec to use (default=h264-avcc)", "h264-avcc|h264-annexb|vp8|vp9|av1" },
+		{ "publish", 'X', 0, G_OPTION_ARG_NONE, &options->publish, "Use a PUBLISH right away instead of waiting for a SUBSCRIBE (default=no; only supported for v12 and later)", NULL },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },
 		{ "remote-host", 'r', 0, G_OPTION_ARG_STRING, &options->remote_host, "QUIC server to connect to (default=none)", "IP" },
@@ -49,6 +46,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "debug-level", 'd', 0, G_OPTION_ARG_INT, &options->debug_level, "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)", "1-7" },
 		{ "debug-locks", 'L', 0, G_OPTION_ARG_NONE, &options->debug_locks, "Whether to verbosely debug mutex/lock accesses (default=no)", NULL },
 		{ "debug-refcounts", 'C', 0, G_OPTION_ARG_NONE, &options->debug_refcounts, "Whether to verbosely debug reference counting (default=no)", NULL },
+		{ "debug-ffmpeg", 'D', 0, G_OPTION_ARG_NONE, &options->debug_ffmpeg, "Whether to verbosely debug FFmpeg (default=no)", NULL },
 		{ NULL, 0, 0, 0, NULL, NULL, NULL },
 	};
 

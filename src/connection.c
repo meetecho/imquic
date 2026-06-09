@@ -104,12 +104,10 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket, pic
 
 void imquic_connection_destroy(imquic_connection *conn) {
 	if(conn && g_atomic_int_compare_and_exchange(&conn->destroyed, 0, 1)) {
-#ifdef HAVE_QLOG
 		if(conn->qlog != NULL) {
 			imquic_qlog_destroy(conn->qlog);
 			conn->qlog = NULL;
 		}
-#endif
 		imquic_refcount_decrease(&conn->ref);
 	}
 }

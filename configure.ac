@@ -88,9 +88,10 @@ PKG_CHECK_MODULES([IMQUIC],[
 	glib-2.0 >= $glib_version
 	libssl >= $ssl_version
 	libcrypto
+	jansson >= 2.5.0
 ])
 
-IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, libssl >= $ssl_version, libcrypto"
+IMQUIC_PACKAGES_PUBLIC="glib-2.0 >= $glib_version, libssl >= $ssl_version, libcrypto, jansson >= 2.5.0"
 IMQUIC_PACKAGES_PRIVATE=""
 
 IMQUIC_MANUAL_LIBS="${IMQUIC_MANUAL_LIBS} -lm"
@@ -112,25 +113,6 @@ AC_CHECK_FILE([${PICOQUIC_DIR}/_deps/picotls-build/libpicotls-fusion.a],
 	          [PICOQUIC_LIBS="-L$PICOQUIC_DIR -L$PICOTLS_DIR -lpicohttp-core -lpicoquic-log -lpicoquic-core -lpicotls-core -lpicotls-minicrypto -lpicotls-openssl"])
 AC_SUBST(PICOQUIC_LIBS)
 
-AC_ARG_ENABLE([qlog],
-              [AS_HELP_STRING([--enable-qlog],
-                              [Enable QLOG support (requires Jansson)])],
-              [],
-              [enable_qlog=no])
-AM_CONDITIONAL([ENABLE_QLOG], false)
-AS_IF([test "x$enable_qlog" != "xno"],
-      [PKG_CHECK_MODULES([JANSSON],
-                         [jansson >= 2.5.0],
-                         [
-                          AC_DEFINE(HAVE_QLOG)
-                          enable_qlog=yes
-                          AM_CONDITIONAL([ENABLE_QLOG], true)
-                          IMQUIC_PACKAGES_PRIVATE="jansson >= 2.5.0"
-                         ],
-                         [
-                          AC_MSG_ERROR([Jansson headers not found])])
-                         ])
-
 AC_SUBST(IMQUIC_PACKAGES_PUBLIC)
 AC_SUBST(IMQUIC_PACKAGES_PRIVATE)
 
@@ -148,9 +130,23 @@ AM_CONDITIONAL([ENABLE_ECHO_EXAMPLES], [test "x$enable_echo_examples" = "xyes"])
 AC_ARG_ENABLE([moq-examples],
               [AS_HELP_STRING([--enable-moq-examples],
                               [Build the MoQ (Media Over QUIC) examples])],
-              [],
+              [
+               PKG_CHECK_MODULES([MOQAV],
+                                 [
+                                  libavutil
+                                  libavcodec
+                                  libavformat
+                                  libavdevice
+                                  libswscale
+                                  opus
+                                  sdl2
+                                 ],
+                                 [enable_loc_demos=yes],
+                                 [AC_MSG_WARN([Some dependencies not met, LOC demos will not be built])])
+              ],
               [enable_moq_examples=no])
 AM_CONDITIONAL([ENABLE_MOQ_EXAMPLES], [test "x$enable_moq_examples" = "xyes"])
+AM_CONDITIONAL([ENABLE_LOC_DEMOS], [test "x$enable_loc_demos" = "xyes"])
 
 AC_ARG_ENABLE([roq-examples],
               [AS_HELP_STRING([--enable-roq-examples],
@@ -214,9 +210,6 @@ AC_OUTPUT
 
 echo
 echo "Compiler:      $CC"
-AM_COND_IF([ENABLE_QLOG],
-	[echo "QLOG Support:  yes"],
-	[echo "QLOG Support:  no"])
 AM_COND_IF([ENABLE_DOCS],
 	[echo "Documentation: yes"],
 	[echo "Documentation: no"])
@@ -226,7 +219,12 @@ AM_COND_IF([ENABLE_ECHO_EXAMPLES],
 	[echo "  -- Echo examples: yes"],
 	[echo "  -- Echo examples: no"])
 AM_COND_IF([ENABLE_MOQ_EXAMPLES],
-	[echo "  -- MoQ examples:  yes"],
+	[
+	 echo "  -- MoQ examples:  yes"
+     AM_COND_IF([ENABLE_LOC_DEMOS],
+	     [echo "  -- -- LOC demos:  yes"],
+	     [echo "  -- -- LOC demos:  no"])
+	],
 	[echo "  -- MoQ examples:  no"])
 AM_COND_IF([ENABLE_ROQ_EXAMPLES],
 	[echo "  -- RoQ examples:  yes"],

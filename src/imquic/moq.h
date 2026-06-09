@@ -297,6 +297,8 @@
 
 #include "imquic.h"
 
+#include <jansson.h>
+
 /** @name MoQ resources
  */
 ///@{
@@ -344,6 +346,13 @@ typedef struct imquic_moq_namespace {
  * @param[in] tuple Whether the whole tuple should be stringified, or only the specific namespace
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_namespace_str(imquic_moq_namespace *tns, char *buffer, size_t blen, gboolean tuple);
+/*! \brief Helper to parse a serialized string namespace to a imquic_moq_namespace tuple
+ * \note The resulting imquic_moq_namespace tuple will be allocated,
+ * and needs to be freed using imquic_moq_namespace_free.
+ * @param[in] ns The stringified namespace
+ * @param[out] tns_num How many fields are in the parsed namespace tuple
+ * @returns A pointer to a imquic_moq_namespace instance, if successful, or NULL otherwise */
+imquic_moq_namespace *imquic_moq_namespace_from_str(const char *ns, uint8_t *tns_num);
 /*! \brief Helper to check whether two namespaces are the sames
  * @param first The first namespace to check
  * @param second The second namespace to check
@@ -380,12 +389,25 @@ typedef struct imquic_moq_track {
 	/*! \brief Size of the name data */
 	size_t length;
 } imquic_moq_track;
+/*! \brief Helper to quickly create an imquic_moq_track instance out of an existing buffer
+ * \note The imquic_moq_track instance and a buffer will be allocated, and
+ * the content of the provided buffer copied into it
+ * @param buffer The content of the track name
+ * @param blen The size of the track name
+ * @returns A pointer to an imquic_moq_track instance, if successful, or NULL otherwise */
+imquic_moq_track *imquic_moq_track_create(uint8_t *buffer, size_t blen);
 /* Helper to stringify a track name
  * @param[in] tn The track name to stringify
  * @param[out] buffer The buffer to write the string to
  * @param[in] blen The size of the output buffer
  * @returns A pointer to the output buffer, if successful, or NULL otherwise */
 const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen);
+/*! \brief Helper to parse a serialized string track name to a imquic_moq_track instance
+ * \note The resulting imquic_moq_track instance will be allocated,
+ * and needs to be freed using imquic_moq_track_free.
+ * @param tn The stringified track name
+ * @returns A pointer to a imquic_moq_track instance, if successful, or NULL otherwise */
+imquic_moq_track *imquic_moq_track_from_str(const char *tn);
 /*! \brief Helper to check whether two track names are the sames
  * @param first The first track name to check
  * @param second The second track name to check
@@ -604,26 +626,43 @@ typedef struct imquic_moq_property {
  * \note The library will not try to interpret properties and their
  * payload: this is always left up to applications */
 typedef enum imquic_moq_property_type {
-	/* Object Delivery Timeout (added in v18) */
+	/*! \brief Object Delivery Timeout (added in v18) */
 	IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT = 0x02,
-		/* Delivery Timeout (deprecated in v18) */
+		/*! \brief Delivery Timeout (deprecated in v18) */
 		IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT = 0x02,
-	/* Max Cache Duration */
+	/*! \brief Max Cache Duration */
 	IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION = 0x04,
-	/* Subgroup Delivery Timeout (added in v18) */
+	/*! \brief Subgroup Delivery Timeout (added in v18) */
 	IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT = 0x06,
-	/* Default Publisher Priority */
+	/*! \brief Default Publisher Priority */
 	IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
-	/* Default Group Order */
+	/*! \brief Default Group Order */
 	IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER = 0x22,
-	/* Dynamic Groups */
+	/*! \brief Dynamic Groups */
 	IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS = 0x30,
-	/* Prior Group ID Gap */
+	/*! \brief Prior Group ID Gap */
 	IMQUIC_MOQ_PROPERTY_PRIOR_GROUP_ID_GAP = 0x3C,
-	/* Prior Object ID Gap */
+	/*! \brief Prior Object ID Gap */
 	IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP = 0x3E,
-	/* Immutable Properties */
+	/*! \brief Immutable Properties */
 	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
+	/*! \brief LOC Timestamp (WIP)
+	 * \note This is actually 0x06 per loc-02, but that conflicts with
+	 * SUBGROUP_DELIVERY_TIMEOUT from moq-18, so for now we use 0x16 */
+	IMQUIC_MOQ_LOC_TIMESTAMP = 0x16,
+	/*! \brief LOC Timescale */
+	IMQUIC_MOQ_LOC_TIMESCALE = 0x08,
+	/*! \brief LOC Video Config */
+	IMQUIC_MOQ_LOC_VIDEO_CONFIG = 0x0D,
+	/*! \brief LOC Video Frame Marking (WIP)
+	 * \note This is actually 0x04 per loc-02, but that conflicts with
+	 * MAX_CACHE_DURATION, so for now we use 0x14 */
+	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x14,
+	/*! \brief LOC Audio Level (WIP)
+	 * \note This is actually 0x02 per loc-02, but that conflicts with
+	 * OBJECT_DELIVERY_TIMEOUT from moq-18, so for now we use 0x12 */
+	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x12,
+
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
  * @param version The version of the connection
@@ -720,7 +759,6 @@ int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_auth_token(imquic_moq_version version, imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
 ///@}
-
 
 /** @name MoQ error and status codes
  */
@@ -1579,6 +1617,101 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout
  * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_request_goaway(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout);
+///@}
+
+/** @name MoQ Catalog helpers
+ */
+///@{
+/*! \brief MoQ Catalog */
+typedef struct imquic_moq_catalog {
+	/*! \brief Version of the catalog */
+	char *version;
+	/*! \brief When the catalog was generated */
+	int64_t generated_at;
+	/*! \brief Array of tracks in the catalog */
+	GList *tracks;
+} imquic_moq_catalog;
+
+/*! \brief MoQ Catalog track */
+typedef struct imquic_moq_catalog_track {
+	/*! \brief Name of the track */
+	char *track_name;
+	/*! \brief Namespace the track belongs to */
+	char *track_namespace;
+	/*! \brief Packaging */
+	char *packaging;
+	/*! \brief Whether the track is live or not */
+	gboolean is_live;
+	/*! \brief Target latency */
+	uint64_t target_latency;
+	/*! \brief Role */
+	char *role;
+	/*! \brief Render group */
+	uint8_t render_group;
+	/*! \brief Codec */
+	char *codec;
+	/*! \brief Sampling rate (audio tracks only) */
+	uint32_t samplerate;
+	/*! \brief Channel configuration (audio tracks only) */
+	char *channel_config;
+	/*! \brief Width (video tracks only) */
+	uint16_t width;
+	/*! \brief Height (video tracks only) */
+	uint16_t height;
+	/*! \brief Framerate (video tracks only) */
+	uint8_t framerate;
+	/*! \brief Bitrate */
+	uint32_t bitrate;
+} imquic_moq_catalog_track;
+
+/*! \brief Helper to create a new empty imquic_moq_catalog instance
+ * @param version The version of the catalog
+ * @returns A pointer to a imquic_moq_catalog instance, if successful, or NULL otherwise */
+imquic_moq_catalog *imquic_moq_catalog_create(const char *version);
+/*! \brief Helper to parse a JSON catalog to a imquic_moq_catalog instance
+ * @param json The JSON string containing the serialized catalog
+ * @returns A pointer to a imquic_moq_catalog instance, if successful, or NULL otherwise */
+imquic_moq_catalog *imquic_moq_catalog_parse(const char *json);
+/*! \brief Helper to update a imquic_moq_catalog instance with a JSON delta
+ * @param catalog The imquic_moq_catalog instance to update
+ * @param json The JSON string containing the serialized catalog delta
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_catalog_update(imquic_moq_catalog *catalog, const char *json);
+/*! \brief Helper to create a new empty imquic_moq_catalog_track instance
+ * @param track_namespace The track namespace
+ * @param track_name The track name
+ * @param packaging The track packaging
+ * @param is_live Whether the track is live or not
+ * @returns A pointer to a imquic_moq_catalog_track instance, if successful, or NULL otherwise */
+imquic_moq_catalog_track *imquic_moq_catalog_create_track(const char *track_namespace,
+	const char *track_name, const char *packaging, gboolean is_live);
+/*! \brief Helper to add a imquic_moq_catalog_track to a imquic_moq_catalog instance
+ * @param catalog The imquic_moq_catalog instance to update
+ * @param track The imquic_moq_catalog_track instance to add
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_catalog_add_track(imquic_moq_catalog *catalog, imquic_moq_catalog_track *track);
+/*! \brief Helper to remove a track from a imquic_moq_catalog instance
+ * @param catalog The imquic_moq_catalog instance to update
+ * @param track_namespace The track namespace
+ * @param track_name The track name
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_catalog_remove_track(imquic_moq_catalog *catalog,
+	const char *track_namespace, const char *track_name);
+/*! \brief Helper to serialize a imquic_moq_catalog instance to a JSON string
+ * @param catalog The imquic_moq_catalog instance to update
+ * @returns A pointer to a JSON string, if successful, or NULL otherwise */
+char *imquic_moq_catalog_serialize(imquic_moq_catalog *catalog);
+/*! \brief Helper to serialize a imquic_moq_catalog instance to a Jansson JSON object
+ * @param catalog The imquic_moq_catalog instance to update
+ * @returns A pointer to a Jansson JSON object, if successful, or NULL otherwise */
+json_t *imquic_moq_catalog_serialize_obj(imquic_moq_catalog *catalog);
+/* Destroy an existing imquic_moq_catalog_track instance
+ * @param track The imquic_moq_catalog_track instance to destroy */
+void imquic_moq_catalog_track_destroy(imquic_moq_catalog_track *track);
+/* Destroy an existing imquic_moq_catalog instance
+ * @param catalog The imquic_moq_catalog instance to destroy */
+void imquic_moq_catalog_destroy(imquic_moq_catalog *catalog);
+
 ///@}
 
 #endif

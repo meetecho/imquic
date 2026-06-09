@@ -81,10 +81,8 @@ static int imquic_roq_buffer_data(imquic_roq_endpoint *endpoint, uint64_t flow_i
 		pkt->buffer = imquic_buffer_create(bytes, blen);
 		pkt->rtp_len = 0;
 		g_hash_table_insert(endpoint->packets, imquic_uint64_dup(stream_id), pkt);
-#ifdef HAVE_QLOG
 		if(endpoint->conn != NULL && endpoint->conn->qlog != NULL && endpoint->conn->qlog->roq)
 			imquic_roq_qlog_stream_opened(endpoint->conn->qlog, stream_id, flow_id);
-#endif
 	} else if(blen > 0) {
 		/* Append the data */
 		imquic_buffer_append(pkt->buffer, bytes, blen);
@@ -99,10 +97,8 @@ static int imquic_roq_buffer_data(imquic_roq_endpoint *endpoint, uint64_t flow_i
 		}
 		if(pkt->rtp_len <= pkt->buffer->length) {
 			/* We have enough data for an RTP packet, notify the application */
-#ifdef HAVE_QLOG
 			if(endpoint->conn && endpoint->conn->qlog != NULL && endpoint->conn->qlog->roq)
 				imquic_roq_qlog_stream_packet_parsed(endpoint->conn->qlog, stream_id, flow_id, pkt->buffer->bytes, pkt->rtp_len);
-#endif
 			if(pkt->rtp_len > 0 && endpoint->conn && endpoint->conn->socket && endpoint->conn->socket->callbacks.roq.rtp_incoming) {
 				endpoint->conn->socket->callbacks.roq.rtp_incoming(endpoint->conn,
 					IMQUIC_ROQ_STREAM, flow_id, pkt->buffer->bytes, pkt->rtp_len);
@@ -199,10 +195,8 @@ void imquic_roq_datagram_incoming(imquic_connection *conn, uint8_t *bytes, uint6
 		return;
 	}
 	/* Notify the application */
-#ifdef HAVE_QLOG
 	if(conn->qlog != NULL && conn->qlog->roq)
 		imquic_roq_qlog_datagram_packet_parsed(conn->qlog, flow_id, bytes + parsed, length - parsed);
-#endif
 	if(length > 0 && conn->socket && conn->socket->callbacks.roq.rtp_incoming) {
 		conn->socket->callbacks.roq.rtp_incoming(conn,
 			IMQUIC_ROQ_DATAGRAM, flow_id, bytes + parsed, length - parsed);
@@ -230,10 +224,8 @@ static imquic_roq_stream *imquic_roq_stream_create(imquic_connection *conn, imqu
 	roq_stream->new_stream = TRUE;
 	imquic_refcount_init(&roq_stream->ref, imquic_roq_stream_free);
 	g_hash_table_insert(endpoint->stream_flows_out, imquic_uint64_dup(flow_id), roq_stream);
-#ifdef HAVE_QLOG
 	if(conn->qlog != NULL && conn->qlog->roq)
 		imquic_roq_qlog_stream_opened(conn->qlog, roq_stream->stream_id, flow_id);
-#endif
 	return roq_stream;
 }
 
@@ -257,10 +249,8 @@ size_t imquic_roq_send_rtp(imquic_connection *conn, imquic_roq_multiplexing mult
 		offset = imquic_varint_write(flow_id, outgoing, outlen);
 		memcpy(outgoing + offset, bytes, blen);
 		offset += blen;
-#ifdef HAVE_QLOG
 		if(conn->qlog != NULL && conn->qlog->roq)
 			imquic_roq_qlog_datagram_packet_created(conn->qlog, flow_id, bytes, blen);
-#endif
 		imquic_send_on_datagram(conn, outgoing, offset);
 	} else if(multiplexing == IMQUIC_ROQ_STREAM) {
 		/* Send the RTP packet on its flow STREAM */
@@ -284,10 +274,8 @@ size_t imquic_roq_send_rtp(imquic_connection *conn, imquic_roq_multiplexing mult
 		offset += imquic_varint_write(blen, outgoing + offset, outlen-offset);
 		memcpy(outgoing + offset, bytes, blen);
 		offset += blen;
-#ifdef HAVE_QLOG
 		if(conn->qlog != NULL && conn->qlog->roq)
 			imquic_roq_qlog_stream_packet_created(conn->qlog, roq_stream->stream_id, flow_id, bytes, blen);
-#endif
 		imquic_send_on_stream(conn, roq_stream->stream_id, outgoing, offset, close_stream);
 		imquic_mutex_lock(&endpoint->mutex);
 		if(close_stream)
@@ -299,7 +287,6 @@ size_t imquic_roq_send_rtp(imquic_connection *conn, imquic_roq_multiplexing mult
 	return offset;
 }
 
-#ifdef HAVE_QLOG
 /* QLOG support */
 void imquic_roq_qlog_add_rtp_packet(json_t *data, uint64_t flow_id, uint64_t length) {
 	if(data != NULL) {
@@ -367,4 +354,3 @@ void imquic_roq_qlog_datagram_packet_parsed(imquic_qlog *qlog, uint64_t flow_id,
 		imquic_qlog_event_add_raw(data, "raw", bytes, length);
 	imquic_qlog_append_event(qlog, event);
 }
-#endif
