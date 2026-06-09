@@ -397,26 +397,30 @@ gboolean imquic_moq_namespace_contains(imquic_moq_namespace *parent, imquic_moq_
 imquic_moq_namespace *imquic_moq_namespace_duplicate(imquic_moq_namespace *tns) {
 	if(tns == NULL)
 		return NULL;
-	imquic_moq_namespace *dup = g_malloc0(32 * sizeof(imquic_moq_namespace));
+	imquic_moq_namespace *root = NULL, *dup = NULL, *prev = NULL;
 	int index = 0;
 	while(tns != NULL) {
+		dup = g_malloc0(sizeof(imquic_moq_namespace));
+		if(root == NULL)
+			root = dup;
+		if(prev != NULL)
+			prev->next = dup;
 		if(tns->buffer == NULL) {
-			dup[index].buffer = NULL;
-			dup[index].length = 0;
+			dup->buffer = NULL;
+			dup->length = 0;
 		} else {
-			dup[index].buffer = g_malloc(tns->length);
-			memcpy(dup[index].buffer, tns->buffer, tns->length);
-			dup[index].length = tns->length;
+			dup->buffer = g_malloc(tns->length);
+			memcpy(dup->buffer, tns->buffer, tns->length);
+			dup->length = tns->length;
 		}
-		if(index == 31) {
-			dup[index].next = NULL;
+		dup->next = NULL;
+		if(index == 31)
 			break;
-		}
-		dup[index].next = tns->next ? &dup[index+1] : NULL;
+		prev = dup;
 		index++;
 		tns = tns->next;
 	}
-	return dup;
+	return root;
 }
 
 gboolean imquic_moq_namespace_is_valid(imquic_moq_namespace *tns, gboolean fail_if_empty, uint64_t *tns_num) {
