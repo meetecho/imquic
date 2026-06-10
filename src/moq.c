@@ -826,7 +826,7 @@ uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version ver
 		type |= 0x08;
 	if(version >= IMQUIC_MOQ_VERSION_18 && first_object)
 		type |= 0x40;
-	if(priority)
+	if(!priority)
 		type |= 0x20;
 	return type;
 }
@@ -849,7 +849,7 @@ void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version,
 	if(eog)
 		*eog = (type & 0x08);
 	if(priority)
-		*priority = (type & 0x20);
+		*priority = !(type & 0x20);
 	if(version >= IMQUIC_MOQ_VERSION_18 && first_object)
 		*first_object = (type & 0x40);
 }
@@ -5343,7 +5343,7 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
 	offset += imquic_write_moqint(moq->version, group_id, &bytes[offset], blen-offset);
 	if(has_sg)
 		offset += imquic_write_moqint(moq->version, subgroup_id, &bytes[offset], blen-offset);
-	if(has_sg) {
+	if(has_priority) {
 		bytes[offset] = priority;
 		offset++;
 	}
