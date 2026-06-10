@@ -633,8 +633,6 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	imquic_moq_request_parameters rparams = *parameters;
 	rparams.subscriber_priority_set = TRUE;
 	rparams.subscriber_priority = 128;
-	rparams.subscription_filter_set = TRUE;
-	rparams.subscription_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 	imquic_moq_accept_publish(conn, request_id, &rparams);
 }
 
