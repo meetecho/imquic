@@ -670,6 +670,21 @@ typedef enum imquic_moq_property_type {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_property_type type);
 
+/*! \brief Helper mode to parse a properties buffer to a GList of imquic_moq_property
+ * \note The caller owns the list, and is responsible of freeing it and its content
+ * @param version The version of the connection
+ * @param properties The buffer containing the properties data
+ * @param plen The size of the buffer containing the properties data
+ * @returns A GList instance containing a set of imquic_moq_property, if successful, or NULL if no properties were found */
+GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t plen);
+/*! \brief Helper mode to craft a properties buffer out of a GList of imquic_moq_property
+ * @param[in] version The version of the connection
+ * @param[in] properties The list of properties to serialize
+ * @param[out] bytes The buffer to write the properties data to
+ * @param[in] blen The size of the buffer to write to
+ * @returns How many bytes were written, if successful */
+size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties, uint8_t *bytes, size_t blen);
+
 /*! \brief MoQ Object
  * \note This may contain info related to different MoQ versions, and so
  * should be considered a higher level abstraction that the internal
@@ -689,12 +704,23 @@ typedef struct imquic_moq_object {
 	imquic_moq_object_status object_status;
 	/*! \brief MoQ publisher priority */
 	uint8_t priority;
+	/*! \brief MoQ properties, if any */
+	GList *properties;
+	/*! \brief MoQ object payload prefix, if needed
+	 * \note At the moment, this is only needed when adding private
+	 * properties with LOC. Notice that the prefix is ALWAYS empty
+	 * when getting incoming objects from the stack, since the library
+	 * doesn't know how to process the payload, and so you'll always
+	 * only see the payload as a whole in that case, meaning it's up to
+	 * you to demux the prefix. This mechanism is only here to make
+	 * things easier when sending LOC objects without reallocating buffers */
+	uint8_t *payload_prefix;
+	/*! \brief Size of the MoQ object payload prefix */
+	size_t payload_prefix_len;
 	/*! \brief MoQ object payload */
 	uint8_t *payload;
 	/*! \brief Size of the MoQ object payload */
 	size_t payload_len;
-	/*! \brief MoQ properties, if any */
-	GList *properties;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
 	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
@@ -702,6 +728,29 @@ typedef struct imquic_moq_object {
 	/*! \brief Whether this signals the end of the stream */
 	gboolean end_of_stream;
 } imquic_moq_object;
+///@}
+
+/** @name MoQ's flavour of varint (introduced in v17)
+ */
+///@{
+/*! \brief Read a variable size integer from a buffer
+ * @note You can use the return value to know how many bytes to skip in
+ * the buffer to read the next value. In case of issues in the parsing,
+ * length will have value 0.
+ * @param[in] bytes The buffer to read
+ * @param[in] blen The size of the buffer
+ * @param[out] length How many bytes the variable size integer used
+ * @returns The variable size integer, if length is higher than 0 */
+uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length);
+/*! \brief Write a variable size integer to a buffer
+ * @note You can use the return value to know how many bytes to skip in
+ * the buffer to write the next value. In case of issues in the writing,
+ * length will have value 0.
+ * @param[in] number The number to write as a variable size integer
+ * @param[in] bytes The buffer to write to
+ * @param[in] blen The size of the buffer
+ * @returns How many bytes the variable size integer used, if successful, 0 otherwise */
+uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen);
 ///@}
 
 /** @name MoQ authorization and tokens

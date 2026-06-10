@@ -286,16 +286,25 @@ static void imquic_demo_process_video_buffer(void) {
 			if(videodec_ctx != NULL)
 				imquic_demo_destroy_video_decoder();
 		}
+		/* Check if there are private properties too */
+		uint8_t length = 0;
+		size_t prop_len = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
+		if(length == 0 || length > object->payload_len) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties yet, ignoring object\n");
+			return;
+		}
+		size_t skip = length + prop_len;
+		/* Process the video frame */
 		gboolean keyframe = (loc_extradata != NULL);
 		if(!keyframe) {
 			if(codec == DEMO_H264_ANNEXB)
-				keyframe = imquic_demo_h264_is_keyframe(object->payload, object->payload_len);
+				keyframe = imquic_demo_h264_is_keyframe(object->payload + skip, object->payload_len - skip);
 			else if(codec == DEMO_VP8)
-				keyframe = imquic_demo_vp8_is_keyframe(object->payload, object->payload_len);
+				keyframe = imquic_demo_vp8_is_keyframe(object->payload + skip, object->payload_len - skip);
 			else if(codec == DEMO_VP9)
-				keyframe = imquic_demo_vp9_is_keyframe(object->payload, object->payload_len);
+				keyframe = imquic_demo_vp9_is_keyframe(object->payload + skip, object->payload_len - skip);
 			if(codec == DEMO_AV1)
-				keyframe = imquic_demo_av1_is_keyframe(object->payload, object->payload_len);
+				keyframe = imquic_demo_av1_is_keyframe(object->payload + skip, object->payload_len - skip);
 		}
 		if(videodec_ctx == NULL && (keyframe || codec == DEMO_AV1)) {
 			if(imquic_demo_create_video_decoder(loc_extradata ? loc_extradata->buffer : NULL,
@@ -306,7 +315,7 @@ static void imquic_demo_process_video_buffer(void) {
 			}
 		}
 		gboolean render = (temp->next == NULL);
-		imquic_demo_decode_video(object->payload, object->payload_len, keyframe, render);
+		imquic_demo_decode_video(object->payload + skip, object->payload_len - skip, keyframe, render);
 		temp = temp->next;
 	}
 	g_list_free_full(video_buffer, (GDestroyNotify)imquic_moq_object_cleanup);
@@ -336,7 +345,6 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_moq_version_str(moq_version));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s\n", imquic_get_connection_name(conn),
 		peer ? peer : "unknown implementation");
-	moq_version = imquic_moq_get_version(conn);
 	/* Let's subscribe to the provided namespace/track(s) */
 	imquic_moq_request_parameters params;
 	imquic_moq_request_parameters_init_defaults(&params);
@@ -421,7 +429,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		}
 	}
 	if(track_properties != NULL)
-		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_VERB, track_properties);
+		imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, track_properties);
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
@@ -596,7 +604,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	}
 	/* If we got here, it's an audio or video object */
 	if(object->properties != NULL)
-		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_VERB, object->properties);
+		imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, object->properties);
 	/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
 	 * which uses the MoQ-MI draft: https://datatracker.ietf.org/doc/html/draft-cenzano-moq-media-interop */
 	if(object->properties == NULL) {
@@ -654,6 +662,22 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- SPS number:    %"SCNu8"\n", avcc_data[5] & 0x1F);
 		}
 		IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- Payload: %zu bytes\n", object->payload_len);
+		/* Check if there are private properties too */
+		uint8_t length = 0;
+		size_t prop_len = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
+		if(length == 0 || length > object->payload_len) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties yet, ignoring object\n");
+			return;
+		}
+		size_t skip = length;
+		GList *pvt_properties = NULL;
+		if(prop_len > 0) {
+			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);
+			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d private properties\n", g_list_length(pvt_properties));
+			if(pvt_properties != NULL)
+				imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, pvt_properties);
+		}
+		skip += prop_len;
 		/* Decode the frame */
 		if(audio_tn != NULL && object->track_alias == audio_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) {
 			/* Decode audio, and create a decoder if we don't have one yet */
@@ -662,7 +686,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				g_atomic_int_inc(&stop);
 				return;
 			}
-			imquic_demo_decode_audio(object->payload, object->payload_len);
+			imquic_demo_decode_audio(object->payload + skip, object->payload_len - skip);
 		} else if(video_tn != NULL &&
 				((object->track_alias == video_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
 				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
@@ -685,13 +709,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			gboolean keyframe = (loc_extradata != NULL);
 			if(!keyframe) {
 				if(codec == DEMO_H264_ANNEXB)
-					keyframe = imquic_demo_h264_is_keyframe(object->payload, object->payload_len);
+					keyframe = imquic_demo_h264_is_keyframe(object->payload + skip, object->payload_len - skip);
 				else if(codec == DEMO_VP8)
-					keyframe = imquic_demo_vp8_is_keyframe(object->payload, object->payload_len);
+					keyframe = imquic_demo_vp8_is_keyframe(object->payload + skip, object->payload_len - skip);
 				else if(codec == DEMO_VP9)
-					keyframe = imquic_demo_vp9_is_keyframe(object->payload, object->payload_len);
+					keyframe = imquic_demo_vp9_is_keyframe(object->payload + skip, object->payload_len - skip);
 				if(codec == DEMO_AV1)
-					keyframe = imquic_demo_av1_is_keyframe(object->payload, object->payload_len);
+					keyframe = imquic_demo_av1_is_keyframe(object->payload + skip, object->payload_len - skip);
 			}
 			if(videodec_ctx == NULL && (keyframe || codec == DEMO_AV1)) {
 				if(imquic_demo_create_video_decoder(loc_extradata ? loc_extradata->buffer : NULL,
@@ -702,7 +726,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				}
 			}
 			gboolean render = (object->delivery != IMQUIC_MOQ_USE_FETCH);
-			imquic_demo_decode_video(object->payload, object->payload_len, keyframe, render);
+			imquic_demo_decode_video(object->payload + skip, object->payload_len - skip, keyframe, render);
 		}
 	}
 	if(object->end_of_stream) {

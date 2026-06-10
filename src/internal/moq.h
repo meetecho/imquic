@@ -286,21 +286,6 @@ typedef struct imquic_moq_setup_options {
 	gboolean unknown;
 } imquic_moq_setup_options;
 
-/*! \brief Helper mode to parse a properties buffer to a GList of imquic_moq_property
- * \note The caller owns the list, and is responsible of freeing it and its content
- * @param version The version of the connection
- * @param properties The buffer containing the properties data
- * @param plen The size of the buffer containing the properties data
- * @returns A GList instance containing a set of imquic_moq_property, if successful, or NULL if no properties were found */
-GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t plen);
-/*! \brief Helper mode to craft a properties buffer out of a GList of imquic_moq_property
- * @param[in] version The version of the connection
- * @param[in] properties The list of properties to serialize
- * @param[out] bytes The buffer to write the properties data to
- * @param[in] blen The size of the buffer to write to
- * @returns How many bytes were written, if successful */
-size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties, uint8_t *bytes, size_t blen);
-
 /*! \brief MoQ FETCH types */
 typedef enum imquic_moq_fetch_type {
 	IMQUIC_MOQ_FETCH_STANDALONE = 0x01,
@@ -1088,6 +1073,8 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
  * @param object_id The object ID to put in the message
  * @param object_status The object status (only added if the payload length is 0)
  * @param priority The publisher priority to put in the message
+ * @param payload_prefix The buffer containing the payload prefix of the object, if needed
+ * @param pplen The size of the payload prefix buffer
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
  * @param properties The buffer containing the properties, if any
@@ -1095,7 +1082,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
 	uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t priority,
-	uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
+	uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM_STATUS message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
  * @param moq The imquic_moq_context generating the message
@@ -1136,6 +1123,8 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
  * @param blen The size of the buffer
  * @param object_id The object ID
  * @param object_status The object status (only added if the payload length is 0)
+ * @param payload_prefix The buffer containing the payload prefix of the object, if needed
+ * @param pplen The size of the payload prefix buffer
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
  * @param properties The buffer containing the properties, if any
@@ -1143,7 +1132,7 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, uint64_t object_id, uint64_t object_status,
-	uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
+	uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add a \c FETCH_HEADER message to a buffer
  * @note This will create a new \c STREAM and send the header: after
  * that, imquic_moq_add_fetch_header_object is used to send
@@ -1165,6 +1154,8 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param object_id The object ID
  * @param priority The publisher priority to put in the message
  * @param object_status The object status (only added if the payload length is 0)
+ * @param payload_prefix The buffer containing the payload prefix of the object, if needed
+ * @param pplen The size of the payload prefix buffer
  * @param payload The buffer containing the payload of the object
  * @param plen The size of the payload buffer
  * @param properties The buffer containing the properties, if any
@@ -1172,7 +1163,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
-	uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
+	uint64_t object_status, uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add padding data to a buffer, formatted as expected
  * for \c PADDING_STREAM or \c PADDING_DATAGRAM
  * @param moq The imquic_moq_context generating the object
