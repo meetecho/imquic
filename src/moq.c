@@ -49,10 +49,6 @@ static void imquic_moq_pending_stream_destroy(imquic_moq_pending_stream *stream)
 }
 static GHashTable *moq_pending_streams = NULL;
 
-/* MoQ's flavour of varint (introduced in v17) */
-static uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length);
-static uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen);
-
 /* Helpers to check and generate GREASE values */
 #define IMQUIC_MOQ_GREASE_BASE	0x7f
 #define IMQUIC_MOQ_GREASE_SUM	0x9D
@@ -5262,7 +5258,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
 
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
 		uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t priority,
-		uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
+		uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_datagram_message_type_str(IMQUIC_MOQ_OBJECT_DATAGRAM, moq->version));
@@ -5289,6 +5285,10 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 	}
 	if(has_prop)
 		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
+	if(payload_prefix != NULL && pplen > 0) {
+		memcpy(&bytes[offset], payload_prefix, pplen);
+		offset += pplen;
+	}
 	if(payload != NULL && plen > 0) {
 		memcpy(&bytes[offset], payload, plen);
 		offset += plen;
@@ -5352,7 +5352,7 @@ size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream
 
 size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 		uint8_t *bytes, size_t blen, uint64_t object_id, uint64_t object_status,
-		uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
+		uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_SUBGROUP_HEADER, moq->version));
@@ -5366,11 +5366,17 @@ size_t imquic_moq_add_subgroup_header_object(imquic_moq_context *moq, imquic_moq
 	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, NULL, NULL, &has_prop, NULL, NULL, NULL, NULL);
 	if(has_prop)
 		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
+	if(payload_prefix == NULL)
+		pplen = 0;
 	if(payload == NULL)
 		plen = 0;
-	offset += imquic_write_moqint(moq->version, plen, &bytes[offset], blen-offset);
-	if(plen == 0)
+	offset += imquic_write_moqint(moq->version, pplen + plen, &bytes[offset], blen-offset);
+	if(pplen == 0 && plen == 0)
 		offset += imquic_write_moqint(moq->version, object_status, &bytes[offset], blen-offset);
+	if(pplen > 0) {
+		memcpy(&bytes[offset], payload_prefix, pplen);
+		offset += pplen;
+	}
 	if(plen > 0) {
 		memcpy(&bytes[offset], payload, plen);
 		offset += plen;
@@ -5391,7 +5397,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
-		uint64_t object_status, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
+		uint64_t object_status, uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_FETCH_HEADER, moq->version));
@@ -5415,11 +5421,17 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 	}
 	if(has_prop)
 		offset += imquic_moq_add_properties(moq, &bytes[offset], blen-offset, properties, prlen, TRUE);
+	if(payload_prefix == NULL)
+		pplen = 0;
 	if(payload == NULL)
 		plen = 0;
-	offset += imquic_write_moqint(moq->version, plen, &bytes[offset], blen-offset);
-	if(plen == 0)
+	offset += imquic_write_moqint(moq->version, pplen + plen, &bytes[offset], blen-offset);
+	if(plen == 0 && pplen == 0)
 		offset += imquic_write_moqint(moq->version, object_status, &bytes[offset], blen-offset);
+	if(pplen > 0) {
+		memcpy(&bytes[offset], payload_prefix, pplen);
+		offset += pplen;
+	}
 	if(plen > 0) {
 		memcpy(&bytes[offset], payload, plen);
 		offset += plen;
@@ -7889,8 +7901,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		if(has_payload) {
 			size_t dg_len = imquic_moq_add_object_datagram(moq, buffer, bufsize,
 				object->request_id, object->track_alias, object->group_id, object->object_id, object->object_status,
-				object->priority, object->payload, object->payload_len,
-				properties, properties_len);
+				object->priority, object->payload_prefix, object->payload_prefix_len,
+				object->payload, object->payload_len, properties, properties_len);
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_object_datagram_created(conn->qlog, object);
 			imquic_connection_send_on_datagram(conn, buffer, dg_len);
@@ -7938,6 +7950,9 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				TRUE,	/* End-of-Group is set */
 				TRUE,	/* We'll add the Publisher Priority property */
 				object->first_of_subgroup);	/* We take this from the object provided by the user */
+			moq_stream->track_alias = object->track_alias;
+			moq_stream->group_id = object->group_id;
+			moq_stream->subgroup_id = object->subgroup_id;
 			moq_stream->priority = 128;	/* FIXME */
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);
@@ -7973,7 +7988,9 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->got_objects = TRUE;
 			moq_stream->last_object_id = object->object_id;
 			shgo_len = imquic_moq_add_subgroup_header_object(moq, moq_stream, buffer, bufsize,
-				object_id, object->object_status, object->payload, object->payload_len,
+				object_id, object->object_status,
+				object->payload_prefix, object->payload_prefix_len,
+				object->payload, object->payload_len,
 				properties, properties_len);
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_subgroup_object_created(conn->qlog, moq_stream->stream_id, object);
@@ -8068,8 +8085,9 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->last_group_id = object->group_id;
 			moq_stream->last_object_id = object->object_id;
 			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize, flags,
-				group_id, object->subgroup_id, object_id, object->priority,
-				object->object_status, object->payload, object->payload_len,
+				group_id, object->subgroup_id, object_id, object->priority, object->object_status,
+				object->payload_prefix, object->payload_prefix_len,
+				object->payload, object->payload_len,
 				properties, properties_len);
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_fetch_object_created(conn->qlog, moq_stream->stream_id, object);
@@ -8126,7 +8144,7 @@ int imquic_moq_send_padding(imquic_connection *conn, size_t padding, gboolean da
 }
 
 /* Reading and writing MoQ's flavour of variable size integers */
-static uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length) {
+uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t blen, uint8_t *length) {
 	if(version <= IMQUIC_MOQ_VERSION_16)
 		return imquic_read_varint(bytes, blen, length);
 	if(length)
@@ -8178,7 +8196,7 @@ done:
 	return res;
 }
 
-static uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen) {
+uint8_t imquic_write_moqint(imquic_moq_version version, uint64_t number, uint8_t *bytes, size_t blen) {
 	if(version <= IMQUIC_MOQ_VERSION_16)
 		return imquic_write_varint(number, bytes, blen);
 	if(blen < 1)

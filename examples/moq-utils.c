@@ -18,6 +18,12 @@ imquic_moq_object *imquic_moq_object_duplicate(imquic_moq_object *object) {
 		return NULL;
 	imquic_moq_object *new_obj = g_malloc(sizeof(imquic_moq_object));
 	memcpy(new_obj, object, sizeof(imquic_moq_object));
+	if(object->payload_prefix_len == 0) {
+		new_obj->payload_prefix = NULL;
+	} else {
+		new_obj->payload_prefix = g_malloc(object->payload_prefix_len);
+		memcpy(new_obj->payload_prefix, object->payload_prefix, object->payload_prefix_len);
+	}
 	if(object->payload_len == 0) {
 		new_obj->payload = NULL;
 	} else {
@@ -77,6 +83,7 @@ GList *imquic_moq_properties_duplicate(GList *properties) {
 /* Helper to destroy a duplicated object */
 void imquic_moq_object_cleanup(imquic_moq_object *object) {
 	if(object) {
+		g_free(object->payload_prefix);
 		g_free(object->payload);
 		g_list_free_full(object->properties, (GDestroyNotify)(imquic_moq_property_cleanup));
 		g_free(object);
