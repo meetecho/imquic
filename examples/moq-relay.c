@@ -41,7 +41,8 @@ static void imquic_demo_handle_signal(int signum) {
 /* Relay state */
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
-static GHashTable *connections = NULL, *publishers = NULL, *subscribers = NULL, *namespaces = NULL;
+static GHashTable *connections = NULL, *publishers = NULL, *subscribers = NULL,
+	*namespaces = NULL, *namespaces_by_prefix = NULL;
 static GList *monitors = NULL;
 static GList *fetches = NULL;
 
@@ -70,6 +71,10 @@ typedef struct imquic_demo_moq_published_namespace {
 static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_create(imquic_demo_moq_publisher *pub,
 	uint64_t request_id, const char *track_namespace, imquic_moq_namespace *tns, gboolean announced);
 static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_published_namespace *annc);
+
+static int imquic_demo_moq_track_namespace(imquic_moq_namespace *tns, imquic_demo_moq_published_namespace *annc);
+static void imquic_demo_moq_notify_about_namespace(imquic_moq_namespace *tns);
+static void imquic_demo_moq_untrack_namespace(imquic_moq_namespace *tns, imquic_demo_moq_published_namespace *annc);
 
 typedef struct imquic_demo_moq_track {
 	imquic_demo_moq_published_namespace *annc;
@@ -189,6 +194,7 @@ static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_publishe
 			g_hash_table_remove(namespaces, annc->track_namespace);
 			g_free(annc->track_namespace);
 		}
+		imquic_demo_moq_untrack_namespace(annc->tns, annc);
 		imquic_moq_namespace_free(annc->tns);
 		if(annc->tracks) {
 			GHashTableIter iter;
@@ -419,6 +425,90 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 	g_list_free(list);
 }
 
+static GList *imquic_demo_get_parents_list(imquic_moq_namespace *tns) {
+	if(tns == NULL)
+		return NULL;
+	GList *list = NULL;
+	char buffer[256];
+	const char *ns = NULL;
+	imquic_moq_namespace *temp = tns, *next = NULL;
+	while(temp != NULL) {
+		next = temp->next;
+		temp->next = NULL;
+		ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
+		if(ns != NULL)
+			list = g_list_prepend(list, g_strdup(ns));
+		temp->next = next;
+		temp = next;
+	}
+	return g_list_reverse(list);
+}
+
+static int imquic_demo_moq_track_namespace(imquic_moq_namespace *tns, imquic_demo_moq_published_namespace *annc) {
+	if(tns == NULL || annc == NULL)
+		return -1;
+	/* We need to put the namespace in the list for all its parents too */
+	GList *list = imquic_demo_get_parents_list(tns), *temp = list;
+	while(temp != NULL) {
+		char *ns = (char *)temp->data;
+		/* Create a new list, or update the existing one */
+		GList *ns_list = g_hash_table_lookup(namespaces_by_prefix, ns);
+		ns_list = g_list_prepend(ns_list, annc);
+		g_hash_table_insert(namespaces_by_prefix, g_strdup(ns), ns_list);
+		temp = temp->next;
+	}
+	g_list_free_full(list, (GDestroyNotify)g_free);
+	return 0;
+}
+
+static void imquic_demo_moq_notify_about_namespace(imquic_moq_namespace *tns) {
+	if(tns == NULL)
+		return;
+	/* We need to notify who's monitoring the parents too */
+	GList *list = imquic_demo_get_parents_list(tns), *temp = list;
+	while(temp != NULL) {
+		char *ns = (char *)temp->data;
+		GList *ns_list = g_hash_table_lookup(namespaces_by_prefix, ns);
+		while(ns_list != NULL) {
+			imquic_demo_moq_published_namespace *annc = (imquic_demo_moq_published_namespace *)ns_list->data;
+			if(annc != NULL) {
+				imquic_demo_alert_monitors(annc, NULL, FALSE);
+				if(annc->tracks) {
+					GHashTableIter iter;
+					gpointer value;
+					g_hash_table_iter_init(&iter, annc->tracks);
+					while(g_hash_table_iter_next(&iter, NULL, &value)) {
+						imquic_demo_moq_track *track = value;
+						imquic_demo_alert_monitors(NULL, track, FALSE);
+					}
+				}
+			}
+			ns_list = ns_list->next;
+		}
+		temp = temp->next;
+	}
+	g_list_free_full(list, (GDestroyNotify)g_free);
+}
+
+static void imquic_demo_moq_untrack_namespace(imquic_moq_namespace *tns, imquic_demo_moq_published_namespace *annc) {
+	if(tns == NULL)
+		return;
+	/* We need to remove the namespace from the list of all its ancestors too */
+	GList *list = imquic_demo_get_parents_list(tns), *temp = list;
+	while(temp != NULL) {
+		char *ns = (char *)temp->data;
+		/* Update the list of namespaces */
+		GList *ns_list = g_hash_table_lookup(namespaces_by_prefix, ns);
+		ns_list = g_list_remove(ns_list, annc);
+		if(ns_list != NULL)
+			g_hash_table_insert(namespaces_by_prefix, g_strdup(ns), ns_list);
+		else
+			g_hash_table_remove(namespaces_by_prefix, ns);
+		temp = temp->next;
+	}
+	g_list_free_full(list, (GDestroyNotify)g_free);
+}
+
 /* Helper function to reorder objects in descending group order */
 static int imquic_demo_reorder_descending(gconstpointer a, gconstpointer b) {
 	imquic_moq_object *oa = (imquic_moq_object *)a;
@@ -507,6 +597,7 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 	g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 	g_hash_table_insert(pub->namespaces_by_id, imquic_uint64_dup(request_id), annc);
 	g_hash_table_insert(namespaces, g_strdup(ns), annc);
+	imquic_demo_moq_track_namespace(tns, annc);
 	/* Check if there's monitors interested in this */
 	imquic_demo_alert_monitors(annc, NULL, FALSE);
 	imquic_mutex_unlock(&mutex);
@@ -537,6 +628,7 @@ static void imquic_demo_incoming_publish_namespace_cancel(imquic_connection *con
 		return;
 	}
 	/* Get rid of it */
+	imquic_demo_moq_untrack_namespace(annc->tns, annc);
 	g_hash_table_remove(namespaces, annc->track_namespace);
 	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
@@ -568,6 +660,7 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t
 	/* Check if there's monitors interested in this */
 	imquic_demo_alert_monitors(annc, NULL, TRUE);
 	/* Get rid of it */
+	imquic_demo_moq_untrack_namespace(annc->tns, annc);
 	g_hash_table_remove(namespaces, annc->track_namespace);
 	if(annc->pub->namespaces)
 		g_hash_table_remove(annc->pub->namespaces, annc->track_namespace);
@@ -608,6 +701,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		annc = imquic_demo_moq_published_namespace_create(pub, 0, ns, tns, FALSE);
 		g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 		g_hash_table_insert(namespaces, g_strdup(ns), annc);
+		imquic_demo_moq_track_namespace(tns, annc);
 	}
 	/* We also treat it as if we sent a SUBSCRIBE that got accepted */
 	if(g_hash_table_lookup(annc->tracks, name) != NULL) {
@@ -1209,19 +1303,7 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 	monitors = g_list_prepend(monitors, mon);
 	imquic_moq_accept_subscribe_namespace(conn, request_id, NULL);
 	/* Check if there's events we can push and already tracks we can publish */
-	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
-	if(annc != NULL) {
-		imquic_demo_alert_monitors(annc, NULL, FALSE);
-		if(annc->tracks) {
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, annc->tracks);
-			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				imquic_demo_moq_track *track = value;
-				imquic_demo_alert_monitors(NULL, track, FALSE);
-			}
-		}
-	}
+	imquic_demo_moq_notify_about_namespace(tns);
 	imquic_mutex_unlock(&mutex);
 }
 
@@ -1267,19 +1349,7 @@ static void imquic_demo_incoming_subscribe_tracks(imquic_connection *conn, uint6
 	monitors = g_list_prepend(monitors, mon);
 	imquic_moq_accept_subscribe_tracks(conn, request_id, NULL);
 	/* Check if there's events we can push and already tracks we can publish */
-	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
-	if(annc != NULL) {
-		imquic_demo_alert_monitors(annc, NULL, FALSE);
-		if(annc->tracks) {
-			GHashTableIter iter;
-			gpointer value;
-			g_hash_table_iter_init(&iter, annc->tracks);
-			while(g_hash_table_iter_next(&iter, NULL, &value)) {
-				imquic_demo_moq_track *track = value;
-				imquic_demo_alert_monitors(NULL, track, FALSE);
-			}
-		}
-	}
+	imquic_demo_moq_notify_about_namespace(tns);
 	imquic_mutex_unlock(&mutex);
 }
 
@@ -1768,6 +1838,7 @@ int main(int argc, char *argv[]) {
 	publishers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)imquic_demo_moq_publisher_destroy);
 	subscribers = g_hash_table_new_full(NULL, NULL, NULL, (GDestroyNotify)imquic_demo_moq_subscriber_destroy);
 	namespaces = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+	namespaces_by_prefix = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 
 	/* Start the server */
 	imquic_start_endpoint(server);
@@ -1820,6 +1891,8 @@ done:
 		g_hash_table_unref(subscribers);
 	if(namespaces != NULL)
 		g_hash_table_unref(namespaces);
+	if(namespaces != NULL)
+		g_hash_table_unref(namespaces_by_prefix);
 	g_list_free_full(monitors, (GDestroyNotify)imquic_demo_moq_monitor_destroy);
 	if(ret == 1)
 		demo_options_show_usage();
