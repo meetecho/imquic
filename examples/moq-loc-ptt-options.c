@@ -17,7 +17,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 	GOptionEntry opt_entries[] = {
 		{ "moq-draft-version", 'M', 0, G_OPTION_ARG_STRING, &options->moq_version, "MoQ draft version number to negotiate (default=any)", "<number>|any" },
 		{ "test-grease", '9', 0, G_OPTION_ARG_NONE, &options->test_grease, "If set, will add GREASE to SETUP options (default=no; only available for v17 and beyond)", NULL},
-		{ "track-namespace", 'n', 0, G_OPTION_ARG_STRING_ARRAY, &options->track_namespace, "MoQ track namespace to subscribe to (can be called multiple times to create a tuple; default=none)", "namespace" },
+		{ "name", 'n', 0, G_OPTION_ARG_STRING, &options->name, "Name to use in the push-to-talk demo", "name" },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },
 		{ "remote-host", 'r', 0, G_OPTION_ARG_STRING, &options->remote_host, "QUIC server to connect to (default=none)", "IP" },

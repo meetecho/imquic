@@ -43,6 +43,18 @@ static void imquic_demo_handle_signal(int signum) {
 		exit(1);
 }
 
+/* Audio buffer */
+typedef struct imquic_demo_audio_buffer {
+	uint16_t *samples;
+	size_t num;
+} imquic_demo_audio_buffer;
+static void imquic_demo_audio_buffer_destroy(imquic_demo_audio_buffer *buf) {
+	if(buf == NULL)
+		return;
+	g_free(buf->samples);
+	g_free(buf);
+}
+
 /* Participant instance */
 typedef struct imquic_demo_moq_ptt_participant {
 	imquic_moq_namespace *track_namespace;
@@ -50,6 +62,7 @@ typedef struct imquic_demo_moq_ptt_participant {
 	char *full_name;
 	uint64_t request_id, track_alias;
 	OpusDecoder *audiodec;
+	GAsyncQueue *queue;
 } imquic_demo_moq_ptt_participant;
 static void imquic_demo_moq_ptt_participant_destroy(imquic_demo_moq_ptt_participant *p) {
 	if(p == NULL)
@@ -59,6 +72,8 @@ static void imquic_demo_moq_ptt_participant_destroy(imquic_demo_moq_ptt_particip
 	g_free(p->full_name);
 	if(p->audiodec != NULL)
 		opus_decoder_destroy(p->audiodec);
+	if(p->queue != NULL)
+		g_async_queue_unref(p->queue);
 	g_free(p);
 }
 static imquic_demo_moq_ptt_participant *imquic_demo_moq_ptt_participant_create(imquic_moq_namespace *track_namespace,
@@ -73,6 +88,7 @@ static imquic_demo_moq_ptt_participant *imquic_demo_moq_ptt_participant_create(i
 	p->full_name = g_strdup(full_buffer);
 	p->request_id = request_id;
 	p->track_alias = track_alias;
+	p->queue = g_async_queue_new_full((GDestroyNotify)imquic_demo_audio_buffer_destroy);
 	int opus_error;
 	p->audiodec = opus_decoder_create(48000, 1, &opus_error);
 	if(opus_error != OPUS_OK) {
@@ -91,16 +107,37 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static uint64_t max_request_id = 100, sub_request_id = 0,
 	pub_request_id = 0, pub_track_alias = 0;
-static imquic_moq_namespace sub_namespace[32] = { 0 };
-static char sub_tns_buffer[256];
-static const char *sub_tns = NULL;
+static imquic_moq_namespace pub_namespace[2] = { 0 };
+static imquic_moq_track pub_track = { 0 };
+static char pub_tns_buffer[256], pub_tn_buffer[256];
+static const char *pub_tns = NULL, *pub_tn = NULL;
 static int IMQUIC_LOG_LOCPROP = IMQUIC_LOG_NONE;
+
+typedef enum imquic_demo_state {
+	DEMO_CONNECTING = 0,
+	DEMO_IDLE,
+	DEMO_TALKING,
+} imquic_demo_state;
+static const char *imquic_demo_state_str(imquic_demo_state state) {
+	switch(state) {
+		case DEMO_CONNECTING:
+			return "Connecting to relay...";
+		case DEMO_IDLE:
+			return "Keep SPACE pressed to talk";
+		case DEMO_TALKING:
+			return "Release SPACE to stop talking";
+		default:
+			break;
+	}
+	return NULL;
+};
+static imquic_demo_state state = DEMO_CONNECTING;
 
 /* Global SDL resources */
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static int screen_w = 640, screen_h = 360;
-static SDL_AudioDeviceID dev;
+static SDL_AudioDeviceID recdev, playdev;
 static const char *imquic_demo_sdl_audioformat_str(SDL_AudioFormat format) {
 	switch(format) {
 		case AUDIO_U16SYS:
@@ -117,32 +154,143 @@ static const char *imquic_demo_sdl_audioformat_str(SDL_AudioFormat format) {
 	return NULL;
 }
 
-/* Decoder related stuff */
+/* Audio related stuff */
+static GThread *audio_thread = NULL;
+static OpusEncoder *audioenc = NULL;
+static const int samples = 960;
+static uint32_t want = samples * 2, cached = 0;
+static uint8_t audio[1920], outgoing[500];
+static size_t outlen = sizeof(outgoing);
+static int64_t audio_ts = 0;
+static uint64_t audio_group_id = 0, audio_object_id = 0;
+
 static int imquic_demo_decode_audio(imquic_demo_moq_ptt_participant *p, uint8_t *buffer, size_t length) {
 	if(p == NULL || p->audiodec == NULL)
 		return -1;
 	/* Decode the audio frame */
-	opus_int16 samples[1920];
+	opus_int16 samples[960];
 	int ret = opus_decode(p->audiodec, buffer, length, samples, sizeof(samples), 0);
 	if(ret < 0) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error decoding audio frame: %d (%s)\n",
 			ret, opus_strerror(ret));
 		return -1;
 	}
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "Decoded %zu bytes to %d samples\n", length, ret);
 	/* Queue the audio for later mixing */
-
-	//~ /* Queue the samples for playback */
-	//~ IMQUIC_LOG(IMQUIC_LOG_VERB, "Decoded %zu bytes to %d samples\n", length, ret);
-	//~ Uint32 queued = SDL_GetQueuedAudioSize(dev);
-	//~ IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Have %d chunks available, %"SCNu32" are still queued\n",
-		//~ ret*2, queued);
-	//~ if(queued >= 10000) {
-		//~ IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Too many chunks in queue, clearing\n");
-		//~ SDL_ClearQueuedAudio(dev);
-	//~ }
-	//~ SDL_QueueAudio(dev, (uint8_t *)samples, ret*2);
+	imquic_demo_audio_buffer *buf = g_malloc(sizeof(imquic_demo_audio_buffer));
+	buf->num = ret;
+	buf->samples = g_malloc(buf->num * 2);
+	memcpy((uint8_t *)buf->samples, (uint8_t *)samples, buf->num * 2);
+	g_async_queue_push(p->queue, buf);
 	return 0;
+}
 
+static void *imquic_demo_audio_thread(void *user_data) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Starting audio thread\n");
+
+	int64_t now = g_get_monotonic_time(), before = now;
+	uint16_t mix[960];
+	uint32_t queued = 0;
+
+	while(!g_atomic_int_get(&stop)) {
+		/* FIXME Loop */
+		now = g_get_monotonic_time();
+		if(now - before < 18000) {
+			g_usleep(5000);
+			continue;
+		}
+		before += 20000;
+		/* Create a mix */
+		memset(mix, 0, sizeof(mix));
+		GHashTableIter iter;
+		gpointer value;
+		imquic_mutex_lock(&mutex);
+		g_hash_table_iter_init(&iter, participants);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			imquic_demo_moq_ptt_participant *p = (imquic_demo_moq_ptt_participant *)value;
+			imquic_demo_audio_buffer *buf = g_async_queue_try_pop(p->queue);
+			if(buf != NULL) {
+				/* FIXME We should make sure the buffer doesn't contain
+				 * more samples than the mix is configured to work with */
+				uint i = 0;
+				for(i=0; i<buf->num; i++)
+					mix[i] += buf->samples[i];
+				imquic_demo_audio_buffer_destroy(buf);
+			}
+		}
+		imquic_mutex_unlock(&mutex);
+		/* Play the mix */
+		queued = SDL_GetQueuedAudioSize(playdev);
+		if(queued >= 10000) {
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Too many chunks in queue, clearing\n");
+			SDL_ClearQueuedAudio(playdev);
+		}
+		SDL_QueueAudio(playdev, mix, sizeof(mix));
+	}
+
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Leaving audio thread\n");
+	return NULL;
+}
+
+static int imquic_demo_send_audio(void) {
+	if(recdev == 0)
+		return 0;
+	uint32_t avail = SDL_GetQueuedAudioSize(recdev);
+	if(avail == 0)
+		return 0;
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "%"SCNu32" audio chunks available\n", avail);
+
+	if((cached + avail) >= want)
+		avail = want - cached;
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Dequeueing %"SCNu32" chunks (%d samples, current index %"SCNu32")\n",
+		avail, avail/2, cached);
+	uint32_t got = SDL_DequeueAudio(recdev, audio + cached, avail);
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- -- Got %"SCNu32"/%"SCNu32" chunks (%"SCNu32" samples)\n", got, avail, got/2);
+	cached += got;
+	if(cached == want) {
+		/* We have enough to send, encode the audio */
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- %"SCNu32" chunks cached, encoding to Opus\n", cached);
+		int length = opus_encode(audioenc, (opus_int16 *)audio, cached/2, outgoing, outlen);
+		cached = 0;
+		if(length < 0) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error encoding the Opus frame: %d (%s)\n", length, opus_strerror(length));
+			audio_ts += 20000;	/* FIXME */
+			return 0;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- -- Encoded samples to %d bytes\n", length);
+		/* Write the LOC info first as properties */
+		GList *props = NULL;
+		imquic_moq_property timescale = { 0 };
+		timescale.id = IMQUIC_MOQ_LOC_TIMESCALE;
+		timescale.value.number = G_USEC_PER_SEC;
+		props = g_list_append(props, &timescale);
+		imquic_moq_property timestamp = { 0 };
+		timestamp.id = IMQUIC_MOQ_LOC_TIMESTAMP;
+		timestamp.value.number = audio_ts;
+		props = g_list_append(props, &timestamp);
+		audio_ts += 20000;	/* FIXME */
+		/* FIXME We currently don't support LOC private properties, so
+		 * we always send a 0x00 as a payload prefix to signal it's empty */
+		uint8_t loc_pvt_props = 0;
+		/* Prepare a MoQ object and send it */
+		imquic_moq_object object = {
+			.request_id = pub_request_id,
+			.track_alias = pub_track_alias,
+			.group_id = audio_group_id++,
+			.subgroup_id = 0,	/* FIXME */
+			.object_id = audio_object_id,
+			.payload_prefix = &loc_pvt_props,
+			.payload_prefix_len = 1,
+			.payload = outgoing,
+			.payload_len = length,
+			.properties = props,
+			.delivery = IMQUIC_MOQ_USE_DATAGRAM
+		};
+		imquic_moq_send_object(moq_conn, &object);
+		g_list_free(props);
+	}
+	/* Done */
+	return 0;
 }
 
 /* imquic callbacks */
@@ -174,20 +322,24 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	imquic_moq_request_parameters_init_defaults(&params);
 	params.forward_set = TRUE;
 	params.forward = TRUE;
+	imquic_moq_namespace *bak = pub_namespace[0].next;
+	pub_namespace[0].next = NULL;
 	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
 		/* Older versions of MoQ used SUBSCRIBE_NAMESPACE to get PUBLISH too */
 		sub_request_id = imquic_moq_get_next_request_id(conn);
-		imquic_moq_subscribe_namespace(conn, sub_request_id, sub_namespace, IMQUIC_MOQ_WANT_PUBLISH, &params);
+		imquic_moq_subscribe_namespace(conn, sub_request_id, pub_namespace, IMQUIC_MOQ_WANT_PUBLISH, &params);
 	} else {
 		/* Use SUBSCRIBE_TRACKS for PUBLISH */
 		sub_request_id = imquic_moq_get_next_request_id(conn);
-		imquic_moq_subscribe_tracks(conn, sub_request_id, sub_namespace, &params);
+		imquic_moq_subscribe_tracks(conn, sub_request_id, pub_namespace, &params);
 	}
+	pub_namespace[0].next = bak;
 }
 
 static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' accepted, waiting for PUBLISH requests\n",
 		imquic_get_connection_name(conn), request_id);
+	state = DEMO_IDLE;
 }
 
 static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
@@ -201,6 +353,7 @@ static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint6
 static void imquic_demo_subscribe_tracks_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription to namespace '%"SCNu64"' tracks accepted, waiting for PUBLISH requests\n",
 		imquic_get_connection_name(conn), request_id);
+	state = DEMO_IDLE;
 }
 
 static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
@@ -214,7 +367,31 @@ static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t
 static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publish '%"SCNu64"' accepted\n",
 		imquic_get_connection_name(conn), request_id);
-	/* TODO Start sending objects */
+	/* Create audio encoder */
+	int opus_error;
+	audioenc = opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &opus_error);
+	if(opus_error != OPUS_OK) {
+		/* Error creating audio decoder */
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening audio encoder\n");
+		return;
+	}
+	/* Start capturing and sending audio */
+	SDL_AudioSpec want, have;
+	SDL_zero(want);
+	want.freq = 48000;
+	want.format = AUDIO_S16SYS;
+	want.channels = 1;
+	want.samples = 960;
+	recdev = SDL_OpenAudioDevice(NULL, 1, &want, &have, 0);
+	if(!recdev) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "Error opening recording audio device: %s\n", SDL_GetError());
+		opus_encoder_destroy(audioenc);
+		audioenc = NULL;
+		return;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Opened recording audio device %d: %"SCNu16", %"SCNu8" channels, %s, %"SCNu16" samples\n",
+		recdev, have.freq, have.channels, imquic_demo_sdl_audioformat_str(have.format), have.samples);
+	SDL_PauseAudioDevice(recdev, 0);
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id,
@@ -393,6 +570,36 @@ static int imquic_demo_handle_input(void) {
 			/* Close the application */
 			g_atomic_int_set(&stop, 1);
 			break;
+		} else if(state == DEMO_IDLE && e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_SPACE) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "SPACE pressed, sending PUBLISH\n");
+			/* Reset the publisher state */
+			cached = 0;
+			audio_ts = 0;
+			audio_group_id = 0;
+			audio_object_id = 0;
+			/* Send a PUBLISH */
+			imquic_moq_request_parameters params;
+			imquic_moq_request_parameters_init_defaults(&params);
+			params.group_order_set = TRUE;
+			params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+			params.forward_set = TRUE;
+			params.forward = TRUE;
+			pub_request_id = imquic_moq_get_next_request_id(moq_conn);
+			imquic_moq_publish(moq_conn, pub_request_id, &pub_namespace[0], &pub_track, pub_track_alias, &params, NULL);
+			state = DEMO_TALKING;
+		} else if(state == DEMO_TALKING && e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_SPACE) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "SPACE released, sending PUBLISH_DONE\n");
+			/* Stop publishing */
+			if(recdev > 0)
+				SDL_CloseAudioDevice(recdev);
+			recdev = 0;
+			if(audioenc != NULL)
+				opus_encoder_destroy(audioenc);
+			audioenc = NULL;
+			imquic_moq_publish_done(moq_conn, pub_request_id, IMQUIC_MOQ_PUBDONE_TRACK_ENDED, "Done talking");
+			pub_request_id = 0;
+			pub_track_alias++;
+			state = DEMO_IDLE;
 		}
 	}
 	/* Done */
@@ -404,7 +611,6 @@ static float scale = 2.0;
 static int imquic_demo_render(void) {
 	if(g_atomic_int_get(&stop))
 		return -1;
-	SDL_Rect rect = { 0 };
 	uint32_t ticks = SDL_GetTicks();
 	if(last_tick == 0)
 		last_tick = ticks;
@@ -416,7 +622,11 @@ static int imquic_demo_render(void) {
 		int x = 0, y = 0;
 		char buffer[100];
 		size_t blen = sizeof(buffer);
-		monogram_write(renderer, "Hello, this is a test...", x, y, scale, screen_w, screen_h);
+		g_snprintf(buffer, blen, "[[%s]]", pub_tns);
+		monogram_write(renderer, buffer, x, y, scale, screen_w, screen_h);
+		y += (MONOGRAM_GLYPH_HEIGHT * scale);
+		monogram_write(renderer, imquic_demo_state_str(state), x, y, scale, screen_w, screen_h);
+		y += (MONOGRAM_GLYPH_HEIGHT * scale);
 		y += (MONOGRAM_GLYPH_HEIGHT * scale);
 		/* Write info on all active participants */
 		GHashTableIter iter;
@@ -433,7 +643,6 @@ static int imquic_demo_render(void) {
 		/* Render to the screen */
 		SDL_RenderPresent(renderer);
 	}
-	SDL_Delay(10);
 	/* Done */
 	return 0;
 }
@@ -507,27 +716,29 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(options.track_namespace == NULL || options.track_namespace[0] == NULL) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track namespace(s)\n");
+	if(options.name == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing name\n");
 		ret = 1;
 		goto done;
 	}
-	int i = 0;
-	while(options.track_namespace[i] != NULL) {
-		const char *track_namespace = options.track_namespace[i];
-		sub_namespace[i].buffer = (uint8_t *)track_namespace;
-		sub_namespace[i].length = strlen(track_namespace);
-		sub_namespace[i].next = (options.track_namespace[i+1] != NULL) ? &sub_namespace[i+1] : NULL;
-		i++;
-	}
+	pub_namespace[0].buffer = (uint8_t *)"push2talk";
+	pub_namespace[0].length = strlen("push2talk");
+	pub_namespace[0].next = &pub_namespace[1];
+	pub_namespace[1].buffer = (uint8_t *)options.name;
+	pub_namespace[1].length = strlen(options.name);
+	pub_namespace[1].next = NULL;
 	uint64_t tns_num = 0;
-	if(!imquic_moq_namespace_is_valid(&sub_namespace[0], TRUE, &tns_num)) {
+	if(!imquic_moq_namespace_is_valid(&pub_namespace[0], TRUE, &tns_num)) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid track namespace\n");
 		ret = 1;
 		goto done;
 	}
-	sub_tns = imquic_moq_namespace_str(sub_namespace, sub_tns_buffer, sizeof(sub_tns_buffer), TRUE);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", sub_tns, tns_num);
+	pub_tns = imquic_moq_namespace_str(pub_namespace, pub_tns_buffer, sizeof(pub_tns_buffer), TRUE);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", pub_tns, tns_num);
+	pub_track.buffer = (uint8_t *)"audio";
+	pub_track.length = strlen("audio");
+	pub_tn = imquic_moq_track_str(&pub_track, pub_tn_buffer, sizeof(pub_tn_buffer));
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using track name '%s'\n", pub_tn);
 
 	/* Participants table */
 	participants_by_reqid = g_hash_table_new_full(g_int64_hash, g_int64_equal,
@@ -569,7 +780,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* Create a client endpoint */
-	imquic_server *client = imquic_create_moq_client("moq-loc-recv",
+	imquic_server *client = imquic_create_moq_client("moq-loc-ptt",
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
@@ -632,7 +843,7 @@ int main(int argc, char *argv[]) {
 	imquic_start_endpoint(client);
 
 	/* Create a window */
-	window = SDL_CreateWindow("imquic-moq-loc-recv", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+	window = SDL_CreateWindow("imquic-moq-loc-ptt", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 		screen_w, screen_h, SDL_WINDOW_SHOWN);
 	if(window == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error creating window: %s\n", SDL_GetError());
@@ -654,17 +865,30 @@ int main(int argc, char *argv[]) {
 	want.format = AUDIO_S16SYS;
 	want.channels = 1;
 	want.samples = 960;
-	dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-	if(!dev) {
-		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error opening audio device: %s\n", SDL_GetError());
+	playdev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+	if(!playdev) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error opening playback audio device: %s\n", SDL_GetError());
 		goto done;
 	}
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "Opened audio device %d: %"SCNu16", %"SCNu8" channels, %s, %"SCNu16" samples\n",
-		dev, have.freq, have.channels, imquic_demo_sdl_audioformat_str(have.format), have.samples);
-	SDL_PauseAudioDevice(dev, 0);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "Opened playback audio device %d: %"SCNu16", %"SCNu8" channels, %s, %"SCNu16" samples\n",
+		playdev, have.freq, have.channels, imquic_demo_sdl_audioformat_str(have.format), have.samples);
+	SDL_PauseAudioDevice(playdev, 0);
+	/* Audio thread */
+	GError *error = NULL;
+	audio_thread = g_thread_try_new("loc-ptt", &imquic_demo_audio_thread, NULL, &error);
+	if(error != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Got error %d (%s) trying to start audio thread\n",
+			error->code, error->message ? error->message : "??");
+		goto done;
+	}
 
 	/* Loop */
 	while(!g_atomic_int_get(&stop)) {
+		/* Check if we're capturing and sending audio */
+		if(recdev > 0 && imquic_demo_send_audio() < 0) {
+			g_atomic_int_set(&stop, 1);
+			break;
+		}
 		/* Handle the user input */
 		if(imquic_demo_handle_input() < 0) {
 			g_atomic_int_set(&stop, 1);
@@ -675,7 +899,12 @@ int main(int argc, char *argv[]) {
 			g_atomic_int_set(&stop, 1);
 			break;
 		}
+		/* Sleep a bit */
+		SDL_Delay(10);
 	}
+
+	if(state == DEMO_TALKING)
+		imquic_moq_publish_done(moq_conn, pub_request_id, IMQUIC_MOQ_PUBDONE_GOING_AWAY, "Closing app");
 
 	/* Shutdown the client */
 	imquic_shutdown_endpoint(client);
@@ -689,6 +918,12 @@ done:
 	/* Participants */
 	if(participants != NULL)
 		g_hash_table_unref(participants);
+
+	/* Audio */
+	if(audio_thread != NULL)
+		g_thread_join(audio_thread);
+	if(audioenc != NULL)
+		opus_encoder_destroy(audioenc);
 
 	/* SDL stuff */
 	monogram_unload_font();

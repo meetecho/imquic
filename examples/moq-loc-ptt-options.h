@@ -19,7 +19,7 @@
 typedef struct demo_options {
 	char *moq_version;
 	gboolean test_grease;
-	const char **track_namespace;
+	const char *name;
 	const char *ip;
 	int port;
 	const char *remote_host;
