@@ -394,7 +394,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			/* Also send a PUBLISH to this interested subscriber: we create
 			 * a subscription to track it and relay the media when ready */
 			g_hash_table_insert(mon->known_tracks, track, track);
-			imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
+			imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, mon->conn);
 			if(sub == NULL) {
 				/* Create a new subscriber instance */
 				sub = imquic_demo_moq_subscriber_create(mon->conn);

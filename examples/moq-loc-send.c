@@ -1033,7 +1033,7 @@ int main(int argc, char *argv[]) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use track_alias=%"SCNu64"\n",
 		catalog_track_alias);
 
-	if(options.audio_track_name == NULL || options.video_track_name == NULL) {
+	if(options.audio_track_name == NULL && options.video_track_name == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track name(s)\n");
 		ret = 1;
 		goto done;
