@@ -127,6 +127,14 @@ void imquic_set_log_level(int level) {
 	imquic_log_level = level;
 }
 
+void imquic_set_log_colors(gboolean enabled) {
+	imquic_log_colors = enabled;
+}
+
+void imquic_set_log_timestamps(gboolean enabled) {
+	imquic_log_timestamps = enabled;
+}
+
 void imquic_set_log_function(void (* log_cb)(int level, const char *format, ...)) {
 	imquic_log_function = log_cb;
 }
