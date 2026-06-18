@@ -238,6 +238,12 @@ const char *imquic_get_build_sha(void);
  * @note See debug.h for valid levels. The default is IMQUIC_LOG_VERB (5)
  * @param level Debugging level to use */
 void imquic_set_log_level(int level);
+/*! \brief Enable/disable the use of colors in logging
+ * @param enabled Whether the feature should be enabled or disabled */
+void imquic_set_log_colors(gboolean enabled);
+/*! \brief Enable/disable the use of timestamps in logging
+ * @param enabled Whether the feature should be enabled or disabled */
+void imquic_set_log_timestamps(gboolean enabled);
 /*! \brief Set the log callback function for the library: if missing or
  * NULL, the library will print its log lines directly on standard output
  * @param log_cb Log callback function to configure */
