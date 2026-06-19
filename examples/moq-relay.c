@@ -107,7 +107,7 @@ typedef struct imquic_demo_moq_subscription {
 	imquic_demo_moq_track *track;
 	uint64_t request_id;
 	uint64_t track_alias;
-	gboolean active;
+	gboolean active, done;
 	imquic_moq_location sub_start, sub_end;
 	uint64_t last_group_id, last_subgroup_id;
 	gboolean fetch;
@@ -233,8 +233,10 @@ static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 		while(temp) {
 			imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 			if(s) {
-				if(t->published && s->sub)
-					imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_PUBDONE_TRACK_ENDED, "Publisher disconnected");
+				if(t->published && s->sub && !s->done) {
+					s->done = TRUE;
+					imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_PUBDONE_TRACK_ENDED, "Publisher done");
+				}
 				s->track = NULL;
 				if(s->fetch) {
 					g_list_free(s->objects);
@@ -684,24 +686,30 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(name == NULL || strlen(name) == 0)
 		name = "temp";
+	/* Find the publisher from this connection */
+	imquic_mutex_lock(&mutex);
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub == NULL) {
+		/* Create a new one */
+		pub = imquic_demo_moq_publisher_create(conn);
+		g_hash_table_insert(publishers, conn, pub);
+	}
 	/* FIXME To handle the track, we create a new namespace locally if it doesn't
 	 * exist, but starting from v16 we also make sure not to treat this PUBLISH as a
 	 * PUBLISH_NAMESPACE for that namespace, as the draft says we shouldn't do that */
-	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
 	if(annc == NULL) {
-		/* Find the publisher from this connection */
-		imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
-		if(pub == NULL) {
-			/* Create a new one */
-			pub = imquic_demo_moq_publisher_create(conn);
-			g_hash_table_insert(publishers, conn, pub);
-		}
 		/* Let's keep track of it */
 		annc = imquic_demo_moq_published_namespace_create(pub, 0, ns, tns, FALSE);
 		g_hash_table_insert(pub->namespaces, g_strdup(ns), annc);
 		g_hash_table_insert(namespaces, g_strdup(ns), annc);
 		imquic_demo_moq_track_namespace(tns, annc);
+	}
+	if(annc->pub != pub) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Publisher doesn't match announcement\n", name);
+		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Publisher doesn't match announcement", 0, NULL);
+		return;
 	}
 	/* We also treat it as if we sent a SUBSCRIBE that got accepted */
 	if(g_hash_table_lookup(annc->tracks, name) != NULL) {
@@ -725,8 +733,8 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	imquic_mutex_unlock(&mutex);
 	/* Done */
 	imquic_moq_request_parameters rparams = *parameters;
-	rparams.subscriber_priority_set = TRUE;
-	rparams.subscriber_priority = 128;
+	if(rparams.subscriber_priority_set)
+		rparams.subscriber_priority = 128;
 	imquic_moq_accept_publish(conn, request_id, &rparams);
 }
 
@@ -1247,8 +1255,10 @@ static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_i
 	GList *temp = track->subscriptions;
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
-		if(s && s->sub && s->sub->conn)
+		if(s && s->sub && s->sub->conn && !s->done) {
+			s->done = TRUE;
 			imquic_moq_publish_done(s->sub->conn, s->request_id, status_code, reason);
+		}
 		temp = temp->next;
 	}
 	imquic_mutex_unlock(&track->mutex);
@@ -1615,7 +1625,10 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Reached the end group, the subscription is done\n",
 					imquic_get_connection_name(s->sub->conn));
 				/* Send a PUBLISH_DONE */
-				imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				if(!s->done) {
+					s->done = TRUE;
+					imquic_moq_publish_done(s->sub->conn, s->request_id, IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED, "Reached the end group");
+				}
 				/* Get rid of this subscription */
 				done = g_list_prepend(done, s);
 				temp = temp->next;
