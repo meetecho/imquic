@@ -9,6 +9,7 @@ imquic-moq-relay
 imquic-moq-interop-test
 imquic-moq-loc-send
 imquic-moq-loc-recv
+imquic-moq-loc-ptt
 
 version.c
 docs/html/

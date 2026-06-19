@@ -139,7 +139,7 @@ AC_ARG_ENABLE([moq-examples],
                                   libavdevice
                                   libswscale
                                   opus
-                                  sdl2
+                                  SDL2_image
                                  ],
                                  [enable_loc_demos=yes],
                                  [AC_MSG_WARN([Some dependencies not met, LOC demos will not be built])])
