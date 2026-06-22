@@ -815,12 +815,13 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		return;
 	}
 	/* Audio or video */
-	if(strcasecmp(name, audio_tn) && strcasecmp(name, video_tn)) {
+	gboolean audio = (options.audio_track_name != NULL && !strcasecmp(name, audio_tn));
+	gboolean video = (options.video_track_name != NULL && !strcasecmp(name, video_tn));
+	if(!audio && !video) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown track\n", imquic_get_connection_name(conn));
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Unknown track", 0, NULL);
 		return;
 	}
-	gboolean video = (options.video_track_name != NULL && !strcasecmp(name, video_tn));
 	if(options.publish || (!video && g_atomic_int_get(&audio_started)) || (video && g_atomic_int_get(&video_started))) {
 		/* FIXME In this demo, we only allow one subscriber at a time,
 		 * as we expect a relay to mediate between us and subscribers */
