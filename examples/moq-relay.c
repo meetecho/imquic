@@ -124,7 +124,7 @@ typedef struct imquic_demo_moq_monitor {
 	imquic_connection *conn;
 	imquic_moq_namespace *tns;
 	imquic_moq_subscribe_namespace_options subscribe_options;
-	gboolean published;
+	GHashTable *published;
 	GHashTable *known_tracks;
 	gboolean forward;
 	char *ns;
@@ -323,6 +323,7 @@ static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection
 	mon->subscribe_options = subscribe_options;
 	mon->forward = TRUE;
 	mon->tns = imquic_moq_namespace_duplicate(tns);
+	mon->published = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
 	mon->known_tracks = g_hash_table_new(NULL, NULL);
 	return mon;
 }
@@ -331,6 +332,7 @@ static void imquic_demo_moq_monitor_destroy(imquic_demo_moq_monitor *mon) {
 	if(mon) {
 		g_free(mon->ns);
 		imquic_moq_namespace_free(mon->tns);
+		g_hash_table_destroy(mon->published);
 		g_hash_table_destroy(mon->known_tracks);
 		g_free(mon);
 	}
@@ -361,23 +363,33 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 	GList *list = imquic_demo_match_monitors(conn, tns);
 	if(list == NULL)
 		return;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace matches %d monitors\n",
-		imquic_get_connection_name(conn), g_list_length(list));
+	if(track == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s namespace '%s' matches %d monitors\n",
+			imquic_get_connection_name(conn), (done ? "Done" : "New"),
+			annc->track_namespace, g_list_length(list));
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s track '%s--%s' matches %d monitors\n",
+			imquic_get_connection_name(conn), (done ? "Done" : "New"),
+			annc->track_namespace, track->track_name, g_list_length(list));
+	}
 	GList *temp = list;
 	imquic_demo_moq_monitor *mon = NULL;
 	while(temp) {
 		mon = (imquic_demo_moq_monitor *)temp->data;
 		if(mon->conn) {
+			gboolean published = GPOINTER_TO_UINT(g_hash_table_lookup(mon->published, annc->track_namespace));
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "mon=%"SCNu64" (pub=%d), anncd=%d, opts=%d\n",
+				mon->request_id, published, annc->announced, mon->subscribe_options);
 			if(annc->announced && (mon->subscribe_options == IMQUIC_MOQ_WANT_NAMESPACE || mon->subscribe_options == IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE)) {
 				/* The subscriber wants to be notified about new namespaces */
-				if(!done && !mon->published) {
+				if(!done && !published) {
 					/* Send a NAMESPACE: we pass the full track namespace,
 					 * the stack will automatically get the suffix for us */
-					mon->published = TRUE;
+					g_hash_table_insert(mon->published, g_strdup(annc->track_namespace), GUINT_TO_POINTER(1));
 					imquic_moq_notify_namespace(mon->conn, mon->request_id, tns);
 				} else if(done && mon->published) {
 					/* Send a PUBLISH_NAMESPACE_DONE or a NAMESPACE_DONE, depending on the version */
-					mon->published = FALSE;
+					g_hash_table_remove(mon->published, annc->track_namespace);
 					/* Send a NAMESPACE_DONE: we pass the full track namespace,
 					 * the stack will automatically get the suffix for us */
 					imquic_moq_notify_namespace_done(mon->conn, mon->request_id, tns);
@@ -1170,7 +1182,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 			return;
 		}
 		/* Clean up the previous info */
-		mon->published = FALSE;
+		g_hash_table_remove_all(mon->published);
 		g_hash_table_remove_all(mon->known_tracks);
 		if(parameters->forward_set)
 			mon->forward = parameters->forward;
