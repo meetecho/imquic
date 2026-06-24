@@ -986,12 +986,14 @@ const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_t
 		case IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER:
 			return "GROUP_ORDER";
 		case IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER:
+		case IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER_MOQTAIL:
 			return "SUBSCRIPTION_FILTER";
 		case IMQUIC_MOQ_REQUEST_PARAM_EXPIRES:
 			return "EXPIRES";
 		case IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT:
 			return "LARGEST_OBJECT";
 		case IMQUIC_MOQ_REQUEST_PARAM_FORWARD:
+		case IMQUIC_MOQ_REQUEST_PARAM_FORWARD_MOQTAIL:
 			return "FORWARD";
 		case IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST:
 			return "NEW_GROUP_REQUEST";
@@ -5819,7 +5821,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64" (%s)\n",
 			imquic_get_connection_name(moq->conn), group_order, imquic_moq_group_order_str(group_order));
 		len = length;
-	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER) {
+	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER || type == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER_MOQTAIL) {
 		uint8_t *tmp = &bytes[offset];
 		size_t toffset = 0, tlen = len;
 		params->subscription_filter.type = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
@@ -5872,7 +5874,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		params->largest_object_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64" / %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->largest_object.group, params->largest_object.object);
-	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_FORWARD) {
+	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_FORWARD || type == IMQUIC_MOQ_REQUEST_PARAM_FORWARD_MOQTAIL) {
 		uint64_t forward = 0;
 		if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 			forward = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);

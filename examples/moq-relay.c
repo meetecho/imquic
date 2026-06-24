@@ -378,8 +378,6 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 		mon = (imquic_demo_moq_monitor *)temp->data;
 		if(mon->conn) {
 			gboolean published = GPOINTER_TO_UINT(g_hash_table_lookup(mon->published, annc->track_namespace));
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "mon=%"SCNu64" (pub=%d), anncd=%d, opts=%d\n",
-				mon->request_id, published, annc->announced, mon->subscribe_options);
 			if(annc->announced && (mon->subscribe_options == IMQUIC_MOQ_WANT_NAMESPACE || mon->subscribe_options == IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE)) {
 				/* The subscriber wants to be notified about new namespaces */
 				if(!done && !published) {
@@ -1028,6 +1026,32 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			rparams.largest_object = s->sub_start;
 		}
 		imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, track->properties);
+		/* FIXME Check if the provided filter is NextGroupStart, and if so,
+		 * if this track advertised DYNAMIC_GROUPS: in that case, we send a
+		 * new REQUEST_UPDATE up to the publisher with NEW_GROUP_REQUEST */
+		if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START && largest != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a NextGroupStart filter\n",
+				imquic_get_connection_name(conn));
+			gboolean new_group_request = FALSE;
+			GList *temp = s->track->properties;
+			while(temp) {
+				imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+				if(prop->id == IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS && prop->value.number == 1) {
+					new_group_request = TRUE;
+					break;
+				}
+				temp = temp->next;
+			}
+			if(new_group_request) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with NEW_GROUP_REQUEST\n",
+					imquic_get_connection_name(annc->pub->conn));
+				imquic_moq_request_parameters rparams = { 0 };
+				rparams.new_group_request_set = TRUE;
+				rparams.new_group_request = largest->group_id + 1;
+				uint64_t update_request_id = imquic_moq_get_next_request_id(annc->pub->conn);
+				imquic_moq_update_request(annc->pub->conn, update_request_id, s->track->request_id, &rparams);
+			}
+		}
 	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
 	if(new_track) {
@@ -1239,7 +1263,33 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		rparams.forward_set = TRUE;
 		rparams.forward = parameters->forward;
 	}
-	/* Send an acknowledgement back (only supported if we're on v15 or beyond) */
+	/* FIXME Check if the request contains a NEW_GROUP_REQUEST, and if so,
+	 * if this track advertised DYNAMIC_GROUPS: in that case, we send a
+	 * new REQUEST_UPDATE up to the publisher just with that property */
+	if(parameters->new_group_request_set && parameters->new_group_request && s->track != NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a NEW_GROUP_REQUEST\n",
+			imquic_get_connection_name(conn));
+		gboolean new_group_request = FALSE;
+		GList *temp = s->track->properties;
+		while(temp) {
+			imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+			if(prop->id == IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS && prop->value.number == 1) {
+				new_group_request = TRUE;
+				break;
+			}
+			temp = temp->next;
+		}
+		if(new_group_request && s->track->annc != NULL && s->track->annc->pub != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with NEW_GROUP_REQUEST\n",
+				imquic_get_connection_name(s->track->annc->pub->conn));
+			imquic_moq_request_parameters rparams = { 0 };
+			rparams.new_group_request_set = TRUE;
+			rparams.new_group_request = 1;
+			uint64_t update_request_id = imquic_moq_get_next_request_id(s->track->annc->pub->conn);
+			imquic_moq_update_request(s->track->annc->pub->conn, update_request_id, s->track->request_id, &rparams);
+		}
+	}
+	/* Send an acknowledgement back */
 	imquic_moq_accept_request_update(conn, request_id, &rparams);
 	imquic_mutex_unlock(&mutex);
 }
