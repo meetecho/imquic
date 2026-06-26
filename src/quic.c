@@ -281,12 +281,11 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 				endpoint->qlog_http3, endpoint->qlog_roq, endpoint->qlog_roq_packets,
 				endpoint->qlog_moq, endpoint->qlog_moq_messages, endpoint->qlog_moq_objects);
 		}
-		const char *alpn = picoquic_tls_get_negotiated_alpn(pconn);
+		conn->chosen_alpn = g_strdup(picoquic_tls_get_negotiated_alpn(pconn));
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection established (ALPN=%s)\n",
-			name, alpn);
+			name, conn->chosen_alpn);
 		conn->alpn_negotiated = TRUE;
-		conn->chosen_alpn = g_strdup(alpn);
-		if(endpoint->webtransport && !strcasecmp(alpn, "h3"))
+		if(endpoint->webtransport && !strcasecmp(conn->chosen_alpn, "h3"))
 			conn->http3 = imquic_http3_connection_create(conn, endpoint->wt_protocols);
 		if(conn->http3 != NULL) {
 			if(conn->is_server) {
