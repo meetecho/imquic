@@ -676,13 +676,13 @@ int main(int argc, char *argv[]) {
 		IMQUIC_LOG_LOCPROP = IMQUIC_LOG_INFO;
 
 	/* Initialize SDL backends */
+	int ret = 0;
 	if(SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Error initializing SDL2: %s\n", SDL_GetError());
 		goto done;
 	}
 
 	/* Parse the command line arguments*/
-	int ret = 0;
 	if(options.remote_host == NULL || options.remote_port == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid QUIC server address\n");
 		ret = 1;
