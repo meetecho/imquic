@@ -240,14 +240,8 @@ typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT = 0x9,
 	IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT = 0x0A,	/* Added in v18 */
 	IMQUIC_MOQ_REQUEST_PARAM_FORWARD = 0x10,
-		/* FIXME Hack to decode what Moqtail sends in SUBSCRIBE, since
-		 * they're not delta-encoding parameter types yet */
-		IMQUIC_MOQ_REQUEST_PARAM_FORWARD_MOQTAIL = 0x30,
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY = 0x20,
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER = 0x21,
-		/* FIXME Hack to decode what Moqtail sends in SUBSCRIBE, since
-		 * they're not delta-encoding parameter types yet */
-		IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER_MOQTAIL = 0x51,
 	IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER = 0x22,
 	IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST = 0x32,
 	IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX = 0x34,	/* Added in v18 */
