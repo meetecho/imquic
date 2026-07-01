@@ -269,7 +269,7 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 	} else if(fin_or_event == picoquic_callback_almost_ready) {
 		/* A connection was established for a specific ALPN */
 		picoquic_connection_id_t initial_cid = picoquic_get_initial_cnxid(pconn);
-		if(endpoint->is_server && conn == NULL) {
+		if(endpoint->is_server) {
 			/* New connection */
 			conn = imquic_connection_create(endpoint, pconn);
 		}
@@ -393,6 +393,7 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 			}
 			g_atomic_int_set(&conn->closed, 1);
 			imquic_connection_notify_gone(conn, error_code, reason);
+			imquic_network_endpoint_remove_connection(endpoint, conn, TRUE);
 		}
 	}
 	imquic_quic_next_step(endpoint);

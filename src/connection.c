@@ -83,7 +83,8 @@ imquic_connection *imquic_connection_create(imquic_network_endpoint *socket, pic
 	/* FIXME We're assuming an idle timeout of 30s, which is the default */
 	picoquic_enable_keep_alive(conn->piconn, 15 * G_USEC_PER_SEC);
 	imquic_mutex_lock(&socket->mutex);
-	uint64_t id = ++socket->conns_num;
+	socket->conns_num++;
+	uint64_t id = socket->conns_num;
 	imquic_mutex_unlock(&socket->mutex);
 	char name[200];
 	g_snprintf(name, sizeof(name), "%s/%"SCNu64, socket->name, id);

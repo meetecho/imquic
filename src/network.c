@@ -174,7 +174,8 @@ void imquic_network_endpoint_remove_connection(imquic_network_endpoint *ne, imqu
 	if(lock_mutex)
 		imquic_mutex_lock(&ne->mutex);
 	if(g_hash_table_lookup(ne->connections, conn)) {
-		imquic_connection_notify_gone(conn, 0, NULL);
+		if(!g_atomic_int_get(&conn->closed))
+			imquic_connection_notify_gone(conn, 0, NULL);
 		g_hash_table_remove(ne->connections, conn);
 	}
 	if(conn->piconn != NULL)
