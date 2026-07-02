@@ -227,18 +227,18 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_incoming_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns_suffix) {
+static void imquic_demo_incoming_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	/* We received a NAMESPACE (newer MoQ version) */
 	char buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns_suffix, buffer, sizeof(buffer), TRUE);
+	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New namespace: '%s'\n",
 		imquic_get_connection_name(conn), ns);
 }
 
-static void imquic_demo_incoming_namespace_done(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns_suffix) {
+static void imquic_demo_incoming_namespace_done(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
 	/* We received a NAMESPACE_DONE (newer MoQ version) */
 	char buffer[256];
-	const char *ns = imquic_moq_namespace_str(tns_suffix, buffer, sizeof(buffer), TRUE);
+	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Namespace done: '%s'\n",
 		imquic_get_connection_name(conn), ns);
 }
