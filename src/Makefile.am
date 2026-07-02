@@ -5,6 +5,7 @@ headerdir = $(includedir)/imquic
 header_HEADERS = \
 	imquic/imquic.h \
 	imquic/debug.h \
+	imquic/mutex.h \
 	imquic/roq.h \
 	imquic/moq.h
 
