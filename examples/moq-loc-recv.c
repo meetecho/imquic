@@ -569,7 +569,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 					IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Will use video codec '%s'\n",
 						imquic_demo_video_codec_str(codec));
 					if(video_codec == NULL) {
-						IMQUIC_LOG(IMQUIC_LOG_FATAL, "Video codec '%s' not supported in provided libavcodec\n", options.video_codec);
+						IMQUIC_LOG(IMQUIC_LOG_FATAL, "Video codec '%s' not supported in provided libavcodec\n", track->codec);
 						g_atomic_int_set(&stop, 1);
 						return;
 					}
@@ -605,8 +605,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	/* If we got here, it's an audio or video object */
 	if(object->properties != NULL)
 		imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, object->properties);
-	/* FIXME Assuming LOC from https://github.com/facebookexperimental/moq-encoder-player/
-	 * which uses the MoQ-MI draft: https://datatracker.ietf.org/doc/html/draft-cenzano-moq-media-interop */
+	/* FIXME https://www.ietf.org/archive/id/draft-ietf-moq-loc-02.html */
 	if(object->properties == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No properties, missing LOC info?\n");
 	} else {
