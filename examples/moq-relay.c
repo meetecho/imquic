@@ -430,6 +430,17 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			};
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
+			imquic_moq_object *largest = NULL;
+			if(!track->pending && track->objects != NULL)
+				largest = (imquic_moq_object *)track->objects->data;
+			if(largest != NULL) {
+				imquic_moq_location start = {
+					.group = largest->group_id,
+					.object = largest->object_id
+				};
+				params.largest_object_set = TRUE;
+				params.largest_object = start;
+			}
 			imquic_moq_publish(mon->conn, relay_request_id, tns, &tn, relay_track_alias, &params, track->properties);
 		}
 		temp = temp->next;
