@@ -122,11 +122,11 @@ static gboolean moq_is_request_id_valid(imquic_moq_context *moq, uint64_t reques
 		/* We only need stricter checks on older versions */
 		if(moq->version >= IMQUIC_MOQ_VERSION_17)
 			return TRUE;
-		if(request_id < moq->expected_request_id) {
-			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Request ID not the one next we expected (%"SCNu64" != %"SCNu64")\n",
-				imquic_get_connection_name(moq->conn), request_id, moq->expected_request_id);
-			return FALSE;
-		}
+		//~ if(request_id < moq->expected_request_id) {
+			//~ IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Request ID not the one next we expected (%"SCNu64" != %"SCNu64")\n",
+				//~ imquic_get_connection_name(moq->conn), request_id, moq->expected_request_id);
+			//~ return FALSE;
+		//~ }
 		if(request_id >= moq->local_max_request_id) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Peer reached the Maximum Request ID (%"SCNu64")\n",
 				imquic_get_connection_name(moq->conn), moq->local_max_request_id);
