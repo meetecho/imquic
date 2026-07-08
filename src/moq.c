@@ -192,6 +192,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	moq->is_server = conn->is_server;
 	moq->next_request_id = moq->is_server ? 1 : 0;
 	moq->expected_request_id = moq->is_server ? 0 : 1;
+	moq->local_max_request_updates = 1;		/* FIXME */
 	const char *alpn = imquic_is_connection_webtransport(conn) ?
 		imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn);
 	moq->version = imquic_moq_version_from_alpn(alpn, conn->socket->moq_version);
@@ -291,6 +292,14 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 			}
 			memcpy(parameters.auth_token, moq->auth, moq->authlen);
 			parameters.auth_token_len = moq->authlen;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_19 && moq->local_max_filter_ranges > 0) {
+			parameters.max_filter_ranges_set = TRUE;
+			parameters.max_filter_ranges = moq->local_max_filter_ranges;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_19 && moq->local_max_request_updates > 0) {
+			parameters.max_request_updates_set = TRUE;
+			parameters.max_request_updates = moq->local_max_request_updates;
 		}
 		/* Add the implementation */
 		parameters.moqt_implementation_set = TRUE;
@@ -970,8 +979,12 @@ const char *imquic_moq_setup_option_type_str(imquic_moq_setup_option_type type) 
 			return "MAX_AUTH_TOKEN_CACHE_SIZE";
 		case IMQUIC_MOQ_SETUP_OPTION_AUTHORITY:
 			return "AUTHORITY";
+		case IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES:
+			return "MAX_FILTER_RANGES";
 		case IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION:
 			return "MOQT_IMPLEMENTATION";
+		case IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES:
+			return "MAX_REQUEST_UPDATES";
 		default: break;
 	}
 	return NULL;
@@ -1099,7 +1112,7 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 		GList *list = NULL;
 		if(options->path_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_PATH));
-		if(options->max_request_id_set)
+		if(options->max_request_id_set && moq->version < IMQUIC_MOQ_VERSION_17)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID));
 		if(options->max_auth_token_cache_size_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE));
@@ -1107,8 +1120,12 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN));
 		if(options->authority_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORITY));
+		if(options->max_filter_ranges_set && moq->version >= IMQUIC_MOQ_VERSION_19)
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES));
 		if(options->moqt_implementation_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION));
+		if(options->max_request_updates && moq->version >= IMQUIC_MOQ_VERSION_19)
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES));
 		/* For newer versions, we may add a GREASE option */
 		if(moq->version >= IMQUIC_MOQ_VERSION_17 && moq->do_grease)
 			list = g_list_append(list, GUINT_TO_POINTER(imquic_moq_random_grease()));
@@ -1140,10 +1157,18 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_setup_option_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->authority, strlen(options->authority));
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES) {
+					offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						options->max_filter_ranges);
 				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION) {
 					offset += imquic_moq_setup_option_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->moqt_implementation, strlen(options->moqt_implementation));
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES) {
+					offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						options->max_request_updates);
 				} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(new_id)) {
 					/* Add a GREASE setup option */
 					if(new_id % 2 == 0) {
@@ -2041,12 +2066,20 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		/* Update the value we have */
 		moq->max_auth_token_cache_size = options.max_auth_token_cache_size;
 	}
+	if(options.max_filter_ranges_set) {
+		/* Update the value we have */
+		moq->max_filter_ranges = options.max_filter_ranges;
+	}
 	if(options.moqt_implementation_set) {
 		/* Take note of the implemntation */
 		g_free(moq->peer_implementation);
 		moq->peer_implementation = NULL;
 		if(strlen(options.moqt_implementation) > 0)
 			moq->peer_implementation = g_strdup(options.moqt_implementation);
+	}
+	if(options.max_request_updates_set) {
+		/* Update the value we have */
+		moq->max_request_updates = options.max_request_updates;
 	}
 	if(options.path_set) {
 		/* TODO Handle and validate */
@@ -5599,12 +5632,26 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 			g_snprintf(params->authority, sizeof(params->authority), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->authority);
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES) {
+		params->max_filter_ranges = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		params->max_filter_ranges_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_filter_ranges);
+		len = length;
 	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION) {
 		params->moqt_implementation_set = TRUE;
 		if(len > 0)
 			g_snprintf(params->moqt_implementation, sizeof(params->moqt_implementation), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->moqt_implementation);
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES) {
+		params->max_request_updates = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		params->max_request_updates_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_request_updates);
+		len = length;
 	} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(type)) {
 		/* This is a GREASE setup option, just skip it */
 		if(type % 2 == 0) {

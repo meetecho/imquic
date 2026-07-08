@@ -222,7 +222,9 @@ typedef enum imquic_moq_setup_option_type {
 	IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN = 0x03,
 	IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
 	IMQUIC_MOQ_SETUP_OPTION_AUTHORITY = 0x05,
+	IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES = 0x06,
 	IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION = 0x07,
+	IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES = 0x08,
 } imquic_moq_setup_option_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_setup_option_type value.
  * @param type The imquic_moq_setup_option_type value
@@ -278,10 +280,18 @@ typedef struct imquic_moq_setup_options {
 	gboolean authority_set;
 	/*! \brief Value of the AUTHORITY parameter */
 	char authority[256];
+	/*! \brief Whether the MAX_FILTER_RANGES parameter is set */
+	gboolean max_filter_ranges_set;
+	/*! \brief Value of the MAX_FILTER_RANGES parameter */
+	uint64_t max_filter_ranges;
 	/*! \brief Whether the MOQT_IMPLEMENTATION parameter is set */
 	gboolean moqt_implementation_set;
 	/*! \brief Value of the MOQT_IMPLEMENTATION parameter */
 	char moqt_implementation[256];
+	/*! \brief Whether the MAX_REQUEST_UPDATES parameter is set */
+	gboolean max_request_updates_set;
+	/*! \brief Value of the MAX_REQUEST_UPDATES parameter */
+	uint64_t max_request_updates;
 	/*! \brief Whether there's unknown parameters */
 	gboolean unknown;
 } imquic_moq_setup_options;
@@ -339,8 +349,12 @@ typedef struct imquic_moq_context {
 	uint64_t expected_request_id, next_request_id;
 	/*! \brief Maximum Request IDs we can send and the one we accept */
 	uint64_t max_request_id, local_max_request_id;
-	/*! \brief Maximum Request IDs we can send and the one we accept */
+	/*! \brief Maximum token cache size we can send and the one we accept */
 	uint64_t max_auth_token_cache_size, local_max_auth_token_cache_size;
+	/*! \brief Maximum Filter ranges we can send and the one we accept */
+	uint64_t max_filter_ranges, local_max_filter_ranges;
+	/*! \brief Maximum Request updates we can send and the one we accept */
+	uint64_t max_request_updates, local_max_request_updates;
 	/*! \brief Buffer to process incoming messages */
 	imquic_buffer *buffer;
 	/*! \brief Mutex */
