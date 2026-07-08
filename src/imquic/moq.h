@@ -479,14 +479,14 @@ typedef struct imquic_moq_location_range {
 } imquic_moq_location_range;
 
 /*! \brief MoQ subscription filter */
-typedef struct imquic_moq_subscription_filter {
+typedef struct imquic_moq_location_filter {
 	/*! \brief Filter type */
 	imquic_moq_filter_type type;
 	/*! \brief Start location (depending on filter type) */
 	imquic_moq_location start_location;
 	/*! \brief End group (depending on filter type) */
 	uint64_t end_group;
-} imquic_moq_subscription_filter;
+} imquic_moq_location_filter;
 
 /*! \brief Subscribe options for namespaces
  * \note Deprecated in v18, since there's a separate \c SUBSRIBE_TRACK now */
@@ -544,9 +544,9 @@ typedef struct imquic_moq_request_parameters {
 	/*! \brief Value of the GROUP_ORDER parameter */
 	imquic_moq_group_order group_order;
 	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
-	gboolean subscription_filter_set;
+	gboolean location_filter_set;
 	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
-	imquic_moq_subscription_filter subscription_filter;
+	imquic_moq_location_filter location_filter;
 	/*! \brief Whether the EXPIRES parameter is set */
 	gboolean expires_set;
 	/*! \brief Value of the EXPIRES parameter */

@@ -428,7 +428,6 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	rparams.subscription_filter_set = TRUE;
 	imquic_moq_accept_publish(conn, request_id, &rparams);
 }
 
