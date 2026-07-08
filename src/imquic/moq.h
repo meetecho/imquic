@@ -838,6 +838,7 @@ typedef enum imquic_moq_error_code {
 	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
 	IMQUIC_MOQ_INVALID_AUTHORITY = 0x19,
 	IMQUIC_MOQ_MALFORMED_AUTHORITY = 0x1A,
+	IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES = 0x1B,		/* Added in v19 */
 	/* Not an actual error */
 	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
 } imquic_moq_error_code;
@@ -860,7 +861,7 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
 	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
 	IMQUIC_MOQ_REQERR_MALFORMED_TRACK = 0x12,
-	IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,
+		IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,	/* Deprecated in v19 */
 	/* The following are returned by subscribers */
 	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
 	/* Others */
@@ -869,6 +870,8 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
 	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
 	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
+	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
+	IMQUIC_MOQ_REQERR_INVALID_FILTER = 0x36,	/* Added in v19 */
 } imquic_moq_request_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
  * @param code The imquic_moq_request_error_code value

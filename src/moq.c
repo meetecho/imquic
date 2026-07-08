@@ -563,6 +563,8 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 			return "Invalid Authority";
 		case IMQUIC_MOQ_MALFORMED_AUTHORITY:
 			return "Malformed Authority";
+		case IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES:
+			return "Too Many Request Updates";
 		case IMQUIC_MOQ_UNKNOWN_ERROR:
 			return "Unknown Error";
 		default: break;
@@ -608,6 +610,10 @@ const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code
 			return "Unsupported Extension";
 		case IMQUIC_MOQ_REQERR_REDIRECT:
 			return "Redirect";
+		case IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS:
+			return "Conflicting Filters";
+		case IMQUIC_MOQ_REQERR_INVALID_FILTER:
+			return "Invalid Filter";
 		default: break;
 	}
 	return NULL;
