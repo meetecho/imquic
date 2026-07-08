@@ -902,14 +902,14 @@ void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_incoming_publish_blocked_cb(imquic_endpoint *endpoint,
-		void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn)) {
+void imquic_set_incoming_publish_skipped_cb(imquic_endpoint *endpoint,
+		void (* incoming_publish_skipped)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.incoming_publish_blocked = incoming_publish_blocked;
+		endpoint->callbacks.moq.incoming_publish_skipped = incoming_publish_skipped;
 	}
 }
 
