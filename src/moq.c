@@ -4435,7 +4435,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_s
 		offset += length;
 	}
 	uint64_t request_id = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream == NULL) {
+	if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken GOAWAY");
 		offset += length;
@@ -4445,7 +4445,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_s
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)uri_str, uri_len);
 		if(moq->version >= IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "timeout", json_integer(timeout));
-		if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
+		if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog,
 			moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq),
@@ -4465,8 +4465,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_s
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_goaway)
 			moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str, timeout);
 	} else {
-		/* TODO Got a GOAWAY for a specific request */
-
+		/* FIXME Got a GOAWAY for a specific request, any additional check needed? */
 		/* Notify the application */
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_request_goaway)
 			moq->conn->socket->callbacks.moq.incoming_request_goaway(moq->conn, request_id, uri_str, timeout);
@@ -5288,7 +5287,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)new_session_uri, uri_len);
 		if(moq->version >= IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "timeout", json_integer(timeout));
-		if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
+		if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog,
 			moq_stream ? moq_stream->stream_id : moq->control_stream_id,
@@ -7874,7 +7873,7 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout
 	}
 	imquic_refcount_increase(&moq->ref);
 	uint64_t request_id = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_18)
+	if(moq->version == IMQUIC_MOQ_VERSION_18)
 		request_id = moq->expected_request_id;
 	imquic_mutex_unlock(&moq_mutex);
 	uint8_t buffer[200];
