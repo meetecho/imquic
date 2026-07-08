@@ -648,22 +648,16 @@ typedef enum imquic_moq_property_type {
 	IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP = 0x3E,
 	/*! \brief Immutable Properties */
 	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
-	/*! \brief LOC Timestamp (WIP)
-	 * \note This is actually 0x06 per loc-02, but that conflicts with
-	 * SUBGROUP_DELIVERY_TIMEOUT from moq-18, so for now we use 0x16 */
-	IMQUIC_MOQ_LOC_TIMESTAMP = 0x16,
+	/*! \brief LOC Timestamp */
+	IMQUIC_MOQ_LOC_TIMESTAMP = 0x0A,
 	/*! \brief LOC Timescale */
 	IMQUIC_MOQ_LOC_TIMESCALE = 0x08,
 	/*! \brief LOC Video Config */
 	IMQUIC_MOQ_LOC_VIDEO_CONFIG = 0x0D,
-	/*! \brief LOC Video Frame Marking (WIP)
-	 * \note This is actually 0x04 per loc-02, but that conflicts with
-	 * MAX_CACHE_DURATION, so for now we use 0x14 */
-	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x14,
-	/*! \brief LOC Audio Level (WIP)
-	 * \note This is actually 0x02 per loc-02, but that conflicts with
-	 * OBJECT_DELIVERY_TIMEOUT from moq-18, so for now we use 0x12 */
-	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x12,
+	/*! \brief LOC Video Frame Marking */
+	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x09,
+	/*! \brief LOC Audio Level */
+	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0F,
 
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
