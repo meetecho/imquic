@@ -35,8 +35,8 @@
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
  * WebTransort protocol. At the time of writing, this stack
- * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v18
- * (\ref IMQUIC_MOQ_VERSION_18), but not all versions will be supported
+ * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v19
+ * (\ref IMQUIC_MOQ_VERSION_19), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \ref IMQUIC_MOQ_VERSION_MIN
@@ -313,7 +313,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_17 = 0xff000011,
 	/* Draft version -18 */
 	IMQUIC_MOQ_VERSION_18 = 0xff000012,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_18,
+	/* Draft version -19 */
+	IMQUIC_MOQ_VERSION_19 = 0xff000013,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_19,
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
@@ -925,7 +927,7 @@ const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 		IMQUIC_CONFIG_TLS_PASSWORD, cert_pwd,
 		IMQUIC_CONFIG_LOCAL_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_18,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_19,
 		IMQUIC_CONFIG_DONE, NULL);
  \endverbatim
  * to create a QUIC server that will automatically negotiate MoQ over
@@ -958,7 +960,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...);
 		IMQUIC_CONFIG_REMOTE_HOST, "127.0.0.1",
 		IMQUIC_CONFIG_REMOTE_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_18,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_19,
 		IMQUIC_CONFIG_HTTP3_PATH, "/moq",
 		IMQUIC_CONFIG_DONE, NULL);
 

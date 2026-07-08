@@ -78,6 +78,8 @@ void imquic_moq_deinit(void) {
 static imquic_moq_version imquic_moq_version_from_alpn(const char *alpn, imquic_moq_version fallback) {
 	if(alpn == NULL)
 		return fallback;
+	if(!strcasecmp(alpn, "moqt-19"))
+		return IMQUIC_MOQ_VERSION_19;
 	if(!strcasecmp(alpn, "moqt-18"))
 		return IMQUIC_MOQ_VERSION_18;
 	if(!strcasecmp(alpn, "moqt-17"))
