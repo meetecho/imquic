@@ -6481,7 +6481,7 @@ int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
 		imquic_mutex_lock(&moq->mutex);
 		moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
-		if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_PUBLISH_NAMESPACE || moq_stream->request_sender ||
+		if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_PUBLISH || moq_stream->request_sender ||
 				moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_SENT) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 				imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
@@ -7590,7 +7590,7 @@ int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
 		imquic_mutex_lock(&moq->mutex);
 		moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
-		if(moq_stream == NULL || moq_stream->request_type == 0 || moq_stream->request_sender ||
+		if(moq_stream == NULL || moq_stream->request_type != IMQUIC_MOQ_FETCH || moq_stream->request_sender ||
 				moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_SENT) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 				imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");

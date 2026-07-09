@@ -603,8 +603,18 @@ static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint
 		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
 		return;
 	}
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] New published namespace: '%s'\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming published namespace: '%s'\n",
 		imquic_get_connection_name(conn), ns);
+	/* Check if authorization is required */
+	if(parameters->auth_token_set)
+		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
+	if(!imquic_moq_check_auth_info(conn, options.pub_auth_info,
+			parameters->auth_token_set ? parameters->auth_token : NULL,
+			parameters->auth_token_set ? parameters->auth_token_len : 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish_namespace(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0, NULL);
+		return;
+	}
 	/* Check if this was published already */
 	imquic_mutex_lock(&mutex);
 	if(g_hash_table_lookup(namespaces, ns) != NULL) {
@@ -709,10 +719,16 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
+	/* Check if authorization is required */
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
-	if(name == NULL || strlen(name) == 0)
-		name = "temp";
+	if(!imquic_moq_check_auth_info(conn, options.pub_auth_info,
+			parameters->auth_token_set ? parameters->auth_token : NULL,
+			parameters->auth_token_set ? parameters->auth_token_len : 0)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Incorrect authorization info provided\n", imquic_get_connection_name(conn));
+		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0, NULL);
+		return;
+	}
 	/* Find the publisher from this connection */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
@@ -1878,6 +1894,10 @@ int main(int argc, char *argv[]) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %d\n", moq_version - IMQUIC_MOQ_VERSION_BASE);
 		}
 	}
+	if(options.sub_auth_info != NULL)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "SUBSCRIBE requests will need to be authorized\n");
+	if(options.pub_auth_info != NULL)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "PUBLISH and PUBLISH_NAMESPACE requests will need to be authorized\n");
 
 	/* Check if we need to create a QLOG file, and which we should save */
 	gboolean qlog_quic = FALSE, qlog_http3 = FALSE, qlog_moq = FALSE;

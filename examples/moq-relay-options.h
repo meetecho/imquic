@@ -19,6 +19,7 @@ typedef struct demo_options {
 	gboolean test_grease;
 	const char *auth_info;
 	const char *sub_auth_info;
+	const char *pub_auth_info;
 	const char *ip;
 	int port;
 	gboolean raw_quic;
