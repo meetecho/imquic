@@ -175,6 +175,7 @@
 
 #include "mutex.h"
 #include "debug.h"
+#include "refcount.h"
 
 /* Opaque structures */
 typedef struct imquic_connection imquic_connection;

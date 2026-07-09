@@ -28,7 +28,6 @@
 #include "utils.h"
 #include "buffer.h"
 #include "qlog.h"
-#include "refcount.h"
 
 #define IMQUIC_MOQ		7171953
 
