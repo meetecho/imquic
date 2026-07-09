@@ -605,7 +605,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	/* If we got here, it's an audio or video object */
 	if(object->properties != NULL)
 		imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, object->properties);
-	/* FIXME https://www.ietf.org/archive/id/draft-ietf-moq-loc-02.html */
+	/* FIXME https://www.ietf.org/archive/id/draft-ietf-moq-loc-03.html */
 	if(object->properties == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No properties, missing LOC info?\n");
 	} else {
