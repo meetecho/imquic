@@ -400,6 +400,10 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			}
 			/* If the subscriber is interested in PUBLISH, check if there are tracks */
 			if(track == NULL || g_hash_table_lookup(mon->known_tracks, track)) {
+				if(track != NULL) {
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscriber knows track '%p' already\n",
+						imquic_get_connection_name(mon->conn), track);
+				}
 				temp = temp->next;
 				continue;
 			}
@@ -441,6 +445,8 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 				params.largest_object_set = TRUE;
 				params.largest_object = start;
 			}
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Relaying PUBLISH to interested subscriber as '%"SCNu64"/%"SCNu64"'\n",
+				imquic_get_connection_name(mon->conn), relay_request_id, relay_track_alias);
 			imquic_moq_publish(mon->conn, relay_request_id, tns, &tn, relay_track_alias, &params, track->properties);
 		}
 		temp = temp->next;
