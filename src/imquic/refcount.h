@@ -50,7 +50,7 @@ void my_free_function(imquic_refcount *counter) {
 }
 \endverbatim
  *
- * \ingroup Core
+ * \ingroup API Core
  */
 
 #ifndef IMQUIC_REFCOUNT_H

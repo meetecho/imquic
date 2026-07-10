@@ -19,6 +19,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "test-grease", '9', 0, G_OPTION_ARG_NONE, &options->test_grease, "If set, will add GREASE to SETUP options (default=no; only available for v17 and beyond)", NULL},
 		{ "auth-info", 'a', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info required to connect to this relay, if any (default=none)", "string" },
 		{ "subscribe-auth-info", 'A', 0, G_OPTION_ARG_STRING, &options->sub_auth_info, "Auth info required to subscribe to feeds in this relay, if any (default=none)", "string" },
+		{ "publish-auth-info", 'P', 0, G_OPTION_ARG_STRING, &options->pub_auth_info, "Auth info required to publish feeds in this relay, if any (default=none)", "string" },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },
 		{ "raw-quic", 'q', 0, G_OPTION_ARG_NONE, &options->raw_quic, "Whether raw QUIC should be offered for MoQ connections or not (default=no)", NULL },

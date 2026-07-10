@@ -6,6 +6,7 @@ header_HEADERS = \
 	imquic/imquic.h \
 	imquic/debug.h \
 	imquic/mutex.h \
+	imquic/refcount.h \
 	imquic/roq.h \
 	imquic/moq.h
 
@@ -45,8 +46,8 @@ libimquic_la_SOURCES = \
 	imquic/roq.h \
 	roq.c \
 	internal/roq.h \
-	internal/mutex.h \
-	internal/refcount.h \
+	imquic/mutex.h \
+	imquic/refcount.h \
 	imquic/debug.h \
 	version.c \
 	internal/version.h

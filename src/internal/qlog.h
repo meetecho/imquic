@@ -17,7 +17,7 @@
 
 #include <jansson.h>
 
-#include "refcount.h"
+#include "../imquic/refcount.h"
 
 /** @name QLOG management
  */

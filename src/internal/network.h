@@ -24,7 +24,6 @@
 #include "loop.h"
 #include "moq.h"
 #include "roq.h"
-#include "refcount.h"
 
 /*! \brief Initialize the network stack at startup */
 void imquic_network_init(void);

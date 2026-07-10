@@ -16,7 +16,7 @@
 
 #include <glib.h>
 
-#include "refcount.h"
+#include "../imquic/refcount.h"
 
 /*! \brief Stream states */
 typedef enum imquic_stream_state {

@@ -22,7 +22,6 @@
 
 #include "../imquic/roq.h"
 #include "qlog.h"
-#include "refcount.h"
 
 #define IMQUIC_ROQ		7499633
 

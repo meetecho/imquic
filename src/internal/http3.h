@@ -20,7 +20,6 @@
 #include "buffer.h"
 #include "stream.h"
 #include "qlog.h"
-#include "refcount.h"
 
 /*! \brief HTTP/3 stream type */
 typedef enum imquic_http3_stream_type {

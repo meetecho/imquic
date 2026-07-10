@@ -25,7 +25,7 @@
 #include "error.h"
 #include "qlog.h"
 #include "utils.h"
-#include "refcount.h"
+#include "../imquic/refcount.h"
 
 /*! \brief Helper method to stringify a connection ID
  * @param[in] cid The connection ID to stringify

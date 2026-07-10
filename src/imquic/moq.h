@@ -658,7 +658,6 @@ typedef enum imquic_moq_property_type {
 	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x09,
 	/*! \brief LOC Audio Level */
 	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0F,
-
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
  * @param version The version of the connection
