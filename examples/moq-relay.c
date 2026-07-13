@@ -814,7 +814,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
+		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
 	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 		s->sub_start.group = largest ? largest->group_id : 0;
 		s->sub_start.object = largest ? largest->object_id : 0;
@@ -955,7 +955,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		largest = (imquic_moq_object *)track->objects->data;
 	imquic_moq_location start = { 0 };
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
+		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
 	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 		start.group = largest ? largest->group_id : 0;
 		start.object = largest ? largest->object_id : 0;
@@ -1062,7 +1062,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
+		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
 	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 		s->sub_start.group = largest ? largest->group_id : 0;
 		s->sub_start.object = largest ? largest->object_id : 0;

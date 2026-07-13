@@ -453,16 +453,16 @@ typedef enum imquic_moq_group_order {
 const char *imquic_moq_group_order_str(imquic_moq_group_order type);
 
 /*! \brief MoQ filter type, for subscriptions */
-typedef enum imquic_moq_filter_type {
+typedef enum imquic_moq_location_filter_type {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
 	IMQUIC_MOQ_FILTER_LARGEST_OBJECT = 0x2,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_START = 0x3,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE = 0x4,
-} imquic_moq_filter_type;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_filter_type value.
- * @param type The imquic_moq_filter_type value
+} imquic_moq_location_filter_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_location_filter_type value.
+ * @param type The imquic_moq_location_filter_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_filter_type_str(imquic_moq_filter_type type);
+const char *imquic_moq_location_filter_type_str(imquic_moq_location_filter_type type);
 
 /*! \brief MoQ Group/Object couple (for ranges) */
 typedef struct imquic_moq_location {
@@ -478,10 +478,10 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
-/*! \brief MoQ subscription filter */
+/*! \brief MoQ location filter */
 typedef struct imquic_moq_location_filter {
 	/*! \brief Filter type */
-	imquic_moq_filter_type type;
+	imquic_moq_location_filter_type type;
 	/*! \brief Start location (depending on filter type) */
 	imquic_moq_location start_location;
 	/*! \brief End group (depending on filter type) */
@@ -499,6 +499,9 @@ typedef enum imquic_moq_subscribe_namespace_options {
  * @param type The imquic_moq_subscribe_namespace_options value
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_subscribe_namespace_options_str(imquic_moq_subscribe_namespace_options type);
+
+/*! \brief Collection of MoQ filters */
+typedef struct imquic_moq_filters imquic_moq_filters;
 
 /*! \brief MoQ request parameters
  * \note The library takes care of the
@@ -547,6 +550,10 @@ typedef struct imquic_moq_request_parameters {
 	gboolean location_filter_set;
 	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
 	imquic_moq_location_filter location_filter;
+	/*! \brief Whether there are filters */
+	gboolean filters_set;
+	/*! \brief Filters of different types, indexed by set ID */
+	imquic_moq_filters *filters;
 	/*! \brief Whether the EXPIRES parameter is set */
 	gboolean expires_set;
 	/*! \brief Value of the EXPIRES parameter */
@@ -725,6 +732,79 @@ typedef struct imquic_moq_object {
 } imquic_moq_object;
 ///@}
 
+/** @name MoQ filters (introduced in v19)
+ */
+///@{
+/*! \brief MoQ filter types */
+typedef enum imquic_moq_filter_type {
+	IMQUIC_MOQ_FILTER_SUBGROUP = 0x25,
+	IMQUIC_MOQ_FILTER_OBJECT = 0x26,
+	IMQUIC_MOQ_FILTER_PRIORITY = 0x27,
+	IMQUIC_MOQ_FILTER_OBJECT_PROPERTY = 0x28,
+	IMQUIC_MOQ_FILTER_TRACK_PROPERTY = 0x29,
+} imquic_moq_filter_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_filter_type value.
+ * @param type The imquic_moq_filter_type value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_filter_type_str(imquic_moq_filter_type type);
+
+/*! \brief Individual MoQ filter range */
+typedef struct imquic_moq_filter_range {
+	/*! \brief Type of filter */
+	imquic_moq_filter_type type;
+	/*! \brief Set this filter range belongs to */
+	uint8_t set_id;
+	/*! \brief Prpèerty type (if needed by filter) */
+	imquic_moq_property_type property;
+	/*! \brief Filter start */
+	uint64_t start;
+	/*! \brief Filter end */
+	uint64_t end;
+} imquic_moq_filter_range;
+/*! \brief Helper to create a filter range instance
+ * @param type The imquic_moq_filter_type type of the filter range
+ * @param set_id The set ID the filter range belongs to
+ * @param property The imquic_moq_property property type, if needed
+ * @param start The start of the range
+ * @param end The end of the range
+ * @returns A pointer to a new imquic_moq_filter_range instance, if successful, or NULL otherwise */
+imquic_moq_filter_range *imquic_moq_filter_range_create(imquic_moq_filter_type type,
+	uint8_t set_id, imquic_moq_property_type property, uint64_t start, uint64_t end);
+/*! \brief Helper to free a filter range instance
+ * @param filter The imquic_moq_filter_range instance to free */
+void imquic_moq_filter_range_destroy(imquic_moq_filter_range *filter);
+
+/*! \brief Collection of MoQ filters */
+struct imquic_moq_filters {
+	/*! \brief Map of filters, indexed by set ID
+	 * \note Each map points to a GList of imquic_moq_filter_range instances */
+	GHashTable *filters_map;
+	/*! \brief Same filters, but as a single linked list */
+	GList *filters_list;
+};
+/*! \brief Helper to create a new collection of filters
+ * @returns A pointer to a new imquic_moq_filters instance, if successful, or NULL otherwise */
+imquic_moq_filters *imquic_moq_filters_create();
+/*! \brief Helper to duplicate an existing collection of filters
+ * @param filters The imquic_moq_filters instance to duplicate
+ * @returns A pointer to a new imquic_moq_filters instance, if successful, or NULL otherwise */
+imquic_moq_filters *imquic_moq_filters_duplicate(imquic_moq_filters *filters);
+/*! \brief Helper to add a new filter range to a collection
+ * \note The filter range must be an allocated instance, as it will be destroyed at cleanup
+ * @param filters The imquic_moq_filters instance to add the filter range to
+ * @param filter The imquic_moq_filter_range instance to add
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_filters_add(imquic_moq_filters *filters, imquic_moq_filter_range *filter);
+/*! \brief Helper to check if a specific object matches a filters collection
+ * @param filters The imquic_moq_filters instance to use for the checks
+ * @param object The imquic_moq_object instance to check
+ * @returns TRUE if the object passes the filters, FALSE otherwise */
+gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object *object);
+/*! \brief Helper to get rid of a imquic_moq_filters instance
+ * @param filters The imquic_moq_filters instance to free */
+void imquic_moq_filters_destroy(imquic_moq_filters *filters);
+///@}
+
 /** @name MoQ's flavour of varint (introduced in v17)
  */
 ///@{
@@ -732,6 +812,7 @@ typedef struct imquic_moq_object {
  * @note You can use the return value to know how many bytes to skip in
  * the buffer to read the next value. In case of issues in the parsing,
  * length will have value 0.
+ * @param[in] version The imquic_moq_version property
  * @param[in] bytes The buffer to read
  * @param[in] blen The size of the buffer
  * @param[out] length How many bytes the variable size integer used
@@ -741,6 +822,7 @@ uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t b
  * @note You can use the return value to know how many bytes to skip in
  * the buffer to write the next value. In case of issues in the writing,
  * length will have value 0.
+ * @param[in] version The imquic_moq_version property
  * @param[in] number The number to write as a variable size integer
  * @param[in] bytes The buffer to write to
  * @param[in] blen The size of the buffer

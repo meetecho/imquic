@@ -99,6 +99,39 @@ void imquic_moq_property_cleanup(imquic_moq_property *property) {
 	}
 }
 
+/* Helper to print parameter filters */
+void imquic_moq_filters_print(imquic_moq_version version, imquic_moq_filters *filters) {
+	if(filters == NULL || version < IMQUIC_MOQ_VERSION_19)
+		return;
+	GHashTableIter iter;
+	gpointer key, value;
+	g_hash_table_iter_init(&iter, filters->filters_map);
+	while(g_hash_table_iter_next(&iter, &key, &value)) {
+		uint8_t set_id = GPOINTER_TO_UINT(key);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[Filter Set #%"SCNu8"]\n", set_id);
+		GList *list = value;
+		while(list != NULL) {
+			imquic_moq_filter_range *filter = list->data;
+			if(filter->type == IMQUIC_MOQ_FILTER_SUBGROUP ||
+					filter->type == IMQUIC_MOQ_FILTER_OBJECT ||
+					filter->type == IMQUIC_MOQ_FILTER_PRIORITY) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s: %"SCNu64" --> %"SCNu64"\n",
+					imquic_moq_filter_type_str(filter->type),
+					filter->start, filter->end);
+			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT_PROPERTY ||
+					filter->type == IMQUIC_MOQ_FILTER_TRACK_PROPERTY) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- %s: [%s] %"SCNu64" --> %"SCNu64"\n",
+					imquic_moq_filter_type_str(filter->type),
+					imquic_moq_property_type_str(version, filter->property),
+					filter->start, filter->end);
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "Unknown filter '%d'\n", filter->type);
+			}
+			list = list->next;
+		}
+	}
+}
+
 /* Helpers to deal with auth info */
 int imquic_moq_auth_info_to_bytes(imquic_connection *conn, const char *auth_info, uint8_t *auth, size_t *authlen) {
 	if(conn == NULL || auth_info == NULL || auth == NULL || authlen == 0)

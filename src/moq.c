@@ -1006,8 +1006,18 @@ const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_t
 			return "SUBSCRIBER_PRIORITY";
 		case IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER:
 			return "GROUP_ORDER";
-		case IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER:
-			return "SUBSCRIPTION_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER:
+			return "LOCATION_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER:
+			return "SUBGROUP_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER:
+			return "OBJECT_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER:
+			return "PRIORITY_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER:
+			return "OBJECT_PROPERTY_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER:
+			return "TRACK_PROPERTY_FILTER";
 		case IMQUIC_MOQ_REQUEST_PARAM_EXPIRES:
 			return "EXPIRES";
 		case IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT:
@@ -1023,7 +1033,7 @@ const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_t
 	return NULL;
 }
 
-const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
+const char *imquic_moq_location_filter_type_str(imquic_moq_location_filter_type type) {
 	switch(type) {
 		case IMQUIC_MOQ_FILTER_NEXT_GROUP_START:
 			return "Next Group Start";
@@ -1036,6 +1046,57 @@ const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
 		default: break;
 	}
 	return NULL;
+}
+
+const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_FILTER_SUBGROUP:
+			return "SUBGROUP_FILTER";
+		case IMQUIC_MOQ_FILTER_OBJECT:
+			return "OBJECT_FILTER";
+		case IMQUIC_MOQ_FILTER_PRIORITY:
+			return "PRIORITY_FILTER";
+		case IMQUIC_MOQ_FILTER_OBJECT_PROPERTY:
+			return "OBJECT_PROPERTY_FILTER";
+		case IMQUIC_MOQ_FILTER_TRACK_PROPERTY:
+			return "TRACK_PROPERTY_FILTER";
+		default: break;
+	}
+	return NULL;
+}
+
+static imquic_moq_request_parameter_type imquic_moq_filter_type_to_param(imquic_moq_filter_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_FILTER_SUBGROUP:
+			return IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER;
+		case IMQUIC_MOQ_FILTER_OBJECT:
+			return IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER;
+		case IMQUIC_MOQ_FILTER_PRIORITY:
+			return IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER;
+		case IMQUIC_MOQ_FILTER_OBJECT_PROPERTY:
+			return IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER;
+		case IMQUIC_MOQ_FILTER_TRACK_PROPERTY:
+			return IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER;
+		default: break;
+	}
+	return -1;
+}
+
+static imquic_moq_filter_type imquic_moq_filter_type_from_param(imquic_moq_request_parameter_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER:
+			return IMQUIC_MOQ_FILTER_SUBGROUP;
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER:
+			return IMQUIC_MOQ_FILTER_OBJECT;
+		case IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER:
+			return IMQUIC_MOQ_FILTER_PRIORITY;
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER:
+			return IMQUIC_MOQ_FILTER_OBJECT_PROPERTY;
+		case IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER:
+			return IMQUIC_MOQ_FILTER_TRACK_PROPERTY;
+		default: break;
+	}
+	return -1;
 }
 
 const char *imquic_moq_group_order_str(imquic_moq_group_order type) {
@@ -1091,6 +1152,160 @@ const char *imquic_moq_auth_token_alias_type_str(imquic_moq_auth_token_alias_typ
 	}
 	return NULL;
 }
+
+/* MoQ filters */
+imquic_moq_filter_range *imquic_moq_filter_range_create(imquic_moq_filter_type type,
+		uint8_t set_id, imquic_moq_property_type property, uint64_t start, uint64_t end) {
+	if(end < start)
+		return NULL;
+	imquic_moq_filter_range *filter = g_malloc(sizeof(imquic_moq_filter_range));
+	filter->type = type;
+	filter->set_id = set_id;
+	filter->property = property;
+	filter->start = start;
+	filter->end = end;
+	return filter;
+}
+
+static int imquic_moq_filter_range_sort(imquic_moq_filter_range *a, imquic_moq_filter_range *b) {
+	if(!a && !b)
+		return 0;
+	else if(!b || a->type < b->type)
+		return -1;
+	else if(!a || a->type > b->type)
+		return 1;
+	else if(!b || a->set_id < b->set_id)
+		return -1;
+	else if(!a || a->set_id > b->set_id)
+		return 1;
+	else if(!b || a->property < b->property)
+		return -1;
+	else if(!a || a->property > b->property)
+		return 1;
+	else if(!b || a->start < b->start)
+		return -1;
+	else if(!a || a->start > b->start)
+		return 1;
+	else if(!b || a->end < b->end)
+		return -1;
+	else if(!a || a->end > b->end)
+		return 1;
+	return 0;
+}
+
+void imquic_moq_filter_range_destroy(imquic_moq_filter_range *filter) {
+	g_free(filter);
+}
+
+static void imquic_moq_filters_list_free(GList *list) {
+	g_list_free_full(list, (GDestroyNotify)imquic_moq_filter_range_destroy);
+}
+
+imquic_moq_filters *imquic_moq_filters_create(void) {
+	imquic_moq_filters *filters = g_malloc(sizeof(imquic_moq_filters));
+	filters->filters_map = g_hash_table_new_full(NULL, NULL, NULL,
+		(GDestroyNotify)imquic_moq_filters_list_free);
+	filters->filters_list = NULL;
+	return filters;
+}
+
+static void *imquic_moq_filter_range_duplicate(imquic_moq_filter_range *filter, void *user_data) {
+	if(filter == NULL)
+		return NULL;
+	return imquic_moq_filter_range_create(filter->type, filter->set_id, filter->property, filter->start, filter->end);
+}
+
+imquic_moq_filters *imquic_moq_filters_duplicate(imquic_moq_filters *filters) {
+	if(filters == NULL)
+		return NULL;
+	imquic_moq_filters *dup = imquic_moq_filters_create();
+	GHashTableIter iter;
+	gpointer key, value;
+	g_hash_table_iter_init(&iter, filters->filters_map);
+	while(g_hash_table_iter_next(&iter, &key, &value)) {
+		uint8_t set_id = GPOINTER_TO_UINT(key);
+		GList *list = value;
+		GList *copy = g_list_copy_deep(list, (GCopyFunc)imquic_moq_filter_range_duplicate, NULL);
+		g_hash_table_insert(dup->filters_map, GUINT_TO_POINTER(set_id), copy);
+		while(copy != NULL) {
+			dup->filters_list = g_list_prepend(dup->filters_list, copy->data);
+			copy = copy->next;
+		}
+	}
+	return dup;
+}
+
+int imquic_moq_filters_add(imquic_moq_filters *filters, imquic_moq_filter_range *filter) {
+	if(filters == NULL || filter == NULL || filter->end < filter->start)
+		return -1;
+	/* Check if we have a list for this set ID already */
+	GList *list = g_hash_table_lookup(filters->filters_map, GUINT_TO_POINTER(filter->set_id));
+	if(list != NULL)
+		g_hash_table_steal(filters->filters_map, GUINT_TO_POINTER(filter->set_id));
+	/* TODO Check if there are overlaps */
+	list = g_list_prepend(list, filter);
+	g_hash_table_insert(filters->filters_map, GUINT_TO_POINTER(filter->set_id), list);
+	filters->filters_list = g_list_prepend(filters->filters_list, filter);
+	return 0;
+}
+
+void imquic_moq_filters_destroy(imquic_moq_filters *filters) {
+	if(filters != NULL) {
+		if(filters->filters_map != NULL)
+			g_hash_table_unref(filters->filters_map);
+		if(filters->filters_list != NULL)
+			g_list_free(filters->filters_list);
+		g_free(filters);
+	}
+}
+
+gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object *object) {
+	if(object == NULL)
+		return FALSE;
+	if(filters == NULL)
+		return TRUE;
+	/* Traverse all filters */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, filters->filters_map);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		GList *list = value;
+		gboolean set_match = TRUE;
+		while(list != NULL) {
+			imquic_moq_filter_range *filter = (imquic_moq_filter_range *)list->data;
+			if(filter->type == IMQUIC_MOQ_FILTER_TRACK_PROPERTY) {
+				/* Objects can't match this */
+				set_match = FALSE;
+				break;
+			}
+			/* FIXME Match object against this specific filter */
+			if(filter->type == IMQUIC_MOQ_FILTER_SUBGROUP &&
+					(object->subgroup_id < filter->start || object->subgroup_id > filter->end)) {
+				/* Subgroup filter doesn't match */
+				set_match = FALSE;
+				break;
+			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT &&
+					(object->object_id < filter->start || object->object_id > filter->end)) {
+				/* Object filter doesn't match */
+				set_match = FALSE;
+				break;
+			} else if(filter->type == IMQUIC_MOQ_FILTER_PRIORITY &&
+					(object->priority < filter->start || object->priority > filter->end)) {
+				/* Priority filter doesn't match */
+				set_match = FALSE;
+				break;
+			}
+			/* TODO Implement OBJECT_PROPERTY_FILTER too */
+			list = list->next;
+		}
+		/* If we did get a match for this set, we're done */
+		if(set_match)
+			return TRUE;
+	}
+	/* If we got here, none of the sets matched */
+	return FALSE;
+}
+
 
 /* MoQ options and parameters */
 static int imquic_moq_compare_types(const void *a, const void *b) {
@@ -1212,70 +1427,126 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		uint64_t new_id = 0, last_id = 0;
 		GList *list = NULL;
 		if(parameters->auth_token_set && request != IMQUIC_MOQ_REQUEST_OK && request != IMQUIC_MOQ_REQUEST_ERROR) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN));
 		}
 		if(parameters->delivery_timeout_set && parameters->delivery_timeout > 0 &&
 				moq->version <= IMQUIC_MOQ_VERSION_17 &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
 		}
 		if(parameters->object_delivery_timeout_set && parameters->object_delivery_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT));
 		}
 		if(parameters->rendezvous_timeout_set && parameters->rendezvous_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_17 && request == IMQUIC_MOQ_SUBSCRIBE) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT));
 		}
 		if(parameters->subgroup_delivery_timeout_set && parameters->subgroup_delivery_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT));
 		}
 		if(parameters->subscriber_priority_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH ||
 					request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
 		}
 		if(parameters->group_order_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
 		}
 		if(parameters->location_filter_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER));
+		}
+		GList *filters = NULL, *tf = NULL;
+		if(parameters->filters_set && moq->version >= IMQUIC_MOQ_VERSION_19) {
+			parameters->filters->filters_list = g_list_sort(parameters->filters->filters_list, (GCompareFunc)imquic_moq_filter_range_sort);
+			GList *temp = parameters->filters->filters_list;
+			while(temp != NULL) {
+				imquic_moq_filter_range *filter = (imquic_moq_filter_range *)temp->data;
+				if((filter->type == IMQUIC_MOQ_FILTER_SUBGROUP || filter->type == IMQUIC_MOQ_FILTER_OBJECT || filter->type == IMQUIC_MOQ_FILTER_PRIORITY) &&
+						(request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS ||
+							request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+					list = g_list_prepend(list, GUINT_TO_POINTER(imquic_moq_filter_type_to_param(filter->type)));
+					filters = g_list_prepend(filters, filter);
+					/* Peek the next one, to group ranges of the same type and set */
+					while(temp->next != NULL) {
+						imquic_moq_filter_range *next_filter = temp->next->data;
+						if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+							filters = g_list_prepend(filters, next_filter);
+							temp = temp->next;
+						} else {
+							break;
+						}
+					}
+				} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT_PROPERTY &&
+						(request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS ||
+							request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+					list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER));
+					filters = g_list_prepend(filters, filter);
+					/* Peek the next one, to group ranges of the same type and set */
+					while(temp->next != NULL) {
+						imquic_moq_filter_range *next_filter = temp->next->data;
+						if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+							filters = g_list_prepend(filters, next_filter);
+							temp = temp->next;
+						} else {
+							break;
+						}
+					}
+				} else if(filter->type == IMQUIC_MOQ_FILTER_TRACK_PROPERTY &&
+						(request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+					list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER));
+					filters = g_list_prepend(filters, filter);
+					/* Peek the next one, to group ranges of the same type and set */
+					while(temp->next != NULL) {
+						imquic_moq_filter_range *next_filter = temp->next->data;
+						if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+							filters = g_list_prepend(filters, next_filter);
+							temp = temp->next;
+						} else {
+							break;
+						}
+					}
+				}
+				temp = temp->next;
+			}
 		}
 		if(parameters->expires_set &&
 				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_EXPIRES));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_EXPIRES));
 		}
 		if(parameters->largest_object_set &&
 				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE_OK || request == IMQUIC_MOQ_REQUEST_OK)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
 		}
 		if(parameters->fill_timeout_set && parameters->fill_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT));
 		}
 		if(parameters->forward_set &&
 				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE ||
 					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
 		}
 		if(parameters->new_group_request_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
 		}
 		if(parameters->track_namespace_prefix_set && moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX));
 		}
 		*params_num = g_list_length(list);
 		offset += imquic_write_moqint(moq->version, *params_num, &bytes[offset], blen-offset);
 		if(list != NULL) {
 			list = g_list_sort(list, imquic_moq_compare_types);
+			filters = g_list_reverse(filters);
+			tf = filters;
 			GList *temp = list;
 			while(temp) {
 				new_id = GPOINTER_TO_UINT(temp->data);
@@ -1307,7 +1578,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_parameter_add_uint8(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						parameters->group_order);
-				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER) {
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER) {
 					uint8_t temp[40];
 					size_t tlen = sizeof(temp);
 					size_t toffset = imquic_write_moqint(moq->version, parameters->location_filter.type, temp, tlen);
@@ -1378,12 +1649,58 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						temp_tns, toffset);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+					/* These filters have pretty much the same format */
+					imquic_moq_filter_range *filter = tf ? tf->data : NULL;
+					if(filter == NULL || imquic_moq_filter_type_to_param(filter->type) != new_id) {
+						/* Something's wrong, write a Length=0 */
+						IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unexpected filter: %s != %s\n",
+							imquic_get_connection_name(moq->conn),
+							imquic_moq_filter_type_str(filter ? filter->type : 0),
+							imquic_moq_request_parameter_type_str(new_id, moq->version));
+						offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+							new_id, last_id, NULL, 0);
+					} else {
+						uint8_t ranges[256];
+						size_t rlen = sizeof(ranges);
+						/* Set ID */
+						size_t roffset = imquic_write_moqint(moq->version, filter->set_id, ranges, rlen);
+						if(new_id == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+								new_id == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+							/* Property */
+							roffset += imquic_write_moqint(moq->version, filter->property, &ranges[roffset], rlen-roffset);
+						}
+						/* First range */
+						roffset += imquic_write_moqint(moq->version, filter->start, &ranges[roffset], rlen-roffset);
+						roffset += imquic_write_moqint(moq->version, filter->end - filter->start, &ranges[roffset], rlen-roffset);
+						/* Other ranges, if any */
+						while(tf->next != NULL) {
+							imquic_moq_filter_range *next_filter = tf->next->data;
+							if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+								/* Delta-encode the next range */
+								roffset += imquic_write_moqint(moq->version, next_filter->start - filter->end, &ranges[roffset], rlen-roffset);
+								roffset += imquic_write_moqint(moq->version, next_filter->end - next_filter->start, &ranges[roffset], rlen-roffset);
+								filter = next_filter;
+								tf = tf->next;
+							} else {
+								break;
+							}
+						}
+						tf = tf->next;
+						offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+							new_id, last_id, ranges, roffset);
+					}
 				}
 				last_id = new_id;
 				temp = temp->next;
 			}
 			g_list_free(list);
 		}
+		g_list_free(filters);
 	}
 	return offset;
 }
@@ -5739,7 +6056,7 @@ size_t imquic_moq_parameter_add_location(imquic_moq_context *moq, uint8_t *bytes
 
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen) {
-	if(bytes == NULL || blen == 0 || (buflen > 0 && buf == 0) || buflen > UINT16_MAX) {
+	if((buflen > 0 && buf == NULL) || buflen > UINT16_MAX) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %"SCNu64": invalid arguments\n",
 			imquic_get_connection_name(moq->conn), param);
 		return 0;
@@ -5790,7 +6107,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 	 * TLS tells us so, or for newer versions for params that need it */
 	if((moq->version <= IMQUIC_MOQ_VERSION_16 && type % 2 == 1) ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && (type == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN ||
-				type == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER || type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX))) {
+				type == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER || type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX))) {
 		len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ request parameter");
 		offset += length;
@@ -5873,7 +6190,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64" (%s)\n",
 			imquic_get_connection_name(moq->conn), group_order, imquic_moq_group_order_str(group_order));
 		len = length;
-	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER) {
+	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER) {
 		uint8_t *tmp = &bytes[offset];
 		size_t toffset = 0, tlen = len;
 		params->location_filter.type = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
@@ -5954,6 +6271,52 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		params->track_namespace_prefix_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %d\n",
 			imquic_get_connection_name(moq->conn), params->location_filter.type);
+	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+		imquic_moq_filter_type filter_type = imquic_moq_filter_type_from_param(type);
+		uint64_t filter_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		offset += length;
+		len = filter_len;
+		if(params->filters == NULL)
+			params->filters = imquic_moq_filters_create();
+		size_t foffset = offset;
+		uint64_t set_id = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || set_id > 255, NULL, 0, 0, "Broken MoQ request parameter");
+		foffset += length;
+		filter_len -= length;
+		uint64_t property = 0;
+		if(type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+				type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+			property = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || set_id > 255, NULL, 0, 0, "Broken MoQ request parameter");
+			foffset += length;
+			filter_len -= length;
+		}
+		uint64_t start = 0, end = 0, last_end = 0;
+		while(filter_len > 0) {
+			start = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+			start += last_end;
+			foffset += length;
+			filter_len -= length;
+			if(filter_len == 0) {
+				end = UINT64_MAX;
+			} else {
+				end = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				end += start;
+				last_end = end;
+				foffset += length;
+				filter_len -= length;
+			}
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s (%"SCNu64", %"SCNu64"-%"SCNu64")\n",
+				imquic_get_connection_name(moq->conn), imquic_moq_filter_type_str(filter_type), set_id, start, end);
+			imquic_moq_filters_add(params->filters, imquic_moq_filter_range_create(filter_type, set_id, property, start, end));
+		}
 	} else {
 		if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter %"SCNu64"\n",

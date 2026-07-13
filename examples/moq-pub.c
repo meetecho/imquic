@@ -220,7 +220,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_filter_type_str(filter_type));
+		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
 	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 		sub_start.group = group_id;
 		sub_start.object = object_id;
