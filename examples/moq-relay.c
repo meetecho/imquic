@@ -112,6 +112,7 @@ typedef struct imquic_demo_moq_subscription {
 	uint64_t last_group_id, last_subgroup_id;
 	gboolean fetch;
 	gboolean forward;
+	imquic_moq_filters *filters;
 	GList *objects;
 	imquic_mutex mutex;
 } imquic_demo_moq_subscription;
@@ -309,6 +310,7 @@ static void imquic_demo_moq_subscription_destroy(imquic_demo_moq_subscription *s
 			g_list_free_full(s->objects, (GDestroyNotify)imquic_moq_object_cleanup);
 			fetches = g_list_remove(fetches, s);
 		}
+		imquic_moq_filters_destroy(s->filters);
 		imquic_mutex_destroy(&s->mutex);
 		g_free(s);
 	}
@@ -566,6 +568,7 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
 	imquic_moq_set_max_request_id(conn, UINT64_MAX);
+	imquic_moq_set_max_filter_ranges(conn, 10);	/* FIXME */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Waiting for MoQ connection to be ready (SETUP)...\n",
 		imquic_get_connection_name(conn));
 }
@@ -920,8 +923,6 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0, NULL);
 		return;
 	}
-	if(name == NULL || strlen(name) == 0)
-		name = "temp";
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
@@ -1005,8 +1006,6 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Unauthorized access", 0, NULL);
 		return;
 	}
-	if(name == NULL || strlen(name) == 0)
-		name = "temp";
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
@@ -1081,6 +1080,15 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			s->sub_end.group = parameters->location_filter.end_group - 1;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
+	}
+	if(parameters->filters_set && parameters->filters != NULL) {
+		/* The subscriber added filters, "steal" them */
+		s->filters = parameters->filters;
+		parameters->filters_set = FALSE;
+		parameters->filters = NULL;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_filters_print(imquic_moq_get_version(conn), s->filters);
 	}
 	imquic_mutex_unlock(&track->mutex);
 	/* Only accept the subscribe right now if the track is already active */
@@ -1778,7 +1786,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				continue;
 			}
 			if(!s->active || !s->forward) {
-				/* Subscription not establish yet, or subscriber doesn't
+				/* Subscription not established yet, or subscriber doesn't
 				 * want to receive any object, for now, so skip this */
 				if(!s->active) {
 					/* Store this packet anyway, so that we can send it
@@ -1787,6 +1795,12 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						imquic_get_connection_name(s->sub->conn));
 					s->objects = g_list_prepend(s->objects, imquic_moq_object_duplicate(object));
 				}
+				temp = temp->next;
+				continue;
+			}
+			if(s->filters != NULL && !imquic_moq_filters_match(s->filters, object)) {
+				IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Object doesn't match filters, dropping\n",
+					imquic_get_connection_name(s->sub->conn));
 				temp = temp->next;
 				continue;
 			}

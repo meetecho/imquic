@@ -36,6 +36,7 @@ typedef struct demo_options {
 	int join_offset;
 	const char *payload_type;
 	const char *target_file;
+	gboolean test_filter_ranges;
 	const char *ip;
 	int port;
 	const char *remote_host;

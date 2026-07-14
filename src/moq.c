@@ -1266,11 +1266,10 @@ gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object
 		return TRUE;
 	/* Traverse all filters */
 	GHashTableIter iter;
-	gpointer key, value;
+	gpointer value;
 	g_hash_table_iter_init(&iter, filters->filters_map);
 	gboolean object_filters = FALSE;
-	while(g_hash_table_iter_next(&iter, &key, &value)) {
-		uint8_t set_id = GPOINTER_TO_UINT(key);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
 		GList *list = value;
 		gboolean sgf_match = FALSE, has_sgf = FALSE,
 			objf_match = FALSE, has_objf = FALSE,

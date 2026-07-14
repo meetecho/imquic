@@ -151,6 +151,19 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.location_filter.type = filter_type;
 	params.location_filter.start_location = start_location;
 	params.location_filter.end_group = end_location_sub.group;
+	if(options.test_filter_ranges) {
+		/* Add some filter ranges too, just form testing */
+		imquic_moq_filters *filters = imquic_moq_filters_create();
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_SUBGROUP, 0, 0, 0, 1));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 0, 5));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 10, 15));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 20, 25));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 30, 35));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 40, 45));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 50, 55));
+		params.filters_set = TRUE;
+		params.filters = filters;
+	}
 	/* If we got here, we're sending either a SUBSCRIBE or a TRACK_STATUS
 	 * manually to the specified tracks: when subscribing, we do it either
 	 * via SUBSCRIBE or FETCH. As such, we iterate on all track names */
@@ -203,6 +216,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			imquic_get_connection_name(conn), options.update_subscribe);
 		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
 	}
+	imquic_moq_filters_destroy(params.filters);
 }
 
 static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id,
@@ -389,8 +403,6 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
-	if(name == NULL || strlen(name) == 0)
-		name = "temp";
 	if(track_properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
 	/* Done */
