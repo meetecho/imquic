@@ -1399,6 +1399,19 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
  * @returns The next Request ID */
 uint64_t imquic_moq_get_next_request_id(imquic_connection *conn);
 
+/*! \brief Helper function to set the maximum filter ranges a subscriber can send
+ * \note Added in v19
+ * @param conn The imquic_connection to update
+ * @param max_filter_ranges The Maximum Filter Ranges to enforce
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_set_max_filter_ranges(imquic_connection *conn, uint64_t max_filter_ranges);
+
+/*! \brief Helper function to get the maximum filter ranges of our remote peer
+ * \note Added in v19
+ * @param conn The imquic_connection to query
+ * @returns The current value of the remote max filter ranges value */
+uint64_t imquic_moq_get_remote_max_filter_ranges(imquic_connection *conn);
+
 /*! \brief Helper function to return the MoQ implementation name as a
  * string, if provided by the peer of this connection
  * \note The string is owned by the library, so if you'll need to rely

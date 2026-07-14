@@ -1266,44 +1266,56 @@ gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object
 		return TRUE;
 	/* Traverse all filters */
 	GHashTableIter iter;
-	gpointer value;
+	gpointer key, value;
 	g_hash_table_iter_init(&iter, filters->filters_map);
-	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+	gboolean object_filters = FALSE;
+	while(g_hash_table_iter_next(&iter, &key, &value)) {
+		uint8_t set_id = GPOINTER_TO_UINT(key);
 		GList *list = value;
-		gboolean set_match = TRUE;
+		gboolean sgf_match = FALSE, has_sgf = FALSE,
+			objf_match = FALSE, has_objf = FALSE,
+			priof_match = FALSE, has_priof = FALSE;
 		while(list != NULL) {
 			imquic_moq_filter_range *filter = (imquic_moq_filter_range *)list->data;
 			if(filter->type == IMQUIC_MOQ_FILTER_TRACK_PROPERTY) {
-				/* Objects can't match this */
-				set_match = FALSE;
-				break;
+				/* FIXME Objects can't match this, without further info? */
+				list = list->next;
+				continue;
+			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT_PROPERTY) {
+				/* TODO We don't implement this yet */
+				list = list->next;
+				continue;
 			}
 			/* FIXME Match object against this specific filter */
-			if(filter->type == IMQUIC_MOQ_FILTER_SUBGROUP &&
-					(object->subgroup_id < filter->start || object->subgroup_id > filter->end)) {
-				/* Subgroup filter doesn't match */
-				set_match = FALSE;
-				break;
-			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT &&
-					(object->object_id < filter->start || object->object_id > filter->end)) {
-				/* Object filter doesn't match */
-				set_match = FALSE;
-				break;
-			} else if(filter->type == IMQUIC_MOQ_FILTER_PRIORITY &&
-					(object->priority < filter->start || object->priority > filter->end)) {
-				/* Priority filter doesn't match */
-				set_match = FALSE;
-				break;
+			object_filters = TRUE;
+			if(filter->type == IMQUIC_MOQ_FILTER_SUBGROUP) {
+				has_sgf = TRUE;
+				if(object->subgroup_id >= filter->start && object->subgroup_id <= filter->end) {
+					/* Subgroup filter matches */
+					sgf_match = TRUE;
+				}
+			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT) {
+				has_objf = TRUE;
+				if(object->object_id >= filter->start && object->object_id <= filter->end) {
+					/* Object filter matches */
+					objf_match = TRUE;
+				}
+			} else if(filter->type == IMQUIC_MOQ_FILTER_PRIORITY) {
+				has_priof = TRUE;
+				if(object->priority >= filter->start && object->priority <= filter->end) {
+					/* Priority filter matches */
+					priof_match = TRUE;
+				}
 			}
-			/* TODO Implement OBJECT_PROPERTY_FILTER too */
 			list = list->next;
 		}
-		/* If we did get a match for this set, we're done */
+		gboolean set_match = (sgf_match || !has_sgf) && (objf_match || !has_objf) && (priof_match || !has_priof);
+		/* If this matched, return a success */
 		if(set_match)
 			return TRUE;
 	}
-	/* If we got here, none of the sets matched */
-	return FALSE;
+	/* FIXME If we got here, no set matched */
+	return !object_filters;
 }
 
 
@@ -2664,6 +2676,8 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing REQUEST_OK parameters");
 	}
 	size_t prop_len = blen-offset;
@@ -2698,7 +2712,20 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	imquic_mutex_unlock(&moq->mutex);
 	if(type != IMQUIC_MOQ_TRACK_STATUS)
 		g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
+	if(prop_len > 0 && type != IMQUIC_MOQ_TRACK_STATUS)
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR((prop_len > 0 && type != IMQUIC_MOQ_TRACK_STATUS), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Track properties not empty");
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed, ignoring\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+		}
+	}
 	switch(type) {
 		case IMQUIC_MOQ_PUBLISH:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_accepted)
@@ -2730,6 +2757,7 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 				imquic_get_connection_name(moq->conn), request_id, type, imquic_moq_message_type_str(type, moq->version));
 			break;
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2922,7 +2950,15 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, imquic_moq_st
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH_NAMESPACE parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		if(moq_stream != NULL)
@@ -3076,7 +3112,15 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	size_t prop_len = blen-offset;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
@@ -3224,6 +3268,8 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3241,6 +3287,8 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its ID */
@@ -3250,6 +3298,22 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
+	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
 	}
 	/* Track this subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, 0);
@@ -3264,6 +3328,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3311,6 +3376,8 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_UPDATE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing REQUEST_UPDATE parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3330,8 +3397,21 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT;
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed, ignoring\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+		}
+	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.request_updated) {
 		imquic_mutex_lock(&moq->mutex);
@@ -3343,6 +3423,7 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_request_update(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3571,7 +3652,15 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_NAMESPACE parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		if(moq_stream != NULL)
@@ -3648,6 +3737,8 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_TRACKS");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_TRACKS parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3662,6 +3753,8 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its request ID */
@@ -3676,6 +3769,22 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
 	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
+	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_tracks) {
 		moq->conn->socket->callbacks.moq.incoming_subscribe_tracks(moq->conn,
@@ -3686,6 +3795,7 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe_tracks(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3874,6 +3984,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing FETCH parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3901,6 +4013,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its request ID */
@@ -3913,6 +4027,22 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
+	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
 	}
 	/* Track this fetch subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, 0);
@@ -3941,6 +4071,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 			imquic_moq_reject_fetch(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 		}
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -4031,7 +4162,15 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing FETCH_OK parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	size_t prop_len = blen-offset;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
@@ -4104,6 +4243,8 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing TRACK_STATUS parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4119,6 +4260,8 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its ID */
@@ -4129,6 +4272,22 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
 	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
+	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_track_status) {
 		moq->conn->socket->callbacks.moq.incoming_track_status(moq->conn,
@@ -4137,6 +4296,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_track_status(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -6283,6 +6443,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		len = filter_len;
 		if(params->filters == NULL)
 			params->filters = imquic_moq_filters_create();
+		params->filters_set = TRUE;
 		size_t foffset = offset;
 		uint64_t set_id = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || set_id > 255, NULL, 0, 0, "Broken MoQ request parameter");
@@ -6403,7 +6564,6 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
 	return 0;
-
 }
 
 uint64_t imquic_moq_get_next_request_id(imquic_connection *conn) {
@@ -6418,6 +6578,39 @@ uint64_t imquic_moq_get_next_request_id(imquic_connection *conn) {
 	return next;
 }
 
+/* Maximum Filter Ranges management */
+int imquic_moq_set_max_filter_ranges(imquic_connection *conn, uint64_t max_filter_ranges) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || moq->version < IMQUIC_MOQ_VERSION_19) {
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	if(g_atomic_int_get(&moq->connected)) {
+		/* Already connected, ignore */
+		imquic_mutex_unlock(&moq_mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "Already connected, ignoring new local max_filter_ranges value\n");
+		return -2;
+	}
+	moq->local_max_filter_ranges = max_filter_ranges;
+	imquic_mutex_unlock(&moq_mutex);
+	/* Done */
+	return 0;
+}
+
+uint64_t imquic_moq_get_remote_max_filter_ranges(imquic_connection *conn) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL) {
+		imquic_mutex_unlock(&moq_mutex);
+		return 0;
+	}
+	uint64_t max_filter_ranges = moq->max_filter_ranges;
+	imquic_mutex_unlock(&moq_mutex);
+	return max_filter_ranges;
+}
+
+/* Remote stack */
 const char *imquic_moq_get_remote_implementation(imquic_connection *conn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
