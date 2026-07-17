@@ -29,6 +29,7 @@ typedef struct demo_options {
 	const char **qlog_logging;
 	gboolean qlog_sequential;
 	int debug_level;
+	gboolean debug_timestamps;
 	gboolean debug_locks;
 	gboolean debug_refcounts;
 } demo_options;

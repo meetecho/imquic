@@ -35,6 +35,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "quiet", 'Z', 0, G_OPTION_ARG_NONE, &options->quiet, "If set, don't print about incoming/outgoing packets on stdout (default=no)", NULL },
 		{ "echo", 'e', 0, G_OPTION_ARG_NONE, &options->echo, "If set, the receiver will echo incoming RTP packets back to the sender (default=no)", NULL },
 		{ "debug-level", 'd', 0, G_OPTION_ARG_INT, &options->debug_level, "Debug/logging level (0=disable debugging, 7=maximum debug level; default=4)", "1-7" },
+		{ "debug-timestamps", 'T', 0, G_OPTION_ARG_NONE, &options->debug_timestamps, "Whether logs should include timestamps (default=no)", NULL },
 		{ "debug-locks", 'L', 0, G_OPTION_ARG_NONE, &options->debug_locks, "Whether to verbosely debug mutex/lock accesses (default=no)", NULL },
 		{ "debug-refcounts", 'C', 0, G_OPTION_ARG_NONE, &options->debug_refcounts, "Whether to verbosely debug reference counting (default=no)", NULL },
 		{ NULL, 0, 0, 0, NULL, NULL, NULL },

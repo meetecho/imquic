@@ -35,6 +35,7 @@ typedef struct demo_options {
 	gboolean quiet;
 	gboolean echo;
 	int debug_level;
+	gboolean debug_timestamps;
 	gboolean debug_locks;
 	gboolean debug_refcounts;
 } demo_options;
