@@ -568,6 +568,8 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	imquic_moq_set_max_request_id(conn, UINT64_MAX);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Waiting for MoQ connection to be ready (SETUP)...\n",
 		imquic_get_connection_name(conn));
+	if(options.summary)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[+] Relay is now handling %u connections\n", g_hash_table_size(connections));
 }
 
 static uint64_t imquic_demo_incoming_moq_connection(imquic_connection *conn, uint8_t *auth, size_t authlen) {
@@ -1832,6 +1834,8 @@ static void imquic_demo_connection_gone(imquic_connection *conn, uint64_t error_
 	imquic_mutex_unlock(&mutex);
 	if(g_hash_table_remove(connections, conn))
 		imquic_connection_unref(conn);
+	if(options.summary)
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[-] Relay is now handling %u connections\n", g_hash_table_size(connections));
 }
 
 int main(int argc, char *argv[]) {

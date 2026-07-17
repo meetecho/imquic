@@ -121,11 +121,11 @@ void imquic_moq_print_auth_info(imquic_connection *conn, uint8_t *auth, size_t a
 	if(conn == NULL || auth == NULL || authlen == 0)
 		return;
 	/* Data (hex) */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Authorization info: ",
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s]  -- Authorization info: ",
 		imquic_get_connection_name(conn));
 	for(size_t i=0; i<authlen; ++i)
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", auth[i]);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
+		IMQUIC_LOG(IMQUIC_LOG_VERB, "%02x", auth[i]);
+	IMQUIC_LOG(IMQUIC_LOG_VERB, "\n");
 }
 
 gboolean imquic_moq_check_auth_info(imquic_connection *conn, const char *auth_info, uint8_t *auth, size_t authlen) {
