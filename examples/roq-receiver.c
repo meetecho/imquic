@@ -154,6 +154,7 @@ int main(int argc, char *argv[]) {
 	}
 	/* Logging level */
 	imquic_set_log_level(options.debug_level);
+	imquic_set_log_timestamps(options.debug_timestamps);
 	/* Debugging */
 	if(options.debug_locks)
 		imquic_set_lock_debugging(TRUE);

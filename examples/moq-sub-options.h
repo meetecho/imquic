@@ -54,6 +54,7 @@ typedef struct demo_options {
 	gboolean qlog_moq_messages;
 	gboolean qlog_moq_objects;
 	int debug_level;
+	gboolean debug_timestamps;
 	gboolean debug_locks;
 	gboolean debug_refcounts;
 } demo_options;

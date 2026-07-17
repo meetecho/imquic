@@ -637,6 +637,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	/* Logging level */
+	imquic_set_log_timestamps(options.debug_timestamps);
 	imquic_set_log_level(options.debug_level);
 	/* Debugging */
 	if(options.debug_locks)
