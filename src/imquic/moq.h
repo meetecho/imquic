@@ -784,7 +784,7 @@ struct imquic_moq_filters {
 };
 /*! \brief Helper to create a new collection of filters
  * @returns A pointer to a new imquic_moq_filters instance, if successful, or NULL otherwise */
-imquic_moq_filters *imquic_moq_filters_create();
+imquic_moq_filters *imquic_moq_filters_create(void);
 /*! \brief Helper to duplicate an existing collection of filters
  * @param filters The imquic_moq_filters instance to duplicate
  * @returns A pointer to a new imquic_moq_filters instance, if successful, or NULL otherwise */
