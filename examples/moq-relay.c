@@ -1800,7 +1800,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				temp = temp->next;
 				continue;
 			}
-			if(s->filters != NULL && !imquic_moq_filters_match(s->filters, object)) {
+			if(s->filters != NULL && !imquic_moq_filters_match_object(s->filters, object)) {
 				IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Object doesn't match filters, dropping\n",
 					imquic_get_connection_name(s->sub->conn));
 				temp = temp->next;

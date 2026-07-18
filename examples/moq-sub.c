@@ -151,7 +151,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.location_filter.type = filter_type;
 	params.location_filter.start_location = start_location;
 	params.location_filter.end_group = end_location_sub.group;
-	if(options.test_filter_ranges) {
+	if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
 		/* Add some filter ranges too, just form testing */
 		imquic_moq_filters *filters = imquic_moq_filters_create();
 		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_SUBGROUP, 0, 0, 0, 1));
@@ -489,9 +489,9 @@ static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->request_id, object->track_alias,
-		object->group_id, object->subgroup_id, object->first_of_subgroup, object->object_id,
+		object->group_id, object->subgroup_id, object->first_of_subgroup, object->object_id, object->priority,
 		object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	if(object->payload == NULL || object->payload_len == 0) {

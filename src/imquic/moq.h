@@ -799,7 +799,13 @@ int imquic_moq_filters_add(imquic_moq_filters *filters, imquic_moq_filter_range 
  * @param filters The imquic_moq_filters instance to use for the checks
  * @param object The imquic_moq_object instance to check
  * @returns TRUE if the object passes the filters, FALSE otherwise */
-gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object *object);
+gboolean imquic_moq_filters_match_object(imquic_moq_filters *filters, imquic_moq_object *object);
+/*! \brief Helper to check if a specific track matches a filters collection
+ * \note We don't provide the track itself, just its list of properties
+ * @param filters The imquic_moq_filters instance to use for the checks
+ * @param properties The list of track properties to check
+ * @returns TRUE if the track passes the filters, FALSE otherwise */
+gboolean imquic_moq_filters_match_track(imquic_moq_filters *filters, GList *properties);
 /*! \brief Helper to get rid of a imquic_moq_filters instance
  * @param filters The imquic_moq_filters instance to free */
 void imquic_moq_filters_destroy(imquic_moq_filters *filters);

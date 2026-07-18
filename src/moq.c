@@ -1259,7 +1259,7 @@ void imquic_moq_filters_destroy(imquic_moq_filters *filters) {
 	}
 }
 
-gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object *object) {
+gboolean imquic_moq_filters_match_object(imquic_moq_filters *filters, imquic_moq_object *object) {
 	if(object == NULL)
 		return FALSE;
 	if(filters == NULL)
@@ -1273,15 +1273,12 @@ gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object
 		GList *list = value;
 		gboolean sgf_match = FALSE, has_sgf = FALSE,
 			objf_match = FALSE, has_objf = FALSE,
-			priof_match = FALSE, has_priof = FALSE;
+			priof_match = FALSE, has_priof = FALSE,
+			propf_match = FALSE, has_propf = FALSE;
 		while(list != NULL) {
 			imquic_moq_filter_range *filter = (imquic_moq_filter_range *)list->data;
 			if(filter->type == IMQUIC_MOQ_FILTER_TRACK_PROPERTY) {
-				/* FIXME Objects can't match this, without further info? */
-				list = list->next;
-				continue;
-			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT_PROPERTY) {
-				/* TODO We don't implement this yet */
+				/* FIXME We skip them for objects */
 				list = list->next;
 				continue;
 			}
@@ -1305,16 +1302,71 @@ gboolean imquic_moq_filters_match(imquic_moq_filters *filters, imquic_moq_object
 					/* Priority filter matches */
 					priof_match = TRUE;
 				}
+			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT_PROPERTY) {
+				has_propf = TRUE;
+				GList *temp = object->properties;
+				while(temp != NULL) {
+					imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+					if(prop->id == filter->property && prop->value.number >= filter->start && prop->value.number <= filter->end) {
+						/* Object property filter matches */
+						propf_match = TRUE;
+						break;
+					}
+					temp = temp->next;
+				}
 			}
 			list = list->next;
 		}
-		gboolean set_match = (sgf_match || !has_sgf) && (objf_match || !has_objf) && (priof_match || !has_priof);
+		gboolean set_match = (sgf_match || !has_sgf) && (objf_match || !has_objf) &&
+			(priof_match || !has_priof) && (propf_match || !has_propf);
 		/* If this matched, return a success */
 		if(set_match)
 			return TRUE;
 	}
 	/* FIXME If we got here, no set matched */
 	return !object_filters;
+}
+
+gboolean imquic_moq_filters_match_track(imquic_moq_filters *filters, GList *properties) {
+	if(filters == NULL)
+		return TRUE;
+	/* Traverse all filters */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, filters->filters_map);
+	gboolean track_filters = FALSE;
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		GList *list = value;
+		gboolean propf_match = FALSE, has_propf = FALSE;
+		while(list != NULL) {
+			imquic_moq_filter_range *filter = (imquic_moq_filter_range *)list->data;
+			if(filter->type != IMQUIC_MOQ_FILTER_TRACK_PROPERTY) {
+				/* FIXME We skip all filters except track property, here */
+				list = list->next;
+				continue;
+			}
+			/* FIXME Match object against this specific filter */
+			has_propf = TRUE;
+			track_filters = TRUE;
+			GList *temp = properties;
+			while(temp != NULL) {
+				imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+				if(prop->id == filter->property && prop->value.number >= filter->start && prop->value.number <= filter->end) {
+					/* Object property filter matches */
+					propf_match = TRUE;
+					break;
+				}
+				temp = temp->next;
+			}
+			list = list->next;
+		}
+		gboolean set_match = (propf_match || !has_propf);
+		/* If this matched, return a success */
+		if(set_match)
+			return TRUE;
+	}
+	/* FIXME If we got here, no set matched */
+	return !track_filters;
 }
 
 
