@@ -6678,8 +6678,6 @@ const char *imquic_moq_get_remote_implementation(imquic_connection *conn) {
 GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t prlen) {
 	if(properties == NULL || prlen == 0)
 		return NULL;
-	IMQUIC_LOG(IMQUIC_LOG_WARN, "imquic_moq_parse_properties, %zu\n", prlen);
-	imquic_print_hex(IMQUIC_LOG_INFO, properties, prlen);
 	GList *props = NULL;
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -6721,7 +6719,6 @@ GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properti
 			offset += length;
 			imquic_moq_property *property = g_malloc0(sizeof(imquic_moq_property));
 			property->id = prop_type;
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "%"SCNu64"\n", prop_len);
 			if(prop_len > 0) {
 				property->value.data.length = prop_len;
 				property->value.data.buffer = g_malloc(prop_len);
