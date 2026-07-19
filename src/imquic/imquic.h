@@ -182,6 +182,7 @@ typedef struct imquic_connection imquic_connection;
 typedef struct imquic_network_endpoint imquic_server;
 typedef struct imquic_network_endpoint imquic_client;
 typedef struct imquic_network_endpoint imquic_endpoint;
+typedef struct imquic_timer imquic_timer;
 
 /** @name Library initialization
  */
@@ -613,5 +614,23 @@ uint64_t imquic_uint64_random(void);
  * @param num The uint64_t number to duplicate
  * @returns A pointer to a uint64_t number, if successful, NULL otherwise */
 uint64_t *imquic_uint64_dup(uint64_t num);
+
+/*! \brief Helper to have the library fire an application function after tot milliseconds
+ * @note This uses the internal library loop, which means the function will
+ * be invoked by the same thread all other library callbacks are fired from.
+ * How the application returns from that function determines if the function
+ * should be fired again after the same amount of time, so whether this
+ * should be a one-off callback (<code>return FALSE;</code>) or if the
+ * same should be repeated ((<code>return TRUE;</code>).
+ * @param ms How many milliseconds in the future to schedule the function
+ * @param func The function to invoke
+ * @param user_data Opaque data that should be passed back to the function when it fires
+ * @returns A pointer to an imquic_timer instance, if auccessful, or NULL otherwise */
+imquic_timer *imquic_schedule_timer(uint ms, gboolean (* func)(void *user_data), void *user_data);
+/*! \brief Helper to cancel a previously scheduled timer
+ * @note Its up to the application to free resources allocated for the \c user_data
+ * if required..
+ * @param timer The imquic_timer to cancel */
+void imquic_cancel_timer(imquic_timer *timer);
 ///@}
 #endif
