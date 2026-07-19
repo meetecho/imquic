@@ -128,6 +128,7 @@ typedef struct imquic_demo_moq_monitor {
 	GHashTable *published;
 	GHashTable *known_tracks;
 	gboolean forward;
+	imquic_moq_filters *filters;
 	char *ns;
 } imquic_demo_moq_monitor;
 static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection *conn, uint64_t request_id,
@@ -336,6 +337,7 @@ static void imquic_demo_moq_monitor_destroy(imquic_demo_moq_monitor *mon) {
 		imquic_moq_namespace_free(mon->tns);
 		g_hash_table_destroy(mon->published);
 		g_hash_table_destroy(mon->known_tracks);
+		imquic_moq_filters_destroy(mon->filters);
 		g_free(mon);
 	}
 }
@@ -406,6 +408,12 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscriber knows track '%p' already\n",
 						imquic_get_connection_name(mon->conn), track);
 				}
+				temp = temp->next;
+				continue;
+			}
+			if(mon->filters != NULL && !imquic_moq_filters_match_track(mon->filters, track->properties)) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Track '%s' doesn't match filters, skipping PUBLISH\n",
+					imquic_get_connection_name(mon->conn), track->track_name);
 				temp = temp->next;
 				continue;
 			}
@@ -1509,6 +1517,15 @@ static void imquic_demo_incoming_subscribe_tracks(imquic_connection *conn, uint6
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns, IMQUIC_MOQ_WANT_PUBLISH);
 	if(parameters->forward_set)
 		mon->forward = parameters->forward;
+	if(parameters->filters_set && parameters->filters != NULL) {
+		/* The subscriber added filters, "steal" them */
+		mon->filters = parameters->filters;
+		parameters->filters_set = FALSE;
+		parameters->filters = NULL;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_filters_print(imquic_moq_get_version(conn), mon->filters);
+	}
 	monitors = g_list_prepend(monitors, mon);
 	imquic_moq_accept_subscribe_tracks(conn, request_id, NULL);
 	/* Check if there's events we can push and already tracks we can publish */
