@@ -1492,21 +1492,21 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		if(parameters->auth_token_set && request != IMQUIC_MOQ_REQUEST_OK && request != IMQUIC_MOQ_REQUEST_ERROR) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN));
 		}
-		if(parameters->delivery_timeout_set && parameters->delivery_timeout > 0 &&
+		if(parameters->delivery_timeout_set &&
 				moq->version <= IMQUIC_MOQ_VERSION_17 &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
 		}
-		if(parameters->object_delivery_timeout_set && parameters->object_delivery_timeout > 0 &&
+		if(parameters->object_delivery_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT));
 		}
-		if(parameters->rendezvous_timeout_set && parameters->rendezvous_timeout > 0 &&
+		if(parameters->rendezvous_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_17 && request == IMQUIC_MOQ_SUBSCRIBE) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT));
 		}
-		if(parameters->subgroup_delivery_timeout_set && parameters->subgroup_delivery_timeout > 0 &&
+		if(parameters->subgroup_delivery_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT));
@@ -6340,35 +6340,35 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 			imquic_get_connection_name(moq->conn), imquic_hex_str(&bytes[offset], auth_len, ai_str, sizeof(ai_str)));
 	} else if(moq->version <= IMQUIC_MOQ_VERSION_17 && type == IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT) {
 		params->delivery_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->delivery_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->delivery_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->delivery_timeout);
 		len = length;
 	} else if(moq->version >= IMQUIC_MOQ_VERSION_18 && type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT) {
 		params->object_delivery_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->object_delivery_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->object_delivery_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->object_delivery_timeout);
 		len = length;
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT) {
 		params->subgroup_delivery_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->subgroup_delivery_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->subgroup_delivery_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->subgroup_delivery_timeout);
 		len = length;
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT) {
 		params->fill_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->fill_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->fill_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->fill_timeout);
 		len = length;
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT) {
 		params->rendezvous_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->rendezvous_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->rendezvous_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->rendezvous_timeout);
