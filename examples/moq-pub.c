@@ -129,7 +129,16 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					imquic_get_connection_name(conn));
 			}
 		}
-		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], &pub_trackname, moq_track_alias, &params, NULL);
+		/* Let's add a property just for fun (may be useful for testing filters) */
+		imquic_moq_property dynamic_groups = {
+			.id = IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER,
+			.value = {
+				.number = IMQUIC_MOQ_ORDERING_ASCENDING
+			}
+		};
+		GList *props = g_list_append(NULL, &dynamic_groups);
+		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], &pub_trackname, moq_track_alias, &params, props);
+		g_list_free(props);
 	}
 }
 

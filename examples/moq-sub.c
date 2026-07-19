@@ -119,9 +119,19 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		} else {
 			/* Use SUBSCRIBE_TRACKS for PUBLISH, but send a SUBSCRIBE_NAMESPACE too just for testing */
 			st_request_id = imquic_moq_get_next_request_id(conn);
+			imquic_moq_filters *filters = NULL;
+			if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
+				/* Add some filter ranges too, just form testing */
+				filters = imquic_moq_filters_create();
+				imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_TRACK_PROPERTY, 0,
+					IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER, IMQUIC_MOQ_ORDERING_ASCENDING, IMQUIC_MOQ_ORDERING_ASCENDING));
+				params.filters_set = TRUE;
+				params.filters = filters;
+			}
 			imquic_moq_subscribe_tracks(conn, st_request_id, sub_namespace, &params);
 			sn_request_id = imquic_moq_get_next_request_id(conn);
 			imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, IMQUIC_MOQ_WANT_NAMESPACE, &params);
+			imquic_moq_filters_destroy(filters);
 		}
 		if(options.update_subscribe_namespace > 0) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
