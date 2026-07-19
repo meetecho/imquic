@@ -586,3 +586,14 @@ uint64_t imquic_uint64_random(void) {
 uint64_t *imquic_uint64_dup(uint64_t num) {
 	return imquic_dup_uint64(num);
 }
+
+imquic_timer *imquic_schedule_timer(uint ms, gboolean (* func)(void *user_data), void *user_data) {
+	if(!imquic_is_inited())
+		return NULL;
+	return (imquic_timer *)imquic_loop_add_timer(ms, func, user_data);
+}
+
+void imquic_cancel_timer(imquic_timer *timer) {
+	if(timer != NULL)
+		g_source_destroy((GSource *)timer);
+}
