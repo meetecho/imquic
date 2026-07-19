@@ -43,7 +43,7 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GList *request_ids = NULL;
 static uint64_t max_request_id = 100, sn_request_id = 0, st_request_id = 0;
-static imquic_moq_filter_type filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+static imquic_moq_location_filter_type filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 static imquic_moq_location start_location = { 0 }, end_location = { 0 }, end_location_sub = { 0 };
 static int64_t update_time = 0, update_namespace_time = 0;
 static imquic_moq_namespace sub_namespace[32] = { 0 };
@@ -119,9 +119,19 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		} else {
 			/* Use SUBSCRIBE_TRACKS for PUBLISH, but send a SUBSCRIBE_NAMESPACE too just for testing */
 			st_request_id = imquic_moq_get_next_request_id(conn);
+			imquic_moq_filters *filters = NULL;
+			if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
+				/* Add some filter ranges too, just form testing */
+				filters = imquic_moq_filters_create();
+				imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_TRACK_PROPERTY, 0,
+					IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER, IMQUIC_MOQ_ORDERING_ASCENDING, IMQUIC_MOQ_ORDERING_ASCENDING));
+				params.filters_set = TRUE;
+				params.filters = filters;
+			}
 			imquic_moq_subscribe_tracks(conn, st_request_id, sub_namespace, &params);
 			sn_request_id = imquic_moq_get_next_request_id(conn);
 			imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, IMQUIC_MOQ_WANT_NAMESPACE, &params);
+			imquic_moq_filters_destroy(filters);
 		}
 		if(options.update_subscribe_namespace > 0) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
@@ -147,10 +157,23 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.subscriber_priority = 128;
 	params.group_order_set = TRUE;
 	params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	params.subscription_filter_set = TRUE;
-	params.subscription_filter.type = filter_type;
-	params.subscription_filter.start_location = start_location;
-	params.subscription_filter.end_group = end_location_sub.group;
+	params.location_filter_set = TRUE;
+	params.location_filter.type = filter_type;
+	params.location_filter.start_location = start_location;
+	params.location_filter.end_group = end_location_sub.group;
+	if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
+		/* Add some filter ranges too, just form testing */
+		imquic_moq_filters *filters = imquic_moq_filters_create();
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_SUBGROUP, 0, 0, 0, 1));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 0, 5));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 10, 15));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 20, 25));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 30, 35));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 40, 45));
+		imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_OBJECT, 0, 0, 50, 55));
+		params.filters_set = TRUE;
+		params.filters = filters;
+	}
 	/* If we got here, we're sending either a SUBSCRIBE or a TRACK_STATUS
 	 * manually to the specified tracks: when subscribing, we do it either
 	 * via SUBSCRIBE or FETCH. As such, we iterate on all track names */
@@ -203,6 +226,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			imquic_get_connection_name(conn), options.update_subscribe);
 		update_time = g_get_monotonic_time() + (options.update_subscribe * G_USEC_PER_SEC);
 	}
+	imquic_moq_filters_destroy(params.filters);
 }
 
 static void imquic_demo_incoming_publish_namespace(imquic_connection *conn, uint64_t request_id,
@@ -349,10 +373,10 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			params.subscriber_priority = 128;
 			params.group_order_set = TRUE;
 			params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-			params.subscription_filter_set = TRUE;
-			params.subscription_filter.type = filter_type;
-			params.subscription_filter.start_location = start_location;
-			params.subscription_filter.end_group = end_location_sub.group;
+			params.location_filter_set = TRUE;
+			params.location_filter.type = filter_type;
+			params.location_filter.start_location = start_location;
+			params.location_filter.end_group = end_location_sub.group;
 			g_hash_table_insert(namespaces_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_namespace_duplicate(new_tns));
 			g_hash_table_insert(tracks_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_track_duplicate(new_tn));
 			imquic_moq_subscribe(conn, new_request_id, new_tns, new_tn, &params);
@@ -389,8 +413,6 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
-	if(name == NULL || strlen(name) == 0)
-		name = "temp";
 	if(track_properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
 	/* Done */
@@ -402,10 +424,10 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	rparams.subscription_filter_set = TRUE;
-	rparams.subscription_filter.type = filter_type;
-	rparams.subscription_filter.start_location = start_location;
-	rparams.subscription_filter.end_group = end_location_sub.group;
+	rparams.location_filter_set = TRUE;
+	rparams.location_filter.type = filter_type;
+	rparams.location_filter.start_location = start_location;
+	rparams.location_filter.end_group = end_location_sub.group;
 	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
@@ -477,9 +499,9 @@ static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t
 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 		imquic_get_connection_name(conn), object->request_id, object->track_alias,
-		object->group_id, object->subgroup_id, object->first_of_subgroup, object->object_id,
+		object->group_id, object->subgroup_id, object->first_of_subgroup, object->object_id, object->priority,
 		object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 		imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	if(object->payload == NULL || object->payload_len == 0) {
@@ -522,6 +544,12 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 					case IMQUIC_MOQ_LOC_AUDIO_LEVEL: {
 						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %"SCNu64"\n",
 							imquic_moq_property_type_str(moq_version, prop->id), prop->value.number);
+						break;
+					}
+					case IMQUIC_MOQ_LOC_AUDIO_CONFIG: {
+						IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- -- %s: %zu bytes\n",
+							imquic_moq_property_type_str(moq_version, prop->id),
+							prop->value.data.length);
 						break;
 					}
 					case IMQUIC_MOQ_LOC_VIDEO_CONFIG: {
@@ -569,10 +597,10 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		params.forward_set = TRUE;
 		params.forward = TRUE;
-		params.subscription_filter_set = TRUE;
-		params.subscription_filter.type = filter_type;
-		params.subscription_filter.start_location = start_location;
-		params.subscription_filter.end_group = end_location_sub.group;
+		params.location_filter_set = TRUE;
+		params.location_filter.type = filter_type;
+		params.location_filter.start_location = start_location;
+		params.location_filter.end_group = end_location_sub.group;
 		imquic_moq_subscribe(conn, request_id, sub_namespace, &tn, &params);
 	}
 	if(object->end_of_stream) {
@@ -762,7 +790,7 @@ int main(int argc, char *argv[]) {
 			start_location.group, start_location.object, end_location.group, end_location.object);
 	} else if(!options.subscribe_namespace) {
 		const char *req = options.track_status ? "TRACK_STATUS" : "SUBSCRIBE";
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using '%s' as the %s filter type\n", req, imquic_moq_filter_type_str(filter_type));
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using '%s' as the %s filter type\n", req, imquic_moq_location_filter_type_str(filter_type));
 		if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
 			start_location.group = options.start_group;
 			start_location.object = options.start_object;
@@ -932,10 +960,10 @@ int main(int argc, char *argv[]) {
 				params.forward = TRUE;
 				params.subscriber_priority_set = TRUE;
 				params.subscriber_priority = 128;
-				params.subscription_filter_set = TRUE;
-				params.subscription_filter.type = filter_type;
-				params.subscription_filter.start_location = start_location;
-				params.subscription_filter.end_group = end_location_sub.group;
+				params.location_filter_set = TRUE;
+				params.location_filter.type = filter_type;
+				params.location_filter.start_location = start_location;
+				params.location_filter.end_group = end_location_sub.group;
 				uint64_t request_id = imquic_moq_get_next_request_id(moq_conn);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a REQUEST_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
 					imquic_get_connection_name(moq_conn), *rid, request_id);

@@ -902,14 +902,14 @@ void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_incoming_publish_blocked_cb(imquic_endpoint *endpoint,
-		void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn)) {
+void imquic_set_incoming_publish_skipped_cb(imquic_endpoint *endpoint,
+		void (* incoming_publish_skipped)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.incoming_publish_blocked = incoming_publish_blocked;
+		endpoint->callbacks.moq.incoming_publish_skipped = incoming_publish_skipped;
 	}
 }
 
@@ -1059,8 +1059,10 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-17";
 		case IMQUIC_MOQ_VERSION_18:
 			return "draft-ietf-moq-transport-18";
+		case IMQUIC_MOQ_VERSION_19:
+			return "draft-ietf-moq-transport-19";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "draft-ietf-moq-transport-XX(-from--16-to-18)";
+			return "draft-ietf-moq-transport-XX(-from--16-to-19)";
 		default: break;
 	}
 	return NULL;
@@ -1074,8 +1076,10 @@ static const char *imquic_moq_version_alpn(imquic_moq_version version) {
 			return "moqt-17";
 		case IMQUIC_MOQ_VERSION_18:
 			return "moqt-18";
+		case IMQUIC_MOQ_VERSION_19:
+			return "moqt-19";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "moqt-18,moqt-17,moqt-16";
+			return "moqt-19,moqt-18,moqt-17,moqt-16";
 		default: break;
 	}
 	return NULL;
@@ -1138,6 +1142,8 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
 			return "LOC Video Config";
 		case IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING:
 			return "LOC Video Frame Marking";
+		case IMQUIC_MOQ_LOC_AUDIO_CONFIG:
+			return "LOC Audio Config";
 		case IMQUIC_MOQ_LOC_AUDIO_LEVEL:
 			return "LOC Audio Level";
 		default: break;

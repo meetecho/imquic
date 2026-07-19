@@ -428,7 +428,6 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	rparams.subscription_filter_set = TRUE;
 	imquic_moq_accept_publish(conn, request_id, &rparams);
 }
 
@@ -481,6 +480,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 					timestamp = prop->value.number;
 					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %"SCNu64"\n",
 						imquic_moq_property_type_str(moq_version, prop->id), timestamp);
+					break;
+				}
+				case IMQUIC_MOQ_LOC_AUDIO_CONFIG: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
+						imquic_moq_property_type_str(moq_version, prop->id),
+						prop->value.data.length);
 					break;
 				}
 				default: {

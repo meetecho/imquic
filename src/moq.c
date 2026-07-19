@@ -78,6 +78,8 @@ void imquic_moq_deinit(void) {
 static imquic_moq_version imquic_moq_version_from_alpn(const char *alpn, imquic_moq_version fallback) {
 	if(alpn == NULL)
 		return fallback;
+	if(!strcasecmp(alpn, "moqt-19"))
+		return IMQUIC_MOQ_VERSION_19;
 	if(!strcasecmp(alpn, "moqt-18"))
 		return IMQUIC_MOQ_VERSION_18;
 	if(!strcasecmp(alpn, "moqt-17"))
@@ -190,6 +192,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	moq->is_server = conn->is_server;
 	moq->next_request_id = moq->is_server ? 1 : 0;
 	moq->expected_request_id = moq->is_server ? 0 : 1;
+	moq->local_max_request_updates = 1;		/* FIXME */
 	const char *alpn = imquic_is_connection_webtransport(conn) ?
 		imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn);
 	moq->version = imquic_moq_version_from_alpn(alpn, conn->socket->moq_version);
@@ -289,6 +292,14 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 			}
 			memcpy(parameters.auth_token, moq->auth, moq->authlen);
 			parameters.auth_token_len = moq->authlen;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_19 && moq->local_max_filter_ranges > 0) {
+			parameters.max_filter_ranges_set = TRUE;
+			parameters.max_filter_ranges = moq->local_max_filter_ranges;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_19 && moq->local_max_request_updates > 0) {
+			parameters.max_request_updates_set = TRUE;
+			parameters.max_request_updates = moq->local_max_request_updates;
 		}
 		/* Add the implementation */
 		parameters.moqt_implementation_set = TRUE;
@@ -561,6 +572,8 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 			return "Invalid Authority";
 		case IMQUIC_MOQ_MALFORMED_AUTHORITY:
 			return "Malformed Authority";
+		case IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES:
+			return "Too Many Request Updates";
 		case IMQUIC_MOQ_UNKNOWN_ERROR:
 			return "Unknown Error";
 		default: break;
@@ -606,6 +619,10 @@ const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code
 			return "Unsupported Extension";
 		case IMQUIC_MOQ_REQERR_REDIRECT:
 			return "Redirect";
+		case IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS:
+			return "Conflicting Filters";
+		case IMQUIC_MOQ_REQERR_INVALID_FILTER:
+			return "Invalid Filter";
 		default: break;
 	}
 	return NULL;
@@ -700,8 +717,8 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type, imquic_moq
 			return "NAMESPACE";
 		case IMQUIC_MOQ_NAMESPACE_DONE:
 			return "NAMESPACE_DONE";
-		case IMQUIC_MOQ_PUBLISH_BLOCKED:
-			return "PUBLISH_BLOCKED";
+		case IMQUIC_MOQ_PUBLISH_SKIPPED:
+			return "PUBLISH_SKIPPED";
 		case IMQUIC_MOQ_MAX_REQUEST_ID:
 			return "MAX_REQUEST_ID";
 		case IMQUIC_MOQ_REQUESTS_BLOCKED:
@@ -962,8 +979,12 @@ const char *imquic_moq_setup_option_type_str(imquic_moq_setup_option_type type) 
 			return "MAX_AUTH_TOKEN_CACHE_SIZE";
 		case IMQUIC_MOQ_SETUP_OPTION_AUTHORITY:
 			return "AUTHORITY";
+		case IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES:
+			return "MAX_FILTER_RANGES";
 		case IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION:
 			return "MOQT_IMPLEMENTATION";
+		case IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES:
+			return "MAX_REQUEST_UPDATES";
 		default: break;
 	}
 	return NULL;
@@ -985,8 +1006,18 @@ const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_t
 			return "SUBSCRIBER_PRIORITY";
 		case IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER:
 			return "GROUP_ORDER";
-		case IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER:
-			return "SUBSCRIPTION_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER:
+			return "LOCATION_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER:
+			return "SUBGROUP_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER:
+			return "OBJECT_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER:
+			return "PRIORITY_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER:
+			return "OBJECT_PROPERTY_FILTER";
+		case IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER:
+			return "TRACK_PROPERTY_FILTER";
 		case IMQUIC_MOQ_REQUEST_PARAM_EXPIRES:
 			return "EXPIRES";
 		case IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT:
@@ -1002,7 +1033,7 @@ const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_t
 	return NULL;
 }
 
-const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
+const char *imquic_moq_location_filter_type_str(imquic_moq_location_filter_type type) {
 	switch(type) {
 		case IMQUIC_MOQ_FILTER_NEXT_GROUP_START:
 			return "Next Group Start";
@@ -1015,6 +1046,57 @@ const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
 		default: break;
 	}
 	return NULL;
+}
+
+const char *imquic_moq_filter_type_str(imquic_moq_filter_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_FILTER_SUBGROUP:
+			return "SUBGROUP_FILTER";
+		case IMQUIC_MOQ_FILTER_OBJECT:
+			return "OBJECT_FILTER";
+		case IMQUIC_MOQ_FILTER_PRIORITY:
+			return "PRIORITY_FILTER";
+		case IMQUIC_MOQ_FILTER_OBJECT_PROPERTY:
+			return "OBJECT_PROPERTY_FILTER";
+		case IMQUIC_MOQ_FILTER_TRACK_PROPERTY:
+			return "TRACK_PROPERTY_FILTER";
+		default: break;
+	}
+	return NULL;
+}
+
+static imquic_moq_request_parameter_type imquic_moq_filter_type_to_param(imquic_moq_filter_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_FILTER_SUBGROUP:
+			return IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER;
+		case IMQUIC_MOQ_FILTER_OBJECT:
+			return IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER;
+		case IMQUIC_MOQ_FILTER_PRIORITY:
+			return IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER;
+		case IMQUIC_MOQ_FILTER_OBJECT_PROPERTY:
+			return IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER;
+		case IMQUIC_MOQ_FILTER_TRACK_PROPERTY:
+			return IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER;
+		default: break;
+	}
+	return -1;
+}
+
+static imquic_moq_filter_type imquic_moq_filter_type_from_param(imquic_moq_request_parameter_type type) {
+	switch(type) {
+		case IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER:
+			return IMQUIC_MOQ_FILTER_SUBGROUP;
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER:
+			return IMQUIC_MOQ_FILTER_OBJECT;
+		case IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER:
+			return IMQUIC_MOQ_FILTER_PRIORITY;
+		case IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER:
+			return IMQUIC_MOQ_FILTER_OBJECT_PROPERTY;
+		case IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER:
+			return IMQUIC_MOQ_FILTER_TRACK_PROPERTY;
+		default: break;
+	}
+	return -1;
 }
 
 const char *imquic_moq_group_order_str(imquic_moq_group_order type) {
@@ -1071,6 +1153,223 @@ const char *imquic_moq_auth_token_alias_type_str(imquic_moq_auth_token_alias_typ
 	return NULL;
 }
 
+/* MoQ filters */
+imquic_moq_filter_range *imquic_moq_filter_range_create(imquic_moq_filter_type type,
+		uint8_t set_id, imquic_moq_property_type property, uint64_t start, uint64_t end) {
+	if(end < start)
+		return NULL;
+	imquic_moq_filter_range *filter = g_malloc(sizeof(imquic_moq_filter_range));
+	filter->type = type;
+	filter->set_id = set_id;
+	filter->property = property;
+	filter->start = start;
+	filter->end = end;
+	return filter;
+}
+
+static int imquic_moq_filter_range_sort(imquic_moq_filter_range *a, imquic_moq_filter_range *b) {
+	if(!a && !b)
+		return 0;
+	else if(!b || a->type < b->type)
+		return -1;
+	else if(!a || a->type > b->type)
+		return 1;
+	else if(!b || a->set_id < b->set_id)
+		return -1;
+	else if(!a || a->set_id > b->set_id)
+		return 1;
+	else if(!b || a->property < b->property)
+		return -1;
+	else if(!a || a->property > b->property)
+		return 1;
+	else if(!b || a->start < b->start)
+		return -1;
+	else if(!a || a->start > b->start)
+		return 1;
+	else if(!b || a->end < b->end)
+		return -1;
+	else if(!a || a->end > b->end)
+		return 1;
+	return 0;
+}
+
+void imquic_moq_filter_range_destroy(imquic_moq_filter_range *filter) {
+	g_free(filter);
+}
+
+static void imquic_moq_filters_list_free(GList *list) {
+	g_list_free_full(list, (GDestroyNotify)imquic_moq_filter_range_destroy);
+}
+
+imquic_moq_filters *imquic_moq_filters_create(void) {
+	imquic_moq_filters *filters = g_malloc(sizeof(imquic_moq_filters));
+	filters->filters_map = g_hash_table_new_full(NULL, NULL, NULL,
+		(GDestroyNotify)imquic_moq_filters_list_free);
+	filters->filters_list = NULL;
+	return filters;
+}
+
+static void *imquic_moq_filter_range_duplicate(imquic_moq_filter_range *filter, void *user_data) {
+	if(filter == NULL)
+		return NULL;
+	return imquic_moq_filter_range_create(filter->type, filter->set_id, filter->property, filter->start, filter->end);
+}
+
+imquic_moq_filters *imquic_moq_filters_duplicate(imquic_moq_filters *filters) {
+	if(filters == NULL)
+		return NULL;
+	imquic_moq_filters *dup = imquic_moq_filters_create();
+	GHashTableIter iter;
+	gpointer key, value;
+	g_hash_table_iter_init(&iter, filters->filters_map);
+	while(g_hash_table_iter_next(&iter, &key, &value)) {
+		uint8_t set_id = GPOINTER_TO_UINT(key);
+		GList *list = value;
+		GList *copy = g_list_copy_deep(list, (GCopyFunc)imquic_moq_filter_range_duplicate, NULL);
+		g_hash_table_insert(dup->filters_map, GUINT_TO_POINTER(set_id), copy);
+		while(copy != NULL) {
+			dup->filters_list = g_list_prepend(dup->filters_list, copy->data);
+			copy = copy->next;
+		}
+	}
+	return dup;
+}
+
+int imquic_moq_filters_add(imquic_moq_filters *filters, imquic_moq_filter_range *filter) {
+	if(filters == NULL || filter == NULL || filter->end < filter->start)
+		return -1;
+	/* Check if we have a list for this set ID already */
+	GList *list = g_hash_table_lookup(filters->filters_map, GUINT_TO_POINTER(filter->set_id));
+	if(list != NULL)
+		g_hash_table_steal(filters->filters_map, GUINT_TO_POINTER(filter->set_id));
+	/* TODO Check if there are overlaps */
+	list = g_list_prepend(list, filter);
+	g_hash_table_insert(filters->filters_map, GUINT_TO_POINTER(filter->set_id), list);
+	filters->filters_list = g_list_prepend(filters->filters_list, filter);
+	return 0;
+}
+
+void imquic_moq_filters_destroy(imquic_moq_filters *filters) {
+	if(filters != NULL) {
+		if(filters->filters_map != NULL)
+			g_hash_table_unref(filters->filters_map);
+		if(filters->filters_list != NULL)
+			g_list_free(filters->filters_list);
+		g_free(filters);
+	}
+}
+
+gboolean imquic_moq_filters_match_object(imquic_moq_filters *filters, imquic_moq_object *object) {
+	if(object == NULL)
+		return FALSE;
+	if(filters == NULL)
+		return TRUE;
+	/* Traverse all filters */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, filters->filters_map);
+	gboolean object_filters = FALSE;
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		GList *list = value;
+		gboolean sgf_match = FALSE, has_sgf = FALSE,
+			objf_match = FALSE, has_objf = FALSE,
+			priof_match = FALSE, has_priof = FALSE,
+			propf_match = FALSE, has_propf = FALSE;
+		while(list != NULL) {
+			imquic_moq_filter_range *filter = (imquic_moq_filter_range *)list->data;
+			if(filter->type == IMQUIC_MOQ_FILTER_TRACK_PROPERTY) {
+				/* FIXME We skip them for objects */
+				list = list->next;
+				continue;
+			}
+			/* FIXME Match object against this specific filter */
+			object_filters = TRUE;
+			if(filter->type == IMQUIC_MOQ_FILTER_SUBGROUP) {
+				has_sgf = TRUE;
+				if(object->subgroup_id >= filter->start && object->subgroup_id <= filter->end) {
+					/* Subgroup filter matches */
+					sgf_match = TRUE;
+				}
+			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT) {
+				has_objf = TRUE;
+				if(object->object_id >= filter->start && object->object_id <= filter->end) {
+					/* Object filter matches */
+					objf_match = TRUE;
+				}
+			} else if(filter->type == IMQUIC_MOQ_FILTER_PRIORITY) {
+				has_priof = TRUE;
+				if(object->priority >= filter->start && object->priority <= filter->end) {
+					/* Priority filter matches */
+					priof_match = TRUE;
+				}
+			} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT_PROPERTY) {
+				has_propf = TRUE;
+				GList *temp = object->properties;
+				while(temp != NULL) {
+					imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+					if(prop->id == filter->property && prop->value.number >= filter->start && prop->value.number <= filter->end) {
+						/* Object property filter matches */
+						propf_match = TRUE;
+						break;
+					}
+					temp = temp->next;
+				}
+			}
+			list = list->next;
+		}
+		gboolean set_match = (sgf_match || !has_sgf) && (objf_match || !has_objf) &&
+			(priof_match || !has_priof) && (propf_match || !has_propf);
+		/* If this matched, return a success */
+		if(set_match)
+			return TRUE;
+	}
+	/* FIXME If we got here, no set matched */
+	return !object_filters;
+}
+
+gboolean imquic_moq_filters_match_track(imquic_moq_filters *filters, GList *properties) {
+	if(filters == NULL)
+		return TRUE;
+	/* Traverse all filters */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, filters->filters_map);
+	gboolean track_filters = FALSE;
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		GList *list = value;
+		gboolean propf_match = FALSE, has_propf = FALSE;
+		while(list != NULL) {
+			imquic_moq_filter_range *filter = (imquic_moq_filter_range *)list->data;
+			if(filter->type != IMQUIC_MOQ_FILTER_TRACK_PROPERTY) {
+				/* FIXME We skip all filters except track property, here */
+				list = list->next;
+				continue;
+			}
+			/* FIXME Match object against this specific filter */
+			has_propf = TRUE;
+			track_filters = TRUE;
+			GList *temp = properties;
+			while(temp != NULL) {
+				imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+				if(prop->id == filter->property && prop->value.number >= filter->start && prop->value.number <= filter->end) {
+					/* Object property filter matches */
+					propf_match = TRUE;
+					break;
+				}
+				temp = temp->next;
+			}
+			list = list->next;
+		}
+		gboolean set_match = (propf_match || !has_propf);
+		/* If this matched, return a success */
+		if(set_match)
+			return TRUE;
+	}
+	/* FIXME If we got here, no set matched */
+	return !track_filters;
+}
+
+
 /* MoQ options and parameters */
 static int imquic_moq_compare_types(const void *a, const void *b) {
 	return GPOINTER_TO_INT(a) - GPOINTER_TO_INT(b);
@@ -1091,7 +1390,7 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 		GList *list = NULL;
 		if(options->path_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_PATH));
-		if(options->max_request_id_set)
+		if(options->max_request_id_set && moq->version < IMQUIC_MOQ_VERSION_17)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID));
 		if(options->max_auth_token_cache_size_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE));
@@ -1099,8 +1398,12 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN));
 		if(options->authority_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_AUTHORITY));
+		if(options->max_filter_ranges_set && moq->version >= IMQUIC_MOQ_VERSION_19)
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES));
 		if(options->moqt_implementation_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION));
+		if(options->max_request_updates && moq->version >= IMQUIC_MOQ_VERSION_19)
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES));
 		/* For newer versions, we may add a GREASE option */
 		if(moq->version >= IMQUIC_MOQ_VERSION_17 && moq->do_grease)
 			list = g_list_append(list, GUINT_TO_POINTER(imquic_moq_random_grease()));
@@ -1132,10 +1435,18 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_setup_option_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->authority, strlen(options->authority));
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES) {
+					offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						options->max_filter_ranges);
 				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION) {
 					offset += imquic_moq_setup_option_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						(uint8_t *)options->moqt_implementation, strlen(options->moqt_implementation));
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES) {
+					offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						options->max_request_updates);
 				} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(new_id)) {
 					/* Add a GREASE setup option */
 					if(new_id % 2 == 0) {
@@ -1179,70 +1490,126 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		uint64_t new_id = 0, last_id = 0;
 		GList *list = NULL;
 		if(parameters->auth_token_set && request != IMQUIC_MOQ_REQUEST_OK && request != IMQUIC_MOQ_REQUEST_ERROR) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN));
 		}
-		if(parameters->delivery_timeout_set && parameters->delivery_timeout > 0 &&
+		if(parameters->delivery_timeout_set &&
 				moq->version <= IMQUIC_MOQ_VERSION_17 &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT));
 		}
-		if(parameters->object_delivery_timeout_set && parameters->object_delivery_timeout > 0 &&
+		if(parameters->object_delivery_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT));
 		}
-		if(parameters->rendezvous_timeout_set && parameters->rendezvous_timeout > 0 &&
+		if(parameters->rendezvous_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_17 && request == IMQUIC_MOQ_SUBSCRIBE) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT));
 		}
-		if(parameters->subgroup_delivery_timeout_set && parameters->subgroup_delivery_timeout > 0 &&
+		if(parameters->subgroup_delivery_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT));
 		}
 		if(parameters->subscriber_priority_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH ||
 					request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
 		}
 		if(parameters->group_order_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
 		}
-		if(parameters->subscription_filter_set &&
+		if(parameters->location_filter_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER));
+		}
+		GList *filters = NULL, *tf = NULL;
+		if(parameters->filters_set && moq->version >= IMQUIC_MOQ_VERSION_19) {
+			parameters->filters->filters_list = g_list_sort(parameters->filters->filters_list, (GCompareFunc)imquic_moq_filter_range_sort);
+			GList *temp = parameters->filters->filters_list;
+			while(temp != NULL) {
+				imquic_moq_filter_range *filter = (imquic_moq_filter_range *)temp->data;
+				if((filter->type == IMQUIC_MOQ_FILTER_SUBGROUP || filter->type == IMQUIC_MOQ_FILTER_OBJECT || filter->type == IMQUIC_MOQ_FILTER_PRIORITY) &&
+						(request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS ||
+							request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+					list = g_list_prepend(list, GUINT_TO_POINTER(imquic_moq_filter_type_to_param(filter->type)));
+					filters = g_list_prepend(filters, filter);
+					/* Peek the next one, to group ranges of the same type and set */
+					while(temp->next != NULL) {
+						imquic_moq_filter_range *next_filter = temp->next->data;
+						if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+							filters = g_list_prepend(filters, next_filter);
+							temp = temp->next;
+						} else {
+							break;
+						}
+					}
+				} else if(filter->type == IMQUIC_MOQ_FILTER_OBJECT_PROPERTY &&
+						(request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS ||
+							request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+					list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER));
+					filters = g_list_prepend(filters, filter);
+					/* Peek the next one, to group ranges of the same type and set */
+					while(temp->next != NULL) {
+						imquic_moq_filter_range *next_filter = temp->next->data;
+						if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+							filters = g_list_prepend(filters, next_filter);
+							temp = temp->next;
+						} else {
+							break;
+						}
+					}
+				} else if(filter->type == IMQUIC_MOQ_FILTER_TRACK_PROPERTY &&
+						(request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+					list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER));
+					filters = g_list_prepend(filters, filter);
+					/* Peek the next one, to group ranges of the same type and set */
+					while(temp->next != NULL) {
+						imquic_moq_filter_range *next_filter = temp->next->data;
+						if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+							filters = g_list_prepend(filters, next_filter);
+							temp = temp->next;
+						} else {
+							break;
+						}
+					}
+				}
+				temp = temp->next;
+			}
 		}
 		if(parameters->expires_set &&
 				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_EXPIRES));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_EXPIRES));
 		}
 		if(parameters->largest_object_set &&
 				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE_OK || request == IMQUIC_MOQ_REQUEST_OK)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
 		}
 		if(parameters->fill_timeout_set && parameters->fill_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT));
 		}
 		if(parameters->forward_set &&
 				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE ||
 					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
 		}
 		if(parameters->new_group_request_set &&
 				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST));
 		}
 		if(parameters->track_namespace_prefix_set && moq->version >= IMQUIC_MOQ_VERSION_18 &&
 				(request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE)) {
-			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX));
+			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX));
 		}
 		*params_num = g_list_length(list);
 		offset += imquic_write_moqint(moq->version, *params_num, &bytes[offset], blen-offset);
 		if(list != NULL) {
 			list = g_list_sort(list, imquic_moq_compare_types);
+			filters = g_list_reverse(filters);
+			tf = filters;
 			GList *temp = list;
 			while(temp) {
 				new_id = GPOINTER_TO_UINT(temp->data);
@@ -1274,20 +1641,20 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_parameter_add_uint8(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						parameters->group_order);
-				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER) {
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER) {
 					uint8_t temp[40];
 					size_t tlen = sizeof(temp);
-					size_t toffset = imquic_write_moqint(moq->version, parameters->subscription_filter.type, temp, tlen);
-					if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-							parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-						toffset += imquic_write_moqint(moq->version, parameters->subscription_filter.start_location.group, &temp[toffset], tlen-toffset);
-						toffset += imquic_write_moqint(moq->version, parameters->subscription_filter.start_location.object, &temp[toffset], tlen-toffset);
+					size_t toffset = imquic_write_moqint(moq->version, parameters->location_filter.type, temp, tlen);
+					if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+							parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+						toffset += imquic_write_moqint(moq->version, parameters->location_filter.start_location.group, &temp[toffset], tlen-toffset);
+						toffset += imquic_write_moqint(moq->version, parameters->location_filter.start_location.object, &temp[toffset], tlen-toffset);
 					}
-					if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+					if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 						/* End group is a delta, starting from v17 */
-						uint64_t end_group = parameters->subscription_filter.end_group;
+						uint64_t end_group = parameters->location_filter.end_group;
 						if(moq->version >= IMQUIC_MOQ_VERSION_16)
-							end_group -= parameters->subscription_filter.start_location.group;
+							end_group -= parameters->location_filter.start_location.group;
 						toffset += imquic_write_moqint(moq->version, end_group, &temp[toffset], tlen-toffset);
 					}
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
@@ -1345,12 +1712,58 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						temp_tns, toffset);
+				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+						new_id == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+					/* These filters have pretty much the same format */
+					imquic_moq_filter_range *filter = tf ? tf->data : NULL;
+					if(filter == NULL || imquic_moq_filter_type_to_param(filter->type) != new_id) {
+						/* Something's wrong, write a Length=0 */
+						IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unexpected filter: %s != %s\n",
+							imquic_get_connection_name(moq->conn),
+							imquic_moq_filter_type_str(filter ? filter->type : 0),
+							imquic_moq_request_parameter_type_str(new_id, moq->version));
+						offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+							new_id, last_id, NULL, 0);
+					} else {
+						uint8_t ranges[256];
+						size_t rlen = sizeof(ranges);
+						/* Set ID */
+						size_t roffset = imquic_write_moqint(moq->version, filter->set_id, ranges, rlen);
+						if(new_id == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+								new_id == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+							/* Property */
+							roffset += imquic_write_moqint(moq->version, filter->property, &ranges[roffset], rlen-roffset);
+						}
+						/* First range */
+						roffset += imquic_write_moqint(moq->version, filter->start, &ranges[roffset], rlen-roffset);
+						roffset += imquic_write_moqint(moq->version, filter->end - filter->start, &ranges[roffset], rlen-roffset);
+						/* Other ranges, if any */
+						while(tf->next != NULL) {
+							imquic_moq_filter_range *next_filter = tf->next->data;
+							if(next_filter->type == filter->type && next_filter->set_id == filter->set_id) {
+								/* Delta-encode the next range */
+								roffset += imquic_write_moqint(moq->version, next_filter->start - filter->end, &ranges[roffset], rlen-roffset);
+								roffset += imquic_write_moqint(moq->version, next_filter->end - next_filter->start, &ranges[roffset], rlen-roffset);
+								filter = next_filter;
+								tf = tf->next;
+							} else {
+								break;
+							}
+						}
+						tf = tf->next;
+						offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
+							new_id, last_id, ranges, roffset);
+					}
 				}
 				last_id = new_id;
 				temp = temp->next;
 			}
 			g_list_free(list);
 		}
+		g_list_free(filters);
 	}
 	return offset;
 }
@@ -1840,9 +2253,9 @@ next:
 			} else if(type == IMQUIC_MOQ_NAMESPACE_DONE) {
 				/* Parse this NAMESPACE_DONE message */
 				parsed = imquic_moq_parse_namespace_done(moq, moq_stream, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_PUBLISH_BLOCKED) {
-				/* Parse this PUBLISH_BLOCKED message */
-				parsed = imquic_moq_parse_publish_blocked(moq, moq_stream, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_SKIPPED) {
+				/* Parse this PUBLISH_SKIPPED message */
+				parsed = imquic_moq_parse_publish_skipped(moq, moq_stream, &bytes[offset], plen, &error);
 			} else if(type == IMQUIC_MOQ_GOAWAY) {
 				/* Parse this GOAWAY message */
 				parsed = imquic_moq_parse_goaway(moq, moq_stream, &bytes[offset], plen, &error);
@@ -2033,12 +2446,20 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		/* Update the value we have */
 		moq->max_auth_token_cache_size = options.max_auth_token_cache_size;
 	}
+	if(options.max_filter_ranges_set) {
+		/* Update the value we have */
+		moq->max_filter_ranges = options.max_filter_ranges;
+	}
 	if(options.moqt_implementation_set) {
 		/* Take note of the implemntation */
 		g_free(moq->peer_implementation);
 		moq->peer_implementation = NULL;
 		if(strlen(options.moqt_implementation) > 0)
 			moq->peer_implementation = g_strdup(options.moqt_implementation);
+	}
+	if(options.max_request_updates_set) {
+		/* Update the value we have */
+		moq->max_request_updates = options.max_request_updates;
 	}
 	if(options.path_set) {
 		/* TODO Handle and validate */
@@ -2306,6 +2727,8 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing REQUEST_OK parameters");
 	}
 	size_t prop_len = blen-offset;
@@ -2340,7 +2763,20 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	imquic_mutex_unlock(&moq->mutex);
 	if(type != IMQUIC_MOQ_TRACK_STATUS)
 		g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
+	if(prop_len > 0 && type != IMQUIC_MOQ_TRACK_STATUS)
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR((prop_len > 0 && type != IMQUIC_MOQ_TRACK_STATUS), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Track properties not empty");
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed, ignoring\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+		}
+	}
 	switch(type) {
 		case IMQUIC_MOQ_PUBLISH:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_accepted)
@@ -2372,6 +2808,7 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 				imquic_get_connection_name(moq->conn), request_id, type, imquic_moq_message_type_str(type, moq->version));
 			break;
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2564,7 +3001,15 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, imquic_moq_st
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH_NAMESPACE parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		if(moq_stream != NULL)
@@ -2718,7 +3163,15 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	size_t prop_len = blen-offset;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
@@ -2866,6 +3319,8 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2883,6 +3338,8 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its ID */
@@ -2892,6 +3349,22 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
+	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
 	}
 	/* Track this subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, 0);
@@ -2906,6 +3379,7 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -2953,6 +3427,8 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken REQUEST_UPDATE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing REQUEST_UPDATE parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -2972,8 +3448,21 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT;
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed, ignoring\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+		}
+	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.request_updated) {
 		imquic_mutex_lock(&moq->mutex);
@@ -2985,6 +3474,7 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_request_update(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3213,7 +3703,15 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_NAMESPACE parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		if(moq_stream != NULL)
@@ -3290,6 +3788,8 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken SUBSCRIBE_TRACKS");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_TRACKS parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3304,6 +3804,8 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its request ID */
@@ -3318,6 +3820,22 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
 	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
+	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_subscribe_tracks) {
 		moq->conn->socket->callbacks.moq.incoming_subscribe_tracks(moq->conn,
@@ -3328,6 +3846,7 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe_tracks(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3399,35 +3918,35 @@ size_t imquic_moq_parse_namespace_done(imquic_moq_context *moq, imquic_moq_strea
 	return offset;
 }
 
-size_t imquic_moq_parse_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error) {
+size_t imquic_moq_parse_publish_skipped(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1)
 		return 0;
 	IMQUIC_MOQ_CHECK_ERR((moq_stream == NULL || (moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_NAMESPACE && moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE_TRACKS) ||
 			!moq_stream->request_sender || (moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)),
-		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of PUBLISH_BLOCKED on bidirectional request");
+		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of PUBLISH_SKIPPED on bidirectional request");
 	size_t offset = 0;
 	uint8_t length = 0;
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
-	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE_DONE, tns_num, i, "Broken PUBLISH_BLOCKED", TRUE);
+	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE_DONE, tns_num, i, "Broken PUBLISH_SKIPPED", TRUE);
 	IMQUIC_MOQ_CHECK_ERR((tns_num + moq_stream->namespace_prefix_size) > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces");
 	imquic_moq_track tn = { 0 };
-	IMQUIC_MOQ_PARSE_TRACKNAME("Broken PUBLISH_BLOCKED", FALSE);
+	IMQUIC_MOQ_PARSE_TRACKNAME("Broken PUBLISH_SKIPPED", FALSE);
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("publish_blocked");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_skipped");
 		imquic_qlog_moq_message_add_namespace(message, (tns_num > 0 ? &tns[0] : NULL), "track_namespace_suffix");
 		imquic_qlog_moq_message_add_track(message, &tn);
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq_stream->stream_id, bytes-3, offset+3, message);
 	}
 	/* Notify the application */
-	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish_blocked) {
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_publish_skipped) {
 		/* Prepare the full track namespace */
 		if(tns_num > 0)
 			moq_stream->last_tuple->next = &tns[0];
-		moq->conn->socket->callbacks.moq.incoming_publish_blocked(moq->conn, moq_stream->request_id, moq_stream->namespace_prefix, &tn);
+		moq->conn->socket->callbacks.moq.incoming_publish_skipped(moq->conn, moq_stream->request_id, moq_stream->namespace_prefix, &tn);
 		moq_stream->last_tuple->next = NULL;
 	}
 	if(error)
@@ -3516,6 +4035,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing FETCH parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3543,6 +4064,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its request ID */
@@ -3555,6 +4078,22 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
+	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
 	}
 	/* Track this fetch subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, 0);
@@ -3583,6 +4122,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 			imquic_moq_reject_fetch(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 		}
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -3673,7 +4213,15 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing FETCH_OK parameters");
+	}
+	/* If filters were received, drop them */
+	if(parameters.filters != NULL) {
+		imquic_moq_filters_destroy(parameters.filters);
+		parameters.filters_set = FALSE;
+		parameters.filters = NULL;
 	}
 	size_t prop_len = blen-offset;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Properties Length:  %"SCNu64"\n",
@@ -3746,6 +4294,8 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 	for(i = 0; i<params_num; i++) {
 		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken TRACK_STATUS");
 		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		if(offset > blen || (error && *error))
+			imquic_moq_filters_destroy(parameters.filters);
 		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing TRACK_STATUS parameters");
 	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -3761,6 +4311,8 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
+	if(!moq_is_request_id_valid(moq, request_id, FALSE))
+		imquic_moq_filters_destroy(parameters.filters);
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
 	moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	/* If we're on a recent version of MoQ, track this request via its ID */
@@ -3771,6 +4323,22 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
 	}
+	/* If filters were received, make sure they are within the limits */
+	if(parameters.filters != NULL) {
+		uint num = g_list_length(parameters.filters->filters_list);
+		if(num > moq->local_max_filter_ranges) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Received %u range filters, where %"SCNu64" were allowed\n",
+				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
+			imquic_moq_filters_destroy(parameters.filters);
+			parameters.filters_set = FALSE;
+			parameters.filters = NULL;
+			moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_ERROR;
+			imquic_moq_reject_subscribe(moq->conn, request_id, IMQUIC_MOQ_REQERR_INVALID_FILTER, "Too many filters", 0, NULL);
+			if(error)
+				*error = 0;
+			return offset;
+		}
+	}
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_track_status) {
 		moq->conn->socket->callbacks.moq.incoming_track_status(moq->conn,
@@ -3779,6 +4347,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_track_status(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
+	imquic_moq_filters_destroy(parameters.filters);
 	if(error)
 		*error = 0;
 	return offset;
@@ -4394,7 +4963,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_s
 		offset += length;
 	}
 	uint64_t request_id = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream == NULL) {
+	if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken GOAWAY");
 		offset += length;
@@ -4404,7 +4973,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_s
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)uri_str, uri_len);
 		if(moq->version >= IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "timeout", json_integer(timeout));
-		if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
+		if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog,
 			moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq),
@@ -4424,8 +4993,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_s
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_goaway)
 			moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str, timeout);
 	} else {
-		/* TODO Got a GOAWAY for a specific request */
-
+		/* FIXME Got a GOAWAY for a specific request, any additional check needed? */
 		/* Notify the application */
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_request_goaway)
 			moq->conn->socket->callbacks.moq.incoming_request_goaway(moq->conn, request_id, uri_str, timeout);
@@ -5036,7 +5604,7 @@ size_t imquic_moq_add_namespace_done(imquic_moq_context *moq, imquic_moq_stream 
 	return offset;
 }
 
-size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+size_t imquic_moq_add_publish_skipped(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 		uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace, imquic_moq_track *track_name) {
 	if(bytes == NULL || blen < 1 || moq_stream == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
@@ -5045,13 +5613,13 @@ size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream
 	}
 	size_t offset = 0, len_offset = 0;
 	/* FIXME A tuple of size 0 is allowed here, this macro needs fixing */
-	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_PUBLISH_BLOCKED);
+	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_PUBLISH_SKIPPED);
 	/* FIXME A tuple of size 0 is allowed here, this macro needs fixing */
-	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_BLOCKED);
-	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_PUBLISH_BLOCKED);
+	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_PUBLISH_SKIPPED);
+	IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_PUBLISH_SKIPPED);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("publish_blocked");
+		json_t *message = imquic_qlog_moq_message_prepare("publish_skipped");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace_suffix");
 		imquic_qlog_moq_message_add_track(message, track_name);
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq_stream->stream_id, bytes, offset, message);
@@ -5247,7 +5815,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
 		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)new_session_uri, uri_len);
 		if(moq->version >= IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "timeout", json_integer(timeout));
-		if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
+		if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
 			json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog,
 			moq_stream ? moq_stream->stream_id : moq->control_stream_id,
@@ -5591,12 +6159,26 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 			g_snprintf(params->authority, sizeof(params->authority), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->authority);
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES) {
+		params->max_filter_ranges = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		params->max_filter_ranges_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_filter_ranges);
+		len = length;
 	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION) {
 		params->moqt_implementation_set = TRUE;
 		if(len > 0)
 			g_snprintf(params->moqt_implementation, sizeof(params->moqt_implementation), "%.*s", (int)len, &bytes[offset]);
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- '%s'\n",
 			imquic_get_connection_name(moq->conn), params->moqt_implementation);
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES) {
+		params->max_request_updates = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		params->max_request_updates_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_request_updates);
+		len = length;
 	} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(type)) {
 		/* This is a GREASE setup option, just skip it */
 		if(type % 2 == 0) {
@@ -5685,7 +6267,7 @@ size_t imquic_moq_parameter_add_location(imquic_moq_context *moq, uint8_t *bytes
 
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen) {
-	if(bytes == NULL || blen == 0 || (buflen > 0 && buf == 0) || buflen > UINT16_MAX) {
+	if((buflen > 0 && buf == NULL) || buflen > UINT16_MAX) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %"SCNu64": invalid arguments\n",
 			imquic_get_connection_name(moq->conn), param);
 		return 0;
@@ -5736,7 +6318,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 	 * TLS tells us so, or for newer versions for params that need it */
 	if((moq->version <= IMQUIC_MOQ_VERSION_16 && type % 2 == 1) ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && (type == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN ||
-				type == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER || type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX))) {
+				type == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER || type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX))) {
 		len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ request parameter");
 		offset += length;
@@ -5758,35 +6340,35 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 			imquic_get_connection_name(moq->conn), imquic_hex_str(&bytes[offset], auth_len, ai_str, sizeof(ai_str)));
 	} else if(moq->version <= IMQUIC_MOQ_VERSION_17 && type == IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT) {
 		params->delivery_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->delivery_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->delivery_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->delivery_timeout);
 		len = length;
 	} else if(moq->version >= IMQUIC_MOQ_VERSION_18 && type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT) {
 		params->object_delivery_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->object_delivery_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->object_delivery_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->object_delivery_timeout);
 		len = length;
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT) {
 		params->subgroup_delivery_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->subgroup_delivery_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->subgroup_delivery_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->subgroup_delivery_timeout);
 		len = length;
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT) {
 		params->fill_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->fill_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->fill_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->fill_timeout);
 		len = length;
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_RENDEZVOUS_TIMEOUT) {
 		params->rendezvous_timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || params->rendezvous_timeout == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		params->rendezvous_timeout_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->rendezvous_timeout);
@@ -5819,32 +6401,32 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64" (%s)\n",
 			imquic_get_connection_name(moq->conn), group_order, imquic_moq_group_order_str(group_order));
 		len = length;
-	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER) {
+	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER) {
 		uint8_t *tmp = &bytes[offset];
 		size_t toffset = 0, tlen = len;
-		params->subscription_filter.type = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+		params->location_filter.type = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 		toffset += length;
-		if(params->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-				params->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			params->subscription_filter.start_location.group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+		if(params->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+				params->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			params->location_filter.start_location.group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 			toffset += length;
-			params->subscription_filter.start_location.object = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+			params->location_filter.start_location.object = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 			toffset += length;
 		}
-		if(params->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			params->subscription_filter.end_group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+		if(params->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			params->location_filter.end_group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 			/* The End group property is a delta, starting from v17, but
 			 * we expose the full actual value to the application */
 			if(moq->version >= IMQUIC_MOQ_VERSION_17)
-				params->subscription_filter.end_group += params->subscription_filter.start_location.group;
+				params->location_filter.end_group += params->location_filter.start_location.group;
 		}
-		params->subscription_filter_set = TRUE;
+		params->location_filter_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %d\n",
-			imquic_get_connection_name(moq->conn), params->subscription_filter.type);
+			imquic_get_connection_name(moq->conn), params->location_filter.type);
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_EXPIRES) {
 		params->expires = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
@@ -5899,7 +6481,54 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE, tns_num, i, "Broken TRACK_NAMESPACE_PREFIX", TRUE);
 		params->track_namespace_prefix_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %d\n",
-			imquic_get_connection_name(moq->conn), params->subscription_filter.type);
+			imquic_get_connection_name(moq->conn), params->location_filter.type);
+	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+			type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+		imquic_moq_filter_type filter_type = imquic_moq_filter_type_from_param(type);
+		uint64_t filter_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+		offset += length;
+		len = filter_len;
+		if(params->filters == NULL)
+			params->filters = imquic_moq_filters_create();
+		params->filters_set = TRUE;
+		size_t foffset = offset;
+		uint64_t set_id = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || set_id > 255, NULL, 0, 0, "Broken MoQ request parameter");
+		foffset += length;
+		filter_len -= length;
+		uint64_t property = 0;
+		if(type == IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER ||
+				type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER) {
+			property = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || set_id > 255, NULL, 0, 0, "Broken MoQ request parameter");
+			foffset += length;
+			filter_len -= length;
+		}
+		uint64_t start = 0, end = 0, last_end = 0;
+		while(filter_len > 0) {
+			start = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+			start += last_end;
+			foffset += length;
+			filter_len -= length;
+			if(filter_len == 0) {
+				end = UINT64_MAX;
+			} else {
+				end = imquic_read_moqint(moq->version, &bytes[foffset], blen-foffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				end += start;
+				last_end = end;
+				foffset += length;
+				filter_len -= length;
+			}
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %s (%"SCNu64", %"SCNu64"-%"SCNu64")\n",
+				imquic_get_connection_name(moq->conn), imquic_moq_filter_type_str(filter_type), set_id, start, end);
+			imquic_moq_filters_add(params->filters, imquic_moq_filter_range_create(filter_type, set_id, property, start, end));
+		}
 	} else {
 		if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported parameter %"SCNu64"\n",
@@ -5986,7 +6615,6 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
 	return 0;
-
 }
 
 uint64_t imquic_moq_get_next_request_id(imquic_connection *conn) {
@@ -6001,6 +6629,39 @@ uint64_t imquic_moq_get_next_request_id(imquic_connection *conn) {
 	return next;
 }
 
+/* Maximum Filter Ranges management */
+int imquic_moq_set_max_filter_ranges(imquic_connection *conn, uint64_t max_filter_ranges) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || moq->version < IMQUIC_MOQ_VERSION_19) {
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	if(g_atomic_int_get(&moq->connected)) {
+		/* Already connected, ignore */
+		imquic_mutex_unlock(&moq_mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "Already connected, ignoring new local max_filter_ranges value\n");
+		return -2;
+	}
+	moq->local_max_filter_ranges = max_filter_ranges;
+	imquic_mutex_unlock(&moq_mutex);
+	/* Done */
+	return 0;
+}
+
+uint64_t imquic_moq_get_remote_max_filter_ranges(imquic_connection *conn) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL) {
+		imquic_mutex_unlock(&moq_mutex);
+		return 0;
+	}
+	uint64_t max_filter_ranges = moq->max_filter_ranges;
+	imquic_mutex_unlock(&moq_mutex);
+	return max_filter_ranges;
+}
+
+/* Remote stack */
 const char *imquic_moq_get_remote_implementation(imquic_connection *conn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
@@ -6421,12 +7082,12 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
-	if(parameters && parameters->subscription_filter_set && parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->subscription_filter.end_group > 0 && parameters->subscription_filter.start_location.group > parameters->subscription_filter.end_group) {
+	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
 			imquic_get_connection_name(conn),
-			parameters->subscription_filter.end_group,
-			parameters->subscription_filter.start_location.group);
+			parameters->location_filter.end_group,
+			parameters->location_filter.start_location.group);
 		imquic_refcount_decrease(&moq->ref);
 		return -1;
 	}
@@ -6520,12 +7181,12 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(parameters && parameters->subscription_filter_set && parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->subscription_filter.end_group > 0 && parameters->subscription_filter.start_location.group > parameters->subscription_filter.end_group) {
+	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
 			imquic_get_connection_name(conn),
-			parameters->subscription_filter.end_group,
-			parameters->subscription_filter.start_location.group);
+			parameters->location_filter.end_group,
+			parameters->location_filter.start_location.group);
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -6675,12 +7336,12 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(parameters && parameters->subscription_filter_set && parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->subscription_filter.end_group > 0 && parameters->subscription_filter.start_location.group > parameters->subscription_filter.end_group) {
+	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
 			imquic_get_connection_name(conn),
-			parameters->subscription_filter.end_group,
-			parameters->subscription_filter.start_location.group);
+			parameters->location_filter.end_group,
+			parameters->location_filter.start_location.group);
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -7363,7 +8024,7 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	return 0;
 }
 
-int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn) {
+int imquic_moq_notify_publish_skipped(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) ||
@@ -7396,7 +8057,7 @@ int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_
 	/* Prepare the message */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t nn_len = imquic_moq_add_publish_blocked(moq, moq_stream, buffer, blen, tns_suffix, tn);
+	size_t nn_len = imquic_moq_add_publish_skipped(moq, moq_stream, buffer, blen, tns_suffix, tn);
 	/* Send on the dedicated bidirectional STREAM */
 	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 		buffer, nn_len, FALSE);
@@ -7651,12 +8312,12 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(parameters && parameters->subscription_filter_set && parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->subscription_filter.end_group > 0 && parameters->subscription_filter.start_location.group > parameters->subscription_filter.end_group) {
+	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
 			imquic_get_connection_name(conn),
-			parameters->subscription_filter.end_group,
-			parameters->subscription_filter.start_location.group);
+			parameters->location_filter.end_group,
+			parameters->location_filter.start_location.group);
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
@@ -7819,7 +8480,7 @@ int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout
 	}
 	imquic_refcount_increase(&moq->ref);
 	uint64_t request_id = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_18)
+	if(moq->version == IMQUIC_MOQ_VERSION_18)
 		request_id = moq->expected_request_id;
 	imquic_mutex_unlock(&moq_mutex);
 	uint8_t buffer[200];
@@ -8445,27 +9106,27 @@ void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_
 		json_object_set_new(group_order, "value", json_integer(parameters->group_order));
 		json_array_append_new(params, group_order);
 	}
-	if(parameters->subscription_filter_set) {
-		json_t *subscription_filter = json_object();
-		json_object_set_new(subscription_filter, "name", json_string("subscription_filter"));
+	if(parameters->location_filter_set) {
+		json_t *location_filter = json_object();
+		json_object_set_new(location_filter, "name", json_string("location_filter"));
 		/* FIXME */
 		json_t *sf = json_object();
-		json_object_set_new(sf, "type", json_integer(parameters->subscription_filter.type));
-		if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-				parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		json_object_set_new(sf, "type", json_integer(parameters->location_filter.type));
+		if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+				parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 			json_t *lo = json_object();
-			json_object_set_new(lo, "group", json_integer(parameters->subscription_filter.start_location.group));
-			json_object_set_new(lo, "object", json_integer(parameters->subscription_filter.start_location.object));
+			json_object_set_new(lo, "group", json_integer(parameters->location_filter.start_location.group));
+			json_object_set_new(lo, "object", json_integer(parameters->location_filter.start_location.object));
 			json_object_set_new(sf, "start_location", lo);
 		}
-		if(parameters->subscription_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
 			if(version <= IMQUIC_MOQ_VERSION_16)
-				json_object_set_new(sf, "end_group", json_integer(parameters->subscription_filter.end_group));
+				json_object_set_new(sf, "end_group", json_integer(parameters->location_filter.end_group));
 			else
-				json_object_set_new(sf, "end_group_delta", json_integer(parameters->subscription_filter.end_group - parameters->subscription_filter.start_location.group));
+				json_object_set_new(sf, "end_group_delta", json_integer(parameters->location_filter.end_group - parameters->location_filter.start_location.group));
 		}
-		json_object_set_new(subscription_filter, "value", sf);
-		json_array_append_new(params, subscription_filter);
+		json_object_set_new(location_filter, "value", sf);
+		json_array_append_new(params, location_filter);
 	}
 	if(parameters->expires_set) {
 		json_t *expires = json_object();

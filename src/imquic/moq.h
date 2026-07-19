@@ -35,8 +35,8 @@
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
  * WebTransort protocol. At the time of writing, this stack
- * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v18
- * (\ref IMQUIC_MOQ_VERSION_18), but not all versions will be supported
+ * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v19
+ * (\ref IMQUIC_MOQ_VERSION_19), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \ref IMQUIC_MOQ_VERSION_MIN
@@ -313,7 +313,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_17 = 0xff000011,
 	/* Draft version -18 */
 	IMQUIC_MOQ_VERSION_18 = 0xff000012,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_18,
+	/* Draft version -19 */
+	IMQUIC_MOQ_VERSION_19 = 0xff000013,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_19,
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
@@ -451,16 +453,16 @@ typedef enum imquic_moq_group_order {
 const char *imquic_moq_group_order_str(imquic_moq_group_order type);
 
 /*! \brief MoQ filter type, for subscriptions */
-typedef enum imquic_moq_filter_type {
+typedef enum imquic_moq_location_filter_type {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
 	IMQUIC_MOQ_FILTER_LARGEST_OBJECT = 0x2,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_START = 0x3,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE = 0x4,
-} imquic_moq_filter_type;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_filter_type value.
- * @param type The imquic_moq_filter_type value
+} imquic_moq_location_filter_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_location_filter_type value.
+ * @param type The imquic_moq_location_filter_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_filter_type_str(imquic_moq_filter_type type);
+const char *imquic_moq_location_filter_type_str(imquic_moq_location_filter_type type);
 
 /*! \brief MoQ Group/Object couple (for ranges) */
 typedef struct imquic_moq_location {
@@ -476,15 +478,15 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
-/*! \brief MoQ subscription filter */
-typedef struct imquic_moq_subscription_filter {
+/*! \brief MoQ location filter */
+typedef struct imquic_moq_location_filter {
 	/*! \brief Filter type */
-	imquic_moq_filter_type type;
+	imquic_moq_location_filter_type type;
 	/*! \brief Start location (depending on filter type) */
 	imquic_moq_location start_location;
 	/*! \brief End group (depending on filter type) */
 	uint64_t end_group;
-} imquic_moq_subscription_filter;
+} imquic_moq_location_filter;
 
 /*! \brief Subscribe options for namespaces
  * \note Deprecated in v18, since there's a separate \c SUBSRIBE_TRACK now */
@@ -497,6 +499,9 @@ typedef enum imquic_moq_subscribe_namespace_options {
  * @param type The imquic_moq_subscribe_namespace_options value
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_subscribe_namespace_options_str(imquic_moq_subscribe_namespace_options type);
+
+/*! \brief Collection of MoQ filters */
+typedef struct imquic_moq_filters imquic_moq_filters;
 
 /*! \brief MoQ request parameters
  * \note The library takes care of the
@@ -542,9 +547,13 @@ typedef struct imquic_moq_request_parameters {
 	/*! \brief Value of the GROUP_ORDER parameter */
 	imquic_moq_group_order group_order;
 	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
-	gboolean subscription_filter_set;
+	gboolean location_filter_set;
 	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
-	imquic_moq_subscription_filter subscription_filter;
+	imquic_moq_location_filter location_filter;
+	/*! \brief Whether there are filters */
+	gboolean filters_set;
+	/*! \brief Filters of different types, indexed by set ID */
+	imquic_moq_filters *filters;
 	/*! \brief Whether the EXPIRES parameter is set */
 	gboolean expires_set;
 	/*! \brief Value of the EXPIRES parameter */
@@ -654,8 +663,10 @@ typedef enum imquic_moq_property_type {
 	IMQUIC_MOQ_LOC_VIDEO_CONFIG = 0x0D,
 	/*! \brief LOC Video Frame Marking */
 	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x09,
+	/*! \brief LOC Audio Config */
+	IMQUIC_MOQ_LOC_AUDIO_CONFIG = 0x0F,
 	/*! \brief LOC Audio Level */
-	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0F,
+	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0C,
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
  * @param version The version of the connection
@@ -723,6 +734,85 @@ typedef struct imquic_moq_object {
 } imquic_moq_object;
 ///@}
 
+/** @name MoQ filters (introduced in v19)
+ */
+///@{
+/*! \brief MoQ filter types */
+typedef enum imquic_moq_filter_type {
+	IMQUIC_MOQ_FILTER_SUBGROUP = 0x25,
+	IMQUIC_MOQ_FILTER_OBJECT = 0x26,
+	IMQUIC_MOQ_FILTER_PRIORITY = 0x27,
+	IMQUIC_MOQ_FILTER_OBJECT_PROPERTY = 0x28,
+	IMQUIC_MOQ_FILTER_TRACK_PROPERTY = 0x29,
+} imquic_moq_filter_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_filter_type value.
+ * @param type The imquic_moq_filter_type value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_filter_type_str(imquic_moq_filter_type type);
+
+/*! \brief Individual MoQ filter range */
+typedef struct imquic_moq_filter_range {
+	/*! \brief Type of filter */
+	imquic_moq_filter_type type;
+	/*! \brief Set this filter range belongs to */
+	uint8_t set_id;
+	/*! \brief Prpèerty type (if needed by filter) */
+	imquic_moq_property_type property;
+	/*! \brief Filter start */
+	uint64_t start;
+	/*! \brief Filter end */
+	uint64_t end;
+} imquic_moq_filter_range;
+/*! \brief Helper to create a filter range instance
+ * @param type The imquic_moq_filter_type type of the filter range
+ * @param set_id The set ID the filter range belongs to
+ * @param property The imquic_moq_property property type, if needed
+ * @param start The start of the range
+ * @param end The end of the range
+ * @returns A pointer to a new imquic_moq_filter_range instance, if successful, or NULL otherwise */
+imquic_moq_filter_range *imquic_moq_filter_range_create(imquic_moq_filter_type type,
+	uint8_t set_id, imquic_moq_property_type property, uint64_t start, uint64_t end);
+/*! \brief Helper to free a filter range instance
+ * @param filter The imquic_moq_filter_range instance to free */
+void imquic_moq_filter_range_destroy(imquic_moq_filter_range *filter);
+
+/*! \brief Collection of MoQ filters */
+struct imquic_moq_filters {
+	/*! \brief Map of filters, indexed by set ID
+	 * \note Each map points to a GList of imquic_moq_filter_range instances */
+	GHashTable *filters_map;
+	/*! \brief Same filters, but as a single linked list */
+	GList *filters_list;
+};
+/*! \brief Helper to create a new collection of filters
+ * @returns A pointer to a new imquic_moq_filters instance, if successful, or NULL otherwise */
+imquic_moq_filters *imquic_moq_filters_create(void);
+/*! \brief Helper to duplicate an existing collection of filters
+ * @param filters The imquic_moq_filters instance to duplicate
+ * @returns A pointer to a new imquic_moq_filters instance, if successful, or NULL otherwise */
+imquic_moq_filters *imquic_moq_filters_duplicate(imquic_moq_filters *filters);
+/*! \brief Helper to add a new filter range to a collection
+ * \note The filter range must be an allocated instance, as it will be destroyed at cleanup
+ * @param filters The imquic_moq_filters instance to add the filter range to
+ * @param filter The imquic_moq_filter_range instance to add
+ * @returns 0 if successful, a negative integer otherwise */
+int imquic_moq_filters_add(imquic_moq_filters *filters, imquic_moq_filter_range *filter);
+/*! \brief Helper to check if a specific object matches a filters collection
+ * @param filters The imquic_moq_filters instance to use for the checks
+ * @param object The imquic_moq_object instance to check
+ * @returns TRUE if the object passes the filters, FALSE otherwise */
+gboolean imquic_moq_filters_match_object(imquic_moq_filters *filters, imquic_moq_object *object);
+/*! \brief Helper to check if a specific track matches a filters collection
+ * \note We don't provide the track itself, just its list of properties
+ * @param filters The imquic_moq_filters instance to use for the checks
+ * @param properties The list of track properties to check
+ * @returns TRUE if the track passes the filters, FALSE otherwise */
+gboolean imquic_moq_filters_match_track(imquic_moq_filters *filters, GList *properties);
+/*! \brief Helper to get rid of a imquic_moq_filters instance
+ * @param filters The imquic_moq_filters instance to free */
+void imquic_moq_filters_destroy(imquic_moq_filters *filters);
+///@}
+
 /** @name MoQ's flavour of varint (introduced in v17)
  */
 ///@{
@@ -730,6 +820,7 @@ typedef struct imquic_moq_object {
  * @note You can use the return value to know how many bytes to skip in
  * the buffer to read the next value. In case of issues in the parsing,
  * length will have value 0.
+ * @param[in] version The imquic_moq_version property
  * @param[in] bytes The buffer to read
  * @param[in] blen The size of the buffer
  * @param[out] length How many bytes the variable size integer used
@@ -739,6 +830,7 @@ uint64_t imquic_read_moqint(imquic_moq_version version, uint8_t *bytes, size_t b
  * @note You can use the return value to know how many bytes to skip in
  * the buffer to write the next value. In case of issues in the writing,
  * length will have value 0.
+ * @param[in] version The imquic_moq_version property
  * @param[in] number The number to write as a variable size integer
  * @param[in] bytes The buffer to write to
  * @param[in] blen The size of the buffer
@@ -829,6 +921,7 @@ typedef enum imquic_moq_error_code {
 	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
 	IMQUIC_MOQ_INVALID_AUTHORITY = 0x19,
 	IMQUIC_MOQ_MALFORMED_AUTHORITY = 0x1A,
+	IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES = 0x1B,		/* Added in v19 */
 	/* Not an actual error */
 	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
 } imquic_moq_error_code;
@@ -851,7 +944,7 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
 	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
 	IMQUIC_MOQ_REQERR_MALFORMED_TRACK = 0x12,
-	IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,
+		IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,	/* Deprecated in v19 */
 	/* The following are returned by subscribers */
 	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
 	/* Others */
@@ -860,6 +953,8 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
 	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
 	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
+	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
+	IMQUIC_MOQ_REQERR_INVALID_FILTER = 0x36,	/* Added in v19 */
 } imquic_moq_request_error_code;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
  * @param code The imquic_moq_request_error_code value
@@ -918,7 +1013,7 @@ const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 		IMQUIC_CONFIG_TLS_PASSWORD, cert_pwd,
 		IMQUIC_CONFIG_LOCAL_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_18,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_19,
 		IMQUIC_CONFIG_DONE, NULL);
  \endverbatim
  * to create a QUIC server that will automatically negotiate MoQ over
@@ -951,7 +1046,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...);
 		IMQUIC_CONFIG_REMOTE_HOST, "127.0.0.1",
 		IMQUIC_CONFIG_REMOTE_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_18,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_19,
 		IMQUIC_CONFIG_HTTP3_PATH, "/moq",
 		IMQUIC_CONFIG_DONE, NULL);
 
@@ -1194,11 +1289,11 @@ void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
 	void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c PUBLISH_BLOCKED request.
+ * an incoming \c PUBLISH_SKIPPED request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_publish_blocked Pointer to the function that will handle the incoming \c PUBLISH_BLOCKED */
-void imquic_set_incoming_publish_blocked_cb(imquic_endpoint *endpoint,
-	void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn));
+ * @param incoming_publish_skipped Pointer to the function that will handle the incoming \c PUBLISH_SKIPPED */
+void imquic_set_incoming_publish_skipped_cb(imquic_endpoint *endpoint,
+	void (* incoming_publish_skipped)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming standalone \c FETCH request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1311,6 +1406,19 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
  * @param conn The imquic_connection to query
  * @returns The next Request ID */
 uint64_t imquic_moq_get_next_request_id(imquic_connection *conn);
+
+/*! \brief Helper function to set the maximum filter ranges a subscriber can send
+ * \note Added in v19
+ * @param conn The imquic_connection to update
+ * @param max_filter_ranges The Maximum Filter Ranges to enforce
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_set_max_filter_ranges(imquic_connection *conn, uint64_t max_filter_ranges);
+
+/*! \brief Helper function to get the maximum filter ranges of our remote peer
+ * \note Added in v19
+ * @param conn The imquic_connection to query
+ * @returns The current value of the remote max filter ranges value */
+uint64_t imquic_moq_get_remote_max_filter_ranges(imquic_connection *conn);
 
 /*! \brief Helper function to return the MoQ implementation name as a
  * string, if provided by the peer of this connection
@@ -1534,7 +1642,7 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
  * @param tns The imquic_moq_namespace namespace this request refers to
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
-/*! \brief Function to send a \c PUBLISH_BLOCKED request
+/*! \brief Function to send a \c PUBLISH_SKIPPED request
  * \note While the request itself doesn't contain the request ID, we use
  * it to find the subscription and use the right STREAM.
  * Notice the method expects the full track namespace: the stack will strip
@@ -1544,7 +1652,7 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
  * @param tns The imquic_moq_namespace namespace this request refers to
  * @param tn The imquic_moq_track track this request refers to
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_notify_publish_blocked(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
+int imquic_moq_notify_publish_skipped(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
 /*! \brief Function to send a standalone \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription

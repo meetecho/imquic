@@ -55,7 +55,7 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_SUBSCRIBE_TRACKS = 0x51,				/* Added in v18 */
 	IMQUIC_MOQ_NAMESPACE = 0x8,
 	IMQUIC_MOQ_NAMESPACE_DONE = 0xe,
-	IMQUIC_MOQ_PUBLISH_BLOCKED = 0xf,
+	IMQUIC_MOQ_PUBLISH_SKIPPED = 0xf,
 		IMQUIC_MOQ_MAX_REQUEST_ID = 0x15,			/* Deprecated in v17 */
 		IMQUIC_MOQ_REQUESTS_BLOCKED = 0x1A,			/* Deprecated in v17 */
 	IMQUIC_MOQ_FETCH = 0x16,
@@ -221,7 +221,9 @@ typedef enum imquic_moq_setup_option_type {
 	IMQUIC_MOQ_SETUP_OPTION_AUTHORIZATION_TOKEN = 0x03,
 	IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE = 0x04,
 	IMQUIC_MOQ_SETUP_OPTION_AUTHORITY = 0x05,
+	IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES = 0x06,
 	IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION = 0x07,
+	IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES = 0x08,
 } imquic_moq_setup_option_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_setup_option_type value.
  * @param type The imquic_moq_setup_option_type value
@@ -240,8 +242,13 @@ typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT = 0x0A,	/* Added in v18 */
 	IMQUIC_MOQ_REQUEST_PARAM_FORWARD = 0x10,
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY = 0x20,
-	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIPTION_FILTER = 0x21,
+	IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER = 0x21,
 	IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER = 0x22,
+	IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER = 0x25,
+	IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER = 0x26,
+	IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER = 0x27,
+	IMQUIC_MOQ_REQUEST_PARAM_OBJECT_PROPERTY_FILTER = 0x28,
+	IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER = 0x29,
 	IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST = 0x32,
 	IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX = 0x34,	/* Added in v18 */
 } imquic_moq_request_parameter_type;
@@ -277,10 +284,18 @@ typedef struct imquic_moq_setup_options {
 	gboolean authority_set;
 	/*! \brief Value of the AUTHORITY parameter */
 	char authority[256];
+	/*! \brief Whether the MAX_FILTER_RANGES parameter is set */
+	gboolean max_filter_ranges_set;
+	/*! \brief Value of the MAX_FILTER_RANGES parameter */
+	uint64_t max_filter_ranges;
 	/*! \brief Whether the MOQT_IMPLEMENTATION parameter is set */
 	gboolean moqt_implementation_set;
 	/*! \brief Value of the MOQT_IMPLEMENTATION parameter */
 	char moqt_implementation[256];
+	/*! \brief Whether the MAX_REQUEST_UPDATES parameter is set */
+	gboolean max_request_updates_set;
+	/*! \brief Value of the MAX_REQUEST_UPDATES parameter */
+	uint64_t max_request_updates;
 	/*! \brief Whether there's unknown parameters */
 	gboolean unknown;
 } imquic_moq_setup_options;
@@ -338,8 +353,12 @@ typedef struct imquic_moq_context {
 	uint64_t expected_request_id, next_request_id;
 	/*! \brief Maximum Request IDs we can send and the one we accept */
 	uint64_t max_request_id, local_max_request_id;
-	/*! \brief Maximum Request IDs we can send and the one we accept */
+	/*! \brief Maximum token cache size we can send and the one we accept */
 	uint64_t max_auth_token_cache_size, local_max_auth_token_cache_size;
+	/*! \brief Maximum Filter ranges we can send and the one we accept */
+	uint64_t max_filter_ranges, local_max_filter_ranges;
+	/*! \brief Maximum Request updates we can send and the one we accept */
+	uint64_t max_request_updates, local_max_request_updates;
 	/*! \brief Buffer to process incoming messages */
 	imquic_buffer *buffer;
 	/*! \brief Mutex */
@@ -643,14 +662,14 @@ size_t imquic_moq_parse_namespace(imquic_moq_context *moq, imquic_moq_stream *mo
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_namespace_done(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
-/*! \brief Helper to parse a \c PUBLISH_BLOCKED message
+/*! \brief Helper to parse a \c PUBLISH_SKIPPED message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_stream instance the message came from
  * @param[in] bytes The buffer containing the message to parse
  * @param[in] blen Size of the buffer to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
+size_t imquic_moq_parse_publish_skipped(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c FETCH message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_stream instance the message came from
@@ -986,7 +1005,7 @@ size_t imquic_moq_add_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_namespace_done(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace_suffix);
-/*! \brief Helper method to add a \c PUBLISH_BLOCKED message to a buffer
+/*! \brief Helper method to add a \c PUBLISH_SKIPPED message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
  * @param bytes The buffer to add the message to
@@ -994,7 +1013,7 @@ size_t imquic_moq_add_namespace_done(imquic_moq_context *moq, imquic_moq_stream 
  * @param track_namespace_suffix Namespace suffix that is impacted
  * @param track Track that is blocked
  * @returns The size of the generated message, if successful, or 0 otherwise */
-size_t imquic_moq_add_publish_blocked(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+size_t imquic_moq_add_publish_skipped(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
 	uint8_t *bytes, size_t blen, imquic_moq_namespace *track_namespace_suffix, imquic_moq_track *track);
 /*! \brief Helper to add a \c FETCH message to a buffer
  * @param moq The imquic_moq_context generating the message
@@ -1376,8 +1395,8 @@ typedef struct imquic_moq_callbacks {
 	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c NAMESPACE_DONE messages */
 	void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
-	/*! \brief Callback function to be notified about incoming \c PUBLISH_BLOCKED messages */
-	void (* incoming_publish_blocked)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_SKIPPED messages */
+	void (* incoming_publish_skipped)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */
 	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
