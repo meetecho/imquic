@@ -84,6 +84,7 @@ typedef struct imquic_demo_moq_track {
 	gboolean track_alias_valid;
 	gboolean published;
 	gboolean pending;
+	gboolean forward;
 	GList *subscriptions;
 	GList *objects;
 	GList *properties;
@@ -434,6 +435,17 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(relay_request_id), s);
 			g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(relay_track_alias), s);
 			track->subscriptions = g_list_append(track->subscriptions, s);
+			if(mon->forward && !track->forward) {
+				/* Send a REQUEST_UPDATE to the publisher with forwarding enabled */
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with FORWARD=1\n",
+					imquic_get_connection_name(annc->pub->conn));
+				imquic_moq_request_parameters rparams = { 0 };
+				track->forward = TRUE;
+				rparams.forward_set = TRUE;
+				rparams.forward = TRUE;
+				uint64_t update_request_id = imquic_moq_get_next_request_id(annc->pub->conn);
+				imquic_moq_update_request(annc->pub->conn, update_request_id, track->request_id, &rparams);
+			}
 			s->forward = mon->forward;
 			s->sub_end.group = IMQUIC_MAX_VARINT;
 			s->sub_end.object = IMQUIC_MAX_VARINT;
@@ -780,6 +792,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	track->published = TRUE;
 	track->pending = FALSE;
 	track->track_alias_valid = TRUE;
+	track->forward = parameters->forward;
 	track->properties = imquic_moq_properties_duplicate(track_properties);
 	g_hash_table_insert(annc->tracks, g_strdup(name), track);
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
@@ -1136,11 +1149,25 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with NEW_GROUP_REQUEST\n",
 					imquic_get_connection_name(annc->pub->conn));
 				imquic_moq_request_parameters rparams = { 0 };
+				if(s->forward && !track->forward) {
+					track->forward = TRUE;
+					rparams.forward_set = TRUE;
+					rparams.forward = TRUE;
+				}
 				rparams.new_group_request_set = TRUE;
 				rparams.new_group_request = largest->group_id + 1;
 				uint64_t update_request_id = imquic_moq_get_next_request_id(annc->pub->conn);
-				imquic_moq_update_request(annc->pub->conn, update_request_id, s->track->request_id, &rparams);
+				imquic_moq_update_request(annc->pub->conn, update_request_id, track->request_id, &rparams);
 			}
+		} else if(s->forward && !track->forward) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with FORWARD=1\n",
+				imquic_get_connection_name(annc->pub->conn));
+			imquic_moq_request_parameters rparams = { 0 };
+			track->forward = TRUE;
+			rparams.forward_set = TRUE;
+			rparams.forward = TRUE;
+			uint64_t update_request_id = imquic_moq_get_next_request_id(annc->pub->conn);
+			imquic_moq_update_request(annc->pub->conn, update_request_id, track->request_id, &rparams);
 		}
 	}
 	/* If we just created a placeholder track, forward the subscribe to the publisher */
@@ -1196,6 +1223,8 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	track->track_alias = track_alias;
 	track->track_alias_valid = TRUE;
 	g_hash_table_insert(pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
+	if(!track->forward && parameters->forward)
+		track->forward = TRUE;
 	track->properties = imquic_moq_properties_duplicate(track_properties);
 	/* Send a SUBSCRIBE_OK to all subscribers */
 	imquic_mutex_lock(&track->mutex);
@@ -1373,11 +1402,25 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with NEW_GROUP_REQUEST\n",
 				imquic_get_connection_name(s->track->annc->pub->conn));
 			imquic_moq_request_parameters rparams = { 0 };
+			if(s->forward && !s->track->forward) {
+				s->track->forward = TRUE;
+				rparams.forward_set = TRUE;
+				rparams.forward = TRUE;
+			}
 			rparams.new_group_request_set = TRUE;
 			rparams.new_group_request = 1;
 			uint64_t update_request_id = imquic_moq_get_next_request_id(s->track->annc->pub->conn);
 			imquic_moq_update_request(s->track->annc->pub->conn, update_request_id, s->track->request_id, &rparams);
 		}
+	} else if(s->forward && s->track != NULL && !s->track->forward) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with FORWARD=1\n",
+			imquic_get_connection_name(s->track->annc->pub->conn));
+		imquic_moq_request_parameters rparams = { 0 };
+		s->track->forward = TRUE;
+		rparams.forward_set = TRUE;
+		rparams.forward = TRUE;
+		uint64_t update_request_id = imquic_moq_get_next_request_id(s->track->annc->pub->conn);
+		imquic_moq_update_request(s->track->annc->pub->conn, update_request_id, s->track->request_id, &rparams);
 	}
 	/* Send an acknowledgement back */
 	imquic_moq_accept_request_update(conn, request_id, &rparams);
@@ -1469,8 +1512,7 @@ static void imquic_demo_incoming_subscribe_namespace(imquic_connection *conn, ui
 	/* Keep track of this as a monitor */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns, subscribe_options);
-	if(parameters->forward_set)
-		mon->forward = parameters->forward;
+	mon->forward = parameters->forward;
 	monitors = g_list_prepend(monitors, mon);
 	imquic_moq_accept_subscribe_namespace(conn, request_id, NULL);
 	/* Check if there's events we can push and already tracks we can publish */
@@ -1515,8 +1557,7 @@ static void imquic_demo_incoming_subscribe_tracks(imquic_connection *conn, uint6
 	/* Keep track of this as a monitor */
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns, IMQUIC_MOQ_WANT_PUBLISH);
-	if(parameters->forward_set)
-		mon->forward = parameters->forward;
+	mon->forward = parameters->forward;
 	if(parameters->filters_set && parameters->filters != NULL) {
 		/* The subscriber added filters, "steal" them */
 		mon->filters = parameters->filters;
