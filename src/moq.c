@@ -3392,7 +3392,7 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		return 0;
 	/* FIXME State management needs to be fixed, because an update will trigger OK/ERROR too */
 	IMQUIC_MOQ_CHECK_ERR((moq->version >= IMQUIC_MOQ_VERSION_17 && (moq_stream == NULL || moq_stream->request_type == 0 ||
-			moq_stream->request_sender || moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK)),
+			(moq_stream->request_sender && moq_stream->request_type != IMQUIC_MOQ_PUBLISH) || moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK)),
 		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of REQUEST_UPDATE on bidirectional request");
 	size_t offset = 0;
 	uint8_t length = 0;
@@ -3464,10 +3464,10 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 		}
 	}
 	/* Notify the application */
+	imquic_mutex_lock(&moq->mutex);
+	g_hash_table_insert(moq->update_requests, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
+	imquic_mutex_unlock(&moq->mutex);
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.request_updated) {
-		imquic_mutex_lock(&moq->mutex);
-		g_hash_table_insert(moq->update_requests, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
-		imquic_mutex_unlock(&moq->mutex);
 		moq->conn->socket->callbacks.moq.request_updated(moq->conn,
 			request_id, sub_request_id, &parameters);
 	} else {
@@ -7365,7 +7365,8 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
 		imquic_mutex_lock(&moq->mutex);
 		moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &sub_request_id);
-		if(moq_stream == NULL || moq_stream->request_type == 0 || !moq_stream->request_sender ||
+		if(moq_stream == NULL || moq_stream->request_type == 0 ||
+				(!moq_stream->request_sender && moq_stream->request_type != IMQUIC_MOQ_PUBLISH) ||
 				moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 				imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
@@ -7418,7 +7419,8 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
 		imquic_mutex_lock(&moq->mutex);
 		moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &sub_request_id);
-		if(moq_stream == NULL || moq_stream->request_type == 0 || moq_stream->request_sender ||
+		if(moq_stream == NULL || moq_stream->request_type == 0 ||
+				(moq_stream->request_sender && moq_stream->request_type != IMQUIC_MOQ_PUBLISH) ||
 				moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 				imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
@@ -7471,7 +7473,8 @@ int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_i
 	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
 		imquic_mutex_lock(&moq->mutex);
 		moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &sub_request_id);
-		if(moq_stream == NULL || moq_stream->request_type == 0 || moq_stream->request_sender ||
+		if(moq_stream == NULL || moq_stream->request_type == 0 ||
+				(moq_stream->request_sender && moq_stream->request_type != IMQUIC_MOQ_PUBLISH) ||
 				moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
 				imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");

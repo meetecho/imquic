@@ -161,9 +161,12 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	/* Start sending objects */
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
-		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
-	g_atomic_int_set(&send_objects, 1);
+	gboolean forward = parameters->forward_set && parameters->forward;
+	if(forward) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
+		g_atomic_int_set(&send_objects, 1);
+	}
 }
 
 static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
@@ -249,6 +252,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group);
 	}
+	gboolean forward = parameters->forward_set && parameters->forward;
 	/* Accept the subscription */
 	moq_request_id = request_id;
 	imquic_moq_request_parameters rparams;
@@ -262,10 +266,29 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		rparams.largest_object = sub_start;
 	}
 	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, NULL);
-	/* Start sending objects */
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
-		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
-	g_atomic_int_set(&send_objects, 1);
+	if(forward) {
+		/* Start sending objects */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
+		g_atomic_int_set(&send_objects, 1);
+	}
+}
+
+static void imquic_demo_request_updated(imquic_connection *conn, uint64_t request_id,
+		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id, sub_request_id);
+	/* Check if we're forwarding stuff, now */
+	gboolean forward = parameters->forward_set && parameters->forward;
+	if(forward && g_atomic_int_compare_and_exchange(&send_objects, 0, 1)) {
+		/* Start sending objects */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects\n",
+			imquic_get_connection_name(conn));
+	} else if(!forward && g_atomic_int_compare_and_exchange(&send_objects, 1, 0)) {
+		/* Start sending objects */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Pausing delivery of objects\n",
+			imquic_get_connection_name(conn));
+	}
 }
 
 static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id) {
@@ -620,6 +643,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_publish_accepted_cb(client, imquic_demo_publish_accepted);
 	imquic_set_publish_error_cb(client, imquic_demo_publish_error);
 	imquic_set_incoming_subscribe_cb(client, imquic_demo_incoming_subscribe);
+	imquic_set_request_updated_cb(client, imquic_demo_request_updated);
 	imquic_set_incoming_unsubscribe_cb(client, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_goaway_cb(client, imquic_demo_incoming_go_away);
 	imquic_set_connection_failed_cb(client, imquic_demo_connection_failed);
