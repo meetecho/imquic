@@ -797,14 +797,16 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	g_hash_table_insert(annc->tracks, g_strdup(name), track);
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 	g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
-	/* Check if there's monitors interested in this */
-	imquic_demo_alert_monitors(annc, track, FALSE);
 	imquic_mutex_unlock(&mutex);
 	/* Done */
 	imquic_moq_request_parameters rparams = *parameters;
 	if(rparams.subscriber_priority_set)
 		rparams.subscriber_priority = 128;
 	imquic_moq_accept_publish(conn, request_id, &rparams);
+	/* Check if there's monitors interested in this */
+	imquic_mutex_lock(&mutex);
+	imquic_demo_alert_monitors(annc, track, FALSE);
+	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {

@@ -161,7 +161,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	/* Start sending objects */
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
-	gboolean forward = parameters->forward_set && parameters->forward;
+	gboolean forward = parameters->forward;
 	if(forward) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
