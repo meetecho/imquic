@@ -482,6 +482,13 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						imquic_moq_property_type_str(moq_version, prop->id), timestamp);
 					break;
 				}
+				case IMQUIC_MOQ_LOC_AUDIO_CONFIG: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
+						imquic_moq_property_type_str(moq_version, prop->id),
+						prop->value.data.length);
+					break;
+				}
 				default: {
 					IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- -- Unknown property '%"SCNu32"'\n", prop->id);
 					break;
