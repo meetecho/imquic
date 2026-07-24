@@ -293,8 +293,13 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 
 static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming unsubscribe for subscription %"SCNu64"\n", imquic_get_connection_name(conn), request_id);
+	if(request_id != moq_request_id) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Unknown subscription, ignoring\n", imquic_get_connection_name(conn));
+		return;
+	}
 	/* Stop sending objects */
 	g_atomic_int_set(&send_objects, 0);
+	moq_request_id = 0;
 }
 
 static void imquic_demo_incoming_go_away(imquic_connection *conn, const char *uri, uint64_t timeout) {
