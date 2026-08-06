@@ -496,7 +496,10 @@ int imquic_network_send_packet(imquic_network_endpoint *ne) {
 	int if_index = 0, ret = 0;
 	while((ret = picoquic_prepare_next_packet(ne->qc, picoquic_current_time(),
 			buffer, sizeof(buffer), &blen, &to, &from, &if_index, NULL, NULL)) == 0 && blen > 0) {
-		int sent = sendto(ne->fd, buffer, blen, 0, (struct sockaddr *)&to, sizeof(to));
+		/* On BSD-derived systems (e.g. macOS) sendto() rejects a socklen larger
+		 * than the actual address, so size it according to the address family */
+		socklen_t tolen = (to.ss_family == AF_INET6) ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+		int sent = sendto(ne->fd, buffer, blen, 0, (struct sockaddr *)&to, tolen);
 		if(sent < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 		} else {
