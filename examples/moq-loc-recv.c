@@ -657,9 +657,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				}
 				case IMQUIC_MOQ_LOC_CODEC_STRING: {
 					/* FIXME Currently unused */
-					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %.*s\n",
 						imquic_moq_property_type_str(moq_version, prop->id),
-						prop->value.data.length);
+						(int)prop->value.data.length, (char *)prop->value.data.buffer);
 					break;
 				}
 				default: {

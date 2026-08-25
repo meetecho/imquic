@@ -79,6 +79,7 @@ static uint64_t audio_group_id = 0, audio_object_id = 0,
 static int64_t audio_ts = 0, video_ts = 0;
 static imquic_moq_location audio_sub_start = { 0 }, audio_sub_end = { 0 },
 	video_sub_start = { 0 }, video_sub_end = { 0 };
+static const char *audio_codec_string = "opus", *video_codec_string = "avc1.42001F";
 
 /* Global SDL resources */
 static SDL_AudioDeviceID dev;
@@ -421,6 +422,14 @@ static void *imquic_demo_audio_thread(void *user_data) {
 			timestamp.value.number = audio_ts;
 			props = g_list_append(props, &timestamp);
 			audio_ts += 20000;	/* FIXME */
+			/* We optionally add a Codec string too */
+			imquic_moq_property codec_string = { 0 };
+			if(options.loc_codec_string) {
+				codec_string.id = IMQUIC_MOQ_LOC_CODEC_STRING;
+				codec_string.value.data.buffer = (uint8_t *)audio_codec_string;
+				codec_string.value.data.length = strlen(audio_codec_string);
+				props = g_list_append(props, &codec_string);
+			}
 			/* Prepare a MoQ object and send it */
 			imquic_moq_object object = {
 				.request_id = audio_request_id,
@@ -662,6 +671,14 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 			videoconfig.value.data.buffer = extradata;
 			videoconfig.value.data.length = extradata_size;
 			props = g_list_append(props, &videoconfig);
+		}
+		/* We optionally add a Codec string too */
+		imquic_moq_property codec_string = { 0 };
+		if(options.loc_codec_string) {
+			codec_string.id = IMQUIC_MOQ_LOC_CODEC_STRING;
+			codec_string.value.data.buffer = (uint8_t *)video_codec_string;
+			codec_string.value.data.length = strlen(video_codec_string);
+			props = g_list_append(props, &codec_string);
 		}
 		/* Prepare a MoQ object and send it */
 		imquic_moq_object object = {
@@ -1129,15 +1146,17 @@ int main(int argc, char *argv[]) {
 		track->render_group = 1;
 		track->target_latency = 200;
 		if(codec == DEMO_H264_AVCC)
-			track->codec = g_strdup("avc1.42001F");
+			video_codec_string = "avc1.42001F";
 		else if(codec == DEMO_H264_ANNEXB)	/* FIXME */
-			track->codec = g_strdup("annexb.42001F");
+			video_codec_string = "annexb.42001F";
 		else if(codec == DEMO_VP8)
-			track->codec = g_strdup("vp8");
+			video_codec_string = "vp8";
 		else if(codec == DEMO_VP9)	/* FIXME */
-			track->codec = g_strdup("vp9");
+			video_codec_string = "vp9";
 		else if(codec == DEMO_AV1)	/* FIXME */
-			track->codec = g_strdup("av1");
+			video_codec_string = "av1";
+		if(video_codec_string != NULL)
+			track->codec = g_strdup(video_codec_string);
 		track->width = options.width;
 		track->height = options.height;
 		track->framerate = options.video_framerate;
