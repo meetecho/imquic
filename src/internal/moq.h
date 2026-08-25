@@ -1523,6 +1523,14 @@ void imquic_moq_qlog_control_message_parsed(imquic_qlog *qlog, uint64_t stream_i
  * @param stream_id The Stream ID used for this message
  * @param type The stream type */
 void imquic_moq_qlog_stream_type_set(imquic_qlog *qlog, gboolean local, uint64_t stream_id, const char *type);
+/*! \brief Add a \c stream_closed event
+ * \note FIXME Not standard, waiting for how this should be written properly
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param local Whether this is a local or remote event
+ * @param stream_id The Stream ID used for this message
+ * @param cause What claused the stream
+ * @param error_code The error code in the message */
+void imquic_moq_qlog_stream_closed(imquic_qlog *qlog, gboolean local, uint64_t stream_id, const char *cause, uint64_t error_code);
 /*! \brief Add a \c object_datagram_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param object The object instance */

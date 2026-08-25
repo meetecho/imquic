@@ -441,6 +441,8 @@ void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_i
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Got RESET_STREAM for STREAM %"SCNu64": %"SCNu64" (%s)\n",
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
+	if(conn->qlog != NULL && conn->qlog->moq)
+		imquic_moq_qlog_stream_closed(moq->conn->qlog, FALSE, stream_id, "reset_stream", error_code);
 	if(moq_stream->request_type == 0) {
 		/* FIXME Not a request stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
@@ -468,6 +470,8 @@ void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_i
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Got STOP_SENDING for STREAM %"SCNu64": %"SCNu64" (%s)\n",
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
+	if(conn->qlog != NULL && conn->qlog->moq)
+		imquic_moq_qlog_stream_closed(moq->conn->qlog, FALSE, stream_id, "stop_sending", error_code);
 	if(moq_stream->request_type == 0) {
 		/* FIXME Not a request stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
@@ -6996,6 +7000,8 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_
 		}
 		/* Reset the STREAM */
 		imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
+		if(conn->qlog != NULL && conn->qlog->moq)
+			imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
 		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
@@ -7527,6 +7533,8 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 		imquic_mutex_unlock(&moq->mutex);
 		imquic_connection_stop_sending_stream(moq->conn, stream_id, IMQUIC_MOQ_RESET_CANCELLED);
+		if(conn->qlog != NULL && conn->qlog->moq)
+			imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, stream_id, "stop_sending", IMQUIC_MOQ_RESET_CANCELLED);
 		imquic_refcount_decrease(&moq->ref);
 		return 0;
 	}
@@ -7767,6 +7775,8 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_i
 	}
 	/* Reset the STREAM */
 	imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
+	if(conn->qlog != NULL && conn->qlog->moq)
+		imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
 	g_hash_table_remove(moq->streams_by_reqid, &request_id);
 	g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 	imquic_mutex_unlock(&moq->mutex);
@@ -7940,6 +7950,8 @@ int imquic_moq_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id) 
 	}
 	/* Reset the STREAM */
 	imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
+	if(conn->qlog != NULL && conn->qlog->moq)
+		imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
 	g_hash_table_remove(moq->streams_by_reqid, &request_id);
 	g_hash_table_remove(moq->streams, &moq_stream->stream_id);
 	imquic_mutex_unlock(&moq->mutex);
@@ -9236,6 +9248,19 @@ void imquic_moq_qlog_stream_type_set(imquic_qlog *qlog, gboolean local, uint64_t
 	json_object_set_new(data, "owner", json_string(local ? "local" : "remote"));
 	json_object_set_new(data, "stream_id", json_integer(stream_id));
 	json_object_set_new(data, "stream_type", json_string(type));
+	imquic_qlog_append_event(qlog, event);
+}
+
+void imquic_moq_qlog_stream_closed(imquic_qlog *qlog, gboolean local, uint64_t stream_id, const char *cause, uint64_t error_code) {
+	if(qlog == NULL || cause == NULL)
+		return;
+	/* FIXME Not standard */
+	json_t *event = imquic_qlog_event_prepare("moqt:stream_closed");
+	json_t *data = imquic_qlog_event_add_data(event);
+	json_object_set_new(data, "owner", json_string(local ? "local" : "remote"));
+	json_object_set_new(data, "stream_id", json_integer(stream_id));
+	json_object_set_new(data, "cause", json_string(cause));
+	json_object_set_new(data, "error_code", json_integer(error_code));
 	imquic_qlog_append_event(qlog, event);
 }
 
