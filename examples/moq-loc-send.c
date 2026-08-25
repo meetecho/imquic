@@ -24,6 +24,10 @@
 #endif
 #include <libavdevice/avdevice.h>
 
+#ifndef AV_PROFILE_H264_BASELINE
+#define AV_PROFILE_H264_BASELINE	FF_PROFILE_H264_BASELINE
+#endif
+
 #include <opus/opus.h>
 
 #include <SDL2/SDL.h>
@@ -212,7 +216,7 @@ static int imquic_demo_create_video_encoder(void) {
 	videoenc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	videoenc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 	if(codec == DEMO_H264_AVCC || codec == DEMO_H264_ANNEXB) {
-		videoenc_ctx->profile = FF_PROFILE_H264_BASELINE;
+		videoenc_ctx->profile = AV_PROFILE_H264_BASELINE;
 		videoenc_ctx->level = 41;
 	}
 	char br[20];
