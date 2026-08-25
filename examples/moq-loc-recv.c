@@ -352,13 +352,12 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.forward = TRUE;
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
-	/* We always get the catalog track first, if available */
-	catalog_request_id = imquic_moq_get_next_request_id(conn);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (catalog), using ID %"SCNu64"\n",
-		imquic_get_connection_name(conn), sub_tns, catalog_tn, catalog_request_id);
-	imquic_moq_subscribe(conn, catalog_request_id, sub_namespace, &catalog_trackname, &params);
 	if(options.use_catalog) {
 		/* We wait for the catalog to subscribe to the media tracks */
+		catalog_request_id = imquic_moq_get_next_request_id(conn);
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (catalog), using ID %"SCNu64"\n",
+			imquic_get_connection_name(conn), sub_tns, catalog_tn, catalog_request_id);
+		imquic_moq_subscribe(conn, catalog_request_id, sub_namespace, &catalog_trackname, &params);
 		return;
 	}
 	/* If we got here, we also subscribe to the audio and/or video tracks */
@@ -380,7 +379,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 
 static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t request_id, uint64_t track_alias,
 		imquic_moq_request_parameters *parameters, GList *track_properties) {
-	if(request_id == catalog_request_id) {
+	if(catalog_trackname.buffer != NULL && request_id == catalog_request_id) {
 		/* This is the catalog track: check if we need to perform a
 		 * Joining FETCH too, in case objects are already available */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Catalog subscription %"SCNu64" accepted (expires=%"SCNu64"; %d properties)\n",
@@ -489,8 +488,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		}
 		return;
 	}
-	if((object->track_alias == catalog_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
-			(object->request_id == catalog_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH)) {
+	if(catalog_trackname.buffer != NULL && ((object->track_alias == catalog_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
+			(object->request_id == catalog_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
 		/* This is from the catalog track */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Catalog: %.*s\n",
 			imquic_get_connection_name(conn), (int)object->payload_len, (char *)object->payload);
@@ -605,7 +604,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 	/* If we got here, it's an audio or video object */
 	if(object->properties != NULL)
 		imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, object->properties);
-	/* FIXME https://www.ietf.org/archive/id/draft-ietf-moq-loc-03.html */
+	/* FIXME https://www.ietf.org/archive/id/draft-ietf-moq-loc-04.html */
 	if(object->properties == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No properties, missing LOC info?\n");
 	} else {
@@ -641,6 +640,26 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
 						imquic_moq_property_type_str(moq_version, prop->id),
 						loc_extradata->length);
+					break;
+				}
+				case IMQUIC_MOQ_LOC_AUDIO_LEVEL: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %"SCNu64"\n",
+						imquic_moq_property_type_str(moq_version, prop->id), prop->value.number);
+					break;
+				}
+				case IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
+						imquic_moq_property_type_str(moq_version, prop->id),
+						prop->value.data.length);
+					break;
+				}
+				case IMQUIC_MOQ_LOC_CODEC_STRING: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
+						imquic_moq_property_type_str(moq_version, prop->id),
+						prop->value.data.length);
 					break;
 				}
 				default: {
@@ -957,12 +976,12 @@ int main(int argc, char *argv[]) {
 	sub_tns = imquic_moq_namespace_str(sub_namespace, sub_tns_buffer, sizeof(sub_tns_buffer), TRUE);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Using namespace '%s' (%"SCNu64" tuples)\n", sub_tns, tns_num);
 
-	/* Subscribe to the catalog track */
-	catalog_trackname.buffer = (uint8_t *)catalog_tn;
-	catalog_trackname.length = strlen(catalog_tn);
 	/* Depending on whether we'll rely on the catalog or not, we may
 	 * need to create track names for audio and/or video too */
 	if(options.use_catalog) {
+		/* Subscribe to the catalog track */
+		catalog_trackname.buffer = (uint8_t *)catalog_tn;
+		catalog_trackname.length = strlen(catalog_tn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Will use the catalog to autodetect audio/video tracks\n");
 	} else {
 		/* Create tracknames for audio and/or video */

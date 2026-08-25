@@ -489,6 +489,26 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						prop->value.data.length);
 					break;
 				}
+				case IMQUIC_MOQ_LOC_AUDIO_LEVEL: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %"SCNu64"\n",
+						imquic_moq_property_type_str(moq_version, prop->id), prop->value.number);
+					break;
+				}
+				case IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
+						imquic_moq_property_type_str(moq_version, prop->id),
+						prop->value.data.length);
+					break;
+				}
+				case IMQUIC_MOQ_LOC_CODEC_STRING: {
+					/* FIXME Currently unused */
+					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
+						imquic_moq_property_type_str(moq_version, prop->id),
+						prop->value.data.length);
+					break;
+				}
 				default: {
 					IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- -- Unknown property '%"SCNu32"'\n", prop->id);
 					break;

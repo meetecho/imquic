@@ -527,7 +527,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "%02x", object->payload[i]);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "\n");
 	} else if(payload_type == DEMO_TYPE_LOC) {
-		/* FIXME Assuming LOC from https://www.ietf.org/archive/id/draft-ietf-moq-loc-03.html */
+		/* FIXME Assuming LOC from https://www.ietf.org/archive/id/draft-ietf-moq-loc-04.html */
 		if(object->properties == NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- No properties, missing LOC info?\n");
 		} else {

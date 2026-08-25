@@ -1146,6 +1146,8 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
 			return "LOC Audio Config";
 		case IMQUIC_MOQ_LOC_AUDIO_LEVEL:
 			return "LOC Audio Level";
+		case IMQUIC_MOQ_LOC_CODEC_STRING:
+			return "LOC Codec String";
 		default: break;
 	}
 	return NULL;

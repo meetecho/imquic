@@ -656,7 +656,7 @@ typedef enum imquic_moq_property_type {
 	/*! \brief Immutable Properties */
 	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
 	/*! \brief LOC Timestamp */
-	IMQUIC_MOQ_LOC_TIMESTAMP = 0x0A,
+	IMQUIC_MOQ_LOC_TIMESTAMP = 0x10,
 	/*! \brief LOC Timescale */
 	IMQUIC_MOQ_LOC_TIMESCALE = 0x08,
 	/*! \brief LOC Video Config */
@@ -667,6 +667,8 @@ typedef enum imquic_moq_property_type {
 	IMQUIC_MOQ_LOC_AUDIO_CONFIG = 0x0F,
 	/*! \brief LOC Audio Level */
 	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0C,
+	/*! \brief LOC Codec String */
+	IMQUIC_MOQ_LOC_CODEC_STRING = 0x11,
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
  * @param version The version of the connection
