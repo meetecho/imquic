@@ -4754,9 +4754,9 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		if(moq->version >= IMQUIC_MOQ_VERSION_18 && moq_stream->got_objects) {
 			/* Group IDs are a delta */
 			if(moq_stream->ascending)
-				group_id += moq_stream->last_group_id;
+				group_id += moq_stream->last_group_id + 1;
 			else
-				group_id = moq_stream->last_group_id - group_id;
+				group_id = moq_stream->last_group_id - (group_id + 1);
 		}
 	} else {
 		/* The group ID references a previous object */
@@ -8727,8 +8727,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				 * when written explicitly in the object serialization */
 				has_gid = !moq_stream->got_objects || (object->group_id != moq_stream->last_group_id);
 				if(has_gid && moq_stream->got_objects) {
-					group_id = moq_stream->ascending ? (object->group_id - moq_stream->last_group_id) :
-						(moq_stream->last_group_id - object->group_id);
+					group_id = moq_stream->ascending ? (object->group_id - moq_stream->last_group_id - 1) :
+						(moq_stream->last_group_id - object->group_id - 1);
 				}
 				has_oid = !moq_stream->got_objects || (object->group_id != moq_stream->last_group_id) ||
 					(object_id - moq_stream->last_object_id > 1);
