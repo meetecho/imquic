@@ -1171,7 +1171,6 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param subgroup_id The subgroup ID
  * @param object_id The object ID
  * @param priority The publisher priority to put in the message
- * @param object_status The object status (only added if the payload length is 0)
  * @param payload_prefix The buffer containing the payload prefix of the object, if needed
  * @param pplen The size of the payload prefix buffer
  * @param payload The buffer containing the payload of the object
@@ -1181,7 +1180,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
-	uint64_t object_status, uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
+	uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add padding data to a buffer, formatted as expected
  * for \c PADDING_STREAM or \c PADDING_DATAGRAM
  * @param moq The imquic_moq_context generating the object
