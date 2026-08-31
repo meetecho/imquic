@@ -369,8 +369,8 @@ static void *imquic_demo_audio_thread(void *user_data) {
 	size_t outlen = sizeof(outgoing);
 	uint32_t avail = 0, want = samples*2, got = 0, cached = 0;
 	/* FIXME We currently don't support LOC private properties, so
-	 * we always send a 0x00 as a payload prefix to signal it's empty */
-	uint8_t loc_pvt_props = 0;
+	 * we always add an empty list to signal it's empty */
+	uint8_t loc_pvt_props[] = { 0xA, 0x00 };
 
 	while(!stop) {
 		/* FIXME Loop */
@@ -437,8 +437,8 @@ static void *imquic_demo_audio_thread(void *user_data) {
 				.group_id = audio_group_id++,
 				.subgroup_id = 0,	/* FIXME */
 				.object_id = audio_object_id,
-				.payload_prefix = &loc_pvt_props,
-				.payload_prefix_len = 1,
+				.payload_prefix = loc_pvt_props,
+				.payload_prefix_len = sizeof(loc_pvt_props),
 				.payload = outgoing,
 				.payload_len = length,
 				.properties = props,
@@ -543,8 +543,8 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 	AVPacket packet = { 0 };
 	int64_t now = 0, before = 0, wait = G_USEC_PER_SEC/options.video_framerate;
 	/* FIXME We currently don't support LOC private properties, so
-	 * we always send a 0x00 as a payload prefix to signal it's empty */
-	uint8_t loc_pvt_props = 0;
+	 * we always add an empty list to signal it's empty */
+	uint8_t loc_pvt_props[] = { 0xA, 0x00 };
 
 	while(!stop) {
 		/* FIXME Loop */
@@ -687,8 +687,8 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 			.group_id = video_group_id,
 			.subgroup_id = 0,	/* FIXME */
 			.object_id = video_object_id,
-			.payload_prefix = &loc_pvt_props,
-			.payload_prefix_len = 1,
+			.payload_prefix = loc_pvt_props,
+			.payload_prefix_len = sizeof(loc_pvt_props),
 			.payload = packet.data,
 			.payload_len = packet.size,
 			.properties = props,

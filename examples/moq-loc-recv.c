@@ -288,12 +288,26 @@ static void imquic_demo_process_video_buffer(void) {
 		}
 		/* Check if there are private properties too */
 		uint8_t length = 0;
-		size_t prop_len = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
-		if(length == 0 || length > object->payload_len) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties yet, ignoring object\n");
+		uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
+		if(length == 0 || length > object->payload_len || prop_type != 0xA) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
 			return;
 		}
-		size_t skip = length + prop_len;
+		size_t skip = length;
+		size_t prop_len = imquic_read_moqint(moq_version, object->payload + skip, object->payload_len - skip, &length);
+		if(length == 0 || (skip + length) > object->payload_len) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties length, ignoring object\n");
+			return;
+		}
+		skip += length;
+		GList *pvt_properties = NULL;
+		if(prop_len > 0) {
+			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);
+			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d private properties\n", g_list_length(pvt_properties));
+			if(pvt_properties != NULL)
+				imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, pvt_properties);
+		}
+		skip += prop_len;
 		/* Process the video frame */
 		gboolean keyframe = (loc_extradata != NULL);
 		if(!keyframe) {
@@ -689,12 +703,18 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- Payload: %zu bytes\n", object->payload_len);
 		/* Check if there are private properties too */
 		uint8_t length = 0;
-		size_t prop_len = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
-		if(length == 0 || length > object->payload_len) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties yet, ignoring object\n");
+		uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
+		if(length == 0 || length > object->payload_len || prop_type != 0xA) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
 			return;
 		}
 		size_t skip = length;
+		size_t prop_len = imquic_read_moqint(moq_version, object->payload + skip, object->payload_len - skip, &length);
+		if(length == 0 || (skip + length) > object->payload_len) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties length, ignoring object\n");
+			return;
+		}
+		skip += length;
 		GList *pvt_properties = NULL;
 		if(prop_len > 0) {
 			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);

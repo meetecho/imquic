@@ -270,8 +270,8 @@ static int imquic_demo_send_audio(void) {
 		props = g_list_append(props, &timestamp);
 		audio_ts += 20000;	/* FIXME */
 		/* FIXME We currently don't support LOC private properties, so
-		 * we always send a 0x00 as a payload prefix to signal it's empty */
-		uint8_t loc_pvt_props = 0;
+		 * we always add an empty list to signal it's empty */
+		uint8_t loc_pvt_props[] = { 0xA, 0x00 };
 		/* Prepare a MoQ object and send it */
 		imquic_moq_object object = {
 			.request_id = pub_request_id,
@@ -279,8 +279,8 @@ static int imquic_demo_send_audio(void) {
 			.group_id = audio_group_id++,
 			.subgroup_id = 0,	/* FIXME */
 			.object_id = audio_object_id,
-			.payload_prefix = &loc_pvt_props,
-			.payload_prefix_len = 1,
+			.payload_prefix = loc_pvt_props,
+			.payload_prefix_len = sizeof(loc_pvt_props),
 			.payload = outgoing,
 			.payload_len = length,
 			.properties = props,
