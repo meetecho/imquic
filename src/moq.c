@@ -934,7 +934,7 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 		gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation) {
 	/* Make sure the provided flags are valid, or return a protocol violation */
 	if(!imquic_moq_is_fetch_serialization_flags_valid(version, flags)) {
-		if(*violation)
+		if(violation)
 			*violation = TRUE;
 		return;
 	}
@@ -948,12 +948,12 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 	/* If we're here, we're parsing a bitmask of a single byte */
 	uint8_t flags8 = (uint8_t)flags;
 	uint8_t lsb = flags8 & 0x03;
-	if(*subgroup) {
+	if(subgroup) {
 		if(lsb == 0x00)
 			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_ZERO;
-		if(lsb == 0x01)
+		else if(lsb == 0x01)
 			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_PREVIOUS;
-		if(lsb == 0x02)
+		else if(lsb == 0x02)
 			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_PLUS_ONE;
 		else
 			*subgroup = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
@@ -4769,13 +4769,13 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		if(length == 0 || length >= blen-offset)
 			return -1;	/* Not enough data, try again later */
 		offset += length;
-	} else {
+	} else if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_PREVIOUS ||
+			subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_PLUS_ONE) {
 		/* The subgroup ID references a previous object */
 		IMQUIC_MOQ_CHECK_ERR(!moq_stream->got_objects, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, -1, "Serialization flag references non-existing previous object");
-		if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_PREVIOUS)
-			subgroup_id = moq_stream->subgroup_id;
-		else if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_PLUS_ONE)
-			subgroup_id = moq_stream->subgroup_id + 1;
+		subgroup_id = moq_stream->last_subgroup_id;
+		if(subgroup_type == IMQUIC_MOQ_FETCH_SUBGROUP_PLUS_ONE)
+			subgroup_id++;
 	}
 	uint64_t object_id = 0;
 	if(has_oid) {
@@ -4818,16 +4818,9 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 	if(length == 0 || length >= blen-offset)
 		return -1;	/* Not enough data, try again later */
 	offset += length;
-	uint64_t object_status = 0;
-	if(p_len == 0) {
-		object_status = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		if(length == 0 || length > blen-offset)
-			return -1;	/* Not enough data, try again later */
-		/* TODO An invalid object status should be a protocol violation error */
-		//~ IMQUIC_MOQ_CHECK_ERR(object_status > IMQUIC_MOQ_END_OF_TRACK, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid object status");
-		//~ IMQUIC_MOQ_CHECK_ERR(object_status == IMQUIC_MOQ_OBJECT_DOESNT_EXIST && prop_len > 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Properties received in object with status 'Does Not Exist'");
-		offset += length;
-	}
+	/* A FETCH object has no Object Status field: a zero length payload is a zero
+	 * length object, and a range that is missing or unknown is conveyed with an
+	 * End of Range indicator instead. Only Subgroup objects carry the status. */
 	if(p_len > blen-offset)
 		return -1;	/* Not enough data, try again later */
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:       %"SCNu64"\n",
@@ -4838,10 +4831,6 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		imquic_get_connection_name(moq->conn), object_id);
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Payload Length: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), p_len);
-	if(p_len == 0) {
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object Status:  %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), object_status);
-	}
 	if(!moq_stream->got_objects)
 		moq_stream->got_objects = TRUE;
 	moq_stream->last_group_id = group_id;
@@ -4860,7 +4849,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		.group_id = group_id,
 		.subgroup_id = subgroup_id,
 		.object_id = object_id,
-		.object_status = object_status,
+		.object_status = IMQUIC_MOQ_NORMAL_OBJECT,
 		.priority = priority,
 		.payload = bytes + offset,
 		.payload_len = p_len,
@@ -5969,7 +5958,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 		uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
-		uint64_t object_status, uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
+		uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_FETCH_HEADER, moq->version));
@@ -5998,8 +5987,6 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 	if(payload == NULL)
 		plen = 0;
 	offset += imquic_write_moqint(moq->version, pplen + plen, &bytes[offset], blen-offset);
-	if(plen == 0 && pplen == 0)
-		offset += imquic_write_moqint(moq->version, object_status, &bytes[offset], blen-offset);
 	if(pplen > 0) {
 		memcpy(&bytes[offset], payload_prefix, pplen);
 		offset += pplen;
@@ -8761,7 +8748,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->last_group_id = object->group_id;
 			moq_stream->last_object_id = object->object_id;
 			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize, flags,
-				group_id, object->subgroup_id, object_id, object->priority, object->object_status,
+				group_id, object->subgroup_id, object_id, object->priority,
 				object->payload_prefix, object->payload_prefix_len,
 				object->payload, object->payload_len,
 				properties, properties_len);
