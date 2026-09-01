@@ -576,6 +576,10 @@ typedef struct imquic_moq_request_parameters {
 	gboolean track_namespace_prefix_set;
 	/*! \brief Value of the TRACK_NAMESPACE_PREFIX parameter */
 	imquic_moq_namespace track_namespace_prefix[32];
+	/*! \brief Whether the INCLUDE_PROPERTIES parameter is set */
+	gboolean include_properties_set;
+	/*! \brief Value of the INCLUDE_PROPERTIES parameter */
+	gboolean include_properties;
 	/*! \brief Whether there's unknown parameters
 	 * \note Only set by the stack, ignored if set by the application */
 	gboolean unknown;

@@ -251,6 +251,7 @@ typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_TRACK_PROPERTY_FILTER = 0x29,
 	IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST = 0x32,
 	IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX = 0x34,	/* Added in v18 */
+	IMQUIC_MOQ_REQUEST_PARAM_INCLUDE_PROPERTIES = 0x35,	/* Added in v20 */
 } imquic_moq_request_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_parameter_type value.
  * @param type The imquic_moq_request_parameter_type value
