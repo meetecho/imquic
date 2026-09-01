@@ -6054,7 +6054,14 @@ size_t imquic_moq_setup_option_add_int(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 	param -= prev;
 	size_t offset = imquic_write_moqint(moq->version, param, &bytes[0], blen);
-	offset += imquic_write_moqint(moq->version, number, &bytes[offset], blen-offset);
+	uint8_t vlen = imquic_write_moqint(moq->version, number, &bytes[offset], blen-offset);
+	if(vlen == 0) {
+		/* We'd end up with a type and no value, which would break the message */
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ numeric setup option %"SCNu64": couldn't write the value %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), param + prev, number);
+		return 0;
+	}
+	offset += vlen;
 	return offset;
 }
 
@@ -6587,7 +6594,8 @@ int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || moq->version >= IMQUIC_MOQ_VERSION_17 ||
-			max_request_id == 0 || moq->local_max_request_id >= max_request_id) {
+			max_request_id == 0 || max_request_id > IMQUIC_MAX_VARINT ||
+			moq->local_max_request_id >= max_request_id) {
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}

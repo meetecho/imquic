@@ -1398,7 +1398,9 @@ int imquic_moq_set_connection_auth(imquic_connection *conn, uint8_t *auth, size_
  * if invoked before the MoQ connection setup, it will be put in the
  * setup parameter, otherwise it's sent in a \c MAX_REQUEST_ID request.
  * Notice that whatever is passed to the request will be decremented by
- * 1, as per the specification, meaning you cannot pass \c 0 as a value here
+ * 1, as per the specification, meaning you cannot pass \c 0 as a value here.
+ * Since the Maximum Request ID is serialized as a variable size integer,
+ * you cannot pass a value larger than \ref IMQUIC_MAX_VARINT either
  * @param conn The imquic_connection to update
  * @param max_request_id The Maximum Request ID to enforce
  * @returns 0 in case of success, a negative integer otherwise */
