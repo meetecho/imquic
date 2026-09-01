@@ -671,6 +671,10 @@ typedef enum imquic_moq_property_type {
 	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0C,
 	/*! \brief LOC Codec String */
 	IMQUIC_MOQ_LOC_CODEC_STRING = 0x11,
+	/*! \brief Encrypted List (Secure Objects) */
+	IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST = 0xA,
+	/*! \brief Padding (Secure Objects) */
+	IMQUIC_MOQ_SECOBJ_PADDING = 0x32,
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
  * @param version The version of the connection
@@ -919,7 +923,7 @@ typedef enum imquic_moq_error_code {
 	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
 	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
 	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
-	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,
+	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,	/* Deprecated in v20 */
 	IMQUIC_MOQ_MALFORMED_AUTH_TOKEN = 0x16,
 	IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS = 0x17,
 	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
@@ -954,7 +958,7 @@ typedef enum imquic_moq_request_error_code {
 	/* Others */
 	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,
 	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
-	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
+	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,	/* Deprecated in v20 */
 	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
 	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
 	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
@@ -970,7 +974,7 @@ typedef enum imquic_moq_pub_done_code {
 	IMQUIC_MOQ_PUBDONE_INTERNAL_ERROR = 0x0,
 	IMQUIC_MOQ_PUBDONE_UNAUTHORIZED = 0x1,
 	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
-	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,
+	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,	/* Deprecated in v20 */
 	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
 	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,	/* Swapped in v18 */
 	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,	/* Swapped in v18 */

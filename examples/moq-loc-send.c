@@ -370,7 +370,7 @@ static void *imquic_demo_audio_thread(void *user_data) {
 	uint32_t avail = 0, want = samples*2, got = 0, cached = 0;
 	/* FIXME We currently don't support LOC private properties, so
 	 * we always add an empty list to signal it's empty */
-	uint8_t loc_pvt_props[] = { 0xA, 0x00 };
+	uint8_t loc_pvt_props[] = { IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST, 0x00 };
 
 	while(!stop) {
 		/* FIXME Loop */
@@ -544,7 +544,7 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 	int64_t now = 0, before = 0, wait = G_USEC_PER_SEC/options.video_framerate;
 	/* FIXME We currently don't support LOC private properties, so
 	 * we always add an empty list to signal it's empty */
-	uint8_t loc_pvt_props[] = { 0xA, 0x00 };
+	uint8_t loc_pvt_props[] = { IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST, 0x00 };
 
 	while(!stop) {
 		/* FIXME Loop */

@@ -289,8 +289,9 @@ static void imquic_demo_process_video_buffer(void) {
 		/* Check if there are private properties too */
 		uint8_t length = 0;
 		uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
-		if(length == 0 || length > object->payload_len || prop_type != 0xA) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
+		if(length == 0 || length > object->payload_len || prop_type != IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting %d), ignoring object\n",
+				prop_type, IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST);
 			return;
 		}
 		size_t skip = length;
@@ -704,8 +705,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		/* Check if there are private properties too */
 		uint8_t length = 0;
 		uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
-		if(length == 0 || length > object->payload_len || prop_type != 0xA) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
+		if(length == 0 || length > object->payload_len || prop_type != IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting %d), ignoring object\n",
+				prop_type, IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST);
 			return;
 		}
 		size_t skip = length;

@@ -1152,6 +1152,10 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
 			return "LOC Audio Level";
 		case IMQUIC_MOQ_LOC_CODEC_STRING:
 			return "LOC Codec String";
+		case IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST:
+			return "Encrypted List";
+		case IMQUIC_MOQ_SECOBJ_PADDING:
+			return "Padding";
 		default: break;
 	}
 	return NULL;
