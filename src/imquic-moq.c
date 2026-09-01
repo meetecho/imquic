@@ -1061,8 +1061,10 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-18";
 		case IMQUIC_MOQ_VERSION_19:
 			return "draft-ietf-moq-transport-19";
+		case IMQUIC_MOQ_VERSION_20:
+			return "draft-ietf-moq-transport-20";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "draft-ietf-moq-transport-XX(-from--16-to-19)";
+			return "draft-ietf-moq-transport-XX(-from--16-to-20)";
 		default: break;
 	}
 	return NULL;
@@ -1078,8 +1080,10 @@ static const char *imquic_moq_version_alpn(imquic_moq_version version) {
 			return "moqt-18";
 		case IMQUIC_MOQ_VERSION_19:
 			return "moqt-19";
+		case IMQUIC_MOQ_VERSION_20:
+			return "moqt-20";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "moqt-19,moqt-18,moqt-17,moqt-16";
+			return "moqt-20,moqt-19,moqt-18,moqt-17,moqt-16";
 		default: break;
 	}
 	return NULL;
