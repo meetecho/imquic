@@ -1424,6 +1424,8 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 						new_id, last_id,
 						(uint8_t *)options->path, strlen(options->path));
 				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID) {
+					if(moq->version == IMQUIC_MOQ_VERSION_16 && options->max_request_id > IMQUIC_MAX_VARINT)
+						options->max_request_id = IMQUIC_MAX_VARINT;
 					offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						options->max_request_id);
@@ -5065,6 +5067,8 @@ size_t imquic_moq_add_max_request_id(imquic_moq_context *moq, uint8_t *bytes, si
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_MAX_REQUEST_ID, moq->version));
 		return 0;
 	}
+	if(moq->version == IMQUIC_MOQ_VERSION_16 && max_request_id > IMQUIC_MAX_VARINT)
+		max_request_id = IMQUIC_MAX_VARINT;
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_MAX_REQUEST_ID);
 	offset += imquic_write_moqint(moq->version, max_request_id, &bytes[offset], blen-offset);
@@ -5085,6 +5089,8 @@ size_t imquic_moq_add_requests_blocked(imquic_moq_context *moq, uint8_t *bytes, 
 	}
 	size_t offset = 0, len_offset = 0;
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_REQUESTS_BLOCKED);
+	if(moq->version == IMQUIC_MOQ_VERSION_16 && max_request_id > IMQUIC_MAX_VARINT)
+		max_request_id = IMQUIC_MAX_VARINT;
 	offset += imquic_write_moqint(moq->version, max_request_id, &bytes[offset], blen-offset);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
