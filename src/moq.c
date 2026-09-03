@@ -8442,8 +8442,9 @@ int imquic_moq_reject_track_status(imquic_connection *conn, uint64_t request_id,
 	}
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
-	size_t tsr_len = imquic_moq_add_request_error(moq, NULL, buffer, blen, request_id, error_code, reason, retry_interval, redirect);
-	imquic_connection_send_on_stream(conn, moq->control_stream_id,
+	size_t tsr_len = imquic_moq_add_request_error(moq, moq_stream, buffer, blen, request_id, error_code, reason, retry_interval, redirect);
+	imquic_connection_send_on_stream(conn,
+		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, tsr_len, moq_stream ? TRUE : FALSE);
 	if(moq_stream != NULL) {
 		imquic_mutex_lock(&moq->mutex);
