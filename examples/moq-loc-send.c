@@ -991,7 +991,7 @@ int main(int argc, char *argv[]) {
 	if(options.debug_ffmpeg)
 		av_log_set_level(AV_LOG_DEBUG);
 
-	/* Parse the command line arguments*/
+	/* Parse the command line arguments */
 	if(options.remote_host == NULL || options.remote_port == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid QUIC server address\n");
 		ret = 1;
