@@ -155,6 +155,27 @@ static imquic_demo_moq_publisher *imquic_demo_moq_publisher_create(imquic_connec
 static void imquic_demo_moq_publisher_destroy(imquic_demo_moq_publisher *pub) {
 	if(pub) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Removing publisher %s\n", imquic_get_connection_name(pub->conn));
+		/* Any pending request? */
+		if(pub->subscriptions_by_id != NULL) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, pub->subscriptions_by_id);
+			while(g_hash_table_iter_next(&iter, NULL, &value)) {
+				imquic_demo_moq_track *track = value;
+				if(track->pending) {
+					imquic_mutex_lock(&track->mutex);
+					GList *temp = track->subscriptions;
+					while(temp) {
+						imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
+						if(s && s->sub && s->sub->conn)
+							imquic_moq_reject_subscribe(s->sub->conn, s->request_id, IMQUIC_MOQ_REQERR_TIMEOUT, "Publisher Timeout", 0, NULL);
+						temp = temp->next;
+					}
+					imquic_mutex_unlock(&track->mutex);
+				}
+			}
+		}
+		/* Cleanup */
 		if(pub->namespaces) {
 			GHashTableIter iter;
 			gpointer value;
