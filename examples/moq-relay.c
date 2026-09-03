@@ -73,12 +73,15 @@ static imquic_demo_moq_published_namespace *imquic_demo_moq_published_namespace_
 static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_published_namespace *annc);
 
 static int imquic_demo_moq_track_namespace(imquic_moq_namespace *tns, imquic_demo_moq_published_namespace *annc);
+static imquic_demo_moq_published_namespace *imquic_demo_moq_find_closest_namespace(imquic_moq_namespace *tns);
 static void imquic_demo_moq_notify_about_namespace(imquic_moq_namespace *tns);
 static void imquic_demo_moq_untrack_namespace(imquic_moq_namespace *tns, imquic_demo_moq_published_namespace *annc);
 
 typedef struct imquic_demo_moq_track {
 	imquic_demo_moq_published_namespace *annc;
+	char *track_namespace;
 	char *track_name;
+	char *track_fullname;
 	uint64_t request_id;
 	uint64_t track_alias;
 	gboolean track_alias_valid;
@@ -90,7 +93,8 @@ typedef struct imquic_demo_moq_track {
 	GList *properties;
 	imquic_mutex mutex;
 } imquic_demo_moq_track;
-static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_published_namespace *annc, const char *track_name);
+static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_published_namespace *annc,
+	const char *track_namespace, const char *track_name);
 static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *annc);
 
 typedef struct imquic_demo_moq_subscriber {
@@ -234,10 +238,15 @@ static void imquic_demo_moq_published_namespace_destroy(imquic_demo_moq_publishe
 		g_free(annc);
 	}
 }
-static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_published_namespace *annc, const char *track_name) {
+static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_published_namespace *annc,
+		const char *track_namespace, const char *track_name) {
 	imquic_demo_moq_track *t = g_malloc0(sizeof(imquic_demo_moq_track));
 	t->annc = annc;
+	t->track_namespace = g_strdup(track_namespace);
 	t->track_name = g_strdup(track_name);
+	char full[4096];
+	g_snprintf(full, sizeof(full), "%s--%s", track_namespace, track_name);
+	t->track_fullname = g_strdup(full);
 	t->pending = TRUE;
 	t->track_alias_valid = FALSE;
 	imquic_mutex_init(&t->mutex);
@@ -246,7 +255,9 @@ static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_publi
 static void imquic_demo_moq_track_destroy(imquic_demo_moq_track *t) {
 	if(t) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Removing track %s\n", t->track_name);
+		g_free(t->track_namespace);
 		g_free(t->track_name);
+		g_free(t->track_fullname);
 		if(t->annc && t->annc->pub) {
 			if(t->track_alias_valid)
 				g_hash_table_remove(t->annc->pub->subscriptions, &t->track_alias);
@@ -533,6 +544,24 @@ static int imquic_demo_moq_track_namespace(imquic_moq_namespace *tns, imquic_dem
 	return 0;
 }
 
+static imquic_demo_moq_published_namespace *imquic_demo_moq_find_closest_namespace(imquic_moq_namespace *tns) {
+	if(tns == NULL)
+		return NULL;
+	/* If we don't have the exact announcement, let's check the parents */
+	imquic_demo_moq_published_namespace *annc = NULL;
+	GList *list = imquic_demo_get_parents_list(tns), *temp = list;
+	while(temp != NULL) {
+		char *ns = (char *)temp->data;
+		annc = g_hash_table_lookup(namespaces, ns);
+		if(annc != NULL && annc->pub != NULL && annc->pub->conn != NULL)
+			break;
+		annc = NULL;
+		temp = temp->next;
+	}
+	g_list_free_full(list, (GDestroyNotify)g_free);
+	return annc;
+}
+
 static void imquic_demo_moq_notify_about_namespace(imquic_moq_namespace *tns) {
 	if(tns == NULL)
 		return;
@@ -763,8 +792,10 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		return;
 	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s--%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
-		imquic_get_connection_name(conn), ns, name, request_id, track_alias, g_list_length(track_properties));
+	char full[4096];
+	g_snprintf(full, sizeof(full), "%s--%s", ns, name);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming publish for '%s' (ID %"SCNu64"/%"SCNu64"; %d properties)\n",
+		imquic_get_connection_name(conn), full, request_id, track_alias, g_list_length(track_properties));
 	/* Check if authorization is required */
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
@@ -807,7 +838,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		imquic_moq_reject_publish(conn, request_id, IMQUIC_MOQ_REQERR_UNAUTHORIZED, "Track already published", 0, NULL);
 		return;
 	}
-	imquic_demo_moq_track *track = imquic_demo_moq_track_create(annc, name);
+	imquic_demo_moq_track *track = imquic_demo_moq_track_create(annc, ns, name);
 	track->request_id = request_id;
 	track->track_alias = track_alias;
 	track->published = TRUE;
@@ -815,7 +846,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	track->track_alias_valid = TRUE;
 	track->forward = parameters->forward;
 	track->properties = imquic_moq_properties_duplicate(track_properties);
-	g_hash_table_insert(annc->tracks, g_strdup(name), track);
+	g_hash_table_insert(annc->tracks, g_strdup(track->track_fullname), track);
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 	g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
 	imquic_mutex_unlock(&mutex);
@@ -958,8 +989,10 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		return;
 	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming request to return the track status for '%s--%s' (ID %"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, request_id);
+	char full[4096];
+	g_snprintf(full, sizeof(full), "%s--%s", ns, name);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming request to return the track status for '%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), full, request_id);
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(!imquic_moq_check_auth_info(conn, options.sub_auth_info,
@@ -971,7 +1004,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 	}
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
-	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_find_closest_namespace(tns);
 	if(annc == NULL || annc->pub == NULL || annc->pub->conn == NULL) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
@@ -980,7 +1013,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		return;
 	}
 	/* Do we know this track already? */
-	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, name);
+	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, full);
 	if(track == NULL) {
 		/* TODO We don't: we should forward this upstream, but we
 		 * currently don't as this is just a proof-of-concept handling
@@ -1041,8 +1074,10 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		return;
 	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s--%s' (ID %"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, request_id);
+	char full[4096];
+	g_snprintf(full, sizeof(full), "%s--%s", ns, name);
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming subscribe for '%s' (ID %"SCNu64")\n",
+		imquic_get_connection_name(conn), full, request_id);
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(!imquic_moq_check_auth_info(conn, options.sub_auth_info,
@@ -1054,7 +1089,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
-	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_find_closest_namespace(tns);
 	if(annc == NULL || annc->pub == NULL || annc->pub->conn == NULL) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
@@ -1064,12 +1099,12 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Do we know this track already? */
 	gboolean new_track = FALSE;
-	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, name);
+	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, full);
 	if(track == NULL) {
 		/* Not yet: create a placeholder pending track */
 		new_track = TRUE;
-		track = imquic_demo_moq_track_create(annc, name);
-		g_hash_table_insert(annc->tracks, g_strdup(name), track);
+		track = imquic_demo_moq_track_create(annc, ns, name);
+		g_hash_table_insert(annc->tracks, g_strdup(track->track_fullname), track);
 	}
 	/* Create a subscriber, if needed */
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
@@ -1299,7 +1334,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	imquic_mutex_unlock(&track->mutex);
 	/* Destroy the track */
 	if(track->annc && track->annc->tracks)
-		g_hash_table_remove(track->annc->tracks, track->track_name);
+		g_hash_table_remove(track->annc->tracks, track->track_fullname);
 	imquic_mutex_unlock(&mutex);
 }
 
@@ -1483,7 +1518,7 @@ static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_i
 	/* Destroy the track */
 	if(track->annc && track->annc->tracks) {
 		imquic_demo_moq_published_namespace *annc = track->annc;
-		g_hash_table_remove(track->annc->tracks, track->track_name);
+		g_hash_table_remove(track->annc->tracks, track->track_fullname);
 		if(!annc->announced && g_hash_table_size(annc->tracks) == 0) {
 			/* This was the last track in a (fake) published namespace, get rid of that too */
 			imquic_demo_moq_untrack_namespace(annc->tns, annc);
@@ -1629,19 +1664,21 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		return;
 	}
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
+	char full[4096];
+	g_snprintf(full, sizeof(full), "%s--%s", ns, name);
 	if(range->end.object == 0)
 		range->end.object = IMQUIC_MAX_VARINT;
 	else
 		range->end.object--;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s--%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
-		imquic_get_connection_name(conn), ns, name, request_id,
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
+		imquic_get_connection_name(conn), full, request_id,
 		imquic_moq_group_order_str(parameters->group_order),
 		range->start.group, range->start.object, range->end.group, range->end.object);
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* Find the namespace */
 	imquic_mutex_lock(&mutex);
-	imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
+	imquic_demo_moq_published_namespace *annc = imquic_demo_moq_find_closest_namespace(tns);
 	if(annc == NULL || annc->pub == NULL || annc->pub->conn == NULL) {
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
@@ -1650,7 +1687,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		return;
 	}
 	/* Do we know this track? */
-	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, name);
+	imquic_demo_moq_track *track = g_hash_table_lookup(annc->tracks, full);
 	if(track == NULL || track->pending || track->objects == NULL) {
 		/* TODO We should relay the FETCH to the publisher */
 		imquic_mutex_unlock(&mutex);

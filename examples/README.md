@@ -74,6 +74,7 @@ To build the Media Over QUIC (MoQ) examples, pass `--enable-moq-examples` to the
 * `imquic-moq-loc-send`, a MoQ publisher that can publish live audio/video using LOC;
 * `imquic-moq-loc-recv`, a MoQ subscriber that can subscribe to (and render) live audio/video using LOC;
 * `imquic-moq-interop-test`, a client-side implementation of the [MoQ Interop Runner](https://github.com/englishm/moq-interop-runner/);
+* `imquic-moq-test`, a client-side implementation of the [moq-test](https://www.ietf.org/archive/id/draft-afrind-moq-test-01.html) draft;
 * `imquic-moq-relay`, a basic MoQ relay.
 
 All provide a few configuration options: pass `-h` or `--help` for more information.
