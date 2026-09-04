@@ -708,6 +708,8 @@ typedef struct imquic_moq_object {
 	uint64_t object_id;
 	/*! \brief MoQ object status */
 	imquic_moq_object_status object_status;
+	/*! \brief Whether the object contains a priority */
+	gboolean priority_set;
 	/*! \brief MoQ publisher priority */
 	uint8_t priority;
 	/*! \brief MoQ properties, if any */

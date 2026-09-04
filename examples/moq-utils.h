@@ -25,6 +25,8 @@ void imquic_moq_object_cleanup(imquic_moq_object *object);
 void imquic_moq_properties_print(imquic_moq_version version, int level, GList *properties);
 /* Helper to duplicate a list of properties */
 GList *imquic_moq_properties_duplicate(GList *properties);
+/* Helper to retrieve a property from a list */
+imquic_moq_property *imquic_moq_property_find(GList *properties, imquic_moq_property_type type);
 /* Helper to destroy an object property */
 void imquic_moq_property_cleanup(imquic_moq_property *property);
 

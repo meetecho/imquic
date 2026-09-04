@@ -90,6 +90,18 @@ void imquic_moq_object_cleanup(imquic_moq_object *object) {
 	}
 }
 
+/* Helper to retrieve a property from a list */
+imquic_moq_property *imquic_moq_property_find(GList *properties, imquic_moq_property_type type) {
+	GList *temp = properties;
+	while(temp) {
+		imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+		if(prop->id == type)
+			return prop;
+		temp = temp->next;
+	}
+	return NULL;
+}
+
 /* Helper to destroy an object propertie */
 void imquic_moq_property_cleanup(imquic_moq_property *property) {
 	if(property != NULL) {

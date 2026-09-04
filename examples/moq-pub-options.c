@@ -27,6 +27,8 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "delivery", 'D', 0, G_OPTION_ARG_STRING, &options->delivery, "How MoQ objects should be sent (default=subgroup; supported=datagram,subgroup)", "type" },
 		{ "publish", 'X', 0, G_OPTION_ARG_NONE, &options->publish, "Use a PUBLISH right away instead of waiting for a SUBSCRIBE (default=no)", NULL },
 		{ "track-alias", 't', 0, G_OPTION_ARG_INT64, &options->track_alias, "Track alias to use for subscriptions (default=0)", NULL },
+		{ "priority", 'i', 0, G_OPTION_ARG_INT, &options->priority, "Publisher priority to put in objects (default=-1, omitted)", NULL },
+		{ "default-priority", 'I', 0, G_OPTION_ARG_INT, &options->default_priority, "Default publisher priority to send as a track property (default=-1, omitted)", NULL },
 		{ "properties", 'x', 0, G_OPTION_ARG_NONE, &options->properties, "Send some properties along objects (default=no)", NULL },
 		{ "padding", 'P', 0, G_OPTION_ARG_INT, &options->padding, "Send some padding too, along objects (default=none)", NULL },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },

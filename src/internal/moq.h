@@ -422,6 +422,8 @@ typedef struct imquic_moq_stream {
 	imquic_moq_object_status object_status;
 	/*! \brief If this is a FETCH stream, whether it's in ascending or descending order */
 	gboolean ascending;
+	/*! \brief Whether there is a publisher priority set */
+	gboolean priority_set;
 	/*! \brief Publisher priority */
 	uint8_t priority;
 	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
@@ -1090,7 +1092,8 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
  * @param group_id The group ID to put in the message
  * @param object_id The object ID to put in the message
  * @param object_status The object status (only added if the payload length is 0)
- * @param priority The publisher priority to put in the message
+ * @param priority_set Whether the object should contain a publisher priority
+ * @param priority The publisher priority to put in the message, if any
  * @param payload_prefix The buffer containing the payload prefix of the object, if needed
  * @param pplen The size of the payload prefix buffer
  * @param payload The buffer containing the payload of the object
@@ -1099,7 +1102,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
  * @param prlen The size of the properties buffer
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-	uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t priority,
+	uint64_t group_id, uint64_t object_id, uint64_t object_status, gboolean priority_set, uint8_t priority,
 	uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM_STATUS message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support
@@ -1109,13 +1112,14 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
  * @param track_alias The track alias to put in the message
  * @param group_id The group ID to put in the message
  * @param object_id The object ID to put in the message
- * @param priority The publisher priority to put in the message
+ * @param priority_set Whether the object should contain a publisher priority
+ * @param priority The publisher priority to put in the message, if any
  * @param object_status The object status (only added if the payload length is 0)
  * @param properties The buffer containing the properties, if any
  * @param prlen The size of the properties buffer
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t track_alias, uint64_t group_id, uint64_t object_id, uint8_t priority,
+	uint64_t track_alias, uint64_t group_id, uint64_t object_id, gboolean priority_set, uint8_t priority,
 	uint64_t object_status, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add a \c SUBGROUP_HEADER message to a buffer
  * @note This will create a new \c STREAM and send the header: after
@@ -1129,10 +1133,11 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
  * @param track_alias The track alias to put in the message
  * @param group_id The group ID to put in the message
  * @param subgroup_id The subgroup ID to put in the message
- * @param priority The publisher priority to put in the message
+ * @param priority_set Whether the object should contain a publisher priority
+ * @param priority The publisher priority to put in the message, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
-	uint64_t request_id, uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, uint8_t priority);
+	uint64_t request_id, uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, gboolean priority_set, uint8_t priority);
 /*! \brief Helper to add an object to a buffer, formatted as expected
  * for \c SUBGROUP_HEADER objects (so not all IDs)
  * @param moq The imquic_moq_context generating the object
@@ -1170,7 +1175,8 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param group_id The group ID
  * @param subgroup_id The subgroup ID
  * @param object_id The object ID
- * @param priority The publisher priority to put in the message
+ * @param priority_set Whether the object should contain a publisher priority
+ * @param priority The publisher priority to put in the message, if any
  * @param payload_prefix The buffer containing the payload prefix of the object, if needed
  * @param pplen The size of the payload prefix buffer
  * @param payload The buffer containing the payload of the object
@@ -1179,7 +1185,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
  * @param prlen The size of the properties buffer
  * @returns The size of the generated object, if successful, or 0 otherwise */
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
+	uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, gboolean priority_set, uint8_t priority,
 	uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add padding data to a buffer, formatted as expected
  * for \c PADDING_STREAM or \c PADDING_DATAGRAM

@@ -29,6 +29,7 @@ typedef struct demo_options {
 	const char *delivery;
 	gboolean publish;
 	uint64_t track_alias;
+	int priority, default_priority;
 	gboolean properties;
 	int padding;
 	const char *ip;
