@@ -443,6 +443,7 @@ void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_i
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, FALSE, stream_id, "reset_stream", error_code);
+	moq_stream->closed = TRUE;
 	if(moq_stream->request_type == 0) {
 		/* FIXME Not a request stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
@@ -472,6 +473,7 @@ void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_i
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, FALSE, stream_id, "stop_sending", error_code);
+	moq_stream->closed = TRUE;
 	if(moq_stream->request_type == 0) {
 		/* FIXME Not a request stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
@@ -1797,11 +1799,15 @@ static void imquic_moq_stream_free(const imquic_refcount *ms_ref) {
 	imquic_moq_stream *moq_stream = imquic_refcount_containerof(ms_ref, imquic_moq_stream, ref);
 	imquic_moq_namespace_free(moq_stream->namespace_prefix);
 	imquic_buffer_destroy(moq_stream->buffer);
+	if(moq_stream->namespaces != NULL)
+		g_hash_table_unref(moq_stream->namespaces);
+	imquic_mutex_destroy(&moq_stream->mutex);
 	g_free(moq_stream);
 }
 
 imquic_moq_stream *imquic_moq_stream_create(void) {
 	imquic_moq_stream *moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+	imquic_mutex_init(&moq_stream->mutex);
 	imquic_refcount_init(&moq_stream->ref, imquic_moq_stream_free);
 	return moq_stream;
 }
@@ -2392,6 +2398,7 @@ done:
 	if(moq_stream != NULL && complete) {
 		if(moq_stream->request_type > 0) {
 			/* The request dedicated bidirectional STREAM has been closed */
+			moq_stream->closed = TRUE;
 			imquic_moq_request_stream_closed(moq, moq_stream);
 			imquic_refcount_decrease(&moq_stream->ref);
 			return 0;
@@ -2415,6 +2422,7 @@ done:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 				moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
 		}
+		moq_stream->closed = TRUE;
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_remove(moq->streams, &stream_id);
 		imquic_mutex_unlock(&moq->mutex);
@@ -7013,6 +7021,7 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_
 			return -1;
 		}
 		/* Reset the STREAM */
+		moq_stream->closed = TRUE;
 		imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 		if(conn->qlog != NULL && conn->qlog->moq)
 			imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
@@ -7542,6 +7551,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 			return -1;
 		}
 		/* Send a STOP_SENDING */
+		moq_stream->closed = TRUE;
 		uint64_t stream_id = moq_stream->stream_id;
 		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
@@ -7585,6 +7595,25 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 		return -1;
 	}
 	uint64_t streams_count = moq_sub->streams_count;
+	/* Close all object streams, if needed */
+	if(moq_sub->stream != NULL && !moq_sub->stream->closed) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing unique stream '%"SCNu64"'\n",
+			imquic_get_connection_name(conn), moq_sub->stream->stream_id);
+		moq_sub->stream->closed = TRUE;
+		imquic_connection_send_on_stream(conn, moq_sub->stream->stream_id, NULL, 0, TRUE);
+	}
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, moq_sub->streams_by_subgroup);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		imquic_moq_stream *stream = value;
+		if(!stream->closed) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing stream '%"SCNu64"'\n",
+				imquic_get_connection_name(conn), stream->stream_id);
+			stream->closed = TRUE;
+			imquic_connection_send_on_stream(conn, stream->stream_id, NULL, 0, TRUE);
+		}
+	}
 	imquic_mutex_unlock(&moq->mutex);
 	/* Starting from v17, requests go on a dedicated bidirectional
 	 * STREAM, and the same applies to the PUBLISH_DONE responses */
@@ -7788,6 +7817,7 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_i
 		return -1;
 	}
 	/* Reset the STREAM */
+	moq_stream->closed = TRUE;
 	imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
@@ -7963,6 +7993,7 @@ int imquic_moq_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id) 
 		return -1;
 	}
 	/* Reset the STREAM */
+	moq_stream->closed = TRUE;
 	imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
@@ -8001,6 +8032,24 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 	imquic_moq_namespace *tns_suffix = tns;
 	for(uint8_t i=0; i<moq_stream->namespace_prefix_size; i++)
 		tns_suffix = tns_suffix->next;
+	/* Keep track of it */
+	char tns_buf[1024];
+	tns_buf[0] = '\0';
+	const char *tns_str = imquic_moq_namespace_str(tns_suffix, tns_buf, sizeof(tns_buf), TRUE);
+	if(tns_str == NULL)	/* FIXME */
+		tns_str = "(null)";
+	imquic_mutex_lock(&moq_stream->mutex);
+	if(moq_stream->namespaces == NULL)
+		moq_stream->namespaces = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+	if(g_hash_table_contains(moq_stream->namespaces, tns_str)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Namespace '%s' already notified\n",
+			imquic_get_connection_name(conn), tns_str);
+		imquic_mutex_unlock(&moq_stream->mutex);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	g_hash_table_insert(moq_stream->namespaces, g_strdup(tns_str), GUINT_TO_POINTER(1));
+	imquic_mutex_unlock(&moq_stream->mutex);
 	/* Prepare the message */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
@@ -8041,6 +8090,21 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	imquic_moq_namespace *tns_suffix = tns;
 	for(uint8_t i=0; i<moq_stream->namespace_prefix_size; i++)
 		tns_suffix = tns_suffix->next;
+	/* Check if we notified it in the first place */
+	char tns_buf[1024];
+	tns_buf[0] = '\0';
+	const char *tns_str = imquic_moq_namespace_str(tns_suffix, tns_buf, sizeof(tns_buf), TRUE);
+	if(tns_str == NULL)	/* FIXME */
+		tns_str = "(null)";
+	imquic_mutex_lock(&moq_stream->mutex);
+	if(moq_stream->namespaces == NULL || !g_hash_table_remove(moq_stream->namespaces, tns_str)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Namespace '%s' not known, or notified already\n",
+			imquic_get_connection_name(conn), tns_str);
+		imquic_mutex_unlock(&moq_stream->mutex);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	imquic_mutex_unlock(&moq_stream->mutex);
 	/* Prepare the message */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);

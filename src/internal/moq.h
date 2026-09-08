@@ -406,6 +406,8 @@ typedef struct imquic_moq_stream {
 	imquic_moq_namespace *namespace_prefix, *last_tuple;
 	/*! \brief In case this is for SUBSCRIBE_NAMESPACE, how many tuples are in the namespace prefix */
 	uint8_t namespace_prefix_size;
+	/*! \brief Map of namespaces we've notified about */
+	GHashTable *namespaces;
 	/*! \brief Delivery mode for this stream, in case it's used for objects */
 	imquic_moq_data_message_type type;
 	/*! \brief ID of the request/subscription, and of the update if one was involved */
@@ -442,6 +444,8 @@ typedef struct imquic_moq_stream {
 	uint8_t last_priority;
 	/*! \brief Whether we closed this stream */
 	gboolean closed;
+	/*! \brief Mutex */
+	imquic_mutex mutex;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
 	volatile gint destroyed;
 	/*! \brief Reference counter */
