@@ -447,6 +447,7 @@ void imquic_moq_reset_stream_incoming(imquic_connection *conn, uint64_t stream_i
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, FALSE, stream_id, "reset_stream", error_code);
+	moq_stream->closed = TRUE;
 	if(moq_stream->request_type == 0) {
 		/* FIXME Not a request stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
@@ -476,6 +477,7 @@ void imquic_moq_stop_sending_incoming(imquic_connection *conn, uint64_t stream_i
 		imquic_get_connection_name(conn), stream_id, error_code, imquic_moq_reset_stream_code_str(error_code));
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, FALSE, stream_id, "stop_sending", error_code);
+	moq_stream->closed = TRUE;
 	if(moq_stream->request_type == 0) {
 		/* FIXME Not a request stream, we ignore it for now */
 		imquic_mutex_unlock(&moq->mutex);
@@ -1811,11 +1813,15 @@ static void imquic_moq_stream_free(const imquic_refcount *ms_ref) {
 	imquic_moq_stream *moq_stream = imquic_refcount_containerof(ms_ref, imquic_moq_stream, ref);
 	imquic_moq_namespace_free(moq_stream->namespace_prefix);
 	imquic_buffer_destroy(moq_stream->buffer);
+	if(moq_stream->namespaces != NULL)
+		g_hash_table_unref(moq_stream->namespaces);
+	imquic_mutex_destroy(&moq_stream->mutex);
 	g_free(moq_stream);
 }
 
 imquic_moq_stream *imquic_moq_stream_create(void) {
 	imquic_moq_stream *moq_stream = g_malloc0(sizeof(imquic_moq_stream));
+	imquic_mutex_init(&moq_stream->mutex);
 	imquic_refcount_init(&moq_stream->ref, imquic_moq_stream_free);
 	return moq_stream;
 }
@@ -2049,9 +2055,12 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				moq_stream = imquic_moq_stream_create();
 				moq_stream->stream_id = stream_id;
 				moq_stream->type = dtype;
-				moq_stream->priority = 128;	/* FIXME */
-				if(dtype == IMQUIC_MOQ_PADDING_STREAM)
+				moq_stream->priority_set = FALSE;
+				moq_stream->priority = 0;
+				if(dtype == IMQUIC_MOQ_PADDING_STREAM) {
+					moq_stream->priority_set = TRUE;
 					moq_stream->priority = 255;
+				}
 				imquic_mutex_lock(&moq->mutex);
 				g_hash_table_insert(moq->streams, imquic_dup_uint64(stream_id), moq_stream);
 				imquic_mutex_unlock(&moq->mutex);
@@ -2403,6 +2412,7 @@ done:
 	if(moq_stream != NULL && complete) {
 		if(moq_stream->request_type > 0) {
 			/* The request dedicated bidirectional STREAM has been closed */
+			moq_stream->closed = TRUE;
 			imquic_moq_request_stream_closed(moq, moq_stream);
 			imquic_refcount_decrease(&moq_stream->ref);
 			return 0;
@@ -2418,7 +2428,6 @@ done:
 				.subgroup_id = moq_stream->subgroup_id,
 				.object_id = 0,	/* FIXME */
 				.object_status = IMQUIC_MOQ_NORMAL_OBJECT,
-				.priority = 128,
 				.payload = NULL,
 				.payload_len = 0,
 				.delivery = imquic_moq_data_message_type_to_delivery(moq_stream->type, moq->version),
@@ -2427,6 +2436,7 @@ done:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_object)
 				moq->conn->socket->callbacks.moq.incoming_object(moq->conn, &object);
 		}
+		moq_stream->closed = TRUE;
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_remove(moq->streams, &stream_id);
 		imquic_mutex_unlock(&moq->mutex);
@@ -4436,6 +4446,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		.subgroup_id = 0,
 		.object_id = object_id,
 		.object_status = 0,
+		.priority_set = has_priority,
 		.priority = priority,
 		.payload = (blen-offset > 0 ? &bytes[offset] : NULL),
 		.payload_len = blen-offset,
@@ -4520,6 +4531,7 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 		.subgroup_id = 0,
 		.object_id = object_id,
 		.object_status = object_status,
+		.priority_set = has_priority,
 		.priority = priority,
 		.payload = NULL,
 		.payload_len = 0,
@@ -4539,7 +4551,7 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 }
 
 size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error) {
-	if(bytes == NULL || blen < 4)
+	if(bytes == NULL || blen < 3)
 		return 0;
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
@@ -4551,7 +4563,7 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track alias:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), track_alias);
 	uint64_t group_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:          %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
@@ -4565,27 +4577,38 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_prop, is_eog, has_priority, first_object, violation);
 	IMQUIC_MOQ_CHECK_ERR(violation, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid SUBGROUP_HEADER type");
 	if(has_subgroup) {
+		if(blen-offset == 0) {
+			/* Waiting for more data */
+			error = 0;
+			return 0;
+		}
 		subgroup_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
 		offset += length;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subgroup ID:       %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), subgroup_id);
 	} else {
 		/* TODO The subgroup ID may need to be set to the first object ID, in some cases */
 	}
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subgroup ID:       %"SCNu64"\n",
-		imquic_get_connection_name(moq->conn), subgroup_id);
 	uint8_t priority = 0;
 	if(has_priority) {
+		if(blen-offset == 0) {
+			/* Waiting for more data */
+			error = 0;
+			return 0;
+		}
 		priority = bytes[offset];
 		offset++;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
+			imquic_get_connection_name(moq->conn), priority);
 	}
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Publisher Priority: %"SCNu8"\n",
-		imquic_get_connection_name(moq->conn), priority);
 	/* Track these properties */
 	if(moq_stream != NULL) {
 		moq_stream->request_id = 0;
 		moq_stream->track_alias = track_alias;
 		moq_stream->group_id = group_id;
 		moq_stream->subgroup_id = subgroup_id;
+		moq_stream->priority_set = has_priority;
 		moq_stream->priority = priority;
 		moq_stream->first_of_subgroup = (first_object > 0);
 		moq_stream->buffer = imquic_buffer_create(NULL, 0);
@@ -4679,6 +4702,7 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		.subgroup_id = moq_stream->subgroup_id,
 		.object_id = object_id,
 		.object_status = object_status,
+		.priority_set = moq_stream->priority_set,
 		.priority = moq_stream->priority,
 		.first_of_subgroup = moq_stream->first_of_subgroup,
 		.payload = bytes + offset,
@@ -4866,6 +4890,7 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		.subgroup_id = subgroup_id,
 		.object_id = object_id,
 		.object_status = IMQUIC_MOQ_NORMAL_OBJECT,
+		.priority_set = has_priority,
 		.priority = priority,
 		.payload = bytes + offset,
 		.payload_len = p_len,
@@ -5838,7 +5863,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
 }
 
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-		uint64_t group_id, uint64_t object_id, uint64_t object_status, uint8_t priority,
+		uint64_t group_id, uint64_t object_id, uint64_t object_status, gboolean priority_set, uint8_t priority,
 		uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
@@ -5848,7 +5873,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 	/* TODO Involve EOG */
 	gboolean has_prop = (properties != NULL && prlen > 0), is_eog = FALSE;
 	gboolean has_oid = (object_id != 0);
-	gboolean has_priority = TRUE;	/* FIXME */
+	gboolean has_priority = priority_set;
 	imquic_moq_datagram_message_type dtype = imquic_moq_datagram_message_type_return(moq->version,
 		TRUE,			/* Payload */
 		has_prop,		/* Properties */
@@ -5878,7 +5903,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 }
 
 size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t track_alias, uint64_t group_id, uint64_t object_id, uint8_t priority,
+		uint64_t track_alias, uint64_t group_id, uint64_t object_id, gboolean priority_set, uint8_t priority,
 		uint64_t object_status, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
@@ -5887,7 +5912,7 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
 	}
 	gboolean has_prop = (properties != NULL && prlen > 0);
 	gboolean has_oid = (object_id != 0);
-	gboolean has_priority = TRUE;	/* FIXME */
+	gboolean has_priority = priority_set;
 	imquic_moq_datagram_message_type dtype = imquic_moq_datagram_message_type_return(moq->version,
 		FALSE,			/* Status */
 		has_prop,		/* Properties */
@@ -5910,14 +5935,14 @@ size_t imquic_moq_add_object_datagram_status(imquic_moq_context *moq, uint8_t *b
 }
 
 size_t imquic_moq_add_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen,
-		uint64_t request_id, uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, uint8_t priority) {
+		uint64_t request_id, uint64_t track_alias, uint64_t group_id, uint64_t subgroup_id, gboolean priority_set, uint8_t priority) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_data_message_type_str(IMQUIC_MOQ_SUBGROUP_HEADER, moq->version));
 		return 0;
 	}
 	imquic_moq_data_message_type dtype = moq_stream->type;
-	gboolean has_sg = FALSE, has_priority = FALSE;
+	gboolean has_sg = FALSE, has_priority = priority_set;
 	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type, &has_sg, NULL, NULL, NULL, &has_priority, NULL, NULL);
 	size_t offset = imquic_write_moqint(moq->version, dtype, bytes, blen);
 	offset += imquic_write_moqint(moq->version, track_alias, &bytes[offset], blen-offset);
@@ -5977,7 +6002,7 @@ size_t imquic_moq_add_fetch_header(imquic_moq_context *moq, uint8_t *bytes, size
 }
 
 size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, uint8_t priority,
+		uint64_t flags, uint64_t group_id, uint64_t subgroup_id, uint64_t object_id, gboolean priority_set, uint8_t priority,
 		uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s object: invalid arguments\n",
@@ -5986,7 +6011,11 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 	}
 	size_t offset = 0;
 	imquic_moq_fetch_subgroup_type subgroup_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
-	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_prop = FALSE, is_datagram = FALSE;
+	gboolean has_oid = FALSE,
+		has_group = FALSE,
+		has_priority = priority_set,
+		has_prop = (properties != NULL && prlen > 0),
+		is_datagram = FALSE;
 	imquic_moq_parse_fetch_serialization_flags(moq->version, flags,
 		&subgroup_type, &has_oid, &has_group, &has_priority, &has_prop, &is_datagram, NULL, NULL, NULL);
 	offset += imquic_write_moqint(moq->version, flags, &bytes[offset], blen-offset);
@@ -7014,6 +7043,7 @@ int imquic_moq_publish_namespace_done(imquic_connection *conn, uint64_t request_
 			return -1;
 		}
 		/* Reset the STREAM */
+		moq_stream->closed = TRUE;
 		imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 		if(conn->qlog != NULL && conn->qlog->moq)
 			imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
@@ -7543,6 +7573,7 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 			return -1;
 		}
 		/* Send a STOP_SENDING */
+		moq_stream->closed = TRUE;
 		uint64_t stream_id = moq_stream->stream_id;
 		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
@@ -7586,6 +7617,25 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 		return -1;
 	}
 	uint64_t streams_count = moq_sub->streams_count;
+	/* Close all object streams, if needed */
+	if(moq_sub->stream != NULL && !moq_sub->stream->closed) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing unique stream '%"SCNu64"'\n",
+			imquic_get_connection_name(conn), moq_sub->stream->stream_id);
+		moq_sub->stream->closed = TRUE;
+		imquic_connection_send_on_stream(conn, moq_sub->stream->stream_id, NULL, 0, TRUE);
+	}
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, moq_sub->streams_by_subgroup);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		imquic_moq_stream *stream = value;
+		if(!stream->closed) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing stream '%"SCNu64"'\n",
+				imquic_get_connection_name(conn), stream->stream_id);
+			stream->closed = TRUE;
+			imquic_connection_send_on_stream(conn, stream->stream_id, NULL, 0, TRUE);
+		}
+	}
 	imquic_mutex_unlock(&moq->mutex);
 	/* Starting from v17, requests go on a dedicated bidirectional
 	 * STREAM, and the same applies to the PUBLISH_DONE responses */
@@ -7789,6 +7839,7 @@ int imquic_moq_unsubscribe_namespace(imquic_connection *conn, uint64_t request_i
 		return -1;
 	}
 	/* Reset the STREAM */
+	moq_stream->closed = TRUE;
 	imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
@@ -7964,6 +8015,7 @@ int imquic_moq_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id) 
 		return -1;
 	}
 	/* Reset the STREAM */
+	moq_stream->closed = TRUE;
 	imquic_connection_reset_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 	if(conn->qlog != NULL && conn->qlog->moq)
 		imquic_moq_qlog_stream_closed(moq->conn->qlog, TRUE, moq_stream->stream_id, "reset_stream", IMQUIC_MOQ_RESET_CANCELLED);
@@ -8002,6 +8054,24 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 	imquic_moq_namespace *tns_suffix = tns;
 	for(uint8_t i=0; i<moq_stream->namespace_prefix_size; i++)
 		tns_suffix = tns_suffix->next;
+	/* Keep track of it */
+	char tns_buf[1024];
+	tns_buf[0] = '\0';
+	const char *tns_str = imquic_moq_namespace_str(tns_suffix, tns_buf, sizeof(tns_buf), TRUE);
+	if(tns_str == NULL)	/* FIXME */
+		tns_str = "(null)";
+	imquic_mutex_lock(&moq_stream->mutex);
+	if(moq_stream->namespaces == NULL)
+		moq_stream->namespaces = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+	if(g_hash_table_contains(moq_stream->namespaces, tns_str)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Namespace '%s' already notified\n",
+			imquic_get_connection_name(conn), tns_str);
+		imquic_mutex_unlock(&moq_stream->mutex);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	g_hash_table_insert(moq_stream->namespaces, g_strdup(tns_str), GUINT_TO_POINTER(1));
+	imquic_mutex_unlock(&moq_stream->mutex);
 	/* Prepare the message */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
@@ -8042,6 +8112,21 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
 	imquic_moq_namespace *tns_suffix = tns;
 	for(uint8_t i=0; i<moq_stream->namespace_prefix_size; i++)
 		tns_suffix = tns_suffix->next;
+	/* Check if we notified it in the first place */
+	char tns_buf[1024];
+	tns_buf[0] = '\0';
+	const char *tns_str = imquic_moq_namespace_str(tns_suffix, tns_buf, sizeof(tns_buf), TRUE);
+	if(tns_str == NULL)	/* FIXME */
+		tns_str = "(null)";
+	imquic_mutex_lock(&moq_stream->mutex);
+	if(moq_stream->namespaces == NULL || !g_hash_table_remove(moq_stream->namespaces, tns_str)) {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Namespace '%s' not known, or notified already\n",
+			imquic_get_connection_name(conn), tns_str);
+		imquic_mutex_unlock(&moq_stream->mutex);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	imquic_mutex_unlock(&moq_stream->mutex);
 	/* Prepare the message */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
@@ -8593,14 +8678,15 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		if(has_payload) {
 			size_t dg_len = imquic_moq_add_object_datagram(moq, buffer, bufsize,
 				object->request_id, object->track_alias, object->group_id, object->object_id, object->object_status,
-				object->priority, object->payload_prefix, object->payload_prefix_len,
+				object->priority_set, object->priority, object->payload_prefix, object->payload_prefix_len,
 				object->payload, object->payload_len, properties, properties_len);
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_object_datagram_created(conn->qlog, object);
 			imquic_connection_send_on_datagram(conn, buffer, dg_len);
 		} else {
 			size_t dg_len = imquic_moq_add_object_datagram_status(moq, buffer, bufsize,
-				object->track_alias, object->group_id, object->object_id, object->priority,
+				object->track_alias, object->group_id, object->object_id,
+				object->priority_set, object->priority,
 				object->object_status, properties, properties_len);
 			imquic_connection_send_on_datagram(conn, buffer, dg_len);
 			if(conn->qlog != NULL && conn->qlog->moq)
@@ -8640,12 +8726,13 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				FALSE,	/* Whether the default Subgroup ID is 0 (ignored, since we set it) */
 				TRUE,	/* We'll add the properties block, whether there are properties or not */
 				TRUE,	/* End-of-Group is set */
-				TRUE,	/* We'll add the Publisher Priority property */
+				object->priority_set,	/* Whether we'll add the Publisher Priority property */
 				object->first_of_subgroup);	/* We take this from the object provided by the user */
 			moq_stream->track_alias = object->track_alias;
 			moq_stream->group_id = object->group_id;
 			moq_stream->subgroup_id = object->subgroup_id;
-			moq_stream->priority = 128;	/* FIXME */
+			moq_stream->priority_set = object->priority_set;
+			moq_stream->priority = object->priority;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);
 			moq_sub->streams_count++;
@@ -8654,7 +8741,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				imquic_moq_qlog_stream_type_set(conn->qlog, TRUE, moq_stream->stream_id, "subgroup_header");
 			/* Send a SUBGROUP_HEADER */
 			size_t shg_len = imquic_moq_add_subgroup_header(moq, moq_stream, buffer, bufsize,
-				object->request_id, object->track_alias, object->group_id, object->subgroup_id, object->priority);
+				object->request_id, object->track_alias, object->group_id, object->subgroup_id,
+				object->priority_set, object->priority);
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_subgroup_header_created(conn->qlog, moq_stream, buffer, shg_len);
 			imquic_connection_send_on_stream(conn, moq_stream->stream_id,
@@ -8719,7 +8807,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			/* Create a new stream */
 			moq_stream = imquic_moq_stream_create();
 			moq_stream->type = IMQUIC_MOQ_FETCH_HEADER;
-			moq_stream->priority = 128;	/* FIXME */
+			moq_stream->priority_set = object->priority;
+			moq_stream->priority = object->priority;
 			moq_stream->ascending = moq_sub->ascending;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			moq_sub->stream = moq_stream;
@@ -8746,7 +8835,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			 * some IDs can be delta encoded, we try to be a bit smarter */
 			imquic_moq_fetch_subgroup_type sg_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
 			gboolean has_oid = TRUE, has_gid = TRUE,
-				has_priority = TRUE, has_properties = TRUE,
+				has_priority = object->priority_set, has_properties = TRUE,
 				datagram = FALSE;
 			/* Some properties may need to be delta encoded */
 			uint64_t group_id = object->group_id;
@@ -8777,7 +8866,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->last_group_id = object->group_id;
 			moq_stream->last_object_id = object->object_id;
 			shto_len = imquic_moq_add_fetch_header_object(moq, buffer, bufsize, flags,
-				group_id, object->subgroup_id, object_id, object->priority,
+				group_id, object->subgroup_id, object_id, object->priority_set, object->priority,
 				object->payload_prefix, object->payload_prefix_len,
 				object->payload, object->payload_len,
 				properties, properties_len);
@@ -9294,7 +9383,8 @@ void imquic_moq_qlog_object_datagram_created(imquic_qlog *qlog, imquic_moq_objec
 	json_object_set_new(data, "track_alias", json_integer(object->track_alias));
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
-	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
+	if(object->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	if(object->payload_len > 0) {
 		imquic_qlog_event_add_raw(data, "object_payload",
@@ -9328,7 +9418,8 @@ void imquic_moq_qlog_object_datagram_status_created(imquic_qlog *qlog, imquic_mo
 	json_object_set_new(data, "track_alias", json_integer(object->track_alias));
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
-	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
+	if(object->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {
@@ -9346,7 +9437,8 @@ void imquic_moq_qlog_object_datagram_status_parsed(imquic_qlog *qlog, imquic_moq
 	json_object_set_new(data, "track_alias", json_integer(object->track_alias));
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
-	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
+	if(object->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
 	if(object->payload_len > 0) {
@@ -9366,7 +9458,8 @@ void imquic_moq_qlog_subgroup_header_created(imquic_qlog *qlog, imquic_moq_strea
 	json_object_set_new(data, "track_alias", json_integer(stream->track_alias));
 	json_object_set_new(data, "group_id", json_integer(stream->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(stream->subgroup_id));
-	json_object_set_new(data, "publisher_priority", json_integer(stream->priority));
+	if(stream->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(stream->priority));
 	/* FIXME Not part of the spec, but may be useful */
 	if(qlog->moq_objects && bytes != NULL && length > 0)
 		imquic_qlog_event_add_raw(data, "raw", bytes, length);
@@ -9383,7 +9476,8 @@ void imquic_moq_qlog_subgroup_header_parsed(imquic_qlog *qlog, imquic_moq_stream
 	json_object_set_new(data, "track_alias", json_integer(stream->track_alias));
 	json_object_set_new(data, "group_id", json_integer(stream->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(stream->subgroup_id));
-	json_object_set_new(data, "publisher_priority", json_integer(stream->priority));
+	if(stream->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(stream->priority));
 	/* FIXME Not part of the spec, but may be useful */
 	if(qlog->moq_objects && bytes != NULL && length > 0)
 		imquic_qlog_event_add_raw(data, "raw", bytes, length);
@@ -9399,7 +9493,8 @@ void imquic_moq_qlog_subgroup_object_created(imquic_qlog *qlog, uint64_t stream_
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
-	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
+	if(object->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
@@ -9419,7 +9514,8 @@ void imquic_moq_qlog_subgroup_object_parsed(imquic_qlog *qlog, uint64_t stream_i
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
-	json_object_set_new(data, "publisher_priority", json_integer(object->priority));
+	if(object->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
@@ -9465,6 +9561,8 @@ void imquic_moq_qlog_fetch_object_created(imquic_qlog *qlog, uint64_t stream_id,
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
+	if(object->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));
@@ -9484,6 +9582,8 @@ void imquic_moq_qlog_fetch_object_parsed(imquic_qlog *qlog, uint64_t stream_id, 
 	json_object_set_new(data, "group_id", json_integer(object->group_id));
 	json_object_set_new(data, "subgroup_id", json_integer(object->group_id));
 	json_object_set_new(data, "object_id", json_integer(object->object_id));
+	if(object->priority_set)
+		json_object_set_new(data, "publisher_priority", json_integer(object->priority));
 	imquic_qlog_moq_message_add_properties(data, object->properties, "properties");
 	json_object_set_new(data, "object_payload_length", json_integer(object->payload_len));
 	json_object_set_new(data, "object_status", json_integer(object->object_status));

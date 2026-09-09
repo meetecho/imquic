@@ -137,6 +137,12 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			}
 		};
 		GList *props = g_list_append(NULL, &dynamic_groups);
+		imquic_moq_property prop = {0};
+		if(options.default_priority > -1 && options.default_priority < 256) {
+			prop.id = IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY;
+			prop.value.number = options.default_priority;
+			props = g_list_append(props, &prop);
+		}
 		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], &pub_trackname, moq_track_alias, &params, props);
 		g_list_free(props);
 	}
@@ -265,7 +271,15 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		rparams.largest_object_set = TRUE;
 		rparams.largest_object = sub_start;
 	}
-	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, NULL);
+	GList *props = NULL;
+	imquic_moq_property prop = {0};
+	if(options.default_priority > -1 && options.default_priority < 256) {
+		prop.id = IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY;
+		prop.value.number = options.default_priority;
+		props = g_list_append(props, &prop);
+	}
+	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, props);
+	g_list_free(props);
 	if(forward) {
 		/* Start sending objects */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
@@ -393,6 +407,8 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		.payload = (uint8_t *)text,
 		.payload_len = strlen(text),
 		.properties = props,
+		.priority_set = (options.priority > -1 && options.priority < 256) ? TRUE : FALSE,
+		.priority = (options.priority > -1 && options.priority < 256) ? options.priority : 0,
 		.first_of_subgroup = first,
 		.delivery = delivery,
 		.end_of_stream = FALSE
@@ -436,6 +452,8 @@ int main(int argc, char *argv[]) {
 
 	/* Initialize some command line options defaults */
 	options.debug_level = IMQUIC_LOG_INFO;
+	options.priority = -1;
+	options.default_priority = -1;
 	/* Let's call our cmdline parser */
 	if(!demo_options_parse(&options, argc, argv)) {
 		demo_options_show_usage();

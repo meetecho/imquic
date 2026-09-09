@@ -91,6 +91,7 @@ typedef struct imquic_demo_moq_track {
 	GList *subscriptions;
 	GList *objects;
 	GList *properties;
+	uint8_t default_priority;
 	imquic_mutex mutex;
 } imquic_demo_moq_track;
 static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_published_namespace *annc,
@@ -249,6 +250,7 @@ static imquic_demo_moq_track *imquic_demo_moq_track_create(imquic_demo_moq_publi
 	t->track_fullname = g_strdup(full);
 	t->pending = TRUE;
 	t->track_alias_valid = FALSE;
+	t->default_priority = 128;
 	imquic_mutex_init(&t->mutex);
 	return t;
 }
@@ -846,6 +848,9 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	track->track_alias_valid = TRUE;
 	track->forward = parameters->forward;
 	track->properties = imquic_moq_properties_duplicate(track_properties);
+	imquic_moq_property *pub_prio = imquic_moq_property_find(track->properties, IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY);
+	if(pub_prio != NULL)
+		track->default_priority = pub_prio->value.number;
 	g_hash_table_insert(annc->tracks, g_strdup(track->track_fullname), track);
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 	g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
@@ -1284,6 +1289,9 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	if(!track->forward && parameters->forward)
 		track->forward = TRUE;
 	track->properties = imquic_moq_properties_duplicate(track_properties);
+	imquic_moq_property *pub_prio = imquic_moq_property_find(track->properties, IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY);
+	if(pub_prio != NULL)
+		track->default_priority = pub_prio->value.number;
 	/* Send a SUBSCRIBE_OK to all subscribers */
 	imquic_mutex_lock(&track->mutex);
 	GList *temp = track->subscriptions;
@@ -1737,6 +1745,13 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	s->fetch = TRUE;
 	if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
 		s->objects = g_list_sort(s->objects, imquic_demo_reorder_descending);
+	if(s->objects != NULL) {
+		imquic_moq_object *obj = (imquic_moq_object *)s->objects->data;
+		if(obj != NULL && !obj->priority_set) {
+			obj->priority_set = TRUE;
+			obj->priority = track->default_priority;
+		}
+	}
 	imquic_mutex_unlock(&track->mutex);
 	fetches = g_list_prepend(fetches, s);
 	/* Accept the fetch */
@@ -1819,6 +1834,14 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	jf->fetch = TRUE;
 	if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
 		jf->objects = g_list_sort(jf->objects, imquic_demo_reorder_descending);
+	if(jf->objects != NULL) {
+		imquic_moq_object *obj = (imquic_moq_object *)jf->objects->data;
+		if(obj != NULL && !obj->priority_set) {
+			/* FIXME We should get it from the properties/parameters */
+			obj->priority_set = TRUE;
+			obj->priority = track->default_priority;
+		}
+	}
 	imquic_mutex_unlock(&track->mutex);
 	fetches = g_list_prepend(fetches, jf);
 	/* Accept the fetch */
@@ -1850,9 +1873,10 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
 	if(!options.quiet) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64", id=%"SCNu64", payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 			imquic_get_connection_name(conn), object->request_id, object->track_alias,
-			object->group_id, object->subgroup_id, object->object_id,
+			object->group_id, object->subgroup_id, object->first_of_subgroup, object->object_id,
+			object->priority, (object->priority_set ? "set" : "omitted"),
 			object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
 	}
@@ -1872,6 +1896,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			imquic_get_connection_name(conn));
 		return;
 	}
+	if(!object->priority_set)
+		object->priority = track->default_priority;
 	/* Duplicate the object, in case we need it later for a FETCH */
 	imquic_mutex_lock(&track->mutex);
 	track->objects = g_list_prepend(track->objects, imquic_moq_object_duplicate(object));
