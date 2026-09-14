@@ -712,7 +712,8 @@ int main(int argc, char *argv[]) {
 		last = !strcasecmp(seconds, "59");
 		if(first || !strcasecmp(seconds, "00")) {
 			/* Minute wrap, reset the group */
-			group_id++;
+			if(!first)
+				group_id++;
 			object_id = 0;
 			char s = *seconds;
 			*seconds = '\0';
