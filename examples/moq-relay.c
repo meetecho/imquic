@@ -612,21 +612,50 @@ static void imquic_demo_moq_untrack_namespace(imquic_moq_namespace *tns, imquic_
 	g_list_free_full(list, (GDestroyNotify)g_free);
 }
 
-/* Helper function to reorder objects in descending group order */
-static int imquic_demo_reorder_descending(gconstpointer a, gconstpointer b) {
+/* Helper function to reorder objects in ascending or descending group order */
+static int imquic_demo_order_ascending(gconstpointer a, gconstpointer b) {
 	imquic_moq_object *oa = (imquic_moq_object *)a;
 	imquic_moq_object *ob = (imquic_moq_object *)b;
+	/* Group first */
+	if(oa->group_id < ob->group_id) {
+		return -1;
+	} else if(oa->group_id > ob->group_id) {
+		return 1;
+	}
+	/* Same group first, order on subgroups */
+	if(oa->subgroup_id < ob->subgroup_id) {
+		return -1;
+	} else if(oa->subgroup_id > ob->subgroup_id) {
+		return 1;
+	}
+	/* Same subgroup, order on object */
+	if(oa->object_id < ob->object_id)
+		return -1;
+	else if(oa->object_id > ob->object_id)
+		return 1;
+	return 0;
+}
+
+static int imquic_demo_order_descending(gconstpointer a, gconstpointer b) {
+	imquic_moq_object *oa = (imquic_moq_object *)a;
+	imquic_moq_object *ob = (imquic_moq_object *)b;
+	/* Group first */
 	if(oa->group_id > ob->group_id) {
 		return -1;
 	} else if(oa->group_id < ob->group_id) {
 		return 1;
-	} else {
-		/* Same group, order on object */
-		if(oa->object_id < ob->object_id)
-			return -1;
-		else if(oa->object_id > ob->object_id)
-			return 1;
 	}
+	/* Same group first, order on subgroups */
+	if(oa->subgroup_id < ob->subgroup_id) {
+		return -1;
+	} else if(oa->subgroup_id > ob->subgroup_id) {
+		return 1;
+	}
+	/* Same subgroup, order on object */
+	if(oa->object_id < ob->object_id)
+		return -1;
+	else if(oa->object_id > ob->object_id)
+		return 1;
 	return 0;
 }
 
@@ -1744,7 +1773,9 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 	}
 	s->fetch = TRUE;
 	if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
-		s->objects = g_list_sort(s->objects, imquic_demo_reorder_descending);
+		s->objects = g_list_sort(s->objects, imquic_demo_order_descending);
+	else
+		s->objects = g_list_sort(s->objects, imquic_demo_order_ascending);
 	if(s->objects != NULL) {
 		imquic_moq_object *obj = (imquic_moq_object *)s->objects->data;
 		if(obj != NULL && !obj->priority_set) {
@@ -1833,7 +1864,9 @@ static void imquic_demo_incoming_joining_fetch(imquic_connection *conn, uint64_t
 	}
 	jf->fetch = TRUE;
 	if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
-		jf->objects = g_list_sort(jf->objects, imquic_demo_reorder_descending);
+		jf->objects = g_list_sort(jf->objects, imquic_demo_order_descending);
+	else
+		jf->objects = g_list_sort(jf->objects, imquic_demo_order_ascending);
 	if(jf->objects != NULL) {
 		imquic_moq_object *obj = (imquic_moq_object *)jf->objects->data;
 		if(obj != NULL && !obj->priority_set) {
