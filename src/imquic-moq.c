@@ -755,6 +755,17 @@ void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_publish_state_notify_cb(imquic_endpoint *endpoint,
+		void (* publish_state_notify)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.publish_state_notify = publish_state_notify;
+	}
+}
+
 void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
 		void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason)) {
 	if(endpoint != NULL) {

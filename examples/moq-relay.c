@@ -1522,6 +1522,37 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 	imquic_mutex_unlock(&mutex);
 }
 
+static void imquic_demo_publish_state_notify(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
+	/* We got a notification from the publisher */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Notification about subscription via ID %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id);
+	/* Find the track associated to this subscription */
+	imquic_mutex_lock(&mutex);
+	imquic_demo_moq_publisher *pub = g_hash_table_lookup(publishers, conn);
+	if(pub == NULL) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "No publisher found for that subscription\n");
+		return;
+	}
+	imquic_demo_moq_track *track = g_hash_table_lookup(pub->subscriptions_by_id, &request_id);
+	if(track == NULL) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "No track found for that subscription\n");
+		return;
+	}
+	/* Send a PUBLISH_STATE_NOTIFY to all subscribers */
+	imquic_mutex_lock(&track->mutex);
+	GList *temp = track->subscriptions;
+	while(temp) {
+		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
+		if(s && s->sub && s->sub->conn && !s->done)
+			imquic_moq_publish_state_notify(s->sub->conn, s->request_id, parameters);
+		temp = temp->next;
+	}
+	imquic_mutex_unlock(&track->mutex);
+	imquic_mutex_unlock(&mutex);
+}
+
 static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription via ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
@@ -2184,6 +2215,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_subscribe_accepted_cb(server, imquic_demo_subscribe_accepted);
 	imquic_set_subscribe_error_cb(server, imquic_demo_subscribe_error);
 	imquic_set_request_updated_cb(server, imquic_demo_request_updated);
+	imquic_set_publish_state_notify_cb(server, imquic_demo_publish_state_notify);
 	imquic_set_publish_done_cb(server, imquic_demo_publish_done);
 	imquic_set_incoming_unsubscribe_cb(server, imquic_demo_incoming_unsubscribe);
 	imquic_set_incoming_subscribe_namespace_cb(server, imquic_demo_incoming_subscribe_namespace);

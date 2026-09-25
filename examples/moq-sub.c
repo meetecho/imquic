@@ -438,6 +438,13 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	imquic_moq_accept_publish(conn, request_id, &rparams);
 }
 
+static void imquic_demo_publish_state_notify(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
+	/* We got a notification from the publisher */
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Notification about subscription via ID %"SCNu64"\n",
+		imquic_get_connection_name(conn), request_id);
+	/* TODO Something we should do with this? */
+}
+
 static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason) {
 	/* Our subscription is done */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscription via ID %"SCNu64" is done, using %"SCNu64" streams: status %d (%s)\n",
@@ -872,7 +879,7 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	imquic_server *client = imquic_create_moq_client("moq-sub",
+	imquic_client *client = imquic_create_moq_client("moq-sub",
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,
@@ -932,6 +939,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_request_update_accepted_cb(client, imquic_demo_request_update_accepted);
 	imquic_set_request_update_error_cb(client, imquic_demo_request_update_error);
 	imquic_set_incoming_publish_cb(client, imquic_demo_incoming_publish);
+	imquic_set_publish_state_notify_cb(client, imquic_demo_publish_state_notify);
 	imquic_set_publish_done_cb(client, imquic_demo_publish_done);
 	imquic_set_fetch_accepted_cb(client, imquic_demo_fetch_accepted);
 	imquic_set_fetch_error_cb(client, imquic_demo_fetch_error);

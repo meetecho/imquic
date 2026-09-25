@@ -1213,6 +1213,12 @@ void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
 	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
 		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when a
+ * \c PUBLISH_STATE_NOTIFY is received for one of our subscriptions
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param publish_state_notify Pointer to the function that will handle the incoming \c PUBLISH_STATE_NOTIFY */
+void imquic_set_publish_state_notify_cb(imquic_endpoint *endpoint,
+	void (* publish_state_notify)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
+/*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_done Pointer to the function that will fire when a \c PUBLSH or \c SUBSCRIBE is done */
@@ -1559,6 +1565,14 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+/*! \brief Function to send a \c PUBLISH_STATE_NOTIFY request
+ * @note Added in v20
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the subscription
+ * @param parameters The parameters to add to the request
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_publish_state_notify(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on

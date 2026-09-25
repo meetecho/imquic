@@ -916,7 +916,7 @@ int main(int argc, char *argv[]) {
 		ret = 1;
 		goto done;
 	}
-	imquic_server *client = imquic_create_moq_client("moq-test",
+	imquic_client *client = imquic_create_moq_client("moq-test",
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,

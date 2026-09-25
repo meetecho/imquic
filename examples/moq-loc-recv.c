@@ -1093,7 +1093,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* Create a client endpoint */
-	imquic_server *client = imquic_create_moq_client("moq-loc-recv",
+	imquic_client *client = imquic_create_moq_client("moq-loc-recv",
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,

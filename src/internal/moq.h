@@ -66,6 +66,7 @@ typedef enum imquic_moq_message_type {
 		IMQUIC_MOQ_SERVER_SETUP = 0x21,				/* Deprecated in v17 */
 	IMQUIC_MOQ_PUBLISH = 0x1D,
 		IMQUIC_MOQ_PUBLISH_OK = 0x1E,				/* Deprecated in v18 */
+	IMQUIC_MOQ_PUBLISH_STATE_NOTIFY = 0x22,			/* Added in v20 */
 } imquic_moq_message_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_message_type value.
  * @param type The imquic_moq_message_type value
@@ -629,6 +630,14 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream 
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint8_t *error);
+/*! \brief Helper to parse a \c PUBLISH_STATE_NOTIFY message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] moq_stream The imquic_moq_stream instance the message came from
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_publish_state_notify(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error);
 /*! \brief Helper to parse a \c PUBLISH_DONE message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] moq_stream The imquic_moq_stream instance the message came from
@@ -956,6 +965,16 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream *m
  * @param request_id The request ID to put in the message
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id);
+/*! \brief Helper method to add a \c PUBLISH_STATE_NOTIFY message to a buffer
+ * \note This message was added in v20
+ * @param moq The imquic_moq_context generating the message
+ * @param moq_stream The imquic_moq_stream instance the message is for
+ * @param bytes The buffer to add the message to
+ * @param blen The size of the buffer
+ * @param parameters The parameters to add, if any
+ * @returns The size of the generated message, if successful, or 0 otherwise */
+size_t imquic_moq_add_publish_state_notify(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+	uint8_t *bytes, size_t blen, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c PUBLISH_DONE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -1374,6 +1393,8 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming errors to a previously \c REQUEST_UPDATE message */
 	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
 		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	/*! \brief Callback function to be notified about incoming \c PUBLISH_STATE_NOTIFY messages */
+	void (* publish_state_notify)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_DONE messages */
 	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason);
 	/*! \brief Callback function to be notified about incoming \c UNBSUBSCRIBE messages, or when the bidirectional stream is closed */

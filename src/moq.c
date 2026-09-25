@@ -749,6 +749,8 @@ const char *imquic_moq_message_type_str(imquic_moq_message_type type, imquic_moq
 			return "PUBLISH";
 		case IMQUIC_MOQ_PUBLISH_OK:
 			return "PUBLISH_OK";
+		case IMQUIC_MOQ_PUBLISH_STATE_NOTIFY:
+			return "PUBLISH_STATE_NOTIFY";
 		default: break;
 	}
 	return NULL;
@@ -2249,6 +2251,9 @@ next:
 			} else if(type == IMQUIC_MOQ_PUBLISH_OK && moq->version < IMQUIC_MOQ_VERSION_18) {
 				/* Parse this PUBLISH_OK message */
 				parsed = imquic_moq_parse_publish_ok(moq, moq_stream, &bytes[offset], plen, &error);
+			} else if(type == IMQUIC_MOQ_PUBLISH_STATE_NOTIFY) {
+				/* Parse this PUBLISH_STATE_NOTIFY message */
+				parsed = imquic_moq_parse_publish_state_notify(moq, moq_stream, &bytes[offset], plen, &error);
 			} else if(type == IMQUIC_MOQ_PUBLISH_DONE) {
 				/* Parse this PUBLISH_DONE message */
 				parsed = imquic_moq_parse_publish_done(moq, moq_stream, &bytes[offset], plen, &error);
@@ -3611,6 +3616,51 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 	/* Notify the application */
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_unsubscribe)
 		moq->conn->socket->callbacks.moq.incoming_unsubscribe(moq->conn, request_id);
+	if(error)
+		*error = 0;
+	return offset;
+}
+
+size_t imquic_moq_parse_publish_state_notify(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error) {
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	if(bytes == NULL || blen < 1)
+		return 0;
+	IMQUIC_MOQ_CHECK_ERR((moq->version < IMQUIC_MOQ_VERSION_20 || moq_stream == NULL ||
+			(moq_stream->request_type != IMQUIC_MOQ_PUBLISH && moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE) ||
+			(moq_stream->request_type == IMQUIC_MOQ_PUBLISH && moq_stream->request_sender) ||
+			(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE && !moq_stream->request_sender) ||
+			moq_stream->request_state == IMQUIC_MOQ_REQUEST_STATE_NEW ||
+			moq_stream->request_state == IMQUIC_MOQ_REQUEST_STATE_ERROR || moq_stream->request_state == IMQUIC_MOQ_REQUEST_STATE_DONE),
+		error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid use of PUBLISH_STATE_NOTIFY on bidirectional request");
+	size_t offset = 0;
+	uint8_t length = 0;
+	imquic_moq_request_parameters parameters;
+	imquic_moq_request_parameters_init_defaults(&parameters);
+	uint64_t params_num = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(params_num > 0 && (length == 0 || length >= blen-offset), NULL, 0, 0, "Broken PUBLISH_STATE_NOTIFY");
+	IMQUIC_MOQ_CHECK_ERR(params_num == 0 && (length == 0 || length > blen-offset), NULL, 0, 0, "Broken PUBLISH_STATE_NOTIFY");
+	offset += length;
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
+		imquic_get_connection_name(moq->conn), params_num);
+	uint64_t i = 0, param = 0;
+	for(i = 0; i<params_num; i++) {
+		IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken PUBLISH_STATE_NOTIFY");
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, &parameters, &param, error);
+		IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing PUBLISH_STATE_NOTIFY parameters");
+	}
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish_state_notify");
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
+		imquic_moq_qlog_control_message_parsed(moq->conn->qlog,
+			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
+	}
+	/* Notify the application */
+	if(moq->conn->socket && moq->conn->socket->callbacks.moq.publish_state_notify) {
+		moq->conn->socket->callbacks.moq.publish_state_notify(moq->conn,
+			moq_stream->request_id, &parameters);
+	}
 	if(error)
 		*error = 0;
 	return offset;
@@ -5498,6 +5548,28 @@ size_t imquic_moq_add_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, size_
 		json_t *message = imquic_qlog_moq_message_prepare("unsubscribe");
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq->control_stream_id, bytes, offset, message);
+	}
+	return offset;
+}
+
+size_t imquic_moq_add_publish_state_notify(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
+		uint8_t *bytes, size_t blen, imquic_moq_request_parameters *parameters) {
+	if(bytes == NULL || blen < 4 || moq_stream == NULL || moq->version < IMQUIC_MOQ_VERSION_20) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
+			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_PUBLISH_STATE_NOTIFY, moq->version));
+		return 0;
+	}
+	size_t offset = 0, len_offset = 0;
+	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_PUBLISH_STATE_NOTIFY);
+	uint8_t params_num = 0;
+	offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_SUBSCRIBE_OK, parameters, &bytes[offset], blen-offset, &params_num);
+	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("publish_state_notify");
+		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
+		imquic_moq_qlog_control_message_created(moq->conn->qlog,
+			(moq_stream ? moq_stream->stream_id : moq->control_stream_id), bytes, offset, message);
 	}
 	return offset;
 }
@@ -7590,6 +7662,49 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 	size_t sb_len = imquic_moq_add_unsubscribe(moq, buffer, blen, request_id);
 	imquic_connection_send_on_stream(conn, moq->control_stream_id,
 		buffer, sb_len, FALSE);
+	/* Done */
+	imquic_refcount_decrease(&moq->ref);
+	return 0;
+}
+
+int imquic_moq_publish_state_notify(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
+	imquic_mutex_lock(&moq_mutex);
+	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
+	if(moq == NULL || moq->version < IMQUIC_MOQ_VERSION_20) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
+			imquic_get_connection_name(conn));
+		imquic_mutex_unlock(&moq_mutex);
+		return -1;
+	}
+	imquic_refcount_increase(&moq->ref);
+	imquic_mutex_unlock(&moq_mutex);
+	/* Find the subscription */
+	imquic_mutex_lock(&moq->mutex);
+	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
+	if(moq_sub == NULL) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",
+			imquic_get_connection_name(conn), request_id);
+		imquic_mutex_unlock(&moq->mutex);
+		imquic_refcount_increase(&moq->ref);
+		return -1;
+	}
+	imquic_moq_stream *moq_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
+	if(moq_stream == NULL || (moq_stream->request_type != IMQUIC_MOQ_PUBLISH && moq_stream->request_type != IMQUIC_MOQ_SUBSCRIBE) ||
+			(moq_stream->request_type == IMQUIC_MOQ_PUBLISH && !moq_stream->request_sender) ||
+			(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE && moq_stream->request_sender) ||
+			(moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_OK && moq_stream->request_state != IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT)) {
+		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid request/state (%s)\n",
+			imquic_get_connection_name(conn), moq_stream ? imquic_media_stream_request_state_str(moq_stream->request_state) : "No stream");
+		imquic_mutex_unlock(&moq->mutex);
+		imquic_refcount_decrease(&moq->ref);
+		return -1;
+	}
+	imquic_mutex_unlock(&moq->mutex);
+	uint8_t buffer[200];
+	size_t blen = sizeof(buffer);
+	size_t sd_len = imquic_moq_add_publish_state_notify(moq, moq_stream, buffer, blen, parameters);
+	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
+		buffer, sd_len, FALSE);
 	/* Done */
 	imquic_refcount_decrease(&moq->ref);
 	return 0;
