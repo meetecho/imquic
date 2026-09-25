@@ -924,15 +924,15 @@ void imquic_set_incoming_publish_skipped_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
-		void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
+void imquic_set_incoming_fetch_cb(imquic_endpoint *endpoint,
+		void (* incoming_fetch)(imquic_connection *conn, uint64_t request_id,
 			imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.incoming_standalone_fetch = incoming_standalone_fetch;
+		endpoint->callbacks.moq.incoming_fetch = incoming_fetch;
 	}
 }
 

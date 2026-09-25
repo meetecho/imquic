@@ -111,7 +111,7 @@ void imquic_moq_property_cleanup(imquic_moq_property *property) {
 	}
 }
 
-/* Helper to print parameter filters */
+/* Helper to print filters */
 void imquic_moq_filters_print(imquic_moq_version version, imquic_moq_filters *filters) {
 	if(filters == NULL || version < IMQUIC_MOQ_VERSION_19)
 		return;

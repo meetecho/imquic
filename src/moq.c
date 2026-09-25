@@ -4064,33 +4064,40 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	imquic_moq_fetch_type type = IMQUIC_MOQ_FETCH_STANDALONE;
 	imquic_moq_location_range range = { 0 };
 	uint64_t joining_request_id = 0, joining_start = 0;
-	type = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
-	offset += length;
+	/* Versions older than v20 envisaged different types of FETCH */
+	if(moq->version < IMQUIC_MOQ_VERSION_20) {
+		type = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+		offset += length;
+	}
 	if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
 		uint64_t tns_num = 0, i = 0;
 		IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_FETCH, tns_num, i, "Broken FETCH", FALSE);
 		IMQUIC_MOQ_PARSE_TRACKNAME("Broken FETCH", FALSE);
-		range.start.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
-		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Group: %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), range.start.group);
-		range.start.object = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
-		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Object: %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), range.start.object);
-		range.end.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
-		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Group: %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), range.end.group);
-		range.end.object = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
-		offset += length;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Object: %"SCNu64"\n",
-			imquic_get_connection_name(moq->conn), range.end.object);
+		/* Versions older than v20 had start and end locations as part
+		 * of the request: now this information is in LOCATION_FILTER */
+		if(moq->version < IMQUIC_MOQ_VERSION_20) {
+			range.start.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			offset += length;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Group: %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), range.start.group);
+			range.start.object = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			offset += length;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Object: %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), range.start.object);
+			range.end.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			offset += length;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Group: %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), range.end.group);
+			range.end.object = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			offset += length;
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Object: %"SCNu64"\n",
+				imquic_get_connection_name(moq->conn), range.end.object);
+		}
 	} else if(type == IMQUIC_MOQ_FETCH_JOINING_RELATIVE || type == IMQUIC_MOQ_FETCH_JOINING_ABSOLUTE) {
 		joining_request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
@@ -4126,14 +4133,17 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version == IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "required_request_id_delta", json_integer(required_id_delta));
-		json_object_set_new(message, "fetch_type", json_integer(type));
+		if(moq->version < IMQUIC_MOQ_VERSION_20)
+			json_object_set_new(message, "fetch_type", json_integer(type));
 		if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
 			imquic_qlog_moq_message_add_namespace(message, &tns[0], "track_namespace");
 			imquic_qlog_moq_message_add_track(message, &tn);
-			json_object_set_new(message, "start_group", json_integer(range.start.group));
-			json_object_set_new(message, "start_object", json_integer(range.start.object));
-			json_object_set_new(message, "end_group", json_integer(range.end.group));
-			json_object_set_new(message, "end_object", json_integer(range.end.object));
+			if(moq->version < IMQUIC_MOQ_VERSION_20) {
+				json_object_set_new(message, "start_group", json_integer(range.start.group));
+				json_object_set_new(message, "start_object", json_integer(range.start.object));
+				json_object_set_new(message, "end_group", json_integer(range.end.group));
+				json_object_set_new(message, "end_object", json_integer(range.end.object));
+			}
 		} else {
 			json_object_set_new(message, "joining_request_id", json_integer(joining_request_id));
 			json_object_set_new(message, "joining_start", json_integer(joining_start));
@@ -4185,9 +4195,9 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	imquic_mutex_unlock(&moq->mutex);
 	/* Notify the application */
 	if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_standalone_fetch) {
-			moq->conn->socket->callbacks.moq.incoming_standalone_fetch(moq->conn,
-				request_id, &tns[0], &tn, &range, &parameters);
+		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_fetch) {
+			moq->conn->socket->callbacks.moq.incoming_fetch(moq->conn,
+				request_id, &tns[0], &tn, (moq->version < IMQUIC_MOQ_VERSION_20 ? &range : NULL), &parameters);
 		} else {
 			/* No handler for this request, let's reject it ourselves */
 			imquic_moq_reject_fetch(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
@@ -5742,7 +5752,9 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stre
 		uint64_t request_id, uint64_t joining_request_id, uint64_t preceding_group_offset,
 		imquic_moq_namespace *track_namespace, imquic_moq_track *track_name,
 		imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
-	if(bytes == NULL || blen < 1 || (range == NULL && type == IMQUIC_MOQ_FETCH_STANDALONE) ||
+	if(bytes == NULL || blen < 1 ||
+			(moq->version >= IMQUIC_MOQ_VERSION_20 && type != IMQUIC_MOQ_FETCH_STANDALONE) ||
+			(moq->version < IMQUIC_MOQ_VERSION_20 && range == NULL && type == IMQUIC_MOQ_FETCH_STANDALONE) ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && moq_stream == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_FETCH, moq->version));
@@ -5764,14 +5776,17 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stre
 	offset += imquic_write_moqint(moq->version, request_id, &bytes[offset], blen-offset);
 	if(moq->version == IMQUIC_MOQ_VERSION_17)
 		offset += imquic_write_moqint(moq->version, 0, &bytes[offset], blen-offset);
-	offset += imquic_write_moqint(moq->version, type, &bytes[offset], blen-offset);
+	if(moq->version < IMQUIC_MOQ_VERSION_20)
+		offset += imquic_write_moqint(moq->version, type, &bytes[offset], blen-offset);
 	if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
 		IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_FETCH);
 		IMQUIC_MOQ_ADD_TRACKNAME(IMQUIC_MOQ_FETCH);
-		offset += imquic_write_moqint(moq->version, range->start.group, &bytes[offset], blen-offset);
-		offset += imquic_write_moqint(moq->version, range->start.object, &bytes[offset], blen-offset);
-		offset += imquic_write_moqint(moq->version, range->end.group, &bytes[offset], blen-offset);
-		offset += imquic_write_moqint(moq->version, range->end.object, &bytes[offset], blen-offset);
+		if(moq->version < IMQUIC_MOQ_VERSION_20) {
+			offset += imquic_write_moqint(moq->version, range->start.group, &bytes[offset], blen-offset);
+			offset += imquic_write_moqint(moq->version, range->start.object, &bytes[offset], blen-offset);
+			offset += imquic_write_moqint(moq->version, range->end.group, &bytes[offset], blen-offset);
+			offset += imquic_write_moqint(moq->version, range->end.object, &bytes[offset], blen-offset);
+		}
 	} else {
 		offset += imquic_write_moqint(moq->version, joining_request_id, &bytes[offset], blen-offset);
 		offset += imquic_write_moqint(moq->version, preceding_group_offset, &bytes[offset], blen-offset);
@@ -5786,13 +5801,17 @@ size_t imquic_moq_add_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_stre
 		json_object_set_new(message, "request_id", json_integer(request_id));
 		if(moq->version == IMQUIC_MOQ_VERSION_17)
 			json_object_set_new(message, "required_request_id_delta", json_integer(0));
+		if(moq->version < IMQUIC_MOQ_VERSION_20)
+			json_object_set_new(message, "fetch_type", json_integer(type));
 		if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
 			imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace");
 			imquic_qlog_moq_message_add_track(message, track_name);
-			json_object_set_new(message, "start_group", json_integer(range->start.group));
-			json_object_set_new(message, "start_object", json_integer(range->start.object));
-			json_object_set_new(message, "end_group", json_integer(range->end.group));
-			json_object_set_new(message, "end_object", json_integer(range->end.object));
+			if(moq->version < IMQUIC_MOQ_VERSION_20) {
+				json_object_set_new(message, "start_group", json_integer(range->start.group));
+				json_object_set_new(message, "start_object", json_integer(range->start.object));
+				json_object_set_new(message, "end_group", json_integer(range->end.group));
+				json_object_set_new(message, "end_object", json_integer(range->end.object));
+			}
 		} else {
 			json_object_set_new(message, "joining_request_id", json_integer(joining_request_id));
 			json_object_set_new(message, "preceding_group_offset", json_integer(preceding_group_offset));
@@ -8296,11 +8315,12 @@ int imquic_moq_notify_publish_skipped(imquic_connection *conn, uint64_t request_
 	return 0;
 }
 
-int imquic_moq_standalone_fetch(imquic_connection *conn, uint64_t request_id,
+int imquic_moq_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) || range == NULL) {
+	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) ||
+			(moq->version < IMQUIC_MOQ_VERSION_20 && range == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -8358,7 +8378,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL) {
+	if(moq == NULL || moq->version < IMQUIC_MOQ_VERSION_20) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);

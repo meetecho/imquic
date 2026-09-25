@@ -1720,10 +1720,10 @@ static void imquic_demo_incoming_unsubscribe_tracks(imquic_connection *conn, uin
 	imquic_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id,
+static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
 		//~ gboolean descending, imquic_moq_location_range *range, uint8_t *auth, size_t authlen) {
-	/* We received a standalone fetch */
+	/* We received a (previously called "standalone") fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	if(!strcasecmp(ns, ".2e")) {
@@ -1738,7 +1738,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		range->end.object = IMQUIC_MAX_VARINT;
 	else
 		range->end.object--;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming fetch for '%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), full, request_id,
 		imquic_moq_group_order_str(parameters->group_order),
 		range->start.group, range->start.object, range->end.group, range->end.object);
@@ -2222,7 +2222,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_unsubscribe_namespace_cb(server, imquic_demo_incoming_unsubscribe_namespace);
 	imquic_set_incoming_subscribe_tracks_cb(server, imquic_demo_incoming_subscribe_tracks);
 	imquic_set_incoming_unsubscribe_tracks_cb(server, imquic_demo_incoming_unsubscribe_tracks);
-	imquic_set_incoming_standalone_fetch_cb(server, imquic_demo_incoming_standalone_fetch);
+	imquic_set_incoming_fetch_cb(server, imquic_demo_incoming_fetch);
 	imquic_set_incoming_joining_fetch_cb(server, imquic_demo_incoming_joining_fetch);
 	imquic_set_incoming_fetch_cancel_cb(server, imquic_demo_incoming_fetch_cancel);
 	imquic_set_incoming_object_cb(server, imquic_demo_incoming_object);

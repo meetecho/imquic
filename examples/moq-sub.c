@@ -209,7 +209,7 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					.start = start_location,
 					.end = end_location
 				};
-				imquic_moq_standalone_fetch(conn, request_id, sub_namespace, &tn, &range, &fparams);
+				imquic_moq_fetch(conn, request_id, sub_namespace, &tn, &range, &fparams);
 			} else {
 				/* Send a SUBSCRIBE first, we'll send the joining FETCH when the subscription is accepted */
 				g_hash_table_insert(namespaces_by_reqid, imquic_uint64_dup(request_id), imquic_moq_namespace_duplicate(sub_namespace));
@@ -721,7 +721,7 @@ int main(int argc, char *argv[]) {
 		goto done;
 	}
 	if(options.fetch) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a %s FETCH for the subscription\n", (options.join_offset < 0 ? "Standalone" : "Joining"));
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using a %s FETCH for the subscription\n", (options.join_offset < 0 ? "" : "Joining"));
 		if(options.join_offset >= 0)
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Joining FETCH with a %d group offset\n", options.join_offset);
 		if(strcasecmp(options.fetch, "ascending") && strcasecmp(options.fetch, "descending")) {
@@ -772,7 +772,7 @@ int main(int argc, char *argv[]) {
 
 	if(options.filter_type != NULL) {
 		if(options.fetch != NULL && options.join_offset < 0) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring filter type (unused for Standalone FETCH)\n");
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring filter type (unused for regular FETCH)\n");
 		} else {
 			if(!strcasecmp(options.filter_type, "LargestObject")) {
 				filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;

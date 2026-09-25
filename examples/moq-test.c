@@ -485,9 +485,9 @@ static void imquic_demo_incoming_unsubscribe(imquic_connection *conn, uint64_t r
 	g_mutex_unlock(&mutex);
 }
 
-static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint64_t request_id,
+static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters) {
-	/* We received a standalone fetch */
+	/* We received a fetch */
 	char tns_buffer[256], tn_buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, tns_buffer, sizeof(tns_buffer), TRUE);
 	const char *name = imquic_moq_track_str(tn, tn_buffer, sizeof(tn_buffer));
@@ -495,7 +495,7 @@ static void imquic_demo_incoming_standalone_fetch(imquic_connection *conn, uint6
 		range->end.object = IMQUIC_MAX_VARINT;
 	else
 		range->end.object--;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming standalone fetch for '%s--%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming fetch for '%s--%s' (ID %"SCNu64"; %s order; group/object range %"SCNu64"/%"SCNu64"-->%"SCNu64"/%"SCNu64")\n",
 		imquic_get_connection_name(conn), ns, name, request_id,
 		imquic_moq_group_order_str(parameters->group_order),
 		range->start.group, range->start.object, range->end.group, range->end.object);
@@ -970,7 +970,7 @@ int main(int argc, char *argv[]) {
 	imquic_set_incoming_subscribe_cb(client, imquic_demo_incoming_subscribe);
 	imquic_set_request_updated_cb(client, imquic_demo_request_updated);
 	imquic_set_incoming_unsubscribe_cb(client, imquic_demo_incoming_unsubscribe);
-	imquic_set_incoming_standalone_fetch_cb(client, imquic_demo_incoming_standalone_fetch);
+	imquic_set_incoming_fetch_cb(client, imquic_demo_incoming_fetch);
 	imquic_set_incoming_joining_fetch_cb(client, imquic_demo_incoming_joining_fetch);
 	imquic_set_incoming_fetch_cancel_cb(client, imquic_demo_incoming_fetch_cancel);
 	imquic_set_moq_connection_gone_cb(client, imquic_demo_connection_gone);

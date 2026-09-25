@@ -1317,14 +1317,17 @@ void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_publish_skipped_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish_skipped)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming standalone \c FETCH request.
+ * an incoming \c FETCH request.
+ * \note In versions before v20, this was called "standalone FETCH",
+ * as opposed to "joining" variants: now it's just "FETCH"
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
-void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
-	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
+ * @param incoming_fetch Pointer to the function that will handle the incoming \c FETCH */
+void imquic_set_incoming_fetch_cb(imquic_endpoint *endpoint,
+	void (* incoming_fetch)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
+ * \note Deprecated in v20, and replaced by \c FILL_PARAMETER usage
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_joining_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
@@ -1683,7 +1686,9 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
  * @param tn The imquic_moq_track track this request refers to
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_notify_publish_skipped(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
-/*! \brief Function to send a standalone \c FETCH request
+/*! \brief Function to send a \c FETCH request
+ * \note In versions before v20, this was called "standalone FETCH",
+ * as opposed to "joining" variants: now it's just "FETCH"
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
  * @param tns The imquic_moq_namespace namespace the track to fetch to belongs to
@@ -1691,10 +1696,11 @@ int imquic_moq_notify_publish_skipped(imquic_connection *conn, uint64_t request_
  * @param range The range of groups/objects to fetch
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_standalone_fetch(imquic_connection *conn,
+int imquic_moq_fetch(imquic_connection *conn,
 	uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 	imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a joining \c FETCH request
+ * \note Deprecated in v20, and replaced by \c FILL_PARAMETER usage
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
  * @param joining_request_id Existing subscription to join

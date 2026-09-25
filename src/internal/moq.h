@@ -302,7 +302,8 @@ typedef struct imquic_moq_setup_options {
 	gboolean unknown;
 } imquic_moq_setup_options;
 
-/*! \brief MoQ FETCH types */
+/*! \brief MoQ FETCH types
+ * \note Deprecated in v20 */
 typedef enum imquic_moq_fetch_type {
 	IMQUIC_MOQ_FETCH_STANDALONE = 0x01,
 	IMQUIC_MOQ_FETCH_JOINING_RELATIVE = 0x02,
@@ -1429,7 +1430,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_SKIPPED messages */
 	void (* incoming_publish_skipped)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
 	/*! \brief Callback function to be notified about incoming \c FETCH messages */
-	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
+	void (* incoming_fetch)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
 	void (* incoming_joining_fetch)(imquic_connection *conn, uint64_t request_id, uint64_t joining_request_id,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters);
