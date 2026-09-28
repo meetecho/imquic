@@ -919,34 +919,70 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 		imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
 	s->active = TRUE;
 	s->forward = parameters->forward;
-	/* Check the filter */
-	uint64_t filter_type = parameters->location_filter_set ?
-		parameters->location_filter.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+	/* Check the location filter: its format differs depending on the version */
 	imquic_moq_object *largest = NULL;
 	if(s->track != NULL && s->track->objects != NULL)
 		largest = (imquic_moq_object *)s->track->objects->data;
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
-		s->sub_start.group = largest ? largest->group_id : 0;
-		s->sub_start.object = largest ? largest->object_id : 0;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
-		s->sub_start.group = largest ? (largest->group_id + 1) : 0;
-		s->sub_start.object = 0;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
-		s->sub_start = parameters->location_filter.start_location;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
-			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object);
-	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		s->sub_start = parameters->location_filter.start_location;
-		if(parameters->location_filter.end_group == 0)
-			s->sub_end.group = IMQUIC_MAX_VARINT;
-		else
-			s->sub_end.group = parameters->location_filter.end_group - 1;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
-			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
+	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+		/* Legacy format */
+		uint64_t filter_type = parameters->location_filter_set ?
+			parameters->location_filter.legacy_value.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
+			imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
+		if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
+			s->sub_start.group = largest ? largest->group_id : 0;
+			s->sub_start.object = largest ? largest->object_id : 0;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
+			s->sub_start.group = largest ? (largest->group_id + 1) : 0;
+			s->sub_start.object = 0;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
+			s->sub_start = parameters->location_filter.legacy_value.start_location;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
+				imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object);
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			s->sub_start = parameters->location_filter.legacy_value.start_location;
+			if(parameters->location_filter.legacy_value.end_group == 0)
+				s->sub_end.group = IMQUIC_MAX_VARINT;
+			else
+				s->sub_end.group = parameters->location_filter.legacy_value.end_group - 1;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
+				imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
+		}
+	} else {
+		/* New format */
+		if(!parameters->location_filter_set) {
+			s->sub_start.group = largest ? largest->group_id : 0;
+			s->sub_start.object = largest ? largest->object_id : 0;
+		} else {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested location filter\n",
+				imquic_get_connection_name(conn));
+			if(parameters->location_filter.start_group_set) {
+				if(!parameters->location_filter.start_object_set) {
+					/* Only start group provided: relative start */
+					if(largest != NULL && largest->group_id >= parameters->location_filter.start_group)
+						s->sub_start.group = largest ? (largest->group_id + 1 - parameters->location_filter.start_group) : 0;
+				} else {
+					/* Start object provided too */
+					if(!parameters->location_filter.end_group_set) {
+						/* Only start group and object provided: relative start */
+						if(largest != NULL && largest->group_id >= parameters->location_filter.start_group)
+							s->sub_start.group = largest ? (largest->group_id + 1 - parameters->location_filter.start_group) : 0;
+						s->sub_start.object = parameters->location_filter.start_object;
+					} else {
+						/* End group provided: fields are absolute */
+						s->sub_start.group = parameters->location_filter.start_group;
+						s->sub_start.object = parameters->location_filter.start_object;
+						s->sub_end.group = parameters->location_filter.end_group;
+						if(parameters->location_filter.end_object_set)
+							s->sub_end.object = parameters->location_filter.end_object;
+					}
+				}
+			}
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group, s->sub_end.object);
 	}
 	/* Check if we got packets in the meanwhile */
 	gboolean done = FALSE;
@@ -1060,25 +1096,60 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 	}
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
 		imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
-	/* Check the filter */
-	uint64_t filter_type = parameters->location_filter_set ?
-		parameters->location_filter.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+	/* Check the location filter: its format differs depending on the version */
 	imquic_moq_object *largest = NULL;
 	imquic_mutex_lock(&track->mutex);
 	if(!track->pending && track->objects != NULL)
 		largest = (imquic_moq_object *)track->objects->data;
 	imquic_moq_location start = { 0 };
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
-		start.group = largest ? largest->group_id : 0;
-		start.object = largest ? largest->object_id : 0;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
-		start.group = largest ? (largest->group_id + 1) : 0;
-		start.object = 0;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-			filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		start = parameters->location_filter.start_location;
+	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+		/* Legacy format */
+		uint64_t filter_type = parameters->location_filter_set ?
+			parameters->location_filter.legacy_value.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
+			imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
+		if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
+			start.group = largest ? largest->group_id : 0;
+			start.object = largest ? largest->object_id : 0;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
+			start.group = largest ? (largest->group_id + 1) : 0;
+			start.object = 0;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+				filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			start = parameters->location_filter.legacy_value.start_location;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
+				imquic_get_connection_name(conn), start.group, start.object);
+		}
+	} else {
+		/* End format */
+		if(!parameters->location_filter_set) {
+			start.group = largest ? largest->group_id : 0;
+			start.object = largest ? largest->object_id : 0;
+		} else {
+			if(!parameters->location_filter.start_object_set) {
+				/* Only start group provided: relative start */
+				if(largest != NULL && largest->group_id >= parameters->location_filter.start_group)
+					start.group = largest ? (largest->group_id + 1 - parameters->location_filter.start_group) : 0;
+			} else {
+				/* Start object provided too */
+				if(!parameters->location_filter.end_group_set) {
+					/* Only start group and object provided: relative start */
+					if(largest != NULL && largest->group_id >= parameters->location_filter.start_group)
+						start.group = largest ? (largest->group_id + 1 - parameters->location_filter.start_group) : 0;
+					start.object = parameters->location_filter.start_object;
+				} else {
+					/* End group provided: fields are absolute */
+					start.group = parameters->location_filter.start_group;
+					start.object = parameters->location_filter.start_object;
+				}
+			}
+		}
+		if(largest != NULL) {
+			if(start.group < largest->group_id)
+				start.group = largest->group_id;
+			if(start.group == largest->group_id && start.object < largest->object_id)
+				start.object = largest->object_id;
+		}
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
 			imquic_get_connection_name(conn), start.group, start.object);
 	}
@@ -1167,34 +1238,80 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
 		imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
 	s->forward = parameters->forward;
-	/* Check the filter */
-	uint64_t filter_type = parameters->location_filter_set ?
-		parameters->location_filter.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+	/* Check the location filter: its format differs depending on the version */
 	imquic_moq_object *largest = NULL;
 	if(!track->pending && track->objects != NULL)
 		largest = (imquic_moq_object *)track->objects->data;
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
-		s->sub_start.group = largest ? largest->group_id : 0;
-		s->sub_start.object = largest ? largest->object_id : 0;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
-		s->sub_start.group = largest ? (largest->group_id + 1) : 0;
-		s->sub_start.object = 0;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
-		s->sub_start = parameters->location_filter.start_location;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
-			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object);
-	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		s->sub_start = parameters->location_filter.start_location;
-		if(parameters->location_filter.end_group == 0)
-			s->sub_end.group = IMQUIC_MAX_VARINT;
-		else
-			s->sub_end.group = parameters->location_filter.end_group - 1;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
-			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
+	uint64_t filter_type = 0;
+	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+		/* Legacy format */
+		filter_type = parameters->location_filter_set ?
+			parameters->location_filter.legacy_value.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
+			imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
+		if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
+			s->sub_start.group = largest ? largest->group_id : 0;
+			s->sub_start.object = largest ? largest->object_id : 0;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
+			s->sub_start.group = largest ? (largest->group_id + 1) : 0;
+			s->sub_start.object = 0;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
+			s->sub_start = parameters->location_filter.legacy_value.start_location;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
+				imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object);
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			s->sub_start = parameters->location_filter.legacy_value.start_location;
+			if(parameters->location_filter.legacy_value.end_group == 0)
+				s->sub_end.group = IMQUIC_MAX_VARINT;
+			else
+				s->sub_end.group = parameters->location_filter.legacy_value.end_group - 1;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
+				imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
+		}
+	} else {
+		/* New format */
+		if(!parameters->location_filter_set) {
+			s->sub_start.group = largest ? largest->group_id : 0;
+			s->sub_start.object = largest ? largest->object_id : 0;
+		} else {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested location filter\n",
+				imquic_get_connection_name(conn));
+			if(parameters->location_filter.start_group_set) {
+				if(!parameters->location_filter.start_object_set) {
+					/* Only start group provided: relative start */
+					if(largest != NULL && largest->group_id >= parameters->location_filter.start_group)
+						s->sub_start.group = largest ? (largest->group_id + 1 - parameters->location_filter.start_group) : 0;
+				} else {
+					/* Start object provided too */
+					if(!parameters->location_filter.end_group_set) {
+						/* Only start group and object provided: relative start */
+						if(largest != NULL && largest->group_id >= parameters->location_filter.start_group)
+							s->sub_start.group = largest ? (largest->group_id + 1 - parameters->location_filter.start_group) : 0;
+						s->sub_start.object = parameters->location_filter.start_object;
+					} else {
+						/* End group provided: fields are absolute */
+						s->sub_start.group = parameters->location_filter.start_group;
+						s->sub_start.object = parameters->location_filter.start_object;
+						s->sub_end.group = parameters->location_filter.end_group;
+						if(parameters->location_filter.end_object_set)
+							s->sub_end.object = parameters->location_filter.end_object;
+					}
+				}
+			}
+		}
+		if(largest != NULL) {
+			if(s->sub_start.group < largest->group_id)
+				s->sub_start.group = largest->group_id;
+			if(s->sub_start.group == largest->group_id && s->sub_start.object < largest->object_id)
+				s->sub_start.object = largest->object_id;
+			/* FIXME Just semantics, we may need it later */
+			if(s->sub_start.group == (largest->group_id + 1) && s->sub_start.object == 0)
+				filter_type = IMQUIC_MOQ_FILTER_NEXT_GROUP_START;
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+			imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group, s->sub_end.object);
 	}
 	if(parameters->filters_set && parameters->filters != NULL) {
 		/* The subscriber added filters, "steal" them */
@@ -1275,8 +1392,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		params.group_order = parameters->group_order;
 		params.forward_set = TRUE;
 		params.forward = TRUE;
-		params.location_filter_set = TRUE;
-		params.location_filter.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		if(imquic_moq_get_version(annc->pub->conn) < IMQUIC_MOQ_VERSION_20) {
+			/* No need for newer versions, no location filter means unfiltered already */
+			params.location_filter_set = TRUE;
+			params.location_filter.legacy_value.type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		}
 		if(imquic_moq_subscribe(annc->pub->conn, track->request_id, tns, tn, &params) < 0) {
 			g_hash_table_remove(annc->pub->subscriptions_by_id, &track->request_id);
 			imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_INTERNAL_ERROR, "Error creating upstream subscription", 0, NULL);

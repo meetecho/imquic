@@ -157,10 +157,30 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.subscriber_priority = 128;
 	params.group_order_set = TRUE;
 	params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	params.location_filter_set = TRUE;
-	params.location_filter.type = filter_type;
-	params.location_filter.start_location = start_location;
-	params.location_filter.end_group = end_location_sub.group;
+	/* The format of the location filter changed in v20 */
+	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+		/* Legacy format */
+		params.location_filter_set = TRUE;
+		params.location_filter.legacy_value.type = filter_type;
+		params.location_filter.legacy_value.start_location = start_location;
+		params.location_filter.legacy_value.end_group = end_location_sub.group;
+	} else {
+		/* New format */
+		if(options.start_group > -1)
+			params.location_filter.start_group = options.start_group;
+		if(options.start_object > -1)
+			params.location_filter.start_object = options.start_object;
+		if(options.end_group > -1)
+			params.location_filter.end_group = options.end_group;
+		if(options.end_object > -1)
+			params.location_filter.end_object = options.end_object;
+		params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+		params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+		params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
+		params.location_filter.end_object_set = (options.end_object > -1);
+		if(params.location_filter.start_group_set)
+			params.location_filter_set = TRUE;
+	}
 	if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
 		/* Add some filter ranges too, just form testing */
 		imquic_moq_filters *filters = imquic_moq_filters_create();
@@ -373,10 +393,30 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			params.subscriber_priority = 128;
 			params.group_order_set = TRUE;
 			params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-			params.location_filter_set = TRUE;
-			params.location_filter.type = filter_type;
-			params.location_filter.start_location = start_location;
-			params.location_filter.end_group = end_location_sub.group;
+			/* The format of the location filter changed in v20 */
+			if(moq_version < IMQUIC_MOQ_VERSION_20) {
+				/* Legacy format */
+				params.location_filter_set = TRUE;
+				params.location_filter.legacy_value.type = filter_type;
+				params.location_filter.legacy_value.start_location = start_location;
+				params.location_filter.legacy_value.end_group = end_location_sub.group;
+			} else {
+				/* New format */
+				if(options.start_group > -1)
+					params.location_filter.start_group = options.start_group;
+				if(options.start_object > -1)
+					params.location_filter.start_object = options.start_object;
+				if(options.end_group > -1)
+					params.location_filter.end_group = options.end_group;
+				if(options.end_object > -1)
+					params.location_filter.end_object = options.end_object;
+				params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+				params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+				params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
+				params.location_filter.end_object_set = (options.end_object > -1);
+				if(params.location_filter.start_group_set)
+					params.location_filter_set = TRUE;
+			}
 			g_hash_table_insert(namespaces_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_namespace_duplicate(new_tns));
 			g_hash_table_insert(tracks_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_track_duplicate(new_tn));
 			imquic_moq_subscribe(conn, new_request_id, new_tns, new_tn, &params);
@@ -424,10 +464,30 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
 	rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-	rparams.location_filter_set = TRUE;
-	rparams.location_filter.type = filter_type;
-	rparams.location_filter.start_location = start_location;
-	rparams.location_filter.end_group = end_location_sub.group;
+	/* The format of the location filter changed in v20 */
+	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+		/* Legacy format */
+		rparams.location_filter_set = TRUE;
+		rparams.location_filter.legacy_value.type = filter_type;
+		rparams.location_filter.legacy_value.start_location = start_location;
+		rparams.location_filter.legacy_value.end_group = end_location_sub.group;
+	} else {
+		/* New format */
+		if(options.start_group > -1)
+			rparams.location_filter.start_group = options.start_group;
+		if(options.start_object > -1)
+			rparams.location_filter.start_object = options.start_object;
+		if(options.end_group > -1)
+			rparams.location_filter.end_group = options.end_group;
+		if(options.end_object > -1)
+			rparams.location_filter.end_object = options.end_object;
+		rparams.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+		rparams.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+		rparams.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
+		rparams.location_filter.end_object_set = (options.end_object > -1);
+		if(rparams.location_filter.start_group_set)
+			rparams.location_filter_set = TRUE;
+	}
 	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
@@ -605,10 +665,30 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		params.forward_set = TRUE;
 		params.forward = TRUE;
-		params.location_filter_set = TRUE;
-		params.location_filter.type = filter_type;
-		params.location_filter.start_location = start_location;
-		params.location_filter.end_group = end_location_sub.group;
+		/* The format of the location filter changed in v20 */
+		if(moq_version < IMQUIC_MOQ_VERSION_20) {
+			/* Legacy format */
+			params.location_filter_set = TRUE;
+			params.location_filter.legacy_value.type = filter_type;
+			params.location_filter.legacy_value.start_location = start_location;
+			params.location_filter.legacy_value.end_group = end_location_sub.group;
+		} else {
+			/* New format */
+			if(options.start_group > -1)
+				params.location_filter.start_group = options.start_group;
+			if(options.start_object > -1)
+				params.location_filter.start_object = options.start_object;
+			if(options.end_group > -1)
+				params.location_filter.end_group = options.end_group;
+			if(options.end_object > -1)
+				params.location_filter.end_object = options.end_object;
+			params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+			params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+			params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
+			params.location_filter.end_object_set = (options.end_object > -1);
+			if(params.location_filter.start_group_set)
+				params.location_filter_set = TRUE;
+		}
 		imquic_moq_subscribe(conn, request_id, sub_namespace, &tn, &params);
 	}
 	if(object->end_of_stream) {
@@ -664,8 +744,10 @@ int main(int argc, char *argv[]) {
 	/* Initialize some command line options defaults */
 	options.debug_level = IMQUIC_LOG_INFO;
 	options.join_offset = -1;
-	options.end_group = IMQUIC_MAX_VARINT;
-	options.end_object = IMQUIC_MAX_VARINT;
+	options.start_group = -1;
+	options.start_object = -1;
+	options.end_group = -1;
+	options.end_object = -1;
 	/* Let's call our cmdline parser */
 	if(!demo_options_parse(&options, argc, argv)) {
 		demo_options_show_usage();
@@ -790,25 +872,25 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(options.fetch != NULL && options.join_offset < 0) {
-		start_location.group = options.start_group;
-		start_location.object = options.start_object;
-		end_location.group = options.end_group;
-		end_location.object = (options.end_object == IMQUIC_MAX_VARINT) ? 0 : (options.end_object + 1);
+		start_location.group = options.start_group > -1 ? options.start_group : 0;
+		start_location.object = options.start_object > -1 ? options.start_object : 0;
+		end_location.group = options.end_group > -1 ? options.end_group : 0;
+		end_location.object = options.end_object > -1 ? (options.end_object + 1) : 0;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "FETCH range: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			start_location.group, start_location.object, end_location.group, end_location.object);
 	} else if(!options.subscribe_namespace) {
 		const char *req = options.track_status ? "TRACK_STATUS" : "SUBSCRIBE";
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using '%s' as the %s filter type\n", req, imquic_moq_location_filter_type_str(filter_type));
 		if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
-			start_location.group = options.start_group;
-			start_location.object = options.start_object;
+			start_location.group = options.start_group > -1 ? (uint64_t)options.start_group : 0;
+			start_location.object = options.start_object > -1 ? (uint64_t)options.start_object : 0;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "%s start location: [%"SCNu64"/%"SCNu64"]\n",
 				req, start_location.group, start_location.object);
 		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			start_location.group = options.start_group;
-			start_location.object = options.start_object;
-			end_location.group = options.end_group;
-			end_location_sub.group = (options.end_group == IMQUIC_MAX_VARINT) ? 0 : (options.end_group + 1);
+			start_location.group = options.start_group > -1 ? (uint64_t)options.start_group : 0;
+			start_location.object = options.start_object > -1 ? (uint64_t)options.start_object : 0;
+			end_location.group = options.end_group > -1 ? (uint64_t)options.end_group : IMQUIC_MAX_VARINT;
+			end_location_sub.group = options.end_group > -1 ? ((uint64_t)options.end_group + 1) : IMQUIC_MAX_VARINT;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "%s start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 				req, start_location.group, start_location.object, end_location.group);
 		}
@@ -969,10 +1051,30 @@ int main(int argc, char *argv[]) {
 				params.forward = TRUE;
 				params.subscriber_priority_set = TRUE;
 				params.subscriber_priority = 128;
-				params.location_filter_set = TRUE;
-				params.location_filter.type = filter_type;
-				params.location_filter.start_location = start_location;
-				params.location_filter.end_group = end_location_sub.group;
+				/* The format of the location filter changed in v20 */
+				if(moq_version < IMQUIC_MOQ_VERSION_20) {
+					/* Legacy format */
+					params.location_filter_set = TRUE;
+					params.location_filter.legacy_value.type = filter_type;
+					params.location_filter.legacy_value.start_location = start_location;
+					params.location_filter.legacy_value.end_group = end_location_sub.group;
+				} else {
+					/* New format */
+					if(options.start_group > -1)
+						params.location_filter.start_group = options.start_group;
+					if(options.start_object > -1)
+						params.location_filter.start_object = options.start_object;
+					if(options.end_group > -1)
+						params.location_filter.end_group = options.end_group;
+					if(options.end_object > -1)
+						params.location_filter.end_object = options.end_object;
+					params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+					params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+					params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
+					params.location_filter.end_object_set = (options.end_object > -1);
+					if(params.location_filter.start_group_set)
+						params.location_filter_set = TRUE;
+				}
 				uint64_t request_id = imquic_moq_get_next_request_id(moq_conn);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a REQUEST_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
 					imquic_get_connection_name(moq_conn), *rid, request_id);

@@ -456,7 +456,8 @@ typedef enum imquic_moq_group_order {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_group_order_str(imquic_moq_group_order type);
 
-/*! \brief MoQ filter type, for subscriptions */
+/*! \brief MoQ filter type, for subscriptions
+ * \note Deprecated in v20 */
 typedef enum imquic_moq_location_filter_type {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
 	IMQUIC_MOQ_FILTER_LARGEST_OBJECT = 0x2,
@@ -482,14 +483,38 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
-/*! \brief MoQ location filter */
-typedef struct imquic_moq_location_filter {
+/*! \brief MoQ location filter (legacy)
+ * \note Deprecated in v20 */
+typedef struct imquic_moq_location_filter_legacy {
 	/*! \brief Filter type */
 	imquic_moq_location_filter_type type;
 	/*! \brief Start location (depending on filter type) */
 	imquic_moq_location start_location;
 	/*! \brief End group (depending on filter type) */
 	uint64_t end_group;
+} imquic_moq_location_filter_legacy;
+
+/*! \brief MoQ location filter (new)
+ * \note Added in v20 */
+typedef struct imquic_moq_location_filter {
+	/*! \brief Whether there is a start group */
+	gboolean start_group_set;
+	/*! \brief The start group value */
+	uint64_t start_group;
+	/*! \brief Whether there is a start object */
+	gboolean start_object_set;
+	/*! \brief The start object value */
+	uint64_t start_object;
+	/*! \brief Whether there is an end group */
+	gboolean end_group_set;
+	/*! \brief The end group value */
+	uint64_t end_group;
+	/*! \brief Whether there is an end object */
+	gboolean end_object_set;
+	/*! \brief The end object value */
+	uint64_t end_object;
+	/*! \brief Legacy filter value, for older versions */
+	imquic_moq_location_filter_legacy legacy_value;
 } imquic_moq_location_filter;
 
 /*! \brief Subscribe options for namespaces
@@ -550,9 +575,9 @@ typedef struct imquic_moq_request_parameters {
 	gboolean group_order_set;
 	/*! \brief Value of the GROUP_ORDER parameter */
 	imquic_moq_group_order group_order;
-	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
+	/*! \brief Whether the LOCATION_FILTER parameter is set */
 	gboolean location_filter_set;
-	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
+	/*! \brief Value of the LOCATION_FILTER parameter */
 	imquic_moq_location_filter location_filter;
 	/*! \brief Whether there are filters */
 	gboolean filters_set;

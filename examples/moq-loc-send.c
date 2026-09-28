@@ -856,33 +856,71 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Descending group order unsupported, will send objects in ascending group order\n",
 			imquic_get_connection_name(conn));
 	}
-	/* Check the filter */
-	uint64_t filter_type = parameters->location_filter_set ?
-		parameters->location_filter.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+	/* Check the location filter: its format differs depending on the version */
 	gboolean pub_started = g_atomic_int_get(video ? &video_started : &audio_started);
 	static imquic_moq_location sub_start = { 0 }, sub_end = { 0 };
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
-		imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
-	if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
-		sub_start.group = video ? video_group_id : audio_group_id;
-		sub_start.object = video ? video_object_id : audio_object_id;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
-		sub_start.group = (video ? video_group_id : audio_group_id) + 1;
-		sub_start.object = 0;
-	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
-		sub_start = parameters->location_filter.start_location;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
-			imquic_get_connection_name(conn), sub_start.group, sub_start.object);
-	} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-		sub_start = parameters->location_filter.start_location;
-		if(parameters->location_filter.end_group == 0)
-			sub_end.group = IMQUIC_MAX_VARINT;
-		else
-			sub_end.group = parameters->location_filter.end_group - 1;
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
-			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group);
+	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+		/* Legacy format */
+		uint64_t filter_type = parameters->location_filter_set ?
+			parameters->location_filter.legacy_value.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
+			imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
+		if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
+			sub_start.group = video ? video_group_id : audio_group_id;
+			sub_start.object = video ? video_object_id : audio_object_id;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START) {
+			sub_start.group = (video ? video_group_id : audio_group_id) + 1;
+			sub_start.object = 0;
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
+			sub_start = parameters->location_filter.legacy_value.start_location;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
+				imquic_get_connection_name(conn), sub_start.group, sub_start.object);
+		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+			sub_start = parameters->location_filter.legacy_value.start_location;
+			if(parameters->location_filter.legacy_value.end_group == 0)
+				sub_end.group = IMQUIC_MAX_VARINT;
+			else
+				sub_end.group = parameters->location_filter.legacy_value.end_group - 1;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
+				imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group);
+		}
+	} else {
+		/* New format */
+		uint64_t group_id = video ? video_group_id : audio_group_id;
+		uint64_t object_id = video ? video_object_id : audio_object_id;
+		if(!parameters->location_filter_set) {
+			sub_start.group = group_id;
+			sub_start.object = object_id;
+		} else {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested location filter\n",
+				imquic_get_connection_name(conn));
+			if(parameters->location_filter.start_group_set) {
+				if(!parameters->location_filter.start_object_set) {
+					/* Only start group provided: relative start */
+					if(group_id >= parameters->location_filter.start_group)
+						sub_start.group = group_id + 1 - parameters->location_filter.start_group;
+				} else {
+					/* Start object provided too */
+					if(!parameters->location_filter.end_group_set) {
+						/* Only start group and object provided: relative start */
+						if(group_id >= parameters->location_filter.start_group)
+							sub_start.group = group_id + 1 - parameters->location_filter.start_group;
+						sub_start.object = parameters->location_filter.start_object;
+					} else {
+						/* End group provided: fields are absolute */
+						sub_start.group = parameters->location_filter.start_group;
+						sub_start.object = parameters->location_filter.start_object;
+						sub_end.group = parameters->location_filter.end_group;
+						if(parameters->location_filter.end_object_set)
+							sub_end.object = parameters->location_filter.end_object;
+					}
+				}
+			}
+		}
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
 	}
 	/* Accept the subscription */
 	imquic_moq_request_parameters rparams;

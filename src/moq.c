@@ -1663,19 +1663,36 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 						parameters->group_order);
 				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER) {
 					uint8_t temp[40];
-					size_t tlen = sizeof(temp);
-					size_t toffset = imquic_write_moqint(moq->version, parameters->location_filter.type, temp, tlen);
-					if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-							parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-						toffset += imquic_write_moqint(moq->version, parameters->location_filter.start_location.group, &temp[toffset], tlen-toffset);
-						toffset += imquic_write_moqint(moq->version, parameters->location_filter.start_location.object, &temp[toffset], tlen-toffset);
-					}
-					if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-						/* End group is a delta, starting from v17 */
-						uint64_t end_group = parameters->location_filter.end_group;
-						if(moq->version >= IMQUIC_MOQ_VERSION_16)
-							end_group -= parameters->location_filter.start_location.group;
-						toffset += imquic_write_moqint(moq->version, end_group, &temp[toffset], tlen-toffset);
+					size_t tlen = sizeof(temp), toffset = 0;
+					/* The format of location filters changed between v19 and v20 */
+					if(moq->version < IMQUIC_MOQ_VERSION_20) {
+						toffset = imquic_write_moqint(moq->version, parameters->location_filter.legacy_value.type, temp, tlen);
+						if(parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+								parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+							toffset += imquic_write_moqint(moq->version, parameters->location_filter.legacy_value.start_location.group, &temp[toffset], tlen-toffset);
+							toffset += imquic_write_moqint(moq->version, parameters->location_filter.legacy_value.start_location.object, &temp[toffset], tlen-toffset);
+						}
+						if(parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+							/* End group is a delta, starting from v17 */
+							uint64_t end_group = parameters->location_filter.legacy_value.end_group;
+							if(moq->version >= IMQUIC_MOQ_VERSION_16)
+								end_group -= parameters->location_filter.legacy_value.start_location.group;
+							toffset += imquic_write_moqint(moq->version, end_group, &temp[toffset], tlen-toffset);
+						}
+					} else {
+						if(parameters->location_filter.start_group_set) {
+							toffset += imquic_write_moqint(moq->version, parameters->location_filter.start_group, &temp[toffset], tlen-toffset);
+							if(parameters->location_filter.start_object_set) {
+								toffset += imquic_write_moqint(moq->version, parameters->location_filter.start_object, &temp[toffset], tlen-toffset);
+								if(parameters->location_filter.end_group_set) {
+									uint64_t end_group = parameters->location_filter.end_group - parameters->location_filter.start_group;
+									toffset += imquic_write_moqint(moq->version, end_group, &temp[toffset], tlen-toffset);
+									if(parameters->location_filter.end_object_set) {
+										toffset += imquic_write_moqint(moq->version, parameters->location_filter.end_object, &temp[toffset], tlen-toffset);
+									}
+								}
+							}
+						}
 					}
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
@@ -4074,8 +4091,8 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 		uint64_t tns_num = 0, i = 0;
 		IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_FETCH, tns_num, i, "Broken FETCH", FALSE);
 		IMQUIC_MOQ_PARSE_TRACKNAME("Broken FETCH", FALSE);
-		/* Versions older than v20 had start and end locations as part
-		 * of the request: now this information is in LOCATION_FILTER */
+		/* Versions older than v20 had start and end locations as part of the
+		 * request: now this information is in the LOCATION_FILTER parameter */
 		if(moq->version < IMQUIC_MOQ_VERSION_20) {
 			range.start.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
@@ -6535,29 +6552,56 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER) {
 		uint8_t *tmp = &bytes[offset];
 		size_t toffset = 0, tlen = len;
-		params->location_filter.type = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
-		toffset += length;
-		if(params->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-				params->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			params->location_filter.start_location.group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+		/* The format of location filters changed between v19 and v20 */
+		if(moq->version < IMQUIC_MOQ_VERSION_20) {
+			params->location_filter.legacy_value.type = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
 			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
 			toffset += length;
-			params->location_filter.start_location.object = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
-			toffset += length;
-		}
-		if(params->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			params->location_filter.end_group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
-			/* The End group property is a delta, starting from v17, but
-			 * we expose the full actual value to the application */
-			if(moq->version >= IMQUIC_MOQ_VERSION_17)
-				params->location_filter.end_group += params->location_filter.start_location.group;
+			if(params->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+					params->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+				params->location_filter.legacy_value.start_location.group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				toffset += length;
+				params->location_filter.legacy_value.start_location.object = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				toffset += length;
+			}
+			if(params->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+				params->location_filter.legacy_value.end_group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				/* The End group property is a delta, starting from v17, but
+				 * we expose the full actual value to the application */
+				if(moq->version >= IMQUIC_MOQ_VERSION_17)
+					params->location_filter.legacy_value.end_group += params->location_filter.legacy_value.start_location.group;
+			}
+		} else {
+			if(tlen-toffset > 0) {
+				params->location_filter.start_group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				toffset += length;
+				params->location_filter.start_group_set = TRUE;
+			}
+			if(tlen-toffset > 0) {
+				params->location_filter.start_object = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				toffset += length;
+				params->location_filter.start_object_set = TRUE;
+			}
+			if(tlen-toffset > 0) {
+				params->location_filter.end_group = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				toffset += length;
+				params->location_filter.end_group += params->location_filter.start_group;
+				params->location_filter.end_group_set = TRUE;
+			}
+			if(tlen-toffset > 0) {
+				params->location_filter.end_object = imquic_read_moqint(moq->version, &tmp[toffset], tlen-toffset, &length);
+				IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
+				toffset += length;
+				params->location_filter.end_object_set = TRUE;
+			}
 		}
 		params->location_filter_set = TRUE;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %d\n",
-			imquic_get_connection_name(moq->conn), params->location_filter.type);
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_EXPIRES) {
 		params->expires = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ request parameter");
@@ -6611,8 +6655,6 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		imquic_moq_namespace *tns = &params->track_namespace_prefix[0];
 		IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE, tns_num, i, "Broken TRACK_NAMESPACE_PREFIX", TRUE);
 		params->track_namespace_prefix_set = TRUE;
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %d\n",
-			imquic_get_connection_name(moq->conn), params->location_filter.type);
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_FORWARD) {
 		uint64_t include_properties = bytes[offset];
 		length = 1;
@@ -7224,14 +7266,25 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
 	}
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
-	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
-			imquic_get_connection_name(conn),
-			parameters->location_filter.end_group,
-			parameters->location_filter.start_location.group);
-		imquic_refcount_decrease(&moq->ref);
-		return -1;
+	if(parameters && parameters->location_filter_set) {
+		if(moq->version < IMQUIC_MOQ_VERSION_20 && parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+				parameters->location_filter.legacy_value.end_group > 0 && parameters->location_filter.legacy_value.start_location.group > parameters->location_filter.legacy_value.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.legacy_value.end_group,
+				parameters->location_filter.legacy_value.start_location.group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters->location_filter.start_group_set && parameters->location_filter.end_group_set &&
+				parameters->location_filter.start_group > parameters->location_filter.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.end_group,
+				parameters->location_filter.start_group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
 	}
 	/* Starting from v17, requests go on a dedicated bidirectional
 	 * STREAM, and the same applies to the PUBLISH_OK responses */
@@ -7323,14 +7376,25 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
-			imquic_get_connection_name(conn),
-			parameters->location_filter.end_group,
-			parameters->location_filter.start_location.group);
-		imquic_mutex_unlock(&moq_mutex);
-		return -1;
+	if(parameters && parameters->location_filter_set) {
+		if(moq->version < IMQUIC_MOQ_VERSION_20 && parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+				parameters->location_filter.legacy_value.end_group > 0 && parameters->location_filter.legacy_value.start_location.group > parameters->location_filter.legacy_value.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.legacy_value.end_group,
+				parameters->location_filter.legacy_value.start_location.group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters->location_filter.start_group_set && parameters->location_filter.end_group_set &&
+				parameters->location_filter.start_group > parameters->location_filter.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.end_group,
+				parameters->location_filter.start_group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
 	}
 	/* Make sure we can send this */
 	if(!moq_is_request_id_valid(moq, request_id, TRUE)) {
@@ -7478,14 +7542,25 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
-			imquic_get_connection_name(conn),
-			parameters->location_filter.end_group,
-			parameters->location_filter.start_location.group);
-		imquic_mutex_unlock(&moq_mutex);
-		return -1;
+	if(parameters && parameters->location_filter_set) {
+		if(moq->version < IMQUIC_MOQ_VERSION_20 && parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+				parameters->location_filter.legacy_value.end_group > 0 && parameters->location_filter.legacy_value.start_location.group > parameters->location_filter.legacy_value.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.legacy_value.end_group,
+				parameters->location_filter.legacy_value.start_location.group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters->location_filter.start_group_set && parameters->location_filter.end_group_set &&
+				parameters->location_filter.start_group > parameters->location_filter.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.end_group,
+				parameters->location_filter.start_group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
 	}
 	imquic_refcount_increase(&moq->ref);
 	/* Make sure we can send this */
@@ -8562,14 +8637,25 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_unlock(&moq_mutex);
 		return -1;
 	}
-	if(parameters && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
-			parameters->location_filter.end_group > 0 && parameters->location_filter.start_location.group > parameters->location_filter.end_group) {
-		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start location group (%"SCNu64" < %"SCNu64")\n",
-			imquic_get_connection_name(conn),
-			parameters->location_filter.end_group,
-			parameters->location_filter.start_location.group);
-		imquic_mutex_unlock(&moq_mutex);
-		return -1;
+	if(parameters && parameters->location_filter_set) {
+		if(moq->version < IMQUIC_MOQ_VERSION_20 && parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE &&
+				parameters->location_filter.legacy_value.end_group > 0 && parameters->location_filter.legacy_value.start_location.group > parameters->location_filter.legacy_value.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.legacy_value.end_group,
+				parameters->location_filter.legacy_value.start_location.group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters->location_filter.start_group_set && parameters->location_filter.end_group_set &&
+				parameters->location_filter.start_group > parameters->location_filter.end_group) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] End group is lower than start group (%"SCNu64" < %"SCNu64")\n",
+				imquic_get_connection_name(conn),
+				parameters->location_filter.end_group,
+				parameters->location_filter.start_group);
+			imquic_refcount_decrease(&moq->ref);
+			return -1;
+		}
 	}
 	/* Make sure we can send this */
 	if(!moq_is_request_id_valid(moq, request_id, TRUE)) {
@@ -9366,19 +9452,35 @@ void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_
 		json_object_set_new(location_filter, "name", json_string("location_filter"));
 		/* FIXME */
 		json_t *sf = json_object();
-		json_object_set_new(sf, "type", json_integer(parameters->location_filter.type));
-		if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
-				parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			json_t *lo = json_object();
-			json_object_set_new(lo, "group", json_integer(parameters->location_filter.start_location.group));
-			json_object_set_new(lo, "object", json_integer(parameters->location_filter.start_location.object));
-			json_object_set_new(sf, "start_location", lo);
-		}
-		if(parameters->location_filter.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			if(version <= IMQUIC_MOQ_VERSION_16)
-				json_object_set_new(sf, "end_group", json_integer(parameters->location_filter.end_group));
-			else
-				json_object_set_new(sf, "end_group_delta", json_integer(parameters->location_filter.end_group - parameters->location_filter.start_location.group));
+		if(version < IMQUIC_MOQ_VERSION_20) {
+			json_object_set_new(sf, "type", json_integer(parameters->location_filter.legacy_value.type));
+			if(parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_START ||
+					parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+				json_t *lo = json_object();
+				json_object_set_new(lo, "group", json_integer(parameters->location_filter.legacy_value.start_location.group));
+				json_object_set_new(lo, "object", json_integer(parameters->location_filter.legacy_value.start_location.object));
+				json_object_set_new(sf, "start_location", lo);
+			}
+			if(parameters->location_filter.legacy_value.type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+				if(version <= IMQUIC_MOQ_VERSION_16)
+					json_object_set_new(sf, "end_group", json_integer(parameters->location_filter.legacy_value.end_group));
+				else
+					json_object_set_new(sf, "end_group_delta", json_integer(parameters->location_filter.legacy_value.end_group - parameters->location_filter.legacy_value.start_location.group));
+			}
+		} else {
+			if(parameters->location_filter.start_group_set) {
+				json_object_set_new(sf, "start_group", json_integer(parameters->location_filter.start_group));
+				if(parameters->location_filter.start_object_set) {
+					json_object_set_new(sf, "start_object", json_integer(parameters->location_filter.start_object));
+					if(parameters->location_filter.end_group_set) {
+						uint64_t end_group = parameters->location_filter.end_group - parameters->location_filter.start_group;
+						json_object_set_new(sf, "end_group_delta", json_integer(end_group));
+						if(parameters->location_filter.end_object_set) {
+							json_object_set_new(sf, "end_object", json_integer(parameters->location_filter.end_object));
+						}
+					}
+				}
+			}
 		}
 		json_object_set_new(location_filter, "value", sf);
 		json_array_append_new(params, location_filter);
