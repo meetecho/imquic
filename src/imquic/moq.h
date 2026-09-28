@@ -151,10 +151,8 @@
  * for intercepting incoming \c SUBSCRIBE requests via \ref imquic_set_incoming_subscribe_cb,
  * and another for intercepting an \c UNSUBSCRIBE via \ref imquic_set_incoming_unsubscribe_cb.
  * In both cases, the publisher is supposed to answer with either a success or an error.
- * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_standalone_fetch_cb
- * (for standalone \c FETCH requests) or \ref imquic_set_incoming_joining_fetch_cb
- * (for joining \c FETCH requests), while a \c FETCH_CANCEL can be
- * intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
+ * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_fetch_cb
+ * , while a \c FETCH_CANCEL can be intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
  *
  * That said, once callbacks have been configured, the endpoint started, and the publisher
  * role set, a publisher can start sending requests. To publish_namespace a new
@@ -259,9 +257,8 @@
  * \ref imquic_moq_subscribe function, while to unsubscribe the corresponding
  * \ref imquic_moq_unsubscribe function can be used instead.
  *
- * Issuing \c FETCH related requests is similar, as \ref imquic_moq_standalone_fetch
- * and \ref imquic_moq_joining_fetch allow you to try and fetch some objects
- * (in standalone or joining mode, respectively), while \ref imquic_moq_cancel_fetch
+ * Issuing \c FETCH related requests is similar, as \ref imquic_moq_fetch
+ * allows you to try and fetch some objects, while \ref imquic_moq_cancel_fetch
  * is what you use to stop the delivery and cancel the request. Just as
  * with \c SUBSCRIBE requests, a \c request_id identifier is used to
  * address a specific \c FETCH context. Notice that for a joining \c FETCH
@@ -575,6 +572,12 @@ typedef struct imquic_moq_request_parameters {
 	gboolean group_order_set;
 	/*! \brief Value of the GROUP_ORDER parameter */
 	imquic_moq_group_order group_order;
+	/*! \brief Whether the FILL_PARAMETERS parameter is set */
+	gboolean fill_parameters_set;
+	/*! \brief Value of the FILL_PARAMETERS parameter
+	 * \note This is another nested instance of parameters, which is in
+	 * theory be limited to a subset of the generic request parameters */
+	struct imquic_moq_request_parameters *fill_parameters;
 	/*! \brief Whether the LOCATION_FILTER parameter is set */
 	gboolean location_filter_set;
 	/*! \brief Value of the LOCATION_FILTER parameter */

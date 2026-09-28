@@ -67,6 +67,7 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_PUBLISH = 0x1D,
 		IMQUIC_MOQ_PUBLISH_OK = 0x1E,				/* Deprecated in v18 */
 	IMQUIC_MOQ_PUBLISH_STATE_NOTIFY = 0x22,			/* Added in v20 */
+	IMQUIC_MOQ_PSEUDO_REQUEST = 0x0,				/* Pseudo request, only needed for FILL_PARAMETERS */
 } imquic_moq_message_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_message_type value.
  * @param type The imquic_moq_message_type value
@@ -247,6 +248,7 @@ typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY = 0x20,
 	IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER = 0x21,
 	IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER = 0x22,
+	IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS = 0x23,
 	IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_FILTER = 0x25,
 	IMQUIC_MOQ_REQUEST_PARAM_OBJECT_FILTER = 0x26,
 	IMQUIC_MOQ_REQUEST_PARAM_PRIORITY_FILTER = 0x27,
