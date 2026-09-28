@@ -195,10 +195,11 @@ gboolean imquic_moq_is_fetch_serialization_flags_valid(imquic_moq_version versio
  * @param[in] datagram Whether the forwarding preference is Datagram
  * @param[in] end_ne_range Whether this is the end of a non-existent range (ignores all other properties)
  * @param[in] end_uk_range Whether this is the end of an unknown range (ignores all other properties)
+ * @param[in] end_to_range Whether this is the end of a timed-out range (ignores all other properties)
  * @returns The serialization flags as an integer */
 uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version version,
 	imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean prop,
-	gboolean datagram, gboolean end_ne_range, gboolean end_uk_range);
+	gboolean datagram, gboolean end_ne_range, gboolean end_uk_range, gboolean end_to_range);
 /*! \brief Helper function to parse serialozation flags for \c FETCH to the individual properties.
  * @param[in] version The version of the connection
  * @param[in] flags The serialization flags to parse
@@ -210,10 +211,11 @@ uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version versio
  * @param[out] datagram Output variable to write whether the forwarding preference is Datagram
  * @param[out] end_ne_range Output variable to write whether this is the end of a non-existent range
  * @param[out] end_uk_range Output variable to write whether this is the end of an unknown range
+ * @param[out] end_to_range Output variable to write whether this is the end of a timed-out range
  * @param[out] violation Whether the type has bits set that really shouldn't */
 void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint64_t flags,
 	imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *prop,
-	gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation);
+	gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *end_to_range, gboolean *violation);
 
 /*! \brief MoQ setup option type */
 typedef enum imquic_moq_setup_option_type {

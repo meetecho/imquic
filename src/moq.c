@@ -907,20 +907,23 @@ imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_mes
 }
 
 gboolean imquic_moq_is_fetch_serialization_flags_valid(imquic_moq_version version, uint64_t flags) {
-	if(flags > 128 && flags != (uint64_t)0x8C && flags != (uint64_t)0x10C)
+	if(flags > 128 && flags != (uint64_t)0x8C && flags != (uint64_t)0x10C && flags != (uint64_t)0x20C)
 		return FALSE;
 	return TRUE;
 }
 
 uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version version,
 		imquic_moq_fetch_subgroup_type subgroup, gboolean oid, gboolean group, gboolean priority, gboolean prop,
-		gboolean datagram, gboolean end_ne_range, gboolean end_uk_range) {
+		gboolean datagram, gboolean end_ne_range, gboolean end_uk_range, gboolean end_to_range) {
 	if(end_ne_range) {
 		/* Ignore everything else */
 		return (uint64_t)0x8C;
 	} else if(end_uk_range) {
 		/* Ignore everything else */
 		return (uint64_t)0x10C;
+	} else if(end_to_range) {
+		/* Ignore everything else */
+		return (uint64_t)0x20C;
 	}
 	/* If we're here, we're writing a bitmask of a single byte */
 	uint8_t flags = subgroup;
@@ -939,18 +942,20 @@ uint64_t imquic_moq_generate_fetch_serialization_flags(imquic_moq_version versio
 
 void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint64_t flags,
 		imquic_moq_fetch_subgroup_type *subgroup, gboolean *oid, gboolean *group, gboolean *priority, gboolean *prop,
-		gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *violation) {
+		gboolean *datagram, gboolean *end_ne_range, gboolean *end_uk_range, gboolean *end_to_range, gboolean *violation) {
 	/* Make sure the provided flags are valid, or return a protocol violation */
 	if(!imquic_moq_is_fetch_serialization_flags_valid(version, flags)) {
 		if(violation)
 			*violation = TRUE;
 		return;
 	}
-	if(flags == (uint64_t)0x8C || flags == (uint64_t)0x10C) {
+	if(flags == (uint64_t)0x8C || flags == (uint64_t)0x10C || flags == (uint64_t)0x20C) {
 		if(end_ne_range)
 			*end_ne_range = (flags == (uint64_t)0x8C);
 		if(end_uk_range)
 			*end_uk_range = (flags == (uint64_t)0x10C);
+		if(end_to_range)
+			*end_to_range = (flags == (uint64_t)0x20C);
 		return;
 	}
 	/* If we're here, we're parsing a bitmask of a single byte */
@@ -4859,9 +4864,9 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		return -1;	/* Not enough data, try again later */
 	imquic_moq_fetch_subgroup_type subgroup_type = IMQUIC_MOQ_FETCH_SUBGROUP_ID;
 	gboolean has_oid = FALSE, has_group = FALSE, has_priority = FALSE, has_prop = FALSE,
-		is_datagram = FALSE, end_ne_range = FALSE, end_uk_range = FALSE, violation = FALSE;
+		is_datagram = FALSE, end_ne_range = FALSE, end_uk_range = FALSE, end_to_range = FALSE, violation = FALSE;
 	imquic_moq_parse_fetch_serialization_flags(moq->version, flags,
-		&subgroup_type, &has_oid, &has_group, &has_priority, &has_prop, &is_datagram, &end_ne_range, &end_uk_range, &violation);
+		&subgroup_type, &has_oid, &has_group, &has_priority, &has_prop, &is_datagram, &end_ne_range, &end_uk_range, &end_to_range, &violation);
 	uint64_t group_id = 0;
 	if(has_group) {
 		group_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -6125,7 +6130,7 @@ size_t imquic_moq_add_fetch_header_object(imquic_moq_context *moq, uint8_t *byte
 		has_prop = (properties != NULL && prlen > 0),
 		is_datagram = FALSE;
 	imquic_moq_parse_fetch_serialization_flags(moq->version, flags,
-		&subgroup_type, &has_oid, &has_group, &has_priority, &has_prop, &is_datagram, NULL, NULL, NULL);
+		&subgroup_type, &has_oid, &has_group, &has_priority, &has_prop, &is_datagram, NULL, NULL, NULL, NULL);
 	offset += imquic_write_moqint(moq->version, flags, &bytes[offset], blen-offset);
 	if(has_group)
 		offset += imquic_write_moqint(moq->version, group_id, &bytes[offset], blen-offset);
@@ -9082,7 +9087,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 				has_priority,
 				has_properties,
 				datagram,
-				FALSE, FALSE);	/* We don't use the "end of range" flags */
+				FALSE, FALSE, FALSE);	/* FIXME We don't use the "end of range" flags yet */
 			moq_stream->got_objects = TRUE;
 			moq_stream->last_group_id = object->group_id;
 			moq_stream->last_object_id = object->object_id;
