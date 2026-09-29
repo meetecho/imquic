@@ -2077,6 +2077,15 @@ static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request
 		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "Invalid range", 0, NULL);
 		return;
 	}
+	if(parameters->filters_set && parameters->filters != NULL) {
+		/* The subscriber added filters, "steal" them */
+		s->filters = parameters->filters;
+		parameters->filters_set = FALSE;
+		parameters->filters = NULL;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_filters_print(imquic_moq_get_version(conn), s->filters);
+	}
 	while(temp) {
 		object = (imquic_moq_object *)temp->data;
 		if((object->group_id < local_range.start_group || object->group_id > local_range.end_group) ||
