@@ -194,6 +194,20 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		params.filters_set = TRUE;
 		params.filters = filters;
 	}
+	imquic_moq_request_parameters fill_parameters;
+	if(moq_version >= IMQUIC_MOQ_VERSION_20 && options.fetch != NULL && options.join_offset >= 0) {
+		/* The equivalent of Joining FETCH in newer versions are FILL_PARAMETERS */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Using FILL_PARAMETERS to mimick the Joining FETCH\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_request_parameters_init_defaults(&fill_parameters);
+		fill_parameters.group_order_set = TRUE;
+		fill_parameters.group_order = fparams.group_order;
+		fill_parameters.location_filter_set = TRUE;
+		fill_parameters.location_filter.start_group_set = TRUE;
+		fill_parameters.location_filter.start_group = options.join_offset + 1;
+		params.fill_parameters_set = TRUE;
+		params.fill_parameters = &fill_parameters;
+	}
 	/* If we got here, we're sending either a SUBSCRIBE or a TRACK_STATUS
 	 * manually to the specified tracks: when subscribing, we do it either
 	 * via SUBSCRIBE or FETCH. As such, we iterate on all track names */
@@ -229,9 +243,27 @@ static void imquic_demo_ready(imquic_connection *conn) {
 					.start = start_location,
 					.end = end_location
 				};
+				if(moq_version >= IMQUIC_MOQ_VERSION_20) {
+					/* New format */
+					if(options.start_group > -1)
+						fparams.location_filter.start_group = options.start_group;
+					if(options.start_object > -1)
+						fparams.location_filter.start_object = options.start_object;
+					if(options.end_group > -1)
+						fparams.location_filter.end_group = options.end_group;
+					if(options.end_object > -1)
+						fparams.location_filter.end_object = options.end_object;
+					fparams.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+					fparams.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
+					fparams.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
+					fparams.location_filter.end_object_set = (options.end_object > -1);
+					if(fparams.location_filter.start_group_set)
+						fparams.location_filter_set = TRUE;
+				}
 				imquic_moq_fetch(conn, request_id, sub_namespace, &tn, &range, &fparams);
 			} else {
-				/* Send a SUBSCRIBE first, we'll send the joining FETCH when the subscription is accepted */
+				/* Depending on the version that was negotiated, we may need to
+				 * either send a Joining FETCH later, or use FILL_PARAMETERS now */
 				g_hash_table_insert(namespaces_by_reqid, imquic_uint64_dup(request_id), imquic_moq_namespace_duplicate(sub_namespace));
 				g_hash_table_insert(tracks_by_reqid, imquic_uint64_dup(request_id), imquic_moq_track_duplicate(&tn));
 				imquic_moq_subscribe(conn, request_id, sub_namespace, &tn, &params);
@@ -325,7 +357,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	}
 	if(track_properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
-	if(options.fetch != NULL && options.join_offset >= 0) {
+	if(moq_version < IMQUIC_MOQ_VERSION_20 && options.fetch != NULL && options.join_offset >= 0) {
 		/* Send a Joining Fetch referencing this subscription */
 		imquic_moq_request_parameters fparams;
 		imquic_moq_request_parameters_init_defaults(&fparams);
@@ -637,59 +669,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				temp = temp->next;
 			}
 		}
-	} else if(object->request_id == 0 && payload_type == DEMO_TYPE_MP4) {
-		/* FIXME Ugly hack: if this is mp4, and our response to request ID 0, subscribe to another track */
-		uint64_t request_id = 1;
-		const char *track_name = "1.m4s";
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to %s/%s (%s), using ID %"SCNu64"\n",
-			imquic_get_connection_name(conn), sub_tns, track_name, imquic_demo_payload_type_str(payload_type), request_id);
-		imquic_moq_track tn = {
-			.buffer = (uint8_t *)track_name,
-			.length = strlen(track_name)
-		};
-		imquic_moq_request_parameters params;
-		imquic_moq_request_parameters_init_defaults(&params);
-		/* Check if we need to prepare an auth token */
-		if(options.auth_info && strlen(options.auth_info) > 0) {
-			params.auth_token_set = TRUE;
-			params.auth_token_len = sizeof(params.auth_token);
-			if(imquic_moq_auth_info_to_bytes(conn, options.auth_info, params.auth_token, &params.auth_token_len) < 0) {
-				params.auth_token_set = FALSE;
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error serializing the auth token\n",
-					imquic_get_connection_name(conn));
-			}
-		}
-		params.subscriber_priority_set = TRUE;
-		params.subscriber_priority = TRUE;
-		params.group_order_set = TRUE;
-		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-		params.forward_set = TRUE;
-		params.forward = TRUE;
-		/* The format of the location filter changed in v20 */
-		if(moq_version < IMQUIC_MOQ_VERSION_20) {
-			/* Legacy format */
-			params.location_filter_set = TRUE;
-			params.location_filter.legacy_value.type = filter_type;
-			params.location_filter.legacy_value.start_location = start_location;
-			params.location_filter.legacy_value.end_group = end_location_sub.group;
-		} else {
-			/* New format */
-			if(options.start_group > -1)
-				params.location_filter.start_group = options.start_group;
-			if(options.start_object > -1)
-				params.location_filter.start_object = options.start_object;
-			if(options.end_group > -1)
-				params.location_filter.end_group = options.end_group;
-			if(options.end_object > -1)
-				params.location_filter.end_object = options.end_object;
-			params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-			params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-			params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
-			params.location_filter.end_object_set = (options.end_object > -1);
-			if(params.location_filter.start_group_set)
-				params.location_filter_set = TRUE;
-		}
-		imquic_moq_subscribe(conn, request_id, sub_namespace, &tn, &params);
 	}
 	if(object->end_of_stream) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream closed (status '%s' and eos=%d)\n",
@@ -913,8 +892,6 @@ int main(int argc, char *argv[]) {
 			payload_type = DEMO_TYPE_HEX;
 		} else if(!strcasecmp(options.payload_type, "loc")) {
 			payload_type = DEMO_TYPE_LOC;
-		} else if(!strcasecmp(options.payload_type, "mp4")) {
-			payload_type = DEMO_TYPE_MP4;
 		} else {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Unsupported media type '%s', falling back to 'none'", options.payload_type);
 		}

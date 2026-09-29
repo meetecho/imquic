@@ -1548,7 +1548,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS));
 		}
 		if(parameters->location_filter_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
+				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER));
 		}
 		GList *filters = NULL, *tf = NULL;
@@ -3505,6 +3505,8 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	}
 	/* Track this subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, 0);
+	if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters.fill_parameters_set && parameters.fill_parameters != NULL)
+		moq_sub->fill_fetch = TRUE;
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->subscriptions_by_id, imquic_dup_uint64(request_id), moq_sub);
 	imquic_mutex_unlock(&moq->mutex);
@@ -4419,7 +4421,7 @@ size_t imquic_moq_parse_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, si
 	/* Get rid of this subscription */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
-	if(moq_sub == NULL || !moq_sub->fetch) {
+	if(moq_sub == NULL || !moq_sub->fetch || moq_sub->fill_fetch) {
 		/* FIXME Should we not bobble this up to the application? */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't cancel FETCH, request ID %"SCNu64" is not a FETCH\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -5012,7 +5014,12 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 	/* Make sure this request ID is related to a FETCH we got before */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *req_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
-	if(req_stream == NULL || req_stream->request_type != IMQUIC_MOQ_FETCH || !req_stream->request_sender) {
+	imquic_moq_message_type request_type = req_stream ? req_stream->request_type : 0;
+	if(moq->version >= IMQUIC_MOQ_VERSION_20 && req_stream != NULL && request_type == IMQUIC_MOQ_SUBSCRIBE && req_stream->fill_fetch) {
+		/* The request involves a fill FETCH stream, so treat it like a FETCH */
+		request_type = IMQUIC_MOQ_FETCH;
+	}
+	if(req_stream == NULL || request_type != IMQUIC_MOQ_FETCH || !req_stream->request_sender) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Not a FETCH request ID (%s, %s)\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(req_stream->request_type, moq->version),
 			req_stream ? imquic_media_stream_request_state_str(req_stream->request_state) : "No stream");
@@ -6925,7 +6932,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 			toffset += imquic_moq_parse_request_parameter(moq, &tmp[toffset], tlen-toffset, params->fill_parameters, &fparam, error);
 			if(toffset > tlen || (error && *error))
 				imquic_moq_filters_destroy(params->fill_parameters->filters);
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "  -- -- %"SCNu64" (%s)\n", fparam, imquic_moq_request_parameter_type_str(fparam, moq->version));
+			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "  -- -- %"SCNu64" (%s)\n", fparam, imquic_moq_request_parameter_type_str(fparam, moq->version));
 			IMQUIC_MOQ_CHECK_ERR(toffset > tlen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Broken MoQ request parameter");
 		}
 		params->fill_parameters_set = TRUE;
@@ -7637,6 +7644,9 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 		moq_stream->request_type = IMQUIC_MOQ_SUBSCRIBE;
 		moq_stream->request_id = request_id;
 		moq_stream->request_sender = TRUE;
+		if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters != NULL &&
+				parameters->fill_parameters_set && parameters->fill_parameters != NULL)
+			moq_stream->fill_fetch = TRUE;
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_SENT;
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams, imquic_dup_uint64(moq_stream->stream_id), moq_stream);
@@ -9235,6 +9245,14 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			g_free(buffer);
 			return -1;
 		}
+		if(!moq_sub->fetch && !moq_sub->fill_fetch) {
+			imquic_mutex_unlock(&moq->mutex);
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Subscription '%"SCNu64"' does not involve FETCH\n",
+				imquic_get_connection_name(conn), object->request_id);
+			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
+			return -1;
+		}
 		imquic_moq_stream *moq_stream = moq_sub->stream;
 		if(moq_stream == NULL) {
 			if(!valid_pkt && object->end_of_stream) {
@@ -9319,7 +9337,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		if((object->end_of_stream && object->delivery == IMQUIC_MOQ_USE_FETCH) ||
 				object->object_status == IMQUIC_MOQ_END_OF_TRACK) {
 			imquic_mutex_lock(&moq->mutex);
-			g_hash_table_remove(moq->subscriptions_by_id, &object->request_id);
+			if(!moq_sub->fill_fetch)
+				g_hash_table_remove(moq->subscriptions_by_id, &object->request_id);
 			imquic_mutex_unlock(&moq->mutex);
 		}
 	}

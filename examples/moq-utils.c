@@ -210,8 +210,6 @@ const char *imquic_demo_payload_type_str(imquic_demo_payload_type type) {
 			return "hex";
 		case DEMO_TYPE_LOC:
 			return "loc";
-		case DEMO_TYPE_MP4:
-			return "mp4";
 		default:
 			break;
 	}

@@ -429,6 +429,9 @@ typedef struct imquic_moq_stream {
 	uint64_t object_id;
 	/*! \brief Object status */
 	imquic_moq_object_status object_status;
+	/*! \brief Whether this is a request stream with fill fetch semantics
+	 * \note New concept added in v20 to replace Joining FETCH */
+	gboolean fill_fetch;
 	/*! \brief If this is a FETCH stream, whether it's in ascending or descending order */
 	gboolean ascending;
 	/*! \brief Whether there is a publisher priority set */
@@ -473,6 +476,9 @@ typedef struct imquic_moq_subscription {
 	uint64_t track_alias;
 	/*! \brief Whether this is a FETCH */
 	gboolean fetch;
+	/*! \brief Whether this is a subscription with fill fetch semantics
+	 * \note New concept added in v20 to replace Joining FETCH */
+	gboolean fill_fetch;
 	/*! \brief If this is a FETCH stream, whether it's in ascending or descending order */
 	gboolean ascending;
 	/*! \brief Stream for this subscription, in case it's a single one */
