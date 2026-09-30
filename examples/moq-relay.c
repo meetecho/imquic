@@ -1328,9 +1328,9 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	}
 	/* Check if there's a FILL_PARAMETERS for a fill FETCH stream */
 	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL &&
-			!track->pending && parameters->forward_set) {
+			!track->pending && ((!parameters->forward_set && track->forward) || (parameters->forward_set && parameters->forward))) {
 		/* Create a FETCH subscription to this track, and add to the list of fetches to serve */
-		s->fill_fetch = imquic_demo_moq_subscription_create(sub, track, request_id, 0);
+		s->fill_fetch = imquic_demo_moq_subscription_create(sub, NULL, request_id, 0);
 		if(parameters->fill_parameters->filters_set && parameters->fill_parameters->filters != NULL) {
 			/* The subscriber added filters, "steal" them */
 			s->fill_fetch->filters = parameters->fill_parameters->filters;
@@ -1393,7 +1393,9 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 						temp = temp->next;
 						continue;
 					}
-					s->fill_fetch->objects = g_list_prepend(s->fill_fetch->objects, imquic_moq_object_duplicate(object));
+					imquic_moq_object *fetch_object = imquic_moq_object_duplicate(object);
+					fetch_object->fill_fetch = TRUE;
+					s->fill_fetch->objects = g_list_prepend(s->fill_fetch->objects, fetch_object);
 					temp = temp->next;
 				}
 				s->fill_fetch->sub_start.group = local_range.start_group;
@@ -1735,9 +1737,9 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 	/* Check if there's a FILL_PARAMETERS for a fill FETCH stream */
 	imquic_moq_version version = imquic_moq_get_version(conn);
 	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL &&
-			s->track != NULL && parameters->forward_set) {
+			((!parameters->forward_set && s->track->forward) || (parameters->forward_set && parameters->forward))) {
 		/* Create a FETCH subscription to this track, and add to the list of fetches to serve */
-		imquic_demo_moq_subscription *fill_fetch = imquic_demo_moq_subscription_create(sub, s->track, request_id, 0);
+		imquic_demo_moq_subscription *fill_fetch = imquic_demo_moq_subscription_create(sub, NULL, request_id, 0);
 		fill_fetch->fetch = TRUE;
 		g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(request_id), fill_fetch);
 		if(parameters->fill_parameters->filters_set && parameters->fill_parameters->filters != NULL) {
@@ -1803,7 +1805,9 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 						temp = temp->next;
 						continue;
 					}
-					fill_fetch->objects = g_list_prepend(fill_fetch->objects, imquic_moq_object_duplicate(object));
+					imquic_moq_object *fetch_object = imquic_moq_object_duplicate(object);
+					fetch_object->fill_fetch = TRUE;
+					fill_fetch->objects = g_list_prepend(fill_fetch->objects, fetch_object);
 					temp = temp->next;
 				}
 				fill_fetch->sub_start.group = local_range.start_group;

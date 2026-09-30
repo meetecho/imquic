@@ -620,6 +620,9 @@ typedef struct imquic_moq_request_parameters {
  * sets some defaults values for some properties (e.g., 128 for priority)
  * @param parameters The imquic_moq_request_parameters to initialize */
 void imquic_moq_request_parameters_init_defaults(imquic_moq_request_parameters *parameters);
+/*! \brief Helper to get rid of a imquic_moq_request_parameters instance
+ * @param filters The imquic_moq_request_parameters instance to free */
+void imquic_moq_request_parameters_destroy(imquic_moq_request_parameters *parameters);
 
 /*! \brief Ways of sending objects */
 typedef enum imquic_moq_delivery {
@@ -738,6 +741,9 @@ size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties
 typedef struct imquic_moq_object {
 	/*! \brief MoQ request_id */
 	uint64_t request_id;
+	/*! \brief Whether this is fill FETCH related
+	 * \note This is only used for outgoing objects, and is ignored before v20 */
+	gboolean fill_fetch;
 	/*! \brief MoQ track_alias */
 	uint64_t track_alias;
 	/*! \brief MoQ group_id */

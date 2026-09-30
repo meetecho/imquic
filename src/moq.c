@@ -1901,6 +1901,13 @@ static void imquic_moq_request_parameters_cleanup(imquic_moq_request_parameters 
 	}
 }
 
+void imquic_moq_request_parameters_destroy(imquic_moq_request_parameters *parameters) {
+	if(parameters == NULL)
+		return;
+	imquic_moq_request_parameters_cleanup(parameters, TRUE, TRUE);
+	g_free(parameters);
+}
+
 /* Parsing and building macros */
 #define IMQUIC_MOQ_CHECK_ERR(cond, error, code, res, reason) \
 	if(cond) { \
@@ -3270,6 +3277,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	if(moq_stream != NULL) {
 		moq_stream->request_id = request_id;
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_SENT;
+		moq_stream->fill_fetch = TRUE;	/* FIXME */
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_insert(moq->streams_by_reqid, imquic_dup_uint64(request_id), moq_stream);
 		imquic_mutex_unlock(&moq->mutex);
@@ -3502,12 +3510,9 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 	g_hash_table_insert(moq->update_requests, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
 	/* If fill parameters were received and this is not updating a
 	 * SUBSCRIBE or a PUBLISH request, drop them */
-	if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters.fill_parameters_set && parameters.fill_parameters != NULL) {
+	if(moq->version >= IMQUIC_MOQ_VERSION_20) {
 		if(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE || moq_stream->request_type == IMQUIC_MOQ_PUBLISH) {
-			/* Mark the subscription as one supporting fill FETCH semantics */
-			imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &sub_request_id);
-			if(moq_sub != NULL)
-				moq_sub->fill_fetch = TRUE;
+			/* Mark the update request as one potentially supporting fill FETCH semantics */
 			g_hash_table_insert(moq->fill_fetches_by_id, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
 		} else {
 			imquic_moq_request_parameters_cleanup(&parameters, FALSE, TRUE);
@@ -4206,7 +4211,7 @@ size_t imquic_moq_parse_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, si
 	/* Get rid of this subscription */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &request_id);
-	if(moq_sub == NULL || !moq_sub->fetch || moq_sub->fill_fetch) {
+	if(moq_sub == NULL || !moq_sub->fetch) {
 		/* FIXME Should we not bobble this up to the application? */
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't cancel FETCH, request ID %"SCNu64" is not a FETCH\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -4745,13 +4750,15 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 	/* Make sure this request ID is related to a FETCH we got before */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *req_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
-	/* Not found: try fill FETCH request IDs */
-	uint64_t *actual_request_id = g_hash_table_lookup(moq->fill_fetches_by_id, &request_id);
-	if(actual_request_id != NULL)
-		req_stream = g_hash_table_lookup(moq->streams_by_reqid, actual_request_id);
+	if(req_stream == NULL) {
+		/* Not found: try fill FETCH request IDs */
+		uint64_t *actual_request_id = g_hash_table_lookup(moq->fill_fetches_by_id, &request_id);
+		if(actual_request_id != NULL)
+			req_stream = g_hash_table_lookup(moq->streams_by_reqid, actual_request_id);
+	}
 	imquic_moq_message_type request_type = req_stream ? req_stream->request_type : 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_20 && req_stream != NULL && request_type == IMQUIC_MOQ_SUBSCRIBE && req_stream->fill_fetch) {
-		/* The request involves a fill FETCH stream, so treat it like a FETCH */
+	if(moq->version >= IMQUIC_MOQ_VERSION_20 && req_stream != NULL && req_stream->fill_fetch) {
+		/* The request involves a fill FETCH stream, so do treat it like a FETCH */
 		request_type = IMQUIC_MOQ_FETCH;
 	}
 	if(req_stream == NULL || request_type != IMQUIC_MOQ_FETCH || !req_stream->request_sender) {
@@ -7228,6 +7235,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 	imquic_mutex_unlock(&moq_mutex);
 	/* Track this subscription */
 	imquic_moq_subscription *moq_sub = imquic_moq_subscription_create(request_id, track_alias);
+	moq_sub->fill_fetch = TRUE;	/* FIXME */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->subscriptions_by_id, imquic_dup_uint64(request_id), moq_sub);
 	g_hash_table_insert(moq->subscriptions, imquic_dup_uint64(track_alias), moq_sub);
@@ -9060,7 +9068,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Use FETCH_HEADER */
 		imquic_mutex_lock(&moq->mutex);
 		imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &object->request_id);
-		if(moq_sub == NULL) {
+		if(moq_sub == NULL && moq->version >= IMQUIC_MOQ_VERSION_20 && object->fill_fetch) {
 			/* Not found: try fill FETCH request IDs */
 			uint64_t *actual_request_id = g_hash_table_lookup(moq->fill_fetches_by_id, &object->request_id);
 			if(actual_request_id != NULL)
@@ -9074,7 +9082,16 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			g_free(buffer);
 			return -1;
 		}
-		if(!moq_sub->fetch && !moq_sub->fill_fetch) {
+		if(moq->version >= IMQUIC_MOQ_VERSION_20 && object->fill_fetch && !moq_sub->fill_fetch) {
+			imquic_mutex_unlock(&moq->mutex);
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Subscription '%"SCNu64"' does not support fill FETCH semantics\n",
+				imquic_get_connection_name(conn), object->request_id);
+			imquic_refcount_decrease(&moq->ref);
+			g_free(buffer);
+			return -1;
+		}
+		if((!moq_sub->fetch && moq->version < IMQUIC_MOQ_VERSION_20) ||
+				(!moq_sub->fetch && moq->version >= IMQUIC_MOQ_VERSION_20 && (!moq_sub->fill_fetch || !object->fill_fetch))) {
 			imquic_mutex_unlock(&moq->mutex);
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Subscription '%"SCNu64"' does not involve FETCH\n",
 				imquic_get_connection_name(conn), object->request_id);
@@ -9166,7 +9183,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		if((object->end_of_stream && object->delivery == IMQUIC_MOQ_USE_FETCH) ||
 				object->object_status == IMQUIC_MOQ_END_OF_TRACK) {
 			imquic_mutex_lock(&moq->mutex);
-			if(!moq_sub->fill_fetch)
+			if(moq->version < IMQUIC_MOQ_VERSION_20 || (moq->version >= IMQUIC_MOQ_VERSION_20 && !object->fill_fetch))
 				g_hash_table_remove(moq->subscriptions_by_id, &object->request_id);
 			imquic_mutex_unlock(&moq->mutex);
 		}
