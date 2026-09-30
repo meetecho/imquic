@@ -1052,6 +1052,22 @@ int main(int argc, char *argv[]) {
 					if(params.location_filter.start_group_set)
 						params.location_filter_set = TRUE;
 				}
+				imquic_moq_request_parameters fill_parameters;
+				if(moq_version >= IMQUIC_MOQ_VERSION_20 && options.fetch != NULL && options.join_offset >= 0) {
+					/* The equivalent of Joining FETCH in newer versions are FILL_PARAMETERS */
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Using FILL_PARAMETERS to mimick the Joining FETCH\n",
+						imquic_get_connection_name(moq_conn));
+					imquic_moq_request_parameters_init_defaults(&fill_parameters);
+					fill_parameters.group_order_set = TRUE;
+					fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+					if(options.fetch && !strcasecmp(options.fetch, "descending"))
+						fill_parameters.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
+					fill_parameters.location_filter_set = TRUE;
+					fill_parameters.location_filter.start_group_set = TRUE;
+					fill_parameters.location_filter.start_group = options.join_offset + 1;
+					params.fill_parameters_set = TRUE;
+					params.fill_parameters = &fill_parameters;
+				}
 				uint64_t request_id = imquic_moq_get_next_request_id(moq_conn);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending a REQUEST_UPDATE for ID %"SCNu64" (ID %"SCNu64")\n",
 					imquic_get_connection_name(moq_conn), *rid, request_id);

@@ -211,6 +211,8 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		(GDestroyNotify)g_free, NULL);
 	moq->subscriptions_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_subscription_destroy);
+	moq->fill_fetches_by_id = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)g_free);
 	moq->requests = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, NULL);
 	moq->update_requests = g_hash_table_new_full(g_int64_hash, g_int64_equal,
@@ -403,7 +405,16 @@ static void imquic_moq_request_stream_closed(imquic_moq_context *moq, imquic_moq
 	gboolean notify = !request_sender;
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
-	g_hash_table_remove(moq->streams, &moq_stream->stream_id);	/* */
+	g_hash_table_remove(moq->streams, &moq_stream->stream_id);
+	/* Clean up the fill FETCH table too, if needed */
+	GHashTableIter iter;
+	gpointer value;
+	g_hash_table_iter_init(&iter, moq->fill_fetches_by_id);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		uint64_t *actual_request_id = value;
+		if(*actual_request_id == request_id)
+			g_hash_table_iter_remove(&iter);
+	}
 	imquic_mutex_unlock(&moq->mutex);
 	/* FIXME Trigger the application callbacks, if needed */
 	if(request_type == IMQUIC_MOQ_PUBLISH_NAMESPACE) {
@@ -519,6 +530,8 @@ static void imquic_moq_context_free(const imquic_refcount *moq_ref) {
 		g_hash_table_unref(moq->subscriptions);
 	if(moq->subscriptions_by_id)
 		g_hash_table_unref(moq->subscriptions_by_id);
+	if(moq->fill_fetches_by_id)
+		g_hash_table_unref(moq->fill_fetches_by_id);
 	if(moq->streams_by_reqid)
 		g_hash_table_unref(moq->streams_by_reqid);
 	if(moq->requests)
@@ -3487,6 +3500,19 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 	/* Notify the application */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->update_requests, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
+	/* If fill parameters were received and this is not updating a
+	 * SUBSCRIBE or a PUBLISH request, drop them */
+	if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters.fill_parameters_set && parameters.fill_parameters != NULL) {
+		if(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE || moq_stream->request_type == IMQUIC_MOQ_PUBLISH) {
+			/* Mark the subscription as one supporting fill FETCH semantics */
+			imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &sub_request_id);
+			if(moq_sub != NULL)
+				moq_sub->fill_fetch = TRUE;
+			g_hash_table_insert(moq->fill_fetches_by_id, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
+		} else {
+			imquic_moq_request_parameters_cleanup(&parameters, FALSE, TRUE);
+		}
+	}
 	imquic_mutex_unlock(&moq->mutex);
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.request_updated) {
 		moq->conn->socket->callbacks.moq.request_updated(moq->conn,
@@ -3586,6 +3612,15 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 	if(moq_sub != NULL) {
 		g_hash_table_remove(moq->subscriptions, &moq_sub->track_alias);
 		g_hash_table_remove(moq->subscriptions_by_id, &request_id);
+		/* Clean up the fill FETCH table too, if needed */
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, moq->fill_fetches_by_id);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			uint64_t *actual_request_id = value;
+			if(*actual_request_id == request_id)
+				g_hash_table_iter_remove(&iter);
+		}
 	}
 	imquic_mutex_unlock(&moq->mutex);
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4710,6 +4745,10 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 	/* Make sure this request ID is related to a FETCH we got before */
 	imquic_mutex_lock(&moq->mutex);
 	imquic_moq_stream *req_stream = g_hash_table_lookup(moq->streams_by_reqid, &request_id);
+	/* Not found: try fill FETCH request IDs */
+	uint64_t *actual_request_id = g_hash_table_lookup(moq->fill_fetches_by_id, &request_id);
+	if(actual_request_id != NULL)
+		req_stream = g_hash_table_lookup(moq->streams_by_reqid, actual_request_id);
 	imquic_moq_message_type request_type = req_stream ? req_stream->request_type : 0;
 	if(moq->version >= IMQUIC_MOQ_VERSION_20 && req_stream != NULL && request_type == IMQUIC_MOQ_SUBSCRIBE && req_stream->fill_fetch) {
 		/* The request involves a fill FETCH stream, so treat it like a FETCH */
@@ -7006,7 +7045,7 @@ int imquic_moq_publish_namespace(imquic_connection *conn, uint64_t request_id,
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	/* Map this request ID to this message type, so that we can trigger
-	 * the right application callbac if/when we get a response later on */
+	 * the right application callback if/when we get a response later on */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_PUBLISH_NAMESPACE));
 	imquic_mutex_unlock(&moq->mutex);
@@ -7194,7 +7233,7 @@ int imquic_moq_publish(imquic_connection *conn, uint64_t request_id, imquic_moq_
 	g_hash_table_insert(moq->subscriptions, imquic_dup_uint64(track_alias), moq_sub);
 	imquic_mutex_unlock(&moq->mutex);
 	/* Map this request ID to this message type, so that we can trigger
-	 * the right application callbac if/when we get a response later on */
+	 * the right application callback if/when we get a response later on */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_PUBLISH));
 	imquic_mutex_unlock(&moq->mutex);
@@ -7376,7 +7415,7 @@ int imquic_moq_subscribe(imquic_connection *conn, uint64_t request_id,
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	/* Map this request ID to this message type, so that we can trigger
-	 * the right application callbac if/when we get a response later on */
+	 * the right application callback if/when we get a response later on */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_SUBSCRIBE));
 	imquic_mutex_unlock(&moq->mutex);
@@ -7499,6 +7538,15 @@ int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
+		/* Clean up the fill FETCH table too, if needed */
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, moq->fill_fetches_by_id);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			uint64_t *actual_request_id = value;
+			if(*actual_request_id == request_id)
+				g_hash_table_iter_remove(&iter);
+		}
 		imquic_mutex_unlock(&moq->mutex);
 	}
 	/* Done */
@@ -7544,11 +7592,6 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 	}
 	moq->next_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
 	imquic_mutex_unlock(&moq_mutex);
-	/* Map this request ID to this message type, so that we can trigger
-	 * the right application callbac if/when we get a response later on */
-	imquic_mutex_lock(&moq->mutex);
-	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_UPDATE));
-	imquic_mutex_unlock(&moq->mutex);
 	/* Starting from v17, requests go on a dedicated bidirectional
 	 * STREAM, and the same applies to the REQUEST_UPDATE responses */
 	imquic_moq_stream *moq_stream = NULL;
@@ -7568,6 +7611,23 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 		moq_stream->request_state = IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT;
 		imquic_mutex_unlock(&moq->mutex);
 	}
+	/* Map this request ID to this message type, so that we can trigger
+	 * the right application callback if/when we get a response later on */
+	imquic_mutex_lock(&moq->mutex);
+	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_UPDATE));
+	/* If fill parameters were received and this is not updating a
+	 * SUBSCRIBE or a PUBLISH request, drop them */
+	if(moq->version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL) {
+		if(moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE || moq_stream->request_type == IMQUIC_MOQ_PUBLISH) {
+			/* Mark the subscription as one supporting fill FETCH semantics */
+			moq_stream->fill_fetch = TRUE;
+			g_hash_table_insert(moq->fill_fetches_by_id, imquic_dup_uint64(request_id), imquic_dup_uint64(sub_request_id));
+		} else {
+			parameters->fill_parameters_set = FALSE;
+		}
+	}
+	imquic_mutex_unlock(&moq->mutex);
+	/* Send the message */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer);
 	size_t su_len = imquic_moq_add_request_update(moq, moq_stream, buffer, blen,
@@ -7656,6 +7716,7 @@ int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_i
 	}
 	uint64_t sub_request_id = *rid;
 	g_hash_table_remove(moq->update_requests, &request_id);
+	g_hash_table_remove(moq->fill_fetches_by_id, &request_id);
 	imquic_mutex_unlock(&moq->mutex);
 	/* Starting from v17, requests go on a dedicated bidirectional
 	 * STREAM, and the same applies to the REQUEST_ERROR responses */
@@ -7716,6 +7777,15 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id) {
 		uint64_t stream_id = moq_stream->stream_id;
 		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
+		/* Clean up the fill FETCH table too, if needed */
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, moq->fill_fetches_by_id);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			uint64_t *actual_request_id = value;
+			if(*actual_request_id == request_id)
+				g_hash_table_iter_remove(&iter);
+		}
 		imquic_mutex_unlock(&moq->mutex);
 		imquic_connection_stop_sending_stream(moq->conn, stream_id, IMQUIC_MOQ_RESET_CANCELLED);
 		if(conn->qlog != NULL && conn->qlog->moq)
@@ -7848,6 +7918,15 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 		imquic_mutex_lock(&moq->mutex);
 		g_hash_table_remove(moq->streams_by_reqid, &moq_stream->request_id);
 		g_hash_table_remove(moq->streams, &moq_stream->stream_id);
+		/* Clean up the fill FETCH table too, if needed */
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, moq->fill_fetches_by_id);
+		while(g_hash_table_iter_next(&iter, NULL, &value)) {
+			uint64_t *actual_request_id = value;
+			if(*actual_request_id == request_id)
+				g_hash_table_iter_remove(&iter);
+		}
 		imquic_mutex_unlock(&moq->mutex);
 	}
 	/* Done */
@@ -8384,7 +8463,7 @@ int imquic_moq_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	/* Map this request ID to this message type, so that we can trigger
-	 * the right application callbac if/when we get a response later on */
+	 * the right application callback if/when we get a response later on */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_FETCH));
 	imquic_mutex_unlock(&moq->mutex);
@@ -8442,7 +8521,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn, uint64_t request_id, uint6
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	/* Map this request ID to this message type, so that we can trigger
-	 * the right application callbac if/when we get a response later on */
+	 * the right application callback if/when we get a response later on */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_FETCH));
 	imquic_mutex_unlock(&moq->mutex);
@@ -8640,7 +8719,7 @@ int imquic_moq_track_status(imquic_connection *conn, uint64_t request_id,
 	imquic_refcount_increase(&moq->ref);
 	imquic_mutex_unlock(&moq_mutex);
 	/* Map this request ID to this message type, so that we can trigger
-	 * the right application callbac if/when we get a response later on */
+	 * the right application callback if/when we get a response later on */
 	imquic_mutex_lock(&moq->mutex);
 	g_hash_table_insert(moq->requests, imquic_dup_uint64(request_id), GUINT_TO_POINTER(IMQUIC_MOQ_TRACK_STATUS));
 	imquic_mutex_unlock(&moq->mutex);
@@ -8981,6 +9060,12 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		/* Use FETCH_HEADER */
 		imquic_mutex_lock(&moq->mutex);
 		imquic_moq_subscription *moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, &object->request_id);
+		if(moq_sub == NULL) {
+			/* Not found: try fill FETCH request IDs */
+			uint64_t *actual_request_id = g_hash_table_lookup(moq->fill_fetches_by_id, &object->request_id);
+			if(actual_request_id != NULL)
+				moq_sub = g_hash_table_lookup(moq->subscriptions_by_id, actual_request_id);
+		}
 		if(moq_sub == NULL) {
 			imquic_mutex_unlock(&moq->mutex);
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] No such subscription '%"SCNu64"' served by this connection\n",

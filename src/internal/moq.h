@@ -352,6 +352,8 @@ typedef struct imquic_moq_context {
 	GHashTable *subscriptions;
 	/*! \brief Subscriptions this connection will send objects to, indexed by request_id */
 	GHashTable *subscriptions_by_id;
+	/*! \brief Subscriptions this connection will send objects to, indexed by request_id */
+	GHashTable *fill_fetches_by_id;
 	/*! \brief Map of Request IDs and what they were for */
 	GHashTable *requests;
 	/*! \brief Map of Request IDs to Existing Request IDs, for updates */
