@@ -1334,8 +1334,7 @@ size_t imquic_moq_parameter_add_location(imquic_moq_context *moq, uint8_t *bytes
  * @returns The size of the parameter, if successful, or 0 otherwise */
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen);
-/*! \brief Helper method to parse a MoQ subscribe parameter
- * @note This method does nothing at the moment
+/*! \brief Helper method to parse a single MoQ subscribe parameter
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
  * @param[in] bytes Buffer containing the parameter to parse
  * @param[in] blen Size of the buffer to parse
@@ -1356,6 +1355,17 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 	imquic_moq_message_type request, imquic_moq_request_parameters *parameters,
 	uint8_t *bytes, size_t blen, uint8_t *params_num);
+/*! \brief Helper method to parse a sbuffer to a imquic_moq_request_parameters
+ * @note This internally iterates on imquic_moq_parse_request_parameter
+ * @param[in] moq The imquic_moq_context instance to update with the new parameters
+ * @param[in] bytes Buffer containing the parameter to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[out] params imquic_moq_request_parameters instance to put the parsed parameters in
+ * @param[out] params_num The number of parameters found in the buffer
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns How many bytes were processed, if successful, or 0 otherwise */
+size_t imquic_moq_parse_request_parameters(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	imquic_moq_request_parameters *params, uint64_t *params_num, uint8_t *error);
 ///@}
 
 /*! \brief MoQ public callbacks */
