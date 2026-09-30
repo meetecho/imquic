@@ -1202,7 +1202,13 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_mutex_unlock(&mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Namespace not found\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0, NULL);
+		if(parameters->rendezvous_timeout_set && parameters->rendezvous_timeout > 0) {
+			/* TODO We should add support for holding on the subscription
+			 * a while longer, before giving up and returning an error */
+			imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_TIMEOUT, "Namespace not found, and rendezvous timeout not supported", 0, NULL);
+		} else {
+			imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0, NULL);
+		}
 		return;
 	}
 	/* Do we know this track already? */
