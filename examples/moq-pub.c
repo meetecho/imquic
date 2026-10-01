@@ -112,14 +112,13 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		/* We use PUBLISH */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, pub_tn);
 		moq_request_id = imquic_moq_get_next_request_id(conn);
-		gboolean forward = FALSE;
 		/* Check if we need to prepare an auth token */
 		imquic_moq_request_parameters params;
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.group_order_set = TRUE;
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		params.forward_set = TRUE;
-		params.forward = forward;
+		params.forward = TRUE;
 		if(options.auth_info && strlen(options.auth_info) > 0) {
 			params.auth_token_set = TRUE;
 			params.auth_token_len = sizeof(params.auth_token);
@@ -167,7 +166,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	/* Start sending objects */
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
-	gboolean forward = parameters->forward;
+	gboolean forward = TRUE;	/* FIXME Subscribers can change this in REQUEST_UPDATE */
 	if(forward) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);

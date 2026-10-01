@@ -118,7 +118,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
 		} else {
 			/* Use SUBSCRIBE_TRACKS for PUBLISH, but send a SUBSCRIBE_NAMESPACE too just for testing */
-			st_request_id = imquic_moq_get_next_request_id(conn);
+			sn_request_id = imquic_moq_get_next_request_id(conn);
+			imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, IMQUIC_MOQ_WANT_NAMESPACE, &params);
 			imquic_moq_filters *filters = NULL;
 			if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
 				/* Add some filter ranges too, just form testing */
@@ -128,9 +129,24 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				params.filters_set = TRUE;
 				params.filters = filters;
 			}
+			imquic_moq_request_parameters fill_parameters;
+			if(moq_version >= IMQUIC_MOQ_VERSION_20 && options.fetch != NULL && options.join_offset >= 0) {
+				/* The equivalent of Joining FETCH in newer versions are FILL_PARAMETERS */
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Using FILL_PARAMETERS to mimick the Joining FETCH\n",
+					imquic_get_connection_name(moq_conn));
+				imquic_moq_request_parameters_init_defaults(&fill_parameters);
+				fill_parameters.group_order_set = TRUE;
+				fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+				if(options.fetch && !strcasecmp(options.fetch, "descending"))
+					fill_parameters.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
+				fill_parameters.location_filter_set = TRUE;
+				fill_parameters.location_filter.start_group_set = TRUE;
+				fill_parameters.location_filter.start_group = options.join_offset + 1;
+				params.fill_parameters_set = TRUE;
+				params.fill_parameters = &fill_parameters;
+			}
+			st_request_id = imquic_moq_get_next_request_id(conn);
 			imquic_moq_subscribe_tracks(conn, st_request_id, sub_namespace, &params);
-			sn_request_id = imquic_moq_get_next_request_id(conn);
-			imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, IMQUIC_MOQ_WANT_NAMESPACE, &params);
 			imquic_moq_filters_destroy(filters);
 		}
 		if(options.update_subscribe_namespace > 0) {
@@ -775,8 +791,7 @@ int main(int argc, char *argv[]) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "Negotiating version of MoQ %d\n", moq_version - IMQUIC_MOQ_VERSION_BASE);
 		}
 	}
-	if((options.track_status && options.fetch != NULL) || (options.track_status && options.subscribe_namespace) ||
-			(options.subscribe_namespace && options.fetch != NULL)) {
+	if((options.track_status && options.fetch != NULL) || (options.track_status && options.subscribe_namespace)) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Can't enable TRACK_STATUS and/or SUBSCRIBE_NAMESPACE and/or FETCH at the same time\n");
 		ret = 1;
 		goto done;

@@ -119,6 +119,7 @@ typedef struct imquic_demo_moq_subscription {
 	gboolean fetch;
 	gboolean forward;
 	imquic_moq_filters *filters;
+	imquic_moq_request_parameters *fill_parameters;
 	GList *objects;
 	struct imquic_demo_moq_subscription *fill_fetch;
 	imquic_mutex mutex;
@@ -136,6 +137,7 @@ typedef struct imquic_demo_moq_monitor {
 	GHashTable *known_tracks;
 	gboolean forward;
 	imquic_moq_filters *filters;
+	imquic_moq_request_parameters *fill_parameters;
 	char *ns;
 } imquic_demo_moq_monitor;
 static imquic_demo_moq_monitor *imquic_demo_moq_monitor_create(imquic_connection *conn, uint64_t request_id,
@@ -348,6 +350,7 @@ static void imquic_demo_moq_subscription_destroy(imquic_demo_moq_subscription *s
 			fetches = g_list_remove(fetches, s);
 		}
 		imquic_moq_filters_destroy(s->filters);
+		imquic_moq_request_parameters_destroy(s->fill_parameters);
 		imquic_mutex_destroy(&s->mutex);
 		if(s->fill_fetch != NULL)
 			imquic_demo_moq_subscription_destroy(s->fill_fetch);
@@ -376,6 +379,7 @@ static void imquic_demo_moq_monitor_destroy(imquic_demo_moq_monitor *mon) {
 		g_hash_table_destroy(mon->published);
 		g_hash_table_destroy(mon->known_tracks);
 		imquic_moq_filters_destroy(mon->filters);
+		imquic_moq_request_parameters_destroy(mon->fill_parameters);
 		g_free(mon);
 	}
 }
@@ -486,6 +490,12 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			s->forward = mon->forward;
 			s->sub_end.group = IMQUIC_MAX_VARINT;
 			s->sub_end.object = IMQUIC_MAX_VARINT;
+			if(mon->fill_parameters != NULL) {
+				/* The SUBSCRIBE_TRACKS contained fill parameters, pass them
+				 * along so that the PUBLISH can trigger a fill FETCH too */
+				s->fill_parameters = g_malloc(sizeof(imquic_moq_request_parameters));
+				memcpy(s->fill_parameters, mon->fill_parameters, sizeof(imquic_moq_request_parameters));
+			}
 			/* Send the request */
 			imquic_moq_track tn = {
 				.buffer = (uint8_t *)track->track_name,
@@ -928,7 +938,8 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 		largest = (imquic_moq_object *)s->track->objects->data;
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
-	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	if(version < IMQUIC_MOQ_VERSION_20) {
 		/* Legacy format */
 		uint64_t filter_type = parameters->location_filter_set ?
 			parameters->location_filter.legacy_value.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
@@ -1022,6 +1033,89 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 		g_list_free_full(s->objects, (GDestroyNotify)imquic_moq_object_cleanup);
 		s->objects = NULL;
 	}
+	/* Check if there's a FILL_PARAMETERS for a fill FETCH stream */
+	if(version >= IMQUIC_MOQ_VERSION_20 && s->fill_parameters != NULL && s->forward) {
+		/* Create a FETCH subscription to this track, and add to the list of fetches to serve */
+		s->fill_fetch = imquic_demo_moq_subscription_create(sub, NULL, request_id, 0);
+		/* Prepare the list of objects to send, out of the provided range */
+		GList *temp = s->track ? s->track->objects : NULL;
+		imquic_moq_object *object = (imquic_moq_object *)(temp ? temp->data : NULL);
+		if(object == NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Invalid range (FILL_PARAMETERS)\n",
+				imquic_get_connection_name(conn));
+		} else {
+			imquic_moq_location largest = { .group = object->group_id, .object = object->object_id };
+			imquic_moq_location_filter local_range = { 0 };
+			if(s->fill_parameters->location_filter.start_group_set) {
+				if(!s->fill_parameters->location_filter.start_object_set) {
+					/* Only start group provided: relative start */
+					local_range.start_group = 0;
+					if(largest.group >= s->fill_parameters->location_filter.start_group)
+						local_range.start_group = largest.group + 1 - s->fill_parameters->location_filter.start_group;
+					local_range.start_object = 0;
+					local_range.end_group = UINT64_MAX;
+					local_range.end_object = UINT64_MAX;
+				} else {
+					/* Start object provided too */
+					if(!s->fill_parameters->location_filter.end_group_set) {
+						/* Only start group and object provided: relative start */
+						local_range.start_group = 0;
+						if(largest.group >= s->fill_parameters->location_filter.start_group)
+							local_range.start_group = largest.group + 1 - s->fill_parameters->location_filter.start_group;
+						local_range.start_object = s->fill_parameters->location_filter.start_object;
+						local_range.end_group = UINT64_MAX;
+						local_range.end_object = UINT64_MAX;
+					} else {
+						/* End group provided: fields are absolute */
+						local_range.start_group = s->fill_parameters->location_filter.start_group;
+						local_range.start_object = s->fill_parameters->location_filter.start_object;
+						local_range.end_group = s->fill_parameters->location_filter.end_group;
+						local_range.end_object = s->fill_parameters->location_filter.end_object_set ?
+							s->fill_parameters->location_filter.end_object : UINT64_MAX;
+					}
+				}
+			}
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Fill FETCH range: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+				imquic_get_connection_name(conn), local_range.start_group, local_range.start_object, local_range.end_group, local_range.end_object);
+			if(local_range.start_group > largest.group || (local_range.start_group == largest.group && local_range.start_object > largest.object)) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Invalid range (FILL_PARAMETERS)\n",
+					imquic_get_connection_name(conn));
+			} else {
+				while(temp) {
+					object = (imquic_moq_object *)temp->data;
+					if((object->group_id < local_range.start_group || object->group_id > local_range.end_group) ||
+							(object->group_id == local_range.start_group && object->object_id < local_range.start_object) ||
+							(object->group_id == local_range.end_group && local_range.end_object > 0 && object->object_id > local_range.end_object)) {
+						/* Outside of the local_range */
+						temp = temp->next;
+						continue;
+					}
+					imquic_moq_object *fetch_object = imquic_moq_object_duplicate(object);
+					fetch_object->fill_fetch = TRUE;
+					s->fill_fetch->objects = g_list_prepend(s->fill_fetch->objects, fetch_object);
+					temp = temp->next;
+				}
+				s->fill_fetch->sub_start.group = local_range.start_group;
+				s->fill_fetch->sub_start.object = local_range.start_object;
+				s->fill_fetch->sub_end.group = local_range.end_group;
+				s->fill_fetch->sub_end.object = local_range.end_object;
+				if(s->fill_parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
+					s->fill_fetch->objects = g_list_sort(s->fill_fetch->objects, imquic_demo_order_descending);
+				else
+					s->fill_fetch->objects = g_list_sort(s->fill_fetch->objects, imquic_demo_order_ascending);
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Scheduling delivery of %d objects (FILL_PARAMETERS)\n",
+					imquic_get_connection_name(conn), g_list_length(s->fill_fetch->objects));
+				if(s->fill_fetch->objects != NULL) {
+					imquic_moq_object *obj = (imquic_moq_object *)s->fill_fetch->objects->data;
+					if(obj != NULL && !obj->priority_set) {
+						obj->priority_set = TRUE;
+						obj->priority = s->track->default_priority;
+					}
+				}
+				fetches = g_list_prepend(fetches, s->fill_fetch);
+			}
+		}
+	}
 	if(done) {
 		g_hash_table_remove(sub->subscriptions, &s->track_alias);
 		g_hash_table_remove(sub->subscriptions_by_id, &s->request_id);
@@ -1105,7 +1199,8 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 	if(!track->pending && track->objects != NULL)
 		largest = (imquic_moq_object *)track->objects->data;
 	imquic_moq_location start = { 0 };
-	if(moq_version < IMQUIC_MOQ_VERSION_20) {
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	if(version < IMQUIC_MOQ_VERSION_20) {
 		/* Legacy format */
 		uint64_t filter_type = parameters->location_filter_set ?
 			parameters->location_filter.legacy_value.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
@@ -1330,7 +1425,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		parameters->filters = NULL;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_filters_print(imquic_moq_get_version(conn), s->filters);
+		imquic_moq_filters_print(version, s->filters);
 	}
 	/* Check if there's a FILL_PARAMETERS for a fill FETCH stream */
 	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL &&
@@ -1344,7 +1439,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			parameters->fill_parameters->filters = NULL;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters (FILL_PARAMETERS)\n",
 				imquic_get_connection_name(conn));
-			imquic_moq_filters_print(imquic_moq_get_version(conn), s->fill_fetch->filters);
+			imquic_moq_filters_print(version, s->fill_fetch->filters);
 		}
 		/* Prepare the list of objects to send, out of the provided range */
 		GList *temp = track->objects;
@@ -1408,7 +1503,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 				s->fill_fetch->sub_start.object = local_range.start_object;
 				s->fill_fetch->sub_end.group = local_range.end_group;
 				s->fill_fetch->sub_end.object = local_range.end_object;
-				if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
+				if(parameters->fill_parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
 					s->fill_fetch->objects = g_list_sort(s->fill_fetch->objects, imquic_demo_order_descending);
 				else
 					s->fill_fetch->objects = g_list_sort(s->fill_fetch->objects, imquic_demo_order_ascending);
@@ -1755,7 +1850,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 			parameters->fill_parameters->filters = NULL;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters (FILL_PARAMETERS)\n",
 				imquic_get_connection_name(conn));
-			imquic_moq_filters_print(imquic_moq_get_version(conn), fill_fetch->filters);
+			imquic_moq_filters_print(version, fill_fetch->filters);
 		}
 		/* Prepare the list of objects to send, out of the provided range */
 		imquic_mutex_lock(&s->track->mutex);
@@ -1820,7 +1915,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 				fill_fetch->sub_start.object = local_range.start_object;
 				fill_fetch->sub_end.group = local_range.end_group;
 				fill_fetch->sub_end.object = local_range.end_object;
-				if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
+				if(parameters->fill_parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
 					fill_fetch->objects = g_list_sort(fill_fetch->objects, imquic_demo_order_descending);
 				else
 					fill_fetch->objects = g_list_sort(fill_fetch->objects, imquic_demo_order_ascending);
@@ -2002,6 +2097,7 @@ static void imquic_demo_incoming_subscribe_tracks(imquic_connection *conn, uint6
 	if(parameters->auth_token_set)
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	/* Keep track of this as a monitor */
+	imquic_moq_version version = imquic_moq_get_version(conn);
 	imquic_mutex_lock(&mutex);
 	imquic_demo_moq_monitor *mon = imquic_demo_moq_monitor_create(conn, request_id, tns, ns, IMQUIC_MOQ_WANT_PUBLISH);
 	mon->forward = parameters->forward;
@@ -2012,7 +2108,15 @@ static void imquic_demo_incoming_subscribe_tracks(imquic_connection *conn, uint6
 		parameters->filters = NULL;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_filters_print(imquic_moq_get_version(conn), mon->filters);
+		imquic_moq_filters_print(version, mon->filters);
+	}
+	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL) {
+		/* The subscriber added fill parameters, "steal" them */
+		mon->fill_parameters = parameters->fill_parameters;
+		parameters->fill_parameters_set = FALSE;
+		parameters->fill_parameters = NULL;
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range fill_parameters\n",
+			imquic_get_connection_name(conn));
 	}
 	/* TODO Keep track of other parameters too */
 	monitors = g_list_prepend(monitors, mon);
@@ -2192,7 +2296,7 @@ static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request
 		parameters->filters = NULL;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Range filters\n",
 			imquic_get_connection_name(conn));
-		imquic_moq_filters_print(imquic_moq_get_version(conn), s->filters);
+		imquic_moq_filters_print(version, s->filters);
 	}
 	while(temp) {
 		object = (imquic_moq_object *)temp->data;

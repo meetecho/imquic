@@ -621,7 +621,7 @@ typedef struct imquic_moq_request_parameters {
  * @param parameters The imquic_moq_request_parameters to initialize */
 void imquic_moq_request_parameters_init_defaults(imquic_moq_request_parameters *parameters);
 /*! \brief Helper to get rid of a imquic_moq_request_parameters instance
- * @param filters The imquic_moq_request_parameters instance to free */
+ * @param parameters The imquic_moq_request_parameters instance to free */
 void imquic_moq_request_parameters_destroy(imquic_moq_request_parameters *parameters);
 
 /*! \brief Ways of sending objects */

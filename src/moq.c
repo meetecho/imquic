@@ -1557,7 +1557,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
 		}
 		if(parameters->fill_parameters_set &&
-				(request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS));
 		}
 		if(parameters->location_filter_set &&
@@ -3861,8 +3861,6 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 	imquic_moq_request_parameters parameters;
 	offset += imquic_moq_parse_request_parameters(moq, &bytes[offset], blen-offset, &parameters, &params_num, error);
 	IMQUIC_MOQ_CHECK_ERR(offset > blen || (error && *error), error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Error parsing SUBSCRIBE_TRACKS parameters");
-	/* If fill parameters were received, drop them */
-	imquic_moq_request_parameters_cleanup(&parameters, FALSE, TRUE);
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		if(moq_stream != NULL)
 			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subscribe_tracks");
@@ -3915,7 +3913,7 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 		/* No handler for this request, let's reject it ourselves */
 		imquic_moq_reject_subscribe_tracks(moq->conn, request_id, IMQUIC_MOQ_REQERR_NOT_SUPPORTED, "Not handled", 0, NULL);
 	}
-	imquic_moq_request_parameters_cleanup(&parameters, TRUE, FALSE);
+	imquic_moq_request_parameters_cleanup(&parameters, TRUE, TRUE);
 	if(error)
 		*error = 0;
 	return offset;
@@ -4757,11 +4755,13 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 			req_stream = g_hash_table_lookup(moq->streams_by_reqid, actual_request_id);
 	}
 	imquic_moq_message_type request_type = req_stream ? req_stream->request_type : 0;
+	gboolean request_sender = req_stream ? req_stream->request_sender : FALSE;
 	if(moq->version >= IMQUIC_MOQ_VERSION_20 && req_stream != NULL && req_stream->fill_fetch) {
 		/* The request involves a fill FETCH stream, so do treat it like a FETCH */
 		request_type = IMQUIC_MOQ_FETCH;
+		request_sender = TRUE;
 	}
-	if(req_stream == NULL || request_type != IMQUIC_MOQ_FETCH || !req_stream->request_sender) {
+	if(req_stream == NULL || request_type != IMQUIC_MOQ_FETCH || !request_sender) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Not a FETCH request ID (%s, %s)\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(req_stream->request_type, moq->version),
 			req_stream ? imquic_media_stream_request_state_str(req_stream->request_state) : "No stream");
