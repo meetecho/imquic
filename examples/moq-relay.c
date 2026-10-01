@@ -658,17 +658,17 @@ static int imquic_demo_order_descending(gconstpointer a, gconstpointer b) {
 	} else if(oa->group_id < ob->group_id) {
 		return 1;
 	}
-	/* Same group first, order on subgroups */
+	/* Same group, order on object ID */
+	if(oa->object_id < ob->object_id)
+		return -1;
+	else if(oa->object_id > ob->object_id)
+		return 1;
+	/* Same object ID, order on subgroups */
 	if(oa->subgroup_id < ob->subgroup_id) {
 		return -1;
 	} else if(oa->subgroup_id > ob->subgroup_id) {
 		return 1;
 	}
-	/* Same subgroup, order on object */
-	if(oa->object_id < ob->object_id)
-		return -1;
-	else if(oa->object_id > ob->object_id)
-		return 1;
 	return 0;
 }
 
