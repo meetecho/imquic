@@ -1535,7 +1535,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		}
 		if(parameters->object_delivery_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
-				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_OBJECT_DELIVERY_TIMEOUT));
 		}
 		if(parameters->rendezvous_timeout_set &&
@@ -1544,16 +1544,17 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 		}
 		if(parameters->subgroup_delivery_timeout_set &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
-				(request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBGROUP_DELIVERY_TIMEOUT));
 		}
 		if(parameters->subscriber_priority_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH ||
-					request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH ||
+					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY));
 		}
 		if(parameters->group_order_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS ||
+					request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER));
 		}
 		if(parameters->fill_parameters_set &&
@@ -1561,7 +1562,8 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS));
 		}
 		if(parameters->location_filter_set &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_FETCH ||
+					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_PUBLISH_STATE_NOTIFY || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER));
 		}
 		GList *filters = NULL, *tf = NULL;
@@ -1623,17 +1625,17 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_EXPIRES));
 		}
 		if(parameters->largest_object_set &&
-				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE_OK || request == IMQUIC_MOQ_REQUEST_OK)) {
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_PUBLISH_STATE_NOTIFY)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT));
 		}
 		if(parameters->fill_timeout_set && parameters->fill_timeout > 0 &&
 				moq->version >= IMQUIC_MOQ_VERSION_18 &&
-				(request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE || request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
+				(request == IMQUIC_MOQ_FETCH || request == IMQUIC_MOQ_PSEUDO_REQUEST)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT));
 		}
 		if(parameters->forward_set &&
-				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_PUBLISH_OK || request == IMQUIC_MOQ_REQUEST_OK || request == IMQUIC_MOQ_SUBSCRIBE ||
-					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE)) {
+				(request == IMQUIC_MOQ_PUBLISH || request == IMQUIC_MOQ_SUBSCRIBE ||
+					request == IMQUIC_MOQ_REQUEST_UPDATE || request == IMQUIC_MOQ_SUBSCRIBE_TRACKS || request == IMQUIC_MOQ_PUBLISH_STATE_NOTIFY)) {
 			list = g_list_prepend(list, GUINT_TO_POINTER(IMQUIC_MOQ_REQUEST_PARAM_FORWARD));
 		}
 		if(parameters->new_group_request_set &&
@@ -6484,11 +6486,11 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 		uint64_t group_order = 0;
 		if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 			group_order = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || group_order > 255, NULL, 0, 0, "Broken MoQ request parameter");
 		} else {
 			group_order = bytes[offset];
 			length = 1;
 		}
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || group_order > IMQUIC_MOQ_ORDERING_DESCENDING, NULL, 0, 0, "Broken MoQ request parameter");
 		params->group_order = group_order;
 		params->group_order_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64" (%s)\n",
@@ -6583,6 +6585,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 			forward = bytes[offset];
 			length = 1;
 		}
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || forward > 1, NULL, 0, 0, "Broken MoQ request parameter");
 		params->forward = (forward > 0);
 		params->forward_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu8"\n",
@@ -6603,6 +6606,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 	} else if(type == IMQUIC_MOQ_REQUEST_PARAM_INCLUDE_PROPERTIES) {
 		uint64_t include_properties = bytes[offset];
 		length = 1;
+		IMQUIC_MOQ_CHECK_ERR(include_properties > 1, NULL, 0, 0, "Broken MoQ request parameter");
 		params->include_properties = (include_properties > 0);
 		params->include_properties_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu8"\n",
