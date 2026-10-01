@@ -26,10 +26,10 @@ typedef struct demo_options {
 	gboolean track_status;
 	gboolean subscribe_namespace;
 	const char *filter_type;
-	uint64_t start_group;
-	uint64_t start_object;
-	uint64_t end_group;
-	uint64_t end_object;
+	int64_t start_group;
+	int64_t start_object;
+	int64_t end_group;
+	int64_t end_object;
 	int update_subscribe;
 	int update_subscribe_namespace;
 	const char *fetch;

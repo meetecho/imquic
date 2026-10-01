@@ -111,7 +111,7 @@ void imquic_moq_property_cleanup(imquic_moq_property *property) {
 	}
 }
 
-/* Helper to print parameter filters */
+/* Helper to print filters */
 void imquic_moq_filters_print(imquic_moq_version version, imquic_moq_filters *filters) {
 	if(filters == NULL || version < IMQUIC_MOQ_VERSION_19)
 		return;
@@ -210,8 +210,6 @@ const char *imquic_demo_payload_type_str(imquic_demo_payload_type type) {
 			return "hex";
 		case DEMO_TYPE_LOC:
 			return "loc";
-		case DEMO_TYPE_MP4:
-			return "mp4";
 		default:
 			break;
 	}

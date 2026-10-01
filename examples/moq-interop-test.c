@@ -36,6 +36,7 @@ typedef enum imquic_moq_interop_test {
 	IMQUIC_INTEROP_ANNOUNCE_ONLY,
 	IMQUIC_INTEROP_PUBLISH_NAMESPACE_DONE,
 	IMQUIC_INTEROP_SUBSCRIBE_ERROR,
+	IMQUIC_INTEROP_RENDEZVOUS_TIMEOUT,
 	IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE,
 	IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE,
 } imquic_moq_interop_test;
@@ -50,6 +51,8 @@ static imquic_moq_interop_test imquic_moq_interop_test_parse(const char *name) {
 		return IMQUIC_INTEROP_PUBLISH_NAMESPACE_DONE;
 	else if(!strcasecmp(name, "subscribe-error"))
 		return IMQUIC_INTEROP_SUBSCRIBE_ERROR;
+	else if(!strcasecmp(name, "rendezvous-timeout"))
+		return IMQUIC_INTEROP_RENDEZVOUS_TIMEOUT;
 	else if(!strcasecmp(name, "announce-subscribe"))
 		return IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE;
 	else if(!strcasecmp(name, "subscribe-before-announce"))
@@ -66,6 +69,8 @@ static const char *imquic_moq_interop_test_str(imquic_moq_interop_test test) {
 			return "publish-namespace-done";
 		case IMQUIC_INTEROP_SUBSCRIBE_ERROR:
 			return "subscribe-error";
+		case IMQUIC_INTEROP_RENDEZVOUS_TIMEOUT:
+			return "rendezvous-timeout";
 		case IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE:
 			return "announce-subscribe";
 		case IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE:
@@ -186,6 +191,11 @@ int main(int argc, char *argv[]) {
 	subscribe_error.need_subscriber = TRUE;
 	subscribe_error.timeout = 2*G_USEC_PER_SEC;
 	all_tests = g_list_append(all_tests, &subscribe_error);
+	imquic_moq_interop_test_context rendezvous_timeout = { 0 };
+	rendezvous_timeout.name = IMQUIC_INTEROP_RENDEZVOUS_TIMEOUT;
+	rendezvous_timeout.need_subscriber = TRUE;
+	rendezvous_timeout.timeout = 2*G_USEC_PER_SEC;
+	all_tests = g_list_append(all_tests, &rendezvous_timeout);
 	imquic_moq_interop_test_context announce_subscribe = { 0 };
 	announce_subscribe.name = IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE;
 	announce_subscribe.need_publisher = TRUE;
@@ -537,6 +547,27 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		imquic_moq_subscribe(conn, client->request_id, &tns[0], &tn, NULL);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to non-existing track"));
+	} else if(test->name == IMQUIC_INTEROP_RENDEZVOUS_TIMEOUT) {
+		/* Subscribe to a non-existing track */
+		imquic_moq_namespace tns[2];
+		tns[0].buffer = (uint8_t *)"nonexistent";
+		tns[0].length = strlen("nonexistent");
+		tns[0].next = &tns[1];
+		tns[1].buffer = (uint8_t *)"rendezvous";
+		tns[1].length = strlen("rendezvous");
+		tns[1].next = NULL;
+		imquic_moq_track tn = {
+			.buffer = (uint8_t *)"test-track",
+			.length = strlen("test-track")
+		};
+		client->request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_request_parameters parameters;
+		imquic_moq_request_parameters_init_defaults(&parameters);
+		parameters.rendezvous_timeout_set = TRUE;
+		parameters.rendezvous_timeout = 500000;
+		imquic_moq_subscribe(conn, client->request_id, &tns[0], &tn, &parameters);
+		if(verbose)
+			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to non-existing rendezvous track"));
 	} else if((test->name == IMQUIC_INTEROP_ANNOUNCE_SUBSCRIBE ||
 			test->name == IMQUIC_INTEROP_SUBSCRIBE_BEFORE_ANNOUNCE) && !client->publisher) {
 		/* Subscribe to the test track */
@@ -640,7 +671,7 @@ static void imquic_moq_interop_subscribe_accepted(imquic_connection *conn, uint6
 	imquic_moq_interop_client *client = (imquic_moq_interop_client *)g_hash_table_lookup(connections, conn);
 	imquic_mutex_unlock(&mutex);
 	imquic_moq_interop_test_context *test = (imquic_moq_interop_test_context *)client->test;
-	if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR) {
+	if(test->name == IMQUIC_INTEROP_SUBSCRIBE_ERROR || test->name == IMQUIC_INTEROP_RENDEZVOUS_TIMEOUT) {
 		/* We're done */
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("!subscriber received error to subscription"));
@@ -673,6 +704,22 @@ static void imquic_moq_interop_subscribe_error(imquic_connection *conn, uint64_t
 		/* We're done */
 		g_atomic_int_set(&test->success, 1);
 		g_atomic_int_set(&test->done, 1);
+	} else if(test->name == IMQUIC_INTEROP_RENDEZVOUS_TIMEOUT) {
+		if(error_code == IMQUIC_MOQ_REQERR_TIMEOUT) {
+			if(verbose)
+				test->subtests = g_list_append(test->subtests, g_strdup("subscriber received timeout error to subscription"));
+			/* We're done */
+			g_atomic_int_set(&test->success, 1);
+			g_atomic_int_set(&test->done, 1);
+		} else {
+			if(verbose)
+				test->subtests = g_list_append(test->subtests, g_strdup("!subscriber received timeout error to subscription"));
+			test->expected = g_strdup("REQUEST_ERROR with TIMEOUT error code");
+			char received[256];
+			g_snprintf(received, sizeof(received), "REQUEST_ERROR with %s error code", imquic_moq_request_error_code_str(error_code));
+			test->received = g_strdup(received);
+			g_atomic_int_set(&test->done, 1);
+		}
 	}
 	/* TODO Other tests */
 }

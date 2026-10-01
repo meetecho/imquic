@@ -271,7 +271,7 @@ static int imquic_demo_send_audio(void) {
 		audio_ts += 20000;	/* FIXME */
 		/* FIXME We currently don't support LOC private properties, so
 		 * we always add an empty list to signal it's empty */
-		uint8_t loc_pvt_props[] = { 0xA, 0x00 };
+		uint8_t loc_pvt_props[] = { IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST, 0x00 };
 		/* Prepare a MoQ object and send it */
 		imquic_moq_object object = {
 			.request_id = pub_request_id,
@@ -808,7 +808,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* Create a client endpoint */
-	imquic_server *client = imquic_create_moq_client("moq-loc-ptt",
+	imquic_client *client = imquic_create_moq_client("moq-loc-ptt",
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,

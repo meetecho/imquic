@@ -755,6 +755,17 @@ void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
 	}
 }
 
+void imquic_set_publish_state_notify_cb(imquic_endpoint *endpoint,
+		void (* publish_state_notify)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
+	if(endpoint != NULL) {
+		if(endpoint->protocol != IMQUIC_MOQ) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
+			return;
+		}
+		endpoint->callbacks.moq.publish_state_notify = publish_state_notify;
+	}
+}
+
 void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
 		void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason)) {
 	if(endpoint != NULL) {
@@ -913,15 +924,15 @@ void imquic_set_incoming_publish_skipped_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
-		void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
+void imquic_set_incoming_fetch_cb(imquic_endpoint *endpoint,
+		void (* incoming_fetch)(imquic_connection *conn, uint64_t request_id,
 			imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
 			return;
 		}
-		endpoint->callbacks.moq.incoming_standalone_fetch = incoming_standalone_fetch;
+		endpoint->callbacks.moq.incoming_fetch = incoming_fetch;
 	}
 }
 
@@ -1061,8 +1072,12 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 			return "draft-ietf-moq-transport-18";
 		case IMQUIC_MOQ_VERSION_19:
 			return "draft-ietf-moq-transport-19";
+		case IMQUIC_MOQ_VERSION_20:
+			return "draft-ietf-moq-transport-20";
+		case IMQUIC_MOQ_VERSION_21:
+			return "draft-ietf-moq-transport-21";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "draft-ietf-moq-transport-XX(-from--16-to-19)";
+			return "draft-ietf-moq-transport-XX(-from--16-to-21)";
 		default: break;
 	}
 	return NULL;
@@ -1078,8 +1093,12 @@ static const char *imquic_moq_version_alpn(imquic_moq_version version) {
 			return "moqt-18";
 		case IMQUIC_MOQ_VERSION_19:
 			return "moqt-19";
+		case IMQUIC_MOQ_VERSION_20:
+			return "moqt-20";
+		case IMQUIC_MOQ_VERSION_21:
+			return "moqt-21";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "moqt-19,moqt-18,moqt-17,moqt-16";
+			return "moqt-21,moqt-20,moqt-19,moqt-18,moqt-17,moqt-16";
 		default: break;
 	}
 	return NULL;
@@ -1148,6 +1167,10 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
 			return "LOC Audio Level";
 		case IMQUIC_MOQ_LOC_CODEC_STRING:
 			return "LOC Codec String";
+		case IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST:
+			return "Encrypted List";
+		case IMQUIC_MOQ_SECOBJ_PADDING:
+			return "Padding";
 		default: break;
 	}
 	return NULL;

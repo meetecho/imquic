@@ -289,8 +289,9 @@ static void imquic_demo_process_video_buffer(void) {
 		/* Check if there are private properties too */
 		uint8_t length = 0;
 		uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
-		if(length == 0 || length > object->payload_len || prop_type != 0xA) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
+		if(length == 0 || length > object->payload_len || prop_type != IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting %d), ignoring object\n",
+				prop_type, IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST);
 			return;
 		}
 		size_t skip = length;
@@ -366,11 +367,30 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.forward = TRUE;
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
+	imquic_moq_request_parameters fill_parameters;
+	if(moq_version >= IMQUIC_MOQ_VERSION_20) {
+		/* The equivalent of Joining FETCH in newer versions are the new
+		 * FILL_PARAMETERS: we use it for both catalog and video frames */
+		imquic_moq_request_parameters_init_defaults(&fill_parameters);
+		fill_parameters.group_order_set = TRUE;
+		fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+		fill_parameters.location_filter_set = TRUE;
+		fill_parameters.location_filter.start_group_set = TRUE;
+		fill_parameters.location_filter.start_group = 1;
+	}
 	if(options.use_catalog) {
 		/* We wait for the catalog to subscribe to the media tracks */
 		catalog_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (catalog), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), sub_tns, catalog_tn, catalog_request_id);
+		/* Send a SUBSCRIBE (and automatically get the beginning of the group too) */
+		if(moq_version >= IMQUIC_MOQ_VERSION_20) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Using FILL_PARAMETERS to mimick the Joining FETCH\n",
+				imquic_get_connection_name(conn));
+			catalog_fetch_request_id = catalog_request_id;
+			params.fill_parameters_set = TRUE;
+			params.fill_parameters = &fill_parameters;
+		}
 		imquic_moq_subscribe(conn, catalog_request_id, sub_namespace, &catalog_trackname, &params);
 		return;
 	}
@@ -379,14 +399,23 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		audio_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (audio), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), sub_tns, audio_tn, audio_request_id);
-		/* Send a SUBSCRIBE */
+		/* Send a SUBSCRIBE (without FILL_PARAMETERS) */
+		if(moq_version >= IMQUIC_MOQ_VERSION_20)
+			params.fill_parameters_set = FALSE;
 		imquic_moq_subscribe(conn, audio_request_id, sub_namespace, audio_trackname, &params);
 	}
 	if(video_tn != NULL) {
 		video_request_id = imquic_moq_get_next_request_id(conn);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (video), using ID %"SCNu64"\n",
 			imquic_get_connection_name(conn), sub_tns, video_tn, video_request_id);
-		/* Send a SUBSCRIBE */
+		/* Send a SUBSCRIBE (and automatically get the beginning of the group too) */
+		if(moq_version >= IMQUIC_MOQ_VERSION_20) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Using FILL_PARAMETERS to mimick the Joining FETCH\n",
+				imquic_get_connection_name(conn));
+			video_fetch_request_id = video_request_id;
+			params.fill_parameters_set = TRUE;
+			params.fill_parameters = &fill_parameters;
+		}
 		imquic_moq_subscribe(conn, video_request_id, sub_namespace, video_trackname, &params);
 	}
 }
@@ -401,7 +430,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
 			imquic_get_connection_name(conn), track_alias);
 		catalog_track_alias = track_alias;
-		if(parameters->largest_object_set) {
+		if(moq_version < IMQUIC_MOQ_VERSION_20 && parameters->largest_object_set) {
 			/* There's a largest object, send a Joining FETCH */
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 				imquic_get_connection_name(conn),
@@ -431,7 +460,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
-		if(video) {
+		if(moq_version < IMQUIC_MOQ_VERSION_20 && video) {
 			/* The first objects we receive may not be a keyframe, send a Joining FETCH */
 			imquic_moq_request_parameters fparams;
 			imquic_moq_request_parameters_init_defaults(&fparams);
@@ -498,8 +527,10 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Video FETCH completed, fast-decoding %d buffered objects\n",
 				imquic_get_connection_name(conn), g_list_length(video_buffer));
 			/* FETCH completed, fast-decode video objects */
-			video_fetch_completed = TRUE;
-			imquic_demo_process_video_buffer();
+			if(!video_fetch_completed) {
+				video_fetch_completed = TRUE;
+				imquic_demo_process_video_buffer();
+			}
 		}
 		return;
 	}
@@ -610,6 +641,22 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				video_request_id = imquic_moq_get_next_request_id(conn);
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Subscribing to '%s--%s' (video), using ID %"SCNu64"\n",
 					imquic_get_connection_name(conn), sub_tns, video_tn, video_request_id);
+				imquic_moq_request_parameters fill_parameters;
+				if(moq_version >= IMQUIC_MOQ_VERSION_20) {
+					/* The equivalent of Joining FETCH in newer versions are the new
+					 * FILL_PARAMETERS: we use it for both catalog and video frames */
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Using FILL_PARAMETERS to mimick the Joining FETCH\n",
+						imquic_get_connection_name(conn));
+					imquic_moq_request_parameters_init_defaults(&fill_parameters);
+					fill_parameters.group_order_set = TRUE;
+					fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+					fill_parameters.location_filter_set = TRUE;
+					fill_parameters.location_filter.start_group_set = TRUE;
+					fill_parameters.location_filter.start_group = 1;
+					params.fill_parameters_set = TRUE;
+					params.fill_parameters = &fill_parameters;
+					video_fetch_request_id = video_request_id;
+				}
 				/* Send a SUBSCRIBE */
 				imquic_moq_subscribe(conn, video_request_id, sub_namespace, video_trackname, &params);
 			}
@@ -705,8 +752,9 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		/* Check if there are private properties too */
 		uint8_t length = 0;
 		uint64_t prop_type = imquic_read_moqint(moq_version, object->payload, object->payload_len, &length);
-		if(length == 0 || length > object->payload_len || prop_type != 0xA) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting 0xA), ignoring object\n", prop_type);
+		if(length == 0 || length > object->payload_len || prop_type != IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Broken private properties (got %"SCNu64", expecting %d), ignoring object\n",
+				prop_type, IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST);
 			return;
 		}
 		size_t skip = length;
@@ -736,15 +784,6 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		} else if(video_tn != NULL &&
 				((object->track_alias == video_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
 				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
-			/* Check if we're still caching stuff due to the FETCH catch-up */
-			if(object->delivery == IMQUIC_MOQ_USE_SUBGROUP && video_fetch_request_id > 0 && !video_fetch_completed) {
-				/* We need to just buffer this frame for a while, as we first have to
-				 * decode all the fetched objects and only then move to the live ones */
-				IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Buffering video object (still waiting for FETCH to finish)\n",
-					imquic_get_connection_name(conn));
-				video_buffer = g_list_prepend(video_buffer, imquic_moq_object_duplicate(object));
-				return;
-			}
 			/* Decode video */
 			if(loc_extradata != NULL) {
 				/* Use the extradata to (re)create the video decoder context */
@@ -768,6 +807,22 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						loc_extradata ? loc_extradata->length : 0) < -1) {
 					/* Stop here */
 					g_atomic_int_inc(&stop);
+					return;
+				}
+			}
+			/* Check if we're still caching stuff due to the FETCH catch-up */
+			if(object->delivery == IMQUIC_MOQ_USE_SUBGROUP && video_fetch_request_id > 0 && !video_fetch_completed) {
+				if(keyframe) {
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a keyframe (no need to keep waiting for FETCH to finish)\n",
+						imquic_get_connection_name(conn));
+					video_fetch_completed = TRUE;
+					imquic_demo_process_video_buffer();
+				} else {
+					/* We need to just buffer this frame for a while, as we first have to
+					 * decode all the fetched objects and only then move to the live ones */
+					IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Buffering video object (still waiting for FETCH to finish)\n",
+						imquic_get_connection_name(conn));
+					video_buffer = g_list_prepend(video_buffer, imquic_moq_object_duplicate(object));
 					return;
 				}
 			}
@@ -1091,7 +1146,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* Create a client endpoint */
-	imquic_server *client = imquic_create_moq_client("moq-loc-recv",
+	imquic_client *client = imquic_create_moq_client("moq-loc-recv",
 		IMQUIC_CONFIG_INIT,
 		IMQUIC_CONFIG_TLS_CERT, options.cert_pem,
 		IMQUIC_CONFIG_TLS_KEY, options.cert_key,

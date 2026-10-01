@@ -35,8 +35,8 @@
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
  * WebTransort protocol. At the time of writing, this stack
- * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v19
- * (\ref IMQUIC_MOQ_VERSION_19), but not all versions will be supported
+ * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v21
+ * (\ref IMQUIC_MOQ_VERSION_21), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \ref IMQUIC_MOQ_VERSION_MIN
@@ -151,10 +151,8 @@
  * for intercepting incoming \c SUBSCRIBE requests via \ref imquic_set_incoming_subscribe_cb,
  * and another for intercepting an \c UNSUBSCRIBE via \ref imquic_set_incoming_unsubscribe_cb.
  * In both cases, the publisher is supposed to answer with either a success or an error.
- * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_standalone_fetch_cb
- * (for standalone \c FETCH requests) or \ref imquic_set_incoming_joining_fetch_cb
- * (for joining \c FETCH requests), while a \c FETCH_CANCEL can be
- * intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
+ * \c FETCH subscriptions can be tracked using \ref imquic_set_incoming_fetch_cb
+ * , while a \c FETCH_CANCEL can be intercepted via \ref imquic_set_incoming_fetch_cancel_cb.
  *
  * That said, once callbacks have been configured, the endpoint started, and the publisher
  * role set, a publisher can start sending requests. To publish_namespace a new
@@ -259,9 +257,8 @@
  * \ref imquic_moq_subscribe function, while to unsubscribe the corresponding
  * \ref imquic_moq_unsubscribe function can be used instead.
  *
- * Issuing \c FETCH related requests is similar, as \ref imquic_moq_standalone_fetch
- * and \ref imquic_moq_joining_fetch allow you to try and fetch some objects
- * (in standalone or joining mode, respectively), while \ref imquic_moq_cancel_fetch
+ * Issuing \c FETCH related requests is similar, as \ref imquic_moq_fetch
+ * allows you to try and fetch some objects, while \ref imquic_moq_cancel_fetch
  * is what you use to stop the delivery and cancel the request. Just as
  * with \c SUBSCRIBE requests, a \c request_id identifier is used to
  * address a specific \c FETCH context. Notice that for a joining \c FETCH
@@ -315,7 +312,11 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_18 = 0xff000012,
 	/* Draft version -19 */
 	IMQUIC_MOQ_VERSION_19 = 0xff000013,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_19,
+	/* Draft version -20 */
+	IMQUIC_MOQ_VERSION_20 = 0xff000014,
+	/* Draft version -21 */
+	IMQUIC_MOQ_VERSION_21 = 0xff000015,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_21,
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
@@ -452,7 +453,8 @@ typedef enum imquic_moq_group_order {
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_group_order_str(imquic_moq_group_order type);
 
-/*! \brief MoQ filter type, for subscriptions */
+/*! \brief MoQ filter type, for subscriptions
+ * \note Deprecated in v20 */
 typedef enum imquic_moq_location_filter_type {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
 	IMQUIC_MOQ_FILTER_LARGEST_OBJECT = 0x2,
@@ -478,14 +480,38 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
-/*! \brief MoQ location filter */
-typedef struct imquic_moq_location_filter {
+/*! \brief MoQ location filter (legacy)
+ * \note Deprecated in v20 */
+typedef struct imquic_moq_location_filter_legacy {
 	/*! \brief Filter type */
 	imquic_moq_location_filter_type type;
 	/*! \brief Start location (depending on filter type) */
 	imquic_moq_location start_location;
 	/*! \brief End group (depending on filter type) */
 	uint64_t end_group;
+} imquic_moq_location_filter_legacy;
+
+/*! \brief MoQ location filter (new)
+ * \note Added in v20 */
+typedef struct imquic_moq_location_filter {
+	/*! \brief Whether there is a start group */
+	gboolean start_group_set;
+	/*! \brief The start group value */
+	uint64_t start_group;
+	/*! \brief Whether there is a start object */
+	gboolean start_object_set;
+	/*! \brief The start object value */
+	uint64_t start_object;
+	/*! \brief Whether there is an end group */
+	gboolean end_group_set;
+	/*! \brief The end group value */
+	uint64_t end_group;
+	/*! \brief Whether there is an end object */
+	gboolean end_object_set;
+	/*! \brief The end object value */
+	uint64_t end_object;
+	/*! \brief Legacy filter value, for older versions */
+	imquic_moq_location_filter_legacy legacy_value;
 } imquic_moq_location_filter;
 
 /*! \brief Subscribe options for namespaces
@@ -546,9 +572,15 @@ typedef struct imquic_moq_request_parameters {
 	gboolean group_order_set;
 	/*! \brief Value of the GROUP_ORDER parameter */
 	imquic_moq_group_order group_order;
-	/*! \brief Whether the SUBSCRIPTION_FILTER parameter is set */
+	/*! \brief Whether the FILL_PARAMETERS parameter is set */
+	gboolean fill_parameters_set;
+	/*! \brief Value of the FILL_PARAMETERS parameter
+	 * \note This is another nested instance of parameters, which is in
+	 * theory be limited to a subset of the generic request parameters */
+	struct imquic_moq_request_parameters *fill_parameters;
+	/*! \brief Whether the LOCATION_FILTER parameter is set */
 	gboolean location_filter_set;
-	/*! \brief Value of the SUBSCRIPTION_FILTER parameter */
+	/*! \brief Value of the LOCATION_FILTER parameter */
 	imquic_moq_location_filter location_filter;
 	/*! \brief Whether there are filters */
 	gboolean filters_set;
@@ -574,6 +606,10 @@ typedef struct imquic_moq_request_parameters {
 	gboolean track_namespace_prefix_set;
 	/*! \brief Value of the TRACK_NAMESPACE_PREFIX parameter */
 	imquic_moq_namespace track_namespace_prefix[32];
+	/*! \brief Whether the INCLUDE_PROPERTIES parameter is set */
+	gboolean include_properties_set;
+	/*! \brief Value of the INCLUDE_PROPERTIES parameter */
+	gboolean include_properties;
 	/*! \brief Whether there's unknown parameters
 	 * \note Only set by the stack, ignored if set by the application */
 	gboolean unknown;
@@ -584,6 +620,9 @@ typedef struct imquic_moq_request_parameters {
  * sets some defaults values for some properties (e.g., 128 for priority)
  * @param parameters The imquic_moq_request_parameters to initialize */
 void imquic_moq_request_parameters_init_defaults(imquic_moq_request_parameters *parameters);
+/*! \brief Helper to get rid of a imquic_moq_request_parameters instance
+ * @param parameters The imquic_moq_request_parameters instance to free */
+void imquic_moq_request_parameters_destroy(imquic_moq_request_parameters *parameters);
 
 /*! \brief Ways of sending objects */
 typedef enum imquic_moq_delivery {
@@ -669,6 +708,10 @@ typedef enum imquic_moq_property_type {
 	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0C,
 	/*! \brief LOC Codec String */
 	IMQUIC_MOQ_LOC_CODEC_STRING = 0x11,
+	/*! \brief Encrypted List (Secure Objects) */
+	IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST = 0xA,
+	/*! \brief Padding (Secure Objects) */
+	IMQUIC_MOQ_SECOBJ_PADDING = 0x32,
 } imquic_moq_property_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
  * @param version The version of the connection
@@ -698,6 +741,9 @@ size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties
 typedef struct imquic_moq_object {
 	/*! \brief MoQ request_id */
 	uint64_t request_id;
+	/*! \brief Whether this is fill FETCH related
+	 * \note This is only used for outgoing objects, and is ignored before v20 */
+	gboolean fill_fetch;
 	/*! \brief MoQ track_alias */
 	uint64_t track_alias;
 	/*! \brief MoQ group_id */
@@ -919,7 +965,7 @@ typedef enum imquic_moq_error_code {
 	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
 	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
 	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
-	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,
+	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,	/* Deprecated in v20 */
 	IMQUIC_MOQ_MALFORMED_AUTH_TOKEN = 0x16,
 	IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS = 0x17,
 	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
@@ -954,7 +1000,7 @@ typedef enum imquic_moq_request_error_code {
 	/* Others */
 	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,
 	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
-	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,
+	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,	/* Deprecated in v20 */
 	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
 	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
 	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
@@ -970,7 +1016,7 @@ typedef enum imquic_moq_pub_done_code {
 	IMQUIC_MOQ_PUBDONE_INTERNAL_ERROR = 0x0,
 	IMQUIC_MOQ_PUBDONE_UNAUTHORIZED = 0x1,
 	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
-	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,
+	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,	/* Deprecated in v20 */
 	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
 	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,	/* Swapped in v18 */
 	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,	/* Swapped in v18 */
@@ -1017,7 +1063,7 @@ const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 		IMQUIC_CONFIG_TLS_PASSWORD, cert_pwd,
 		IMQUIC_CONFIG_LOCAL_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_19,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_21,
 		IMQUIC_CONFIG_DONE, NULL);
  \endverbatim
  * to create a QUIC server that will automatically negotiate MoQ over
@@ -1050,7 +1096,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...);
 		IMQUIC_CONFIG_REMOTE_HOST, "127.0.0.1",
 		IMQUIC_CONFIG_REMOTE_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_19,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_21,
 		IMQUIC_CONFIG_HTTP3_PATH, "/moq",
 		IMQUIC_CONFIG_DONE, NULL);
 
@@ -1201,6 +1247,12 @@ void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
 	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
 		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
 /*! \brief Configure the callback function to be notified when a
+ * \c PUBLISH_STATE_NOTIFY is received for one of our subscriptions
+ * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
+ * @param publish_state_notify Pointer to the function that will handle the incoming \c PUBLISH_STATE_NOTIFY */
+void imquic_set_publish_state_notify_cb(imquic_endpoint *endpoint,
+	void (* publish_state_notify)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters));
+/*! \brief Configure the callback function to be notified when a
  * \c PUBLISH we received or a \c SUBSCRIBE we sent is now done
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param publish_done Pointer to the function that will fire when a \c PUBLSH or \c SUBSCRIBE is done */
@@ -1299,14 +1351,17 @@ void imquic_set_incoming_namespace_done_cb(imquic_endpoint *endpoint,
 void imquic_set_incoming_publish_skipped_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish_skipped)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming standalone \c FETCH request.
+ * an incoming \c FETCH request.
+ * \note In versions before v20, this was called "standalone FETCH",
+ * as opposed to "joining" variants: now it's just "FETCH"
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_standalone_fetch Pointer to the function that will handle the incoming \c FETCH */
-void imquic_set_incoming_standalone_fetch_cb(imquic_endpoint *endpoint,
-	void (* incoming_standalone_fetch)(imquic_connection *conn, uint64_t request_id,
+ * @param incoming_fetch Pointer to the function that will handle the incoming \c FETCH */
+void imquic_set_incoming_fetch_cb(imquic_endpoint *endpoint,
+	void (* incoming_fetch)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_location_range *range, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming joining \c FETCH request.
+ * \note Deprecated in v20, and replaced by \c FILL_PARAMETER usage
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_joining_fetch Pointer to the function that will handle the incoming \c FETCH */
 void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
@@ -1547,6 +1602,14 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+/*! \brief Function to send a \c PUBLISH_STATE_NOTIFY request
+ * @note Added in v20
+ * @param conn The imquic_connection to send the request on
+ * @param request_id The unique \c request_id value associated to the subscription
+ * @param parameters The parameters to add to the request
+ * @returns 0 in case of success, a negative integer otherwise */
+int imquic_moq_publish_state_notify(imquic_connection *conn, uint64_t request_id,
+	imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a \c PUBLISH_DONE request
  * @note The streams count is handled by the library internally
  * @param conn The imquic_connection to send the request on
@@ -1657,7 +1720,9 @@ int imquic_moq_notify_namespace_done(imquic_connection *conn, uint64_t request_i
  * @param tn The imquic_moq_track track this request refers to
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_notify_publish_skipped(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn);
-/*! \brief Function to send a standalone \c FETCH request
+/*! \brief Function to send a \c FETCH request
+ * \note In versions before v20, this was called "standalone FETCH",
+ * as opposed to "joining" variants: now it's just "FETCH"
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
  * @param tns The imquic_moq_namespace namespace the track to fetch to belongs to
@@ -1665,10 +1730,11 @@ int imquic_moq_notify_publish_skipped(imquic_connection *conn, uint64_t request_
  * @param range The range of groups/objects to fetch
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_standalone_fetch(imquic_connection *conn,
+int imquic_moq_fetch(imquic_connection *conn,
 	uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_track *tn,
 	imquic_moq_location_range *range, imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a joining \c FETCH request
+ * \note Deprecated in v20, and replaced by \c FILL_PARAMETER usage
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique numeric identifier to associate to this subscription
  * @param joining_request_id Existing subscription to join

@@ -44,7 +44,6 @@ typedef enum imquic_demo_payload_type {
 	DEMO_TYPE_TEXT,		/* Print the object payload as text */
 	DEMO_TYPE_HEX,		/* Print the object payload as a hex string */
 	DEMO_TYPE_LOC,		/* Parse the object payload as LOC (moq-encoder-player's version) */
-	DEMO_TYPE_MP4		/* Save the object payload to an mp4 file (moq-rs's version) */
 } imquic_demo_payload_type;
 const char *imquic_demo_payload_type_str(imquic_demo_payload_type type);
 
