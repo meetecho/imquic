@@ -39,7 +39,8 @@ size_t imquic_qpack_entry_size(imquic_qpack_entry *entry);
 void imquic_qpack_entry_destroy(imquic_qpack_entry *entry);
 
 /*! \brief Static table */
-extern imquic_qpack_entry imquic_qpack_static_table[];
+#define IMQUIC_QPACK_STATIC_TABLE_SIZE 99
+extern imquic_qpack_entry imquic_qpack_static_table[IMQUIC_QPACK_STATIC_TABLE_SIZE];
 
 /*! \brief Dynamic table */
 typedef struct imquic_qpack_dynamic_table {

@@ -331,29 +331,29 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 			/* Address resolved */
 			struct addrinfo *temp = result;
 			while(temp && !resolved) {
-				if(result->ai_family != family && !both) {
+				if(temp->ai_family != family && !both) {
 					/* This won't work, try a different one */
-					temp = temp->ai_next;
-				} else if(result->ai_family == AF_INET) {
+				} else if(temp->ai_family == AF_INET) {
 					/* IPv4 */
 					resolved = TRUE;
 					family = AF_INET;
 					remote.addrlen = sizeof(*remote_addr);
-					struct sockaddr_in *addr = (struct sockaddr_in *)result->ai_addr;
+					struct sockaddr_in *addr = (struct sockaddr_in *)temp->ai_addr;
 					memcpy(remote_addr, addr, sizeof(*addr));
 					remote_addr->sin_family = AF_INET;
 					remote_addr->sin_port = g_htons(config->remote_port);
 					break;
-				} else if(result->ai_family == AF_INET6) {
+				} else if(temp->ai_family == AF_INET6) {
 					/* IPv6 */
 					if(ipv6_disabled) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Can't connect to IPv6 address, IPv6 is disabled\n", config->name);
+						freeaddrinfo(result);
 						return NULL;
 					}
 					resolved = TRUE;
 					family = AF_INET6;
 					remote.addrlen = sizeof(*remote_addr6);
-					struct sockaddr_in6 *addr = (struct sockaddr_in6 *)result->ai_addr;
+					struct sockaddr_in6 *addr = (struct sockaddr_in6 *)temp->ai_addr;
 					memcpy(remote_addr6, addr, sizeof(*addr));
 					remote_addr6->sin6_family = AF_INET6;
 					remote_addr6->sin6_port = g_htons(config->remote_port);
