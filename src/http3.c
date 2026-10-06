@@ -72,6 +72,8 @@ const char *imquic_http3_settings_type_str(imquic_http3_settings_type type) {
 			return "SETTINGS_ENABLE_CONNECT_PROTOCOL";
 		case IMQUIC_HTTP3_SETTINGS_H3_DATAGRAM:
 			return "SETTINGS_H3_DATAGRAM";
+		case IMQUIC_HTTP3_SETTINGS_WT_ENABLED:
+			return "SETTINGS_WT_ENABLED";
 		case IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT:
 			return "SETTINGS_ENABLE_WEBTRANSPORT";
 		case IMQUIC_HTTP3_SETTINGS_WEBTRANSPORT_MAX_SESSIONS:
@@ -184,6 +186,9 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *str
 				case IMQUIC_HTTP3_SETTINGS_H3_DATAGRAM:
 					json_object_set_new(settings, "settings_h3_datagram", json_integer(value));
 					break;
+				case IMQUIC_HTTP3_SETTINGS_WT_ENABLED:
+					json_object_set_new(settings, "settings_wt_enabled", json_integer(value));
+					break;
 				case IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT:
 					json_object_set_new(settings, "settings_enable_webtransport", json_integer(value));
 					break;
@@ -195,7 +200,8 @@ int imquic_http3_parse_settings(imquic_http3_connection *h3c, imquic_stream *str
 			}
 		}
 		/* FIXME */
-		if(type == IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT && value != 0)
+		if((type == IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT && value != 0) ||
+				(type == IMQUIC_HTTP3_SETTINGS_WT_ENABLED && value != 0))
 			IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Establishing WebTransport\n", imquic_get_connection_name(h3c->conn));
 	}
 	g_hash_table_remove(h3c->buffers, &stream->stream_id);
@@ -836,6 +842,7 @@ int imquic_http3_prepare_settings(imquic_http3_connection *h3c) {
 	s_offset += imquic_http3_settings_add_int(&settings[s_offset], s_len - s_offset, IMQUIC_HTTP3_SETTINGS_ENABLE_CONNECT_PROTOCOL, 1);
 	s_offset += imquic_http3_settings_add_int(&settings[s_offset], s_len - s_offset, IMQUIC_HTTP3_SETTINGS_H3_DATAGRAM, 1);
 	s_offset += imquic_http3_settings_add_int(&settings[s_offset], s_len - s_offset, IMQUIC_HTTP3_SETTINGS_ENABLE_WEBTRANSPORT, 1);
+	s_offset += imquic_http3_settings_add_int(&settings[s_offset], s_len - s_offset, IMQUIC_HTTP3_SETTINGS_WT_ENABLED, 1);
 	settings[2] = s_offset - 3;
 	/* FIXME Add STREAMs */
 	imquic_connection_new_stream_id(h3c->conn, FALSE, &h3c->local_control_stream);
@@ -848,6 +855,7 @@ int imquic_http3_prepare_settings(imquic_http3_connection *h3c) {
 		json_object_set_new(settings, "settings_enable_connect_protocol", json_integer(1));
 		json_object_set_new(settings, "settings_h3_datagram", json_integer(1));
 		json_object_set_new(settings, "settings_enable_webtransport", json_integer(1));
+		json_object_set_new(settings, "settings_wt_enabled", json_integer(1));
 		imquic_qlog_event_add_raw(frame, "raw", NULL, s_offset - 3);
 		imquic_http3_qlog_frame_created(h3c->conn->qlog, h3c->local_control_stream, s_offset - 3, frame);
 	}

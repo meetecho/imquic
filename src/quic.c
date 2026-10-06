@@ -150,6 +150,13 @@ int imquic_quic_create_context(imquic_network_endpoint *endpoint, imquic_configu
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error configuring support for DATAGRAM: %d\n",
 			config->name, ret);
 	}
+	/* Enable support for RESET_STREAM_AT (needed for recent WebTransport negotiations) */
+	ret = picoquic_set_default_tp_value(endpoint->qc, picoquic_tp_reset_stream_at, 1);
+	if(ret != 0) {
+		/* FIXME Should this be a fatal error? */
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error configuring support for RESET_STREAM_AT: %d\n",
+			config->name, ret);
+	}
 	/* FIXME Does picoquic verify the cert by default? */
 	if(config->cert_no_verify)
 		picoquic_set_null_verifier(endpoint->qc);
