@@ -43,7 +43,8 @@ static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GList *request_ids = NULL;
 static uint64_t max_request_id = 100, sn_request_id = 0, st_request_id = 0;
-static imquic_moq_location_filter_type filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+static imquic_moq_location_filter_type filter_type = IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT;
+static imquic_moq_location_filter_type_legacy filter_type_legacy = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 static imquic_moq_location start_location = { 0 }, end_location = { 0 }, end_location_sub = { 0 };
 static int64_t update_time = 0, update_namespace_time = 0;
 static imquic_moq_namespace sub_namespace[32] = { 0 };
@@ -140,8 +141,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				if(options.fetch && !strcasecmp(options.fetch, "descending"))
 					fill_parameters.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
 				fill_parameters.location_filter_set = TRUE;
-				fill_parameters.location_filter.start_group_set = TRUE;
-				fill_parameters.location_filter.start_group = options.join_offset + 1;
+				fill_parameters.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
+				fill_parameters.location_filter.range.start.group = options.join_offset + 1;
 				params.fill_parameters_set = TRUE;
 				params.fill_parameters = &fill_parameters;
 			}
@@ -174,28 +175,17 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.group_order_set = TRUE;
 	params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 	/* The format of the location filter changed in v20 */
-	if(moq_version < IMQUIC_MOQ_VERSION_20) {
-		/* Legacy format */
-		params.location_filter_set = TRUE;
-		params.location_filter.legacy_value.type = filter_type;
-		params.location_filter.legacy_value.start_location = start_location;
-		params.location_filter.legacy_value.end_group = end_location_sub.group;
+	params.location_filter_set = TRUE;
+	if(options.fetch == NULL) {
+		params.location_filter.legacy_type = filter_type_legacy;
+		params.location_filter.type = filter_type;
+		params.location_filter.range.start = start_location;
+		params.location_filter.range.end = end_location_sub;
 	} else {
-		/* New format */
-		if(options.start_group > -1)
-			params.location_filter.start_group = options.start_group;
-		if(options.start_object > -1)
-			params.location_filter.start_object = options.start_object;
-		if(options.end_group > -1)
-			params.location_filter.end_group = options.end_group;
-		if(options.end_object > -1)
-			params.location_filter.end_object = options.end_object;
-		params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-		params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-		params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
-		params.location_filter.end_object_set = (options.end_object > -1);
-		if(params.location_filter.start_group_set)
-			params.location_filter_set = TRUE;
+		/* If there's a (joining) FETCH or FILL_PARAMETERS, we only
+		 * ask for the next object in the SUBSCRIBE itself */
+		params.location_filter.legacy_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+		params.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT;
 	}
 	if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
 		/* Add some filter ranges too, just form testing */
@@ -219,8 +209,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		fill_parameters.group_order_set = TRUE;
 		fill_parameters.group_order = fparams.group_order;
 		fill_parameters.location_filter_set = TRUE;
-		fill_parameters.location_filter.start_group_set = TRUE;
-		fill_parameters.location_filter.start_group = options.join_offset + 1;
+		fill_parameters.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
+		fill_parameters.location_filter.range.start.group = options.join_offset + 1;
 		params.fill_parameters_set = TRUE;
 		params.fill_parameters = &fill_parameters;
 	}
@@ -261,20 +251,17 @@ static void imquic_demo_ready(imquic_connection *conn) {
 				};
 				if(moq_version >= IMQUIC_MOQ_VERSION_20) {
 					/* New format */
-					if(options.start_group > -1)
-						fparams.location_filter.start_group = options.start_group;
-					if(options.start_object > -1)
-						fparams.location_filter.start_object = options.start_object;
-					if(options.end_group > -1)
-						fparams.location_filter.end_group = options.end_group;
+					fparams.location_filter_set = TRUE;
+					fparams.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_NONE;
+					fparams.location_filter.range = range;
 					if(options.end_object > -1)
-						fparams.location_filter.end_object = options.end_object;
-					fparams.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-					fparams.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-					fparams.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
-					fparams.location_filter.end_object_set = (options.end_object > -1);
-					if(fparams.location_filter.start_group_set)
-						fparams.location_filter_set = TRUE;
+						fparams.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE;
+					else if(options.end_group > -1)
+						fparams.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_GROUP_END;
+					else if(options.start_object > -1)
+						fparams.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START;
+					else if(options.start_group > -1)
+						fparams.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
 				}
 				imquic_moq_fetch(conn, request_id, sub_namespace, &tn, &range, &fparams);
 			} else {
@@ -445,25 +432,15 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			if(moq_version < IMQUIC_MOQ_VERSION_20) {
 				/* Legacy format */
 				params.location_filter_set = TRUE;
-				params.location_filter.legacy_value.type = filter_type;
-				params.location_filter.legacy_value.start_location = start_location;
-				params.location_filter.legacy_value.end_group = end_location_sub.group;
+				params.location_filter.legacy_type = filter_type_legacy;
+				params.location_filter.range.start = start_location;
+				params.location_filter.range.end.group = end_location_sub.group;
 			} else {
 				/* New format */
-				if(options.start_group > -1)
-					params.location_filter.start_group = options.start_group;
-				if(options.start_object > -1)
-					params.location_filter.start_object = options.start_object;
-				if(options.end_group > -1)
-					params.location_filter.end_group = options.end_group;
-				if(options.end_object > -1)
-					params.location_filter.end_object = options.end_object;
-				params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-				params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-				params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
-				params.location_filter.end_object_set = (options.end_object > -1);
-				if(params.location_filter.start_group_set)
-					params.location_filter_set = TRUE;
+				params.location_filter_set = TRUE;
+				params.location_filter.type = filter_type;
+				params.location_filter.range.start = start_location;
+				params.location_filter.range.end = end_location_sub;
 			}
 			g_hash_table_insert(namespaces_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_namespace_duplicate(new_tns));
 			g_hash_table_insert(tracks_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_track_duplicate(new_tn));
@@ -516,25 +493,15 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	if(moq_version < IMQUIC_MOQ_VERSION_20) {
 		/* Legacy format */
 		rparams.location_filter_set = TRUE;
-		rparams.location_filter.legacy_value.type = filter_type;
-		rparams.location_filter.legacy_value.start_location = start_location;
-		rparams.location_filter.legacy_value.end_group = end_location_sub.group;
+		rparams.location_filter.legacy_type = filter_type_legacy;
+		rparams.location_filter.range.start = start_location;
+		rparams.location_filter.range.end.group = end_location_sub.group;
 	} else {
 		/* New format */
-		if(options.start_group > -1)
-			rparams.location_filter.start_group = options.start_group;
-		if(options.start_object > -1)
-			rparams.location_filter.start_object = options.start_object;
-		if(options.end_group > -1)
-			rparams.location_filter.end_group = options.end_group;
-		if(options.end_object > -1)
-			rparams.location_filter.end_object = options.end_object;
-		rparams.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-		rparams.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-		rparams.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
-		rparams.location_filter.end_object_set = (options.end_object > -1);
-		if(rparams.location_filter.start_group_set)
-			rparams.location_filter_set = TRUE;
+		rparams.location_filter_set = TRUE;
+		rparams.location_filter.type = filter_type;
+		rparams.location_filter.range.start = start_location;
+		rparams.location_filter.range.end = end_location_sub;
 	}
 	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
@@ -847,17 +814,24 @@ int main(int argc, char *argv[]) {
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_track_free);
 
 	if(options.filter_type != NULL) {
-		if(options.fetch != NULL && options.join_offset < 0) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring filter type (unused for regular FETCH)\n");
+		if(options.fetch != NULL && options.join_offset >= 0) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Ignoring filter type (unused for joining FETCH)\n");
 		} else {
-			if(!strcasecmp(options.filter_type, "LargestObject")) {
-				filter_type = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
-			} else if(!strcasecmp(options.filter_type, "NextGroupStart")) {
-				filter_type = IMQUIC_MOQ_FILTER_NEXT_GROUP_START;
+			if(!strcasecmp(options.filter_type, "NextObject")) {
+				filter_type_legacy = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+				filter_type = IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT;
+			} else if(!strcasecmp(options.filter_type, "RelativeStart")) {
+				filter_type_legacy = IMQUIC_MOQ_FILTER_NEXT_GROUP_START;
+				filter_type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
 			} else if(!strcasecmp(options.filter_type, "AbsoluteStart")) {
-				filter_type = IMQUIC_MOQ_FILTER_ABSOLUTE_START;
+				filter_type_legacy = IMQUIC_MOQ_FILTER_ABSOLUTE_START;
+				filter_type = IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START;
+			} else if(!strcasecmp(options.filter_type, "GroupEnd")) {
+				filter_type_legacy = IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE;
+				filter_type = IMQUIC_MOQ_LOCATION_FILTER_GROUP_END;
 			} else if(!strcasecmp(options.filter_type, "AbsoluteRange")) {
-				filter_type = IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE;
+				filter_type_legacy = IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE;
+				filter_type = IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE;
 			} else {
 				IMQUIC_LOG(IMQUIC_LOG_FATAL, "Invalid filter '%s'\n", options.filter_type);
 				ret = 1;
@@ -875,18 +849,27 @@ int main(int argc, char *argv[]) {
 	} else if(!options.subscribe_namespace) {
 		const char *req = options.track_status ? "TRACK_STATUS" : "SUBSCRIBE";
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "Using '%s' as the %s filter type\n", req, imquic_moq_location_filter_type_str(filter_type));
-		if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
+		if(filter_type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START || filter_type == IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START) {
 			start_location.group = options.start_group > -1 ? (uint64_t)options.start_group : 0;
 			start_location.object = options.start_object > -1 ? (uint64_t)options.start_object : 0;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "%s start location: [%"SCNu64"/%"SCNu64"]\n",
 				req, start_location.group, start_location.object);
-		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
+		} else if(filter_type == IMQUIC_MOQ_LOCATION_FILTER_GROUP_END) {
 			start_location.group = options.start_group > -1 ? (uint64_t)options.start_group : 0;
 			start_location.object = options.start_object > -1 ? (uint64_t)options.start_object : 0;
 			end_location.group = options.end_group > -1 ? (uint64_t)options.end_group : IMQUIC_MAX_VARINT;
 			end_location_sub.group = options.end_group > -1 ? ((uint64_t)options.end_group + 1) : IMQUIC_MAX_VARINT;
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "%s start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "%s start location: [%"SCNu64"/%"SCNu64"] --> end group [%"SCNu64"]\n",
 				req, start_location.group, start_location.object, end_location.group);
+		} else if(filter_type == IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE) {
+			start_location.group = options.start_group > -1 ? (uint64_t)options.start_group : 0;
+			start_location.object = options.start_object > -1 ? (uint64_t)options.start_object : 0;
+			end_location.group = options.end_group > -1 ? (uint64_t)options.end_group : IMQUIC_MAX_VARINT;
+			end_location_sub.group = options.end_group > -1 ? ((uint64_t)options.end_group + 1) : IMQUIC_MAX_VARINT;
+			end_location.object = options.end_object > -1 ? (uint64_t)options.end_object : IMQUIC_MAX_VARINT;
+			end_location_sub.object = options.end_object > -1 ? ((uint64_t)options.end_object + 1) : IMQUIC_MAX_VARINT;
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "%s start location: [%"SCNu64"/%"SCNu64"] --> end location [%"SCNu64"/%"SCNu64"]\n",
+				req, start_location.group, start_location.object, end_location.group, end_location.object);
 		}
 	}
 	if(options.fetch == NULL && !options.track_status && options.update_subscribe > 0) {
@@ -1047,25 +1030,15 @@ int main(int argc, char *argv[]) {
 				if(moq_version < IMQUIC_MOQ_VERSION_20) {
 					/* Legacy format */
 					params.location_filter_set = TRUE;
-					params.location_filter.legacy_value.type = filter_type;
-					params.location_filter.legacy_value.start_location = start_location;
-					params.location_filter.legacy_value.end_group = end_location_sub.group;
+					params.location_filter.legacy_type = filter_type_legacy;
+					params.location_filter.range.start = start_location;
+					params.location_filter.range.end.group = end_location_sub.group;
 				} else {
 					/* New format */
-					if(options.start_group > -1)
-						params.location_filter.start_group = options.start_group;
-					if(options.start_object > -1)
-						params.location_filter.start_object = options.start_object;
-					if(options.end_group > -1)
-						params.location_filter.end_group = options.end_group;
-					if(options.end_object > -1)
-						params.location_filter.end_object = options.end_object;
-					params.location_filter.start_group_set = (options.start_group > -1 || options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-					params.location_filter.start_object_set = (options.start_object > -1 || options.end_group > -1 || options.end_object > -1);
-					params.location_filter.end_group_set = (options.end_group > -1 || options.end_object > -1);
-					params.location_filter.end_object_set = (options.end_object > -1);
-					if(params.location_filter.start_group_set)
-						params.location_filter_set = TRUE;
+					params.location_filter_set = TRUE;
+					params.location_filter.type = filter_type;
+					params.location_filter.range.start = start_location;
+					params.location_filter.range.end = end_location_sub;
 				}
 				imquic_moq_request_parameters fill_parameters;
 				if(moq_version >= IMQUIC_MOQ_VERSION_20 && options.fetch != NULL && options.join_offset >= 0) {
@@ -1078,8 +1051,8 @@ int main(int argc, char *argv[]) {
 					if(options.fetch && !strcasecmp(options.fetch, "descending"))
 						fill_parameters.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
 					fill_parameters.location_filter_set = TRUE;
-					fill_parameters.location_filter.start_group_set = TRUE;
-					fill_parameters.location_filter.start_group = options.join_offset + 1;
+					fill_parameters.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
+					fill_parameters.location_filter.range.start.group = options.join_offset + 1;
 					params.fill_parameters_set = TRUE;
 					params.fill_parameters = &fill_parameters;
 				}

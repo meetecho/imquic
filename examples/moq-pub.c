@@ -237,9 +237,9 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	if(moq_version < IMQUIC_MOQ_VERSION_20) {
 		/* Legacy format */
 		uint64_t filter_type = parameters->location_filter_set ?
-			parameters->location_filter.legacy_value.type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
+			parameters->location_filter.legacy_type : IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s' (legacy)\n",
-			imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(filter_type));
+			imquic_get_connection_name(conn), imquic_moq_location_filter_type_legacy_str(filter_type));
 		if(filter_type == IMQUIC_MOQ_FILTER_LARGEST_OBJECT) {
 			sub_start.group = group_id;
 			sub_start.object = object_id;
@@ -247,15 +247,15 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			sub_start.group = group_id + 1;
 			sub_start.object = 0;
 		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_START) {
-			sub_start = parameters->location_filter.legacy_value.start_location;
+			sub_start = parameters->location_filter.range.start;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"]\n",
 				imquic_get_connection_name(conn), sub_start.group, sub_start.object);
 		} else if(filter_type == IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE) {
-			sub_start = parameters->location_filter.legacy_value.start_location;
-			if(parameters->location_filter.legacy_value.end_group == 0)
+			sub_start = parameters->location_filter.range.start;
+			if(parameters->location_filter.range.end.group == 0)
 				sub_end.group = IMQUIC_MAX_VARINT;
 			else
-				sub_end.group = parameters->location_filter.legacy_value.end_group - 1;
+				sub_end.group = parameters->location_filter.range.end.group - 1;
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 				imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group);
 		}
@@ -265,27 +265,26 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			sub_start.group = group_id;
 			sub_start.object = object_id;
 		} else {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested location filter\n",
-				imquic_get_connection_name(conn));
-			if(parameters->location_filter.start_group_set) {
-				if(!parameters->location_filter.start_object_set) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Requested filter type '%s'\n",
+				imquic_get_connection_name(conn), imquic_moq_location_filter_type_str(parameters->location_filter.type));
+			if(parameters->location_filter.type > IMQUIC_MOQ_LOCATION_FILTER_NONE && parameters->location_filter.type < IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT) {
+				if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START) {
 					/* Only start group provided: relative start */
-					if(group_id >= parameters->location_filter.start_group)
-						sub_start.group = group_id + 1 - parameters->location_filter.start_group;
+					if(group_id >= parameters->location_filter.range.start.group)
+						sub_start.group = group_id + 1 - parameters->location_filter.range.start.group;
 				} else {
 					/* Start object provided too */
-					if(!parameters->location_filter.end_group_set) {
-						/* Only start group and object provided: relative start */
-						if(group_id >= parameters->location_filter.start_group)
-							sub_start.group = group_id + 1 - parameters->location_filter.start_group;
-						sub_start.object = parameters->location_filter.start_object;
+					if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START) {
+						/* Only start group and object provided: absolute start */
+						if(group_id >= parameters->location_filter.range.start.group)
+							sub_start.group = group_id + 1 - parameters->location_filter.range.start.group;
+						sub_start.object = parameters->location_filter.range.start.object;
 					} else {
 						/* End group provided: fields are absolute */
-						sub_start.group = parameters->location_filter.start_group;
-						sub_start.object = parameters->location_filter.start_object;
-						sub_end.group = parameters->location_filter.end_group;
-						if(parameters->location_filter.end_object_set)
-							sub_end.object = parameters->location_filter.end_object;
+						sub_start = parameters->location_filter.range.start;
+						sub_end.group = parameters->location_filter.range.end.group;
+						if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE)
+							sub_end.object = parameters->location_filter.range.end.object;
 					}
 				}
 			}

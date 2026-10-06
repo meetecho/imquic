@@ -35,8 +35,8 @@
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
  * WebTransort protocol. At the time of writing, this stack
- * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v21
- * (\ref IMQUIC_MOQ_VERSION_21), but not all versions will be supported
+ * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v22
+ * (\ref IMQUIC_MOQ_VERSION_22), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \ref IMQUIC_MOQ_VERSION_MIN
@@ -316,7 +316,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_20 = 0xff000014,
 	/* Draft version -21 */
 	IMQUIC_MOQ_VERSION_21 = 0xff000015,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_21,
+	/* Draft version -22 */
+	IMQUIC_MOQ_VERSION_22 = 0xff000016,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_22,
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
@@ -455,11 +457,26 @@ const char *imquic_moq_group_order_str(imquic_moq_group_order type);
 
 /*! \brief MoQ filter type, for subscriptions
  * \note Deprecated in v20 */
-typedef enum imquic_moq_location_filter_type {
+typedef enum imquic_moq_location_filter_type_legacy {
 	IMQUIC_MOQ_FILTER_NEXT_GROUP_START = 0x1,
 	IMQUIC_MOQ_FILTER_LARGEST_OBJECT = 0x2,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_START = 0x3,
 	IMQUIC_MOQ_FILTER_ABSOLUTE_RANGE = 0x4,
+} imquic_moq_location_filter_type_legacy;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_location_filter_type_legacy value.
+ * @param type The imquic_moq_location_filter_type_legacy value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_location_filter_type_legacy_str(imquic_moq_location_filter_type_legacy type);
+
+/*! \brief MoQ filter type, for subscriptions
+ * \note Added in v22, but used for v20/v21 as well */
+typedef enum imquic_moq_location_filter_type {
+	IMQUIC_MOQ_LOCATION_FILTER_NONE = 0x0,
+	IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START = 0x1,
+	IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START = 0x2,
+	IMQUIC_MOQ_LOCATION_FILTER_GROUP_END = 0x3,
+	IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE = 0x4,
+	IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT = 0x5,
 } imquic_moq_location_filter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_location_filter_type value.
  * @param type The imquic_moq_location_filter_type value
@@ -480,38 +497,15 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
-/*! \brief MoQ location filter (legacy)
- * \note Deprecated in v20 */
-typedef struct imquic_moq_location_filter_legacy {
-	/*! \brief Filter type */
-	imquic_moq_location_filter_type type;
-	/*! \brief Start location (depending on filter type) */
-	imquic_moq_location start_location;
-	/*! \brief End group (depending on filter type) */
-	uint64_t end_group;
-} imquic_moq_location_filter_legacy;
-
 /*! \brief MoQ location filter (new)
  * \note Added in v20 */
 typedef struct imquic_moq_location_filter {
-	/*! \brief Whether there is a start group */
-	gboolean start_group_set;
-	/*! \brief The start group value */
-	uint64_t start_group;
-	/*! \brief Whether there is a start object */
-	gboolean start_object_set;
-	/*! \brief The start object value */
-	uint64_t start_object;
-	/*! \brief Whether there is an end group */
-	gboolean end_group_set;
-	/*! \brief The end group value */
-	uint64_t end_group;
-	/*! \brief Whether there is an end object */
-	gboolean end_object_set;
-	/*! \brief The end object value */
-	uint64_t end_object;
-	/*! \brief Legacy filter value, for older versions */
-	imquic_moq_location_filter_legacy legacy_value;
+	/*! \brief Filter type */
+	imquic_moq_location_filter_type type;
+	/*! \brief Legacy filter type, for older versions */
+	imquic_moq_location_filter_type_legacy legacy_type;
+	/*! \brief The location range, depending on the type */
+	imquic_moq_location_range range;
 } imquic_moq_location_filter;
 
 /*! \brief Subscribe options for namespaces
@@ -1063,7 +1057,7 @@ const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 		IMQUIC_CONFIG_TLS_PASSWORD, cert_pwd,
 		IMQUIC_CONFIG_LOCAL_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_21,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_22,
 		IMQUIC_CONFIG_DONE, NULL);
  \endverbatim
  * to create a QUIC server that will automatically negotiate MoQ over
@@ -1096,7 +1090,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...);
 		IMQUIC_CONFIG_REMOTE_HOST, "127.0.0.1",
 		IMQUIC_CONFIG_REMOTE_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_21,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_22,
 		IMQUIC_CONFIG_HTTP3_PATH, "/moq",
 		IMQUIC_CONFIG_DONE, NULL);
 

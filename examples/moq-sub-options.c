@@ -23,7 +23,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "auth-info", 'A', 0, G_OPTION_ARG_STRING, &options->auth_info, "Auth info to subscribe, if needed (default=none)", "string" },
 		{ "track-status", 'i', 0, G_OPTION_ARG_NONE, &options->track_status, "If set, will only send a TRACK_STATUS instead of a SUBSCRIBE (default=no)", NULL},
 		{ "subscribe-namespace", 'B', 0, G_OPTION_ARG_NONE, &options->subscribe_namespace, "If set, will only send a SUBSCRIBE_NAMESPACE instead of a SUBSCRIBE, and will expect a PUBLISH from the relay (default=no)", NULL },
-		{ "filter-type", 'F', 0, G_OPTION_ARG_STRING, &options->filter_type, "Filter type to use for SUBSCRIBE (default=LargestObject)", "LargestObject|NextGroupStart|AbsoluteStart|AbsoluteRange" },
+		{ "filter-type", 'F', 0, G_OPTION_ARG_STRING, &options->filter_type, "Filter type to use for SUBSCRIBE (default=NextObject)", "RelativeStart|AbsoluteStart|AbsoluteRange|GroupEnd|NextObject" },
 		{ "test-range-filters", '7', 0, G_OPTION_ARG_NONE, &options->test_filter_ranges, "Send some test filter ranges in the SUBSCRIBE or SUBSCRIBE_TRACKS (default=no)", NULL },
 		{ "fetch", 'f', 0, G_OPTION_ARG_STRING, &options->fetch, "Use FETCH instead of SUBSCRIBE/PUBLISH, in the specified order (ascending/descending)", "order" },
 		{ "join", 'j', 0, G_OPTION_ARG_INT, &options->join_offset, "When using FETCH, use a Joining Fetch (or FILL_PARAMETERS) and get the specified number of preceding groups (default=-1, no joining fetch)", "offset" },

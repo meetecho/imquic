@@ -375,8 +375,8 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		fill_parameters.group_order_set = TRUE;
 		fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		fill_parameters.location_filter_set = TRUE;
-		fill_parameters.location_filter.start_group_set = TRUE;
-		fill_parameters.location_filter.start_group = 1;
+		fill_parameters.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
+		fill_parameters.location_filter.range.start.group = 1;
 	}
 	if(options.use_catalog) {
 		/* We wait for the catalog to subscribe to the media tracks */
@@ -651,8 +651,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 					fill_parameters.group_order_set = TRUE;
 					fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 					fill_parameters.location_filter_set = TRUE;
-					fill_parameters.location_filter.start_group_set = TRUE;
-					fill_parameters.location_filter.start_group = 1;
+					fill_parameters.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
+					fill_parameters.location_filter.range.start.group = 1;
 					params.fill_parameters_set = TRUE;
 					params.fill_parameters = &fill_parameters;
 					video_fetch_request_id = video_request_id;
