@@ -6479,7 +6479,7 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 				type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX ||
 				type == IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS))) {
 		len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ request parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken MoQ request parameter");
 		offset += length;
 		IMQUIC_MOQ_CHECK_ERR(len > blen-offset, NULL, 0, 0, "Broken MoQ request parameter");
 	}
@@ -6616,6 +6616,10 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 				toffset += length;
 				params->location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE;
 			}
+			if(params->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START &&
+					params->location_filter.range.start.group == 0 &&
+					params->location_filter.range.start.object == 0)
+				params->location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT;
 		} else {
 			/* v22 and beyond are prefixed by the type */
 			uint64_t type = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
