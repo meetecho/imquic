@@ -40,6 +40,9 @@ imquic_stream *imquic_stream_create(uint64_t stream_id, gboolean is_server) {
 	imquic_stream *stream = g_malloc0(sizeof(imquic_stream));
 	stream->stream_id = stream_id;
 	imquic_parse_stream_id(stream_id, &stream->actual_id, &stream->client_initiated, &stream->bidirectional);
+	gboolean locally_initiated = stream->client_initiated != is_server;
+	stream->can_send = stream->bidirectional || locally_initiated;
+	stream->can_receive = stream->bidirectional || !locally_initiated;
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "New stream: %"SCNu64" (%"SCNu64", %s initiated, %s)\n",
 		stream_id, stream->actual_id,
 		stream->client_initiated ? "client" : "server",

@@ -55,3 +55,9 @@ imquic.pc
 .vscode
 
 picoquic
+
+test-driver
+/src/test-core
+/src/test-network
+/src/*.log
+/src/*.trs

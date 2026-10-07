@@ -23,7 +23,7 @@ static char *imquic_qpack_huffman_decode(uint8_t *buffer, size_t size, char *tex
 	bs.buffer = buffer;
 	bs.size = size * 8;
 	/* Read the first byte and start processing */
-	uint8_t cur = 0;
+	size_t cur = 0;
 	uint8_t len = 0, byte = 0, bits = 0;
 	imquic_huffman_table *table = imquic_huffman_transitions[0];
 	while(bs.offset < bs.size) {
@@ -47,11 +47,12 @@ static char *imquic_qpack_huffman_decode(uint8_t *buffer, size_t size, char *tex
 			break;
 		}
 		/* We have a symbol */
-		if(cur < tlen) {
+		if(cur < tlen - 1) {
 			text[cur] = table[byte].symbol;
 			cur++;
 		} else {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "String output insufficient for Huffman decoding, output will be truncated\n");
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "String output insufficient for Huffman decoding\n");
+			return NULL;
 		}
 		bs.offset += table[byte].num_bits;
 		/* Reset and move to the next symbol */
@@ -61,6 +62,23 @@ static char *imquic_qpack_huffman_decode(uint8_t *buffer, size_t size, char *tex
 	}
 	text[cur] = '\0';
 	return text;
+}
+
+/* Validate the wire length before either text or Huffman decoding. */
+static gboolean imquic_qpack_decode_string(uint8_t *bytes, uint64_t length, size_t available,
+		gboolean huffman, char *text, size_t capacity) {
+	if(length > available || capacity == 0)
+		return FALSE;
+	text[0] = '\0';
+	if(length == 0)
+		return TRUE;
+	if(huffman)
+		return imquic_qpack_huffman_decode(bytes, length, text, capacity) != NULL;
+	if(length >= capacity)
+		return FALSE;
+	memcpy(text, bytes, length);
+	text[length] = '\0';
+	return TRUE;
 }
 
 static size_t imquic_qpack_huffman_encode(const char *text, uint8_t *buffer, size_t size) {
@@ -113,7 +131,7 @@ void imquic_qpack_entry_destroy(imquic_qpack_entry *entry) {
 size_t imquic_qpack_entry_size(imquic_qpack_entry *entry) {
 	size_t size = 0;
 	if(entry) {
-		entry += (entry->name ? strlen(entry->name) : 0) +
+		size = (entry->name ? strlen(entry->name) : 0) +
 			(entry->value ? strlen(entry->value) : 0) + 32;
 	}
 	return size;
@@ -168,7 +186,7 @@ static imquic_qpack_entry *imquic_qpack_find_entry(imquic_qpack_dynamic_table *d
 		*full_match = FALSE;
 	/* Look in the static table first */
 	gboolean is_dynamic = FALSE, is_full_match = FALSE;
-	for(int i=0; i<99; i++) {
+	for(int i=0; i<IMQUIC_QPACK_STATIC_TABLE_SIZE; i++) {
 		temp = &imquic_qpack_static_table[i];
 		if(!strcasecmp(temp->name, entry->name)) {
 			if(temp->value == NULL && entry->value == NULL) {
@@ -230,7 +248,7 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 	if(ctx == NULL || bytes == NULL || blen < 1)
 		return 0;
 	/* Process the encoder data */
-	size_t offset = 0;
+	size_t offset = 0, processed = 0;
 	uint64_t parsed = 0;
 	uint8_t length = 0;
 	imquic_qpack_entry *ref = NULL, *entry = NULL;
@@ -261,6 +279,8 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 			}
 			if(b1) {
 				/* Reference is to the static table */
+				if(parsed >= IMQUIC_QPACK_STATIC_TABLE_SIZE)
+					break;
 				ref = &imquic_qpack_static_table[parsed];
 			} else {
 				/* Reference is to the dynamic table */
@@ -270,6 +290,8 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 			if(ref == NULL)
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Couldn't find reference '%"SCNu64"' in %s table\n", parsed, b1 ? "static" : "dynamic");
 			offset += length;
+			if(offset >= blen)
+				break;
 			uint8_t h = bytes[offset] & 0x80;
 			parsed = imquic_read_pfxint(7, &bytes[offset], blen-offset, &length);
 			if(length == 0) {
@@ -278,12 +300,8 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 			}
 			offset += length;
 			char value[256];
-			if(h) {
-				/* Huffman encoded */
-				imquic_qpack_huffman_decode(&bytes[offset], parsed, value, sizeof(value));
-			} else {
-				/* Regular text */
-				g_snprintf(value, sizeof(value), "%.*s\n", (int)parsed, &bytes[offset]);
+			if(!imquic_qpack_decode_string(&bytes[offset], parsed, blen-offset, h, value, sizeof(value))) {
+				break;
 			}
 			if(ref) {
 				entry = imquic_qpack_entry_create(ref->name, value);
@@ -306,14 +324,12 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 			}
 			offset += length;
 			char name[256];
-			if(b2) {
-				/* Huffman encoded */
-				imquic_qpack_huffman_decode(&bytes[offset], parsed, name, sizeof(name));
-			} else {
-				/* Regular text */
-				g_snprintf(name, sizeof(name), "%.*s\n", (int)parsed, &bytes[offset]);
+			if(!imquic_qpack_decode_string(&bytes[offset], parsed, blen-offset, b2, name, sizeof(name))) {
+				break;
 			}
 			offset += parsed;
+			if(offset >= blen)
+				break;
 			uint8_t h = bytes[offset] & 0x80;
 			parsed = imquic_read_pfxint(7, &bytes[offset], blen-offset, &length);
 			if(length == 0) {
@@ -322,12 +338,8 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 			}
 			offset += length;
 			char value[256];
-			if(h) {
-				/* Huffman encoded */
-				imquic_qpack_huffman_decode(&bytes[offset], parsed, value, sizeof(value));
-			} else {
-				/* Regular text */
-				g_snprintf(value, sizeof(value), "%.*s\n", (int)parsed, &bytes[offset]);
+			if(!imquic_qpack_decode_string(&bytes[offset], parsed, blen-offset, h, value, sizeof(value))) {
+				break;
 			}
 			entry = imquic_qpack_entry_create(name, value);
 			IMQUIC_LOG(IMQUIC_LOG_HUGE, "[QPACK] Insert with Literal Name: %s = %s\n", entry->name, entry->value);
@@ -367,11 +379,14 @@ size_t imquic_qpack_decode(imquic_qpack_context *ctx, uint8_t *bytes, size_t ble
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Unkwown start code: " BYTE_TO_BINARY_PATTERN "\n", BYTE_TO_BINARY(bytes[offset]));
 			break;
 		}
+		processed = offset;
 	}
-	return offset;
+	return processed;
 }
 
 GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t blen, size_t *bread) {
+	if(bread)
+		*bread = 0;
 	if(ctx == NULL || bytes == NULL || blen < 1)
 		return 0;
 	size_t offset = 0;
@@ -383,6 +398,8 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 		return NULL;
 	}
 	offset += length;
+	if(offset >= blen)
+		return NULL;
 	uint8_t s = bytes[offset] & 0x80;
 	uint64_t delta = imquic_read_pfxint(7, &bytes[offset], blen-offset, &length);
 	if(length == 0) {
@@ -414,6 +431,10 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 			/* Find the entry, clone it and add it to the headers list */
 			if(b1) {
 				/* Reference is to the static table */
+				if(parsed >= IMQUIC_QPACK_STATIC_TABLE_SIZE) {
+					g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+					return NULL;
+				}
 				ref = &imquic_qpack_static_table[parsed];
 			} else {
 				/* Reference is to the dynamic table */
@@ -456,6 +477,10 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 				return NULL;
 			}
 			offset += length;
+			if(offset >= blen) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
+			}
 			uint8_t h = bytes[offset] & 0x80;
 			parsed = imquic_read_pfxint(7, &bytes[offset], blen-offset, &length);
 			if(length == 0) {
@@ -465,15 +490,16 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 			}
 			offset += length;
 			char value[256];
-			if(h) {
-				/* Huffman encoded */
-				imquic_qpack_huffman_decode(&bytes[offset], parsed, value, sizeof(value));
-			} else {
-				/* Regular text */
-				g_snprintf(value, sizeof(value), "%.*s\n", (int)parsed, &bytes[offset]);
+			if(!imquic_qpack_decode_string(&bytes[offset], parsed, blen-offset, h, value, sizeof(value))) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
 			}
 			offset += parsed;
 			/* Find the entry, clone it with the new value and add it to the headers list */
+			if(index >= IMQUIC_QPACK_STATIC_TABLE_SIZE) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
+			}
 			ref = &imquic_qpack_static_table[index];
 			if(ref == NULL) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "Couldn't find reference '%"SCNu64"' in %s table\n", parsed, b1 ? "static" : "dynamic");
@@ -493,6 +519,10 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 				return NULL;
 			}
 			offset += length;
+			if(offset >= blen) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
+			}
 			uint8_t h = bytes[offset] & 0x80;
 			parsed = imquic_read_pfxint(7, &bytes[offset], blen-offset, &length);
 			if(length == 0) {
@@ -502,12 +532,9 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 			}
 			offset += length;
 			char value[256];
-			if(h) {
-				/* Huffman encoded */
-				imquic_qpack_huffman_decode(&bytes[offset], parsed, value, sizeof(value));
-			} else {
-				/* Regular text */
-				g_snprintf(value, sizeof(value), "%.*s\n", (int)parsed, &bytes[offset]);
+			if(!imquic_qpack_decode_string(&bytes[offset], parsed, blen-offset, h, value, sizeof(value))) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
 			}
 			offset += parsed;
 			/* Find the entry, clone it with the new value and add it to the headers list */
@@ -532,14 +559,15 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 			}
 			offset += length;
 			char name[256];
-			if(h) {
-				/* Huffman encoded */
-				imquic_qpack_huffman_decode(&bytes[offset], parsed, name, sizeof(name));
-			} else {
-				/* Regular text */
-				g_snprintf(name, sizeof(name), "%.*s\n", (int)parsed, &bytes[offset]);
+			if(!imquic_qpack_decode_string(&bytes[offset], parsed, blen-offset, h, name, sizeof(name))) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
 			}
 			offset += parsed;
+			if(offset >= blen) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
+			}
 			h = bytes[offset] & 0x80;
 			parsed = imquic_read_pfxint(7, &bytes[offset], blen-offset, &length);
 			if(length == 0) {
@@ -549,12 +577,9 @@ GList *imquic_qpack_process(imquic_qpack_context *ctx, uint8_t *bytes, size_t bl
 			}
 			offset += length;
 			char value[256];
-			if(h) {
-				/* Huffman encoded */
-				imquic_qpack_huffman_decode(&bytes[offset], parsed, value, sizeof(value));
-			} else {
-				/* Regular text */
-				g_snprintf(value, sizeof(value), "%.*s\n", (int)parsed, &bytes[offset]);
+			if(!imquic_qpack_decode_string(&bytes[offset], parsed, blen-offset, h, value, sizeof(value))) {
+				g_list_free_full(headers, (GDestroyNotify)imquic_qpack_entry_destroy);
+				return NULL;
 			}
 			offset += parsed;
 			/* Create a new entry with the provided name/value and add it to the headers list */

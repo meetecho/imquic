@@ -239,7 +239,7 @@ void imquic_connection_reset_stream(imquic_connection *conn, uint64_t stream_id,
 		return;
 	imquic_mutex_lock(&conn->mutex);
 	imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
-	if(stream == NULL) {
+	if(stream == NULL || !stream->can_send) {
 		imquic_mutex_unlock(&conn->mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't reset stream, no such stream %"SCNu64"\n",
 			imquic_get_connection_name(conn), stream_id);
@@ -273,7 +273,7 @@ void imquic_connection_stop_sending_stream(imquic_connection *conn, uint64_t str
 		return;
 	imquic_mutex_lock(&conn->mutex);
 	imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
-	if(stream == NULL) {
+	if(stream == NULL || !stream->can_receive) {
 		imquic_mutex_unlock(&conn->mutex);
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't stop stream, no such stream %"SCNu64"\n",
 			imquic_get_connection_name(conn), stream_id);
@@ -287,7 +287,7 @@ void imquic_connection_stop_sending_stream(imquic_connection *conn, uint64_t str
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Couldn't prepare STOP_SENDING for %"SCNu64" (alreayd sent?)\n",
 			imquic_get_connection_name(conn), stream_id);
 	} else {
-		imquic_stream_mark_complete(stream, FALSE);
+		imquic_stream_mark_complete(stream, TRUE);
 		stream->in_state = IMQUIC_STREAM_RESET;
 		imquic_mutex_unlock(&stream->mutex);
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stopping stream %"SCNu64" (RESET_STREAM)\n",

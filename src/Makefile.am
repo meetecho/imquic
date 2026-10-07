@@ -100,3 +100,16 @@ CLEANFILES += version.c
 
 .PHONY: FORCE
 FORCE:
+
+check_PROGRAMS = test-core test-network
+TESTS = $(check_PROGRAMS)
+test_core_SOURCES = tests/core.c
+test_core_CFLAGS = $(libimquic_la_CFLAGS) -I$(srcdir)
+test_core_LDADD = libimquic.la $(IMQUIC_LIBS)
+test_network_SOURCES = tests/network.c network.c
+test_network_CFLAGS = $(libimquic_la_CFLAGS) -I$(srcdir) \
+	-Dgetaddrinfo=imquic_test_getaddrinfo \
+	-Dfreeaddrinfo=imquic_test_freeaddrinfo \
+	-Dimquic_quic_create_context=imquic_test_quic_create_context
+test_network_LDADD = libimquic.la $(IMQUIC_LIBS)
+CLEANFILES += $(TESTS) *.log *.trs

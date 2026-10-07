@@ -139,16 +139,22 @@ uint64_t imquic_read_pfxint(uint8_t n, uint8_t *bytes, size_t blen, uint8_t *len
 		return first;
 	}
 	/* We need to traverse more bits */
-	uint8_t m = 0, b = 0x80, i = 0;
+	uint8_t b = 0x80;
+	size_t m = 0, i = 0;
 	uint64_t number = cap;
 	while(b & 0x80) {
 		i++;
-		if(blen == i) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Not enough bytes to read the number (we're at %"SCNu8" but need more than that)\n", i);
+		if(i >= blen || m >= 64) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Truncated or overflowing prefixed integer\n");
 			return 0;
 		}
 		b = bytes[i];
-		number += (b & 0x7f) * ((uint64_t)1 << m);
+		uint64_t part = b & 0x7f;
+		if(part > ((UINT64_MAX - number) >> m)) {
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "Overflowing prefixed integer\n");
+			return 0;
+		}
+		number += part << m;
 		m += 7;
 	};
 	if(length)
