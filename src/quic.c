@@ -26,6 +26,8 @@ static const char *picoquic_call_back_event_t_str(picoquic_call_back_event_t eve
 			return "picoquic_callback_stream_fin";
 		case picoquic_callback_stream_reset:
 			return "picoquic_callback_stream_reset";
+		case picoquic_callback_stream_released:
+			return "picoquic_callback_stream_released";
 		case picoquic_callback_stop_sending:
 			return "picoquic_callback_stop_sending";
 		case picoquic_callback_stateless_reset:
@@ -191,12 +193,25 @@ gboolean imquic_quic_queued_event(imquic_connection *conn, imquic_connection_eve
 		return G_SOURCE_REMOVE;
 	}
 	/* Check what event we need to process */
-	if(event->type == IMQUIC_CONNECTION_EVENT_STREAM) {
-		/* Send STREAM data */
-		int ret = picoquic_add_to_stream(conn->piconn, event->stream_id,
-			event->data ? event->data->bytes : NULL, event->data ? event->data->length : 0, event->fin);
+	if(event->type == IMQUIC_CONNECTION_EVENT_NEW_STREAM) {
+		/* There's a new STREAM we need to map */
+		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = g_hash_table_lookup(conn->streams, &event->stream_id);
+		imquic_mutex_unlock(&conn->mutex);
+		if(stream != NULL && g_atomic_int_compare_and_exchange(&stream->mapped, 0, 1)) {
+			/* Map it in picoquic */
+			imquic_refcount_increase(&stream->ref);
+			int ret = picoquic_set_app_stream_ctx(conn->piconn, event->stream_id, stream);
+			if(ret != 0) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error setting STREAM %"SCNu64" context: %d\n",
+					conn->name, event->stream_id, ret);
+			}
+		}
+	} else if(event->type == IMQUIC_CONNECTION_EVENT_ACTIVE_STREAM) {
+		/* There's STREAM data to send */
+		int ret = picoquic_mark_active_stream_v2(conn->piconn, event->stream_id, 1);
 		if(ret != 0) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error queueing data for STREAM %"SCNu64": %d\n",
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error marking STREAM %"SCNu64" as active: %d\n",
 				conn->name, event->stream_id, ret);
 		}
 	} else if(event->type == IMQUIC_CONNECTION_EVENT_DATAGRAM) {
@@ -321,18 +336,26 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Incoming STREAM data (stream %"SCNu64", %zu bytes)\n",
 			name, stream_id, blen);
 		/* Is this an existing stream or a new one? */
-		imquic_mutex_lock(&conn->mutex);
+		imquic_stream *stream = (imquic_stream *)v_stream_ctx;
 		gboolean new_stream = FALSE;
-		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
 		if(stream == NULL) {
 			/* New stream, take note of it */
 			new_stream = TRUE;
 			stream = imquic_stream_create(stream_id, endpoint->is_server);
+			imquic_mutex_lock(&conn->mutex);
 			g_hash_table_insert(conn->streams, imquic_uint64_dup(stream_id), stream);
+			imquic_mutex_unlock(&conn->mutex);
+			/* Map it in picoquic */
+			g_atomic_int_set(&stream->mapped, 1);
+			imquic_refcount_increase(&stream->ref);
+			int ret = picoquic_set_app_stream_ctx(pconn, stream_id, stream);
+			if(ret != 0) {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error setting STREAM %"SCNu64" context: %d\n",
+					name, stream_id, ret);
+			}
 		}
 		if(fin_or_event == picoquic_callback_stream_fin)
 			imquic_stream_mark_complete(stream, TRUE);
-		imquic_mutex_unlock(&conn->mutex);
 		if(conn->http3 != NULL) {
 			/* Process the data as HTTP/3 */
 			imquic_http3_process_stream_data(conn, stream, bytes, blen, new_stream);
@@ -347,14 +370,17 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		if(ps != NULL)
 			error_code = ps->remote_error;
 		/* Update the local state of the stream */
-		imquic_mutex_lock(&conn->mutex);
-		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		imquic_stream *stream = (imquic_stream *)v_stream_ctx;
+		if(stream == NULL) {
+			imquic_mutex_lock(&conn->mutex);
+			stream = g_hash_table_lookup(conn->streams, imquic_uint64_dup(stream_id));
+			imquic_mutex_unlock(&conn->mutex);
+		}
 		if(stream != NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "Stream %"SCNu64" has been reset by the peer\n", stream_id);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Stream %"SCNu64" has been reset by the peer\n", name, stream_id);
 			if(stream->in_state != IMQUIC_STREAM_COMPLETE)
 				stream->in_state = IMQUIC_STREAM_RESET;
 		}
-		imquic_mutex_unlock(&conn->mutex);
 		/* Pass the data to the application callback */
 		if(endpoint->reset_stream_incoming)
 			endpoint->reset_stream_incoming(conn, stream_id, error_code);
@@ -364,18 +390,61 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		picoquic_stream_head_t *ps = picoquic_find_stream(pconn, stream_id);
 		if(ps != NULL)
 			error_code = ps->remote_stop_error;
-		/* Update the local state of the stream */
-		imquic_mutex_lock(&conn->mutex);
-		imquic_stream *stream = g_hash_table_lookup(conn->streams, &stream_id);
+		imquic_stream *stream = (imquic_stream *)v_stream_ctx;
+		if(stream == NULL) {
+			imquic_mutex_lock(&conn->mutex);
+			stream = g_hash_table_lookup(conn->streams, imquic_uint64_dup(stream_id));
+			imquic_mutex_unlock(&conn->mutex);
+		}
 		if(stream != NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "We've been asked to stop sending on stream %"SCNu64"\n", stream_id);
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] We've been asked to stop sending on stream %"SCNu64"\n", name, stream_id);
 			if(stream->out_state != IMQUIC_STREAM_COMPLETE)
 				stream->out_state = IMQUIC_STREAM_RESET;
 		}
-		imquic_mutex_unlock(&conn->mutex);
 		/* Pass the data to the application callback */
 		if(endpoint->stop_sending_incoming)
 			endpoint->stop_sending_incoming(conn, stream_id, error_code);
+	} else if(fin_or_event == picoquic_callback_prepare_to_send) {
+		/* We can send STREAM data */
+		gboolean sent = FALSE;
+		imquic_stream *stream = (imquic_stream *)v_stream_ctx;
+		if(stream != NULL) {
+			/* FIXME */
+			imquic_mutex_lock(&stream->mutex);
+			imquic_buffer *chunk = stream->outgoing_data ? g_queue_pop_head(stream->outgoing_data) : NULL;
+			if(chunk != NULL) {
+				size_t chunk_length = chunk->size - chunk->offset;
+				size_t write_length = chunk_length < blen ? chunk_length : blen;
+				int is_fin = chunk->complete && (write_length == chunk_length);
+				int is_still_active = !is_fin && (write_length < chunk_length || g_queue_peek_head(stream->outgoing_data) != NULL);
+				uint8_t *buffer = picoquic_provide_stream_data_buffer(bytes, write_length, is_fin, is_still_active);
+				if(buffer == NULL) {
+					/* Something went wrong */
+					g_queue_push_head(stream->outgoing_data, chunk);
+				} else {
+					if(chunk->bytes != NULL)
+						memcpy(buffer, chunk->bytes + chunk->offset, write_length);
+					chunk->offset += write_length;
+					if(chunk->offset < chunk->size) {
+						/* We didn't write everything, re-add to the head of the queue for later */
+						g_queue_push_head(stream->outgoing_data, chunk);
+					} else {
+						/* Get rid of the chunk */
+						imquic_buffer_destroy(chunk);
+					}
+					sent = TRUE;
+				}
+			}
+			imquic_mutex_unlock(&stream->mutex);
+		}
+		/* We didnt send anything, give up */
+		if(!sent)
+			(void)picoquic_provide_stream_data_buffer(bytes, 0, 0, 0);
+	} else if(fin_or_event == picoquic_callback_stream_released) {
+		/* Stream gone, unref our instance */
+		imquic_stream *stream = (imquic_stream *)v_stream_ctx;
+		if(stream != NULL)
+			imquic_refcount_decrease(&stream->ref);
 	} else if(fin_or_event == picoquic_callback_application_close) {
 		/* TODO Should we handle this somehow? */
 	} else if(fin_or_event == picoquic_callback_close) {
