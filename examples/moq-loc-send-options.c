@@ -26,6 +26,7 @@ gboolean demo_options_parse(demo_options *options, int argc, char *argv[]) {
 		{ "video-framerate", 'F', 0, G_OPTION_ARG_INT, &options->video_framerate, "Video framerate to capture at, in frames per second (default=25)", "fps" },
 		{ "video-codec", 'e', 0, G_OPTION_ARG_STRING, &options->video_codec, "Video codec to use (default=h264-avcc)", "h264-avcc|h264-annexb|vp8|vp9|av1" },
 		{ "loc-codec-string", 'G', 0, G_OPTION_ARG_NONE, &options->loc_codec_string, "Whether a LOC Codec String property should be added to every object (default=no)", NULL },
+		{ "loc-audio-config", 'O', 0, G_OPTION_ARG_NONE, &options->loc_audio_config, "Whether a LOC Audio Config property should be added to every audio object (default=no)", NULL },
 		{ "publish", 'X', 0, G_OPTION_ARG_NONE, &options->publish, "Use a PUBLISH right away instead of waiting for a SUBSCRIBE (default=no; only supported for v12 and later)", NULL },
 		{ "bind", 'b', 0, G_OPTION_ARG_STRING, &options->ip, "Local IP address to bind to (default=all interfaces)", "IP" },
 		{ "port", 'p', 0, G_OPTION_ARG_INT, &options->port, "Local port to bind to (default=0, random)", "port" },

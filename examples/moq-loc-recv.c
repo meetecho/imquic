@@ -673,7 +673,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		/* Parse the properties to get access to the LOC info */
 		IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d properties\n", g_list_length(object->properties));
 		uint64_t timestamp = 0, timescale = 0;
-		struct imquic_moq_property_data *loc_extradata = NULL;
+		struct imquic_moq_property_data *loc_extradata = NULL, *audio_config = NULL;
 		GList *temp = object->properties;
 		while(temp) {
 			imquic_moq_property *prop = (imquic_moq_property *)temp->data;
@@ -692,9 +692,10 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 				}
 				case IMQUIC_MOQ_LOC_AUDIO_CONFIG: {
 					/* FIXME Currently unused */
+					audio_config = &prop->value.data;
 					IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- -- %s: %zu bytes\n",
 						imquic_moq_property_type_str(moq_version, prop->id),
-						prop->value.data.length);
+						audio_config->length);
 					break;
 				}
 				case IMQUIC_MOQ_LOC_VIDEO_CONFIG: {
@@ -731,10 +732,18 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			}
 			temp = temp->next;
 		}
+		if(audio_tn != NULL && audio_config != NULL &&
+				object->track_alias == audio_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) {
+			/* We have an audio config */
+			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- LOC audio configuration (%zu bytes):\n", audio_config->length);
+			for(size_t i=0; i<audio_config->length; ++i)
+				IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "%02x", audio_config->buffer[i]);
+			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "\n");
+		}
 		if(video_tn != NULL && loc_extradata != NULL &&
 				((object->track_alias == video_track_alias && object->delivery != IMQUIC_MOQ_USE_FETCH) ||
 				(object->request_id == video_fetch_request_id && object->delivery == IMQUIC_MOQ_USE_FETCH))) {
-			/* We have AVCC extradata*/
+			/* We have AVCC extradata */
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- LOC extradata (%zu bytes):\n", loc_extradata->length);
 			for(size_t i=0; i<loc_extradata->length; ++i)
 				IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "%02x", loc_extradata->buffer[i]);

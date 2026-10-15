@@ -112,6 +112,13 @@ static GThread *audio_thread = NULL, *video_capture_thread = NULL, *video_enc_th
 static AVFrame *latest_frame = NULL;
 static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
 
+/* FIXME Audio config info sent by moq-encoder-player with every object */
+static uint8_t opus_config[] = {
+	0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64,
+	0x01, 0x01, 0x78, 0x00, 0x80, 0xbb, 0x00, 0x00,
+	0x00, 0x00, 0x00
+};
+
 static void *imquic_demo_audio_thread(void *user_data);
 static void *imquic_demo_video_capture_thread(void *user_data);
 static void *imquic_demo_video_enc_thread(void *user_data);
@@ -422,6 +429,14 @@ static void *imquic_demo_audio_thread(void *user_data) {
 			timestamp.value.number = audio_ts;
 			props = g_list_append(props, &timestamp);
 			audio_ts += 20000;	/* FIXME */
+			/* Check if we need to send an Audio Config */
+			imquic_moq_property audio_config = { 0 };
+			if(options.loc_audio_config) {
+				audio_config.id = IMQUIC_MOQ_LOC_AUDIO_CONFIG;
+				audio_config.value.data.buffer = opus_config;
+				audio_config.value.data.length = sizeof(opus_config);
+				props = g_list_append(props, &audio_config);
+			}
 			/* We optionally add a Codec string too */
 			imquic_moq_property codec_string = { 0 };
 			if(options.loc_codec_string) {
