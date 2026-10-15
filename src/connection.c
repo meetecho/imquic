@@ -135,6 +135,9 @@ int imquic_connection_new_stream_id(imquic_connection *conn, gboolean bidirectio
 	imquic_mutex_unlock(&conn->mutex);
 	if(stream_id)
 		*stream_id = new_stream_id;
+	imquic_connection_event *event = imquic_connection_event_create(IMQUIC_CONNECTION_EVENT_NEW_STREAM);
+	event->stream_id = new_stream_id;
+	g_async_queue_push(conn->queued_events, event);
 	if(conn->http3 != NULL && conn->http3->webtransport) {
 		/* We need to write the info on the new WebTransport stream */
 		uint8_t prefix[10];
@@ -186,10 +189,15 @@ int imquic_connection_send_on_stream(imquic_connection *conn, uint64_t stream_id
 	imquic_refcount_increase(&stream->ref);
 	imquic_mutex_unlock(&conn->mutex);
 	/* Queue the data to send */
-	imquic_connection_event *event = imquic_connection_event_create(IMQUIC_CONNECTION_EVENT_STREAM);
+	imquic_buffer *chunk = imquic_buffer_create(bytes, length);
+	chunk->complete = complete;
+	imquic_mutex_lock(&stream->mutex);
+	if(stream->outgoing_data == NULL)
+		stream->outgoing_data = g_queue_new();
+	g_queue_push_tail(stream->outgoing_data, chunk);
+	imquic_mutex_unlock(&stream->mutex);
+	imquic_connection_event *event = imquic_connection_event_create(IMQUIC_CONNECTION_EVENT_ACTIVE_STREAM);
 	event->stream_id = stream_id;
-	event->fin = complete;
-	event->data = imquic_buffer_create(bytes, length);
 	g_async_queue_push(conn->queued_events, event);
 	/* Update the stream status, if needed */
 	imquic_mutex_lock(&stream->mutex);

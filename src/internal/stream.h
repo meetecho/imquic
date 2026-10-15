@@ -49,6 +49,10 @@ typedef struct imquic_stream {
 	/*! \brief Number of bytes to skip, when dealing with offsets (e.g., to hide
 	 * the shifted offsets when a protocol is encapsulated on a WebTransport */
 	size_t skip_in;
+	/*! \brief Queue of imquic_buffer instances for outgoing data */
+	GQueue *outgoing_data;
+	/*! \brief Whether a mapping for this stream exists in picoquic */
+	volatile gint mapped;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
 	/*! \brief Whether this instance has been destroyed (reference counting) */

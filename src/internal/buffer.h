@@ -20,8 +20,14 @@ typedef struct imquic_buffer {
 	uint8_t *bytes;
 	/*! \brief Size of the data currently in the buffer */
 	uint64_t length;
+	/*! \brief Offset of the data currently in the buffer
+	 * \note Currently only used for outgoing \c STREAM data */
+	uint64_t offset;
 	/*! \brief Overall size of the buffer */
 	uint64_t size;
+	/*! \brief Whether this buffer completes the data
+	 * \note Currently only used for outgoing \c STREAM data */
+	gboolean complete;
 } imquic_buffer;
 /*! \brief Create a new buffer
  * @note Passing empty data will only allocate an empty buffer instance

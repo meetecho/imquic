@@ -33,6 +33,8 @@ const char *imquic_stream_state_str(imquic_stream_state state) {
 /* Stream initialization */
 static void imquic_stream_free(const imquic_refcount *stream_ref) {
 	imquic_stream *stream = imquic_refcount_containerof(stream_ref, imquic_stream, ref);
+	if(stream->outgoing_data != NULL)
+		g_queue_free_full(stream->outgoing_data, (GDestroyNotify)imquic_buffer_destroy);
 	g_free(stream);
 }
 
