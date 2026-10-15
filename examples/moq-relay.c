@@ -2253,12 +2253,34 @@ static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request
 	s->fetch = TRUE;
 	s->sub_start = local_range.start;
 	s->sub_end = local_range.end;
-	if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING)
+	/* Order the object by when they should be delivered, and find
+	 * the group and object ID we should return as the end location */
+	GList *last = NULL;
+	if(parameters->group_order == IMQUIC_MOQ_ORDERING_DESCENDING) {
 		s->objects = g_list_sort(s->objects, imquic_demo_order_descending);
-	else
+		GList *temp = s->objects;
+		last = temp;
+		imquic_moq_object *obj = temp ? (imquic_moq_object *)temp->data : NULL;
+		uint64_t group_id = obj ? obj->group_id : 0;
+		while(temp != NULL) {
+			obj = (imquic_moq_object *)temp->data;
+			if(obj != NULL && obj->group_id < group_id)
+				break;
+			last = temp;
+			temp = temp->next;
+		}
+	} else {
 		s->objects = g_list_sort(s->objects, imquic_demo_order_ascending);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Scheduling delivery of %d objects\n",
-		imquic_get_connection_name(conn), g_list_length(s->objects));
+		last = g_list_last(s->objects);
+	}
+	imquic_moq_location end_location = { 0 };
+	imquic_moq_object *obj = last ? (imquic_moq_object *)last->data : NULL;
+	if(obj != NULL) {
+		end_location.group = obj->group_id;
+		end_location.object = obj->object_id;
+	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Scheduling delivery of %d objects (end location: %"SCNu64"/%"SCNu64")\n",
+		imquic_get_connection_name(conn), g_list_length(s->objects), end_location.group, end_location.object);
 	if(s->objects != NULL) {
 		imquic_moq_object *obj = (imquic_moq_object *)s->objects->data;
 		if(obj != NULL && !obj->priority_set) {
@@ -2273,7 +2295,7 @@ static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.group_order_set = parameters->group_order_set;
 	rparams.group_order = parameters->group_order;
-	imquic_moq_accept_fetch(conn, request_id, &largest, &rparams, track->properties);
+	imquic_moq_accept_fetch(conn, request_id, &end_location, &rparams, track->properties);
 	imquic_mutex_unlock(&mutex);
 }
 
