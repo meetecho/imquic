@@ -366,6 +366,116 @@ static size_t imquic_demo_h264_spspps_to_avcc(uint8_t *avcc_data, uint8_t *buffe
 	return avcc_size;
 }
 
+/* Helper function to see if we need a new frame buffer and of what size,
+ * which will be the case if the Annex-B frame uses 3-bytes start codes */
+static int imquic_demo_h264_avcc_size(uint8_t *bytes, size_t blen, size_t *avcc_len) {
+	if(bytes == NULL || blen < 4)
+		return -1;
+	size_t index = 0, prev = 0, extra = 0;
+	if(bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x00 && bytes[3] == 0x01) {
+		/* Frame starts with a 4-byte start code */
+		index = prev = 4;
+	} else if(bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x01) {
+		/* Frame starts with a 3-byte start code, so we definitely need an extra byte */
+		index = prev = 3;
+		extra++;
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "No start code found at the beginning of the bytes, invalid input\n");
+		return -2;
+	}
+	while(blen >= index) {
+		if(bytes[index] == 0x00 && bytes[index+1] == 0x00 &&
+				bytes[index+2] == 0x00 && bytes[index+3] == 0x01) {
+			/* Found a 4-byes start code, that determines the NAL size */
+			prev = 4;
+			index += 4;
+		} else if(bytes[index] == 0x00 && bytes[index+1] == 0x00 &&
+				bytes[index+2] == 0x01) {
+			/* Found a 3-byes start code, that determines the NAL size */
+			prev = 3;
+			index += 3;
+			/* We'll need an extra byte */
+			extra++;
+		} else {
+			index++;
+		}
+	}
+	/* Return the number of bytes we'll need for AVCC (which may be
+	 * the same as Annex-B, if only 4-byte start codes were used) */
+	if(avcc_len != NULL)
+		*avcc_len = blen + extra;
+	return 0;
+}
+
+/* Helper method to actually translate from Annex-B to AVCC, taking
+ * into account that we may or may not be working on the same buffer,
+ * depending on whether or not we detected a need for extra bytes */
+static size_t imquic_demo_h264_annexb_to_avcc(uint8_t *bytes, size_t blen, uint8_t *avcc_bytes, size_t avcc_len) {
+	if(bytes == NULL || blen < 4 || avcc_bytes == NULL || avcc_len < 4)
+		return 0;
+	size_t annexb_offset = 0, avcc_offset = 0, index = 0, prev = 0;
+	uint32_t nal_size = 0;
+	if(bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x00 && bytes[3] == 0x01) {
+		index = prev = 4;
+	} else if(bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x01) {
+		index = prev = 3;
+	} else {
+		return 0;
+	}
+	while(blen >= index) {
+		if(bytes[index] == 0x00 && bytes[index+1] == 0x00 &&
+				bytes[index+2] == 0x00 && bytes[index+3] == 0x01) {
+			/* Found a 4-byes start code, that determines the NAL size */
+			nal_size = index - annexb_offset - prev;
+			nal_size = htonl(nal_size);
+			if(avcc_bytes == bytes) {
+				/* We're simply overwriting the Annex-B buffer */
+				memcpy(bytes + annexb_offset, &nal_size, 4);
+				nal_size = ntohl(nal_size);
+			} else {
+				/* We have a separate buffer for AVCC: write the NAL
+				 * size, and then copy the actual NAL data too */
+				memcpy(avcc_bytes + avcc_offset, &nal_size, 4);
+				nal_size = ntohl(nal_size);
+				memcpy(avcc_bytes + avcc_offset + 4, bytes + annexb_offset + prev, nal_size);
+			}
+			avcc_offset += (4 + nal_size);
+			annexb_offset = index;
+			prev = 4;
+			index += 4;
+		} else if(bytes[index] == 0x00 && bytes[index+1] == 0x00 &&
+				bytes[index+2] == 0x01) {
+			/* Found a 3-byes start code, that determines the NAL size */
+			nal_size = index - annexb_offset - prev;
+			nal_size = htonl(nal_size);
+			memcpy(avcc_bytes + avcc_offset, &nal_size, 4);
+			nal_size = ntohl(nal_size);
+			memcpy(avcc_bytes + avcc_offset + 4, bytes + annexb_offset + prev, nal_size);
+			avcc_offset += (4 + nal_size);
+			annexb_offset = index;
+			prev = 3;
+			index += 3;
+		} else {
+			index++;
+		}
+	}
+	/* Last one */
+	nal_size = blen - annexb_offset - prev;
+	nal_size = htonl(nal_size);
+	if(avcc_bytes == bytes) {
+		/* We're simply overwriting the Annex-B buffer */
+		memcpy(bytes + annexb_offset, &nal_size, 4);
+		nal_size = ntohl(nal_size);
+	} else {
+		memcpy(avcc_bytes + avcc_offset, &nal_size, 4);
+		nal_size = ntohl(nal_size);
+		memcpy(avcc_bytes + avcc_offset + 4, bytes + annexb_offset + prev, nal_size);
+	}
+	avcc_offset += (4 + nal_size);
+	return avcc_offset;
+}
+
+
 /* Threads */
 static void *imquic_demo_audio_thread(void *user_data) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "Starting audio thread\n");
@@ -636,22 +746,30 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 			video_object_id = 0;
 		}
 		/* Check if we need to switch from Annex-B to AVCC */
+		uint8_t *data = packet.data;
+		size_t size = packet.size;
 		if(codec == DEMO_H264_AVCC) {
-			size_t annexb_offset = 0, index = 4, nal_size = 0;
-			while((size_t)packet.size >= index) {
-				if(packet.data[index] == 0x00 && packet.data[index+1] == 0x00 &&
-						packet.data[index+2] == 0x00 && packet.data[3] == 0x01) {
-					/* Found a start code, that determined the NAL size */
-					nal_size = index - annexb_offset + 4;
-					memcpy(packet.data + annexb_offset, &nal_size, 4);
-					annexb_offset = index;
-					index += 4;
-				} else {
-					index++;
-				}
+			/* Find start codes, to see if we need a new buffer */
+			size_t avcc_len = 0;
+			if(imquic_demo_h264_avcc_size(data, size, &avcc_len) < 0) {
+				/* Should never happen */
+				av_packet_unref(&packet);
+				continue;
 			}
-			nal_size = packet.size - annexb_offset + 4;
-			memcpy(packet.data + annexb_offset, &nal_size, 4);
+			/* Create a separate buffer for the AVCC data, if needed */
+			if(avcc_len > size) {
+				size = avcc_len;
+				data = g_malloc(size);
+			}
+			/* Replace all start codes with NAL sizes */
+			size_t avcc_offset = imquic_demo_h264_annexb_to_avcc(packet.data, packet.size, data, size);
+			if(avcc_offset == 0) {
+				/* Should never happen */
+				if(data != packet.data)
+					g_free(data);
+				av_packet_unref(&packet);
+				continue;
+			}
 		}
 		/* Write the LOC info first as extensions */
 		GList *props = NULL;
@@ -704,8 +822,8 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 			.object_id = video_object_id,
 			.payload_prefix = loc_pvt_props,
 			.payload_prefix_len = sizeof(loc_pvt_props),
-			.payload = packet.data,
-			.payload_len = packet.size,
+			.payload = data,
+			.payload_len = size,
 			.properties = props,
 			.delivery = IMQUIC_MOQ_USE_SUBGROUP,
 			.end_of_stream = FALSE
@@ -713,6 +831,8 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 		video_object_id++;
 		imquic_moq_send_object(moq_conn, &object);
 		g_list_free(props);
+		if(data != packet.data)
+			g_free(data);
 		av_packet_unref(&packet);
 	}
 
