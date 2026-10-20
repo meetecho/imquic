@@ -1262,7 +1262,8 @@ imquic_moq_catalog *imquic_moq_catalog_parse(const char *json) {
 	}
 	/* Parse the JSON and create the catalog */
 	const char *version = json_string_value(json_object_get(root, "version"));
-	if(version == NULL || strstr(version, "draft-") != version) {
+	//~ if(version == NULL || strstr(version, "draft-") != version) {
+	if(version == NULL) {
 		json_decref(root);
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "Catalog error: invalid version\n");
 		return NULL;
