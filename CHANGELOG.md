@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 
 - First alpha release (homemade QUIC stack)
 
-## [v0.0.2] - XXXX-XX-XX
+## [v0.0.2] - 2026-20-15
 
 - Switched to picoquic as the underlying QUIC stack
 - Added support for external logging functions
