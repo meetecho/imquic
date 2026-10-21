@@ -306,7 +306,10 @@ int main(int argc, char *argv[]) {
 	g_print("1..%d\n", g_list_length(tests));
 
 	/* Initialize the library */
-	imquic_init(NULL);
+	if(imquic_init(NULL) < 0) {
+		ret = 1;
+		goto done;
+	}
 
 	/* Start the tests */
 	GList *temp = tests;

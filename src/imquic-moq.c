@@ -315,6 +315,7 @@ imquic_moq_namespace *imquic_moq_namespace_from_str(const char *ns, uint8_t *tns
 				if(tn[j] != '.' || (tn_len - j) < 3) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid tuple field\n");
 					imquic_moq_namespace_free(root);
+					g_strfreev(fields);
 					return NULL;
 				}
 				j++;
@@ -322,6 +323,7 @@ imquic_moq_namespace *imquic_moq_namespace_from_str(const char *ns, uint8_t *tns
 				if(sscanf(tn + j, "%02x", &code) != 1) {
 					IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid hex code in tuple field\n");
 					imquic_moq_namespace_free(root);
+					g_strfreev(fields);
 					return NULL;
 				}
 				buffer[offset] = code;
@@ -1355,7 +1357,7 @@ int imquic_moq_catalog_remove_track(imquic_moq_catalog *catalog,
 		imquic_moq_catalog_track *track = (imquic_moq_catalog_track *)temp->data;
 		if(track->track_name != NULL && !strcasecmp(track->track_name, track_name) &&
 				((track_namespace == NULL && track->track_namespace == NULL) ||
-					(track->track_namespace != NULL && !strcasecmp(track->track_namespace, track_namespace)))) {
+					(track_namespace != NULL && track->track_namespace != NULL && !strcasecmp(track->track_namespace, track_namespace)))) {
 			/* Found */
 			found = TRUE;
 			catalog->tracks = g_list_remove(catalog->tracks, track);

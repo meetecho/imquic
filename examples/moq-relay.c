@@ -399,7 +399,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 	imquic_moq_namespace *tns = annc ? annc->tns : NULL;
 	imquic_connection *conn = (annc && annc->pub) ? annc->pub->conn : NULL;
 	GList *list = imquic_demo_match_monitors(conn, tns);
-	if(list == NULL)
+	if(annc == NULL || list == NULL)
 		return;
 	if(track == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] %s namespace '%s' matches %d monitors\n",
@@ -468,7 +468,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 			g_hash_table_insert(sub->subscriptions_by_id, imquic_uint64_dup(relay_request_id), s);
 			g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(relay_track_alias), s);
 			track->subscriptions = g_list_append(track->subscriptions, s);
-			if(mon->forward && !track->forward) {
+			if(mon->forward && annc->pub != NULL && !track->forward) {
 				/* Send a REQUEST_UPDATE to the publisher with forwarding enabled */
 				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sending REQUEST_UPDATE with FORWARD=1\n",
 					imquic_get_connection_name(annc->pub->conn));
@@ -888,16 +888,14 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	g_hash_table_insert(annc->tracks, g_strdup(track->track_fullname), track);
 	g_hash_table_insert(annc->pub->subscriptions_by_id, imquic_uint64_dup(track->request_id), track);
 	g_hash_table_insert(annc->pub->subscriptions, imquic_uint64_dup(track->track_alias), track);
+	/* Check if there's monitors interested in this */
+	imquic_demo_alert_monitors(annc, track, FALSE);
 	imquic_mutex_unlock(&mutex);
 	/* Done */
 	imquic_moq_request_parameters rparams = *parameters;
 	if(rparams.subscriber_priority_set)
 		rparams.subscriber_priority = 128;
 	imquic_moq_accept_publish(conn, request_id, &rparams);
-	/* Check if there's monitors interested in this */
-	imquic_mutex_lock(&mutex);
-	imquic_demo_alert_monitors(annc, track, FALSE);
-	imquic_mutex_unlock(&mutex);
 }
 
 static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters) {
@@ -969,7 +967,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 			if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START) {
 				/* Only start group provided: relative start */
 				if(largest != NULL && largest->group_id >= parameters->location_filter.range.start.group)
-					s->sub_start.group = largest ? (largest->group_id + 1 - parameters->location_filter.range.start.group) : 0;
+					s->sub_start.group = largest->group_id + 1 - parameters->location_filter.range.start.group;
 			} else {
 				/* Start object provided too: absolute start */
 				s->sub_start.group = parameters->location_filter.range.start.group;
@@ -1210,7 +1208,7 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 			if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START) {
 				/* Only start group provided: relative start */
 				if(largest != NULL && largest->group_id >= parameters->location_filter.range.start.group)
-					start.group = largest ? (largest->group_id + 1 - parameters->location_filter.range.start.group) : 0;
+					start.group = largest->group_id + 1 - parameters->location_filter.range.start.group;
 			} else {
 				/* Start object provided too: absolute start */
 				start.group = parameters->location_filter.range.start.group;
@@ -1364,7 +1362,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 				if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START) {
 					/* Only start group provided: relative start */
 					if(largest != NULL && largest->group_id >= parameters->location_filter.range.start.group)
-						s->sub_start.group = largest ? (largest->group_id + 1 - parameters->location_filter.range.start.group) : 0;
+						s->sub_start.group = largest->group_id + 1 - parameters->location_filter.range.start.group;
 				} else {
 					/* Start object provided too: absolute start */
 					s->sub_start.group = parameters->location_filter.range.start.group;
@@ -1693,6 +1691,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		char tns_buffer[256];
 		const char *ns = imquic_moq_namespace_str(parameters->track_namespace_prefix, tns_buffer, sizeof(tns_buffer), TRUE);
 		if(!strcasecmp(ns, ".2e")) {
+			imquic_mutex_unlock(&mutex);
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Reserved namespace\n", imquic_get_connection_name(conn));
 			imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Reserved namespace", 0, NULL);
 			return;
@@ -1702,6 +1701,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		/* TODO Check overlapping prefixes across the whole session */
 		if(!strcasecmp(mon->ns, ns) || imquic_moq_namespace_contains(mon->tns, parameters->track_namespace_prefix) ||
 				imquic_moq_namespace_contains(parameters->track_namespace_prefix, mon->tns)) {
+			imquic_mutex_unlock(&mutex);
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Overlapping namespaces\n", imquic_get_connection_name(conn));
 			imquic_moq_reject_request_update(conn, request_id, IMQUIC_MOQ_REQERR_PREFIX_OVERLAP, "Overlapping namespaces", 0, NULL);
 			return;
@@ -1806,7 +1806,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 	}
 	/* Check if there's a FILL_PARAMETERS for a fill FETCH stream */
 	imquic_moq_version version = imquic_moq_get_version(conn);
-	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL &&
+	if(s->track != NULL && version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL &&
 			((!parameters->forward_set && s->track->forward) || (parameters->forward_set && parameters->forward))) {
 		/* Create a FETCH subscription to this track, and add to the list of fetches to serve */
 		imquic_demo_moq_subscription *fill_fetch = imquic_demo_moq_subscription_create(sub, NULL, request_id, 0);

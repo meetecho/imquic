@@ -169,6 +169,7 @@ static int imquic_demo_decode_audio(uint8_t *buffer, size_t length) {
 
 }
 
+int count = 0;
 static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean keyframe, gboolean render) {
 	if(videodec_ctx == NULL)
 		return -1;
@@ -180,6 +181,13 @@ static int imquic_demo_decode_video(uint8_t *buffer, size_t length, gboolean key
 		}
 		got_keyframe = TRUE;
 	}
+	/* FIXME */
+	char filename[256];
+	g_snprintf(filename, sizeof(filename), "/tmp/avcc-frame-%08d.bin", count);
+	count++;
+	FILE *file = fopen(filename, "wb");
+	fwrite(buffer, length, 1, file);
+	fclose(file);
 	/* Check of we need to switch from AVCC to Annex-B */
 	if(codec == DEMO_H264_AVCC) {
 		size_t avcc_offset = 0, nal_size = 0;
@@ -561,6 +569,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						temp = temp->next;
 						continue;
 					}
+					if(audio_trackname != NULL)
+						imquic_moq_track_free(audio_trackname);
 					audio_trackname = imquic_moq_track_from_str(track->track_name);
 					if(audio_trackname == NULL || !imquic_moq_track_is_valid(audio_trackname)) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "  -- Invalid audio track name '%s'\n", track->track_name);
@@ -581,6 +591,8 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 						temp = temp->next;
 						continue;
 					}
+					if(video_trackname != NULL)
+						imquic_moq_track_free(video_trackname);
 					video_trackname = imquic_moq_track_from_str(track->track_name);
 					if(video_trackname == NULL || !imquic_moq_track_is_valid(video_trackname)) {
 						IMQUIC_LOG(IMQUIC_LOG_ERR, "Invalid video track name '%s'\n", track->track_name);

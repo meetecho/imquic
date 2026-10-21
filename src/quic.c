@@ -295,6 +295,11 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 			/* New connection */
 			conn = imquic_connection_create(endpoint, pconn);
 		}
+		if(conn == NULL) {
+			/* FIXME Shouldn't happen */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid connection\n", name);
+			return -1;
+		}
 		name = conn->name;
 		imquic_connection_id_str(&initial_cid, conn->initial_cid_str, sizeof(conn->initial_cid_str));
 		if(endpoint->qlog_path && (endpoint->qlog_http3 || endpoint->qlog_roq || endpoint->qlog_moq)) {
@@ -324,6 +329,11 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		/* FIXME We have incoming DATAGRAM data */
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Incoming DATAGRAM data (%zu bytes)\n",
 			name, blen);
+		if(conn == NULL) {
+			/* FIXME Shouldn't happen */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid connection\n", name);
+			return -1;
+		}
 		if(conn->http3 != NULL) {
 			/* Process the data as HTTP/3 */
 			imquic_http3_process_datagram(conn, bytes, blen);
@@ -335,6 +345,11 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		/* FIXME We have incoming STREAM data */
 		IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s] Incoming STREAM data (stream %"SCNu64", %zu bytes)\n",
 			name, stream_id, blen);
+		if(conn == NULL) {
+			/* FIXME Shouldn't happen */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid connection\n", name);
+			return -1;
+		}
 		/* Is this an existing stream or a new one? */
 		imquic_stream *stream = (imquic_stream *)v_stream_ctx;
 		gboolean new_stream = FALSE;
@@ -364,6 +379,11 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 			imquic_connection_notify_stream_incoming(conn, stream, bytes, blen);
 		}
 	} else if(fin_or_event == picoquic_callback_stream_reset) {
+		if(conn == NULL) {
+			/* FIXME Shouldn't happen */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid connection\n", name);
+			return -1;
+		}
 		/* Use the picoquic internal API to obtain the error_code */
 		uint64_t error_code = 0;
 		picoquic_stream_head_t *ps = picoquic_find_stream(pconn, stream_id);
@@ -385,6 +405,11 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		if(endpoint->reset_stream_incoming)
 			endpoint->reset_stream_incoming(conn, stream_id, error_code);
 	} else if(fin_or_event == picoquic_callback_stop_sending) {
+		if(conn == NULL) {
+			/* FIXME Shouldn't happen */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s] Invalid connection\n", name);
+			return -1;
+		}
 		/* Use the picoquic internal API to obtain the error_code */
 		uint64_t error_code = 0;
 		picoquic_stream_head_t *ps = picoquic_find_stream(pconn, stream_id);

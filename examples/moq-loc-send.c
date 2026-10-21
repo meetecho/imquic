@@ -371,13 +371,13 @@ static size_t imquic_demo_h264_spspps_to_avcc(uint8_t *avcc_data, uint8_t *buffe
 static int imquic_demo_h264_avcc_size(uint8_t *bytes, size_t blen, size_t *avcc_len) {
 	if(bytes == NULL || blen < 4)
 		return -1;
-	size_t index = 0, prev = 0, extra = 0;
+	size_t index = 0, extra = 0;
 	if(bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x00 && bytes[3] == 0x01) {
 		/* Frame starts with a 4-byte start code */
-		index = prev = 4;
+		index = 4;
 	} else if(bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x01) {
 		/* Frame starts with a 3-byte start code, so we definitely need an extra byte */
-		index = prev = 3;
+		index = 3;
 		extra++;
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "No start code found at the beginning of the bytes, invalid input\n");
@@ -387,12 +387,10 @@ static int imquic_demo_h264_avcc_size(uint8_t *bytes, size_t blen, size_t *avcc_
 		if(bytes[index] == 0x00 && bytes[index+1] == 0x00 &&
 				bytes[index+2] == 0x00 && bytes[index+3] == 0x01) {
 			/* Found a 4-byes start code, that determines the NAL size */
-			prev = 4;
 			index += 4;
 		} else if(bytes[index] == 0x00 && bytes[index+1] == 0x00 &&
 				bytes[index+2] == 0x01) {
 			/* Found a 3-byes start code, that determines the NAL size */
-			prev = 3;
 			index += 3;
 			/* We'll need an extra byte */
 			extra++;
@@ -1198,7 +1196,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(options.track_namespace == NULL && options.track_namespace[0] == NULL) {
+	if(options.track_namespace == NULL || options.track_namespace[0] == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_FATAL, "Missing track namespace(s)\n");
 		ret = 1;
 		goto done;

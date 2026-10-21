@@ -593,7 +593,7 @@ int main(int argc, char *argv[]) {
 			ret = 1;
 			goto done;
 		}
-		pub_redirect = imquic_moq_track_str(&pub_trackname_redirect, pub_redirect_buffer, sizeof(pub_redirect));
+		pub_redirect = imquic_moq_track_str(&pub_trackname_redirect, pub_redirect_buffer, sizeof(pub_redirect_buffer));
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "  -- Using track name '%s' as an alias, to test redirects\n", pub_redirect);
 	}
 
