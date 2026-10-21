@@ -3811,7 +3811,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog,
-			(moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq)), bytes-3, offset+3, message);
+			moq_stream->stream_id, bytes-3, offset+3, message);
 	}
 	/* Make sure this is in line with the expected request ID */
 	IMQUIC_MOQ_CHECK_ERR(!moq_is_request_id_valid(moq, request_id, FALSE), error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
@@ -5549,7 +5549,7 @@ size_t imquic_moq_add_publish_state_notify(imquic_moq_context *moq, imquic_moq_s
 		json_object_set_new(message, "number_of_parameters", json_integer(params_num));
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog,
-			(moq_stream ? moq_stream->stream_id : moq->control_stream_id), bytes, offset, message);
+			moq_stream->stream_id, bytes, offset, message);
 	}
 	return offset;
 }
