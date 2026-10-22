@@ -426,10 +426,10 @@ imquic_network_endpoint *imquic_network_endpoint_create(imquic_configuration *co
 		ne->raw_quic = TRUE;
 		ne->alpn = g_strsplit(config->alpn, ",", -1);
 	}
+	if(config->h3_path && strlen(config->h3_path) > 0)
+		ne->h3_path = g_strdup(config->h3_path);
 	if(config->webtransport) {
 		ne->webtransport = TRUE;
-		if(config->h3_path && strlen(config->h3_path) > 0)
-			ne->h3_path = g_strdup(config->h3_path);
 		ne->wt_protocols = config->wt_protocols ? g_strsplit(config->wt_protocols, ",", -1) : NULL;
 	}
 	/* Check if we need to generate QLOG files */

@@ -11,6 +11,7 @@ imquic-moq-test
 imquic-moq-loc-send
 imquic-moq-loc-recv
 imquic-moq-loc-ptt
+test-moq
 
 version.c
 docs/html/

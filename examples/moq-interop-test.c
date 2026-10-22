@@ -278,22 +278,20 @@ int main(int argc, char *argv[]) {
 	if(options.no_verify)
 		no_verify = TRUE;
 
-	/* TODO Parse the relay address to protocol, address and port */
+	/* Parse the relay address to protocol, address and port: we make
+	 * sure it's only either WebTransport (https) or raw QUIC (moqt) */
 	GUri *uri = g_uri_parse(relay, G_URI_FLAGS_NONE, NULL);
-	if(uri != NULL) {
-		if(!strcasecmp(g_uri_get_scheme(uri), "https")) {
-			/* WebTransport */
-			host = g_strdup(g_uri_get_host(uri));
-			port = g_uri_get_port(uri);
-			path = strlen(g_uri_get_path(uri)) > 0 ? g_strdup(g_uri_get_path(uri)) : NULL;
-		} else if(!strcasecmp(g_uri_get_scheme(uri), "moqt")) {
-			/* Raw QUIC */
-			host = g_strdup(g_uri_get_host(uri));
-			port = g_uri_get_port(uri);
-			path = NULL;
-		}
-		g_uri_unref(uri);
+	if(uri == NULL || (strcasecmp(g_uri_get_scheme(uri), "https") && strcasecmp(g_uri_get_scheme(uri), "moqt"))) {
+		if(uri != NULL)
+			g_uri_unref(uri);
+		ret = 1;
+		goto done;
 	}
+	webtransport = !strcasecmp(g_uri_get_scheme(uri), "https");
+	host = g_strdup(g_uri_get_host(uri));
+	port = g_uri_get_port(uri) > 0 ? g_uri_get_port(uri) : 443;
+	path = strlen(g_uri_get_path(uri)) > 0 ? g_strdup(g_uri_get_path(uri)) : NULL;
+	g_uri_unref(uri);
 
 	/* If no specific test was requested, perform them all */
 	if(tests == NULL)

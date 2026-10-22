@@ -291,6 +291,13 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 			parameters.max_auth_token_cache_size_set = TRUE;
 			parameters.max_auth_token_cache_size = moq->local_max_auth_token_cache_size;
 		}
+		if(!moq->is_server && (moq->conn->http3 == NULL || !moq->conn->http3->webtransport)) {
+			/* Raw QUIC client, let's check if we need to add a PATH option */
+			if(moq->conn->socket != NULL && moq->conn->socket->h3_path != NULL) {
+				parameters.path_set = TRUE;
+				g_snprintf(parameters.path, sizeof(parameters.path), "%s", moq->conn->socket->h3_path);
+			}
+		}
 		if(moq->auth != NULL && moq->authlen > 0) {
 			parameters.auth_token_set = TRUE;
 			if(moq->authlen > sizeof(parameters.auth_token)) {
@@ -2565,12 +2572,12 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	if(options.path_set) {
 		/* TODO Handle and validate */
 		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
-			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received on a WebTransport");
+			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received on WebTransport");
 	}
 	if(options.authority_set) {
 		/* TODO Handle and validate */
 		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
-			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_PATH, 0, "AUTHORITY received on a WebTransport");
+			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_AUTHORITY, 0, "AUTHORITY received on WebTransport");
 	}
 	if(moq->max_request_id == 0) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID option received, setting it to 1\n",
@@ -2659,10 +2666,14 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	if(options.path_set) {
 		/* Servers can't use PATH */
 		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received from a server");
+		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
+			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received on WebTransport");
 	}
 	if(options.authority_set) {
 		/* Servers can't use AUTHORITY */
-		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_PATH, 0, "AUTHORITY received from a server");
+		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_AUTHORITY, 0, "AUTHORITY received from a server");
+		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
+			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_AUTHORITY, 0, "AUTHORITY received on WebTransport");
 	}
 	if(moq->max_request_id == 0) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID option received, setting it to 1\n",
@@ -2708,12 +2719,20 @@ size_t imquic_moq_parse_setup(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 			moq->peer_implementation = g_strdup(options.moqt_implementation);
 	}
 	if(options.path_set) {
-		/* Servers can't use PATH */
+		/* Servers can't use PATH, and it's not allowed on WebTransport either */
 		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received from a server");
+		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
+			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_PATH, 0, "PATH received on WebTransport");
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] PATH setup option received: %s\n",
+			imquic_get_connection_name(moq->conn), options.path);
 	}
 	if(options.authority_set) {
-		/* Servers can't use AUTHORITY */
-		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_PATH, 0, "AUTHORITY received from a server");
+		/* Servers can't use AUTHORITY, and it's not allowed on WebTransport either */
+		IMQUIC_MOQ_CHECK_ERR(!moq->is_server, error, IMQUIC_MOQ_INVALID_AUTHORITY, 0, "AUTHORITY received from a server");
+		if(moq->conn->http3 != NULL && moq->conn->http3->webtransport)
+			IMQUIC_MOQ_CHECK_ERR(TRUE, error, IMQUIC_MOQ_INVALID_AUTHORITY, 0, "AUTHORITY received on WebTransport");
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] AUTHORITY setup option received: %s\n",
+			imquic_get_connection_name(moq->conn), options.authority);
 	}
 	if(moq->max_request_id == 0) {
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] No Max Request ID option received, setting it to 1\n",
