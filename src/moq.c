@@ -5528,7 +5528,7 @@ size_t imquic_moq_add_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream *m
 		imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
 		imquic_qlog_moq_message_add_properties(message, track_properties, "track_properties");
 		imquic_moq_qlog_control_message_created(moq->conn->qlog,
-			moq_stream->stream_id, bytes, offset, message);
+			(moq_stream ? moq_stream->stream_id : moq->control_stream_id), bytes, offset, message);
 	}
 	return offset;
 }
