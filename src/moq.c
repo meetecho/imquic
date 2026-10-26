@@ -2141,6 +2141,8 @@ int imquic_moq_parse_message(imquic_moq_context *moq, uint64_t stream_id, uint8_
 				imquic_mutex_unlock(&moq->mutex);
 				/* This reference is for managing the message */
 				imquic_refcount_increase(&moq_stream->ref);
+				offset += tlen;
+				break;
 			} else {
 				/* TODO Handle failure */
 				IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] MoQ message '%s' (%02x) is not allowed on media streams\n",
@@ -2400,34 +2402,9 @@ next:
 			blen = moq_stream->buffer->length;
 			offset = 0;
 		} else {
-			/* Data message */
-			if((imquic_moq_data_message_type)type == IMQUIC_MOQ_FETCH_HEADER) {
-				/* Parse this FETCH_HEADER message */
-				parsed = imquic_moq_parse_fetch_header(moq, moq_stream, &bytes[offset], blen-offset, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
-				offset += parsed;
-			} else if((imquic_moq_data_message_type)type != IMQUIC_MOQ_PADDING_STREAM &&
-					imquic_moq_is_data_message_type_valid(moq->version, (imquic_moq_data_message_type)type)) {
-				/* Parse this SUBGROUP_HEADER message */
-				parsed = imquic_moq_parse_subgroup_header(moq, moq_stream, &bytes[offset], blen-offset, (imquic_moq_data_message_type)type, &error);
-				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
-				offset += parsed;
-			} else if((imquic_moq_data_message_type)type == IMQUIC_MOQ_PADDING_STREAM &&
-					moq->version >= IMQUIC_MOQ_VERSION_18) {
-				/* Nothing to do, for now, we'll parse padding data later */
-				moq_stream->buffer = imquic_buffer_create(NULL, 0);
-				break;
-			} else {
-				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported data message '%02x'\n",
-					imquic_get_connection_name(moq->conn), type);
-				if(moq_stream != NULL)
-					imquic_refcount_decrease(&moq_stream->ref);
-				return -1;
-			}
-			if(parsed == 0) {
-				/* We don't have enough data yet */
-				goto done;
-			}
+			/* FIXME Data message? Shouldn't happen */
+			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unknown stream\n",
+				imquic_get_connection_name(moq->conn));
 		}
 		if(parsed == parsed_prev) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Broken MoQ message (didn't advance from offset %zu/%zu)\n",
@@ -2442,7 +2419,48 @@ next:
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ] MoQ media stream %"SCNu64" (%zu bytes)\n",
 			imquic_get_connection_name(moq->conn), stream_id, blen - offset);
 		/* Copy the incoming data to the buffer, as we'll use that for parsing */
-		imquic_buffer_append(moq_stream->buffer, bytes + offset, blen - offset);
+		if(moq_stream->buffer == NULL)
+			moq_stream->buffer = imquic_buffer_create(bytes + offset, blen - offset);
+		else
+			imquic_buffer_append(moq_stream->buffer, bytes + offset, blen - offset);
+		/* Check if we're still waiting for the object header */
+		if(!moq_stream->got_header) {
+			if(moq_stream->type == IMQUIC_MOQ_FETCH_HEADER) {
+				/* Parse this FETCH_HEADER message */
+				if(imquic_moq_parse_fetch_header(moq, moq_stream, &error) < 0) {
+					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Not enough data, trying again later\n",
+						imquic_get_connection_name(moq->conn));
+					goto done;
+				}
+				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
+				/* Move to objects s*/
+				moq_stream->got_header = TRUE;
+			} else if(moq_stream->type != IMQUIC_MOQ_PADDING_STREAM &&
+					imquic_moq_is_data_message_type_valid(moq->version, moq_stream->type)) {
+				/* Parse this SUBGROUP_HEADER message */
+				if(imquic_moq_parse_subgroup_header(moq, moq_stream, &error) < 0) {
+					IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]   -- Not enough data, trying again later\n",
+						imquic_get_connection_name(moq->conn));
+					goto done;
+				}
+				IMQUIC_MOQ_CHECK_ERR(error, NULL, 0, -1, "Broken MoQ Message");
+				/* Move to objects s*/
+				moq_stream->got_header = TRUE;
+			} else if(moq_stream->type == IMQUIC_MOQ_PADDING_STREAM &&
+					moq->version >= IMQUIC_MOQ_VERSION_18) {
+				/* Nothing to do, for now, we'll parse padding data later */
+				moq_stream->got_header = TRUE;
+			} else {
+				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Unsupported data message '%02x'\n",
+					imquic_get_connection_name(moq->conn), moq_stream->type);
+				if(moq_stream != NULL) {
+					/* FIXME Should this be fatal? */
+					imquic_connection_stop_sending_stream(moq->conn, moq_stream->stream_id, IMQUIC_MOQ_RESET_MALFORMED_TRACK);
+					imquic_refcount_decrease(&moq_stream->ref);
+				}
+				return -1;
+			}
+		}
 		while(moq_stream->buffer && moq_stream->buffer->length > 0) {
 			/* Parse the object we're receiving on that stream */
 			if(moq_stream->type == IMQUIC_MOQ_FETCH_HEADER) {
@@ -4586,11 +4604,13 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 	return offset;
 }
 
-size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, imquic_moq_data_message_type dtype, uint8_t *error) {
-	if(bytes == NULL || blen < 3)
-		return 0;
+int imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *error) {
+	if(moq_stream == NULL || moq_stream->buffer == NULL || moq_stream->buffer->bytes == NULL || moq_stream->buffer->length < 2)
+		return -1;	/* Not enough data, try again later */
+	uint8_t *bytes = moq_stream->buffer->bytes;
+	size_t blen = moq_stream->buffer->length;
 	if(error)
-		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+		*error = 0;
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -4607,16 +4627,17 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 	/* Starting from v11, the subgroup ID property is optional */
 	gboolean has_subgroup = FALSE, is_sgid0 = FALSE, has_prop = FALSE, is_eog = FALSE,
 		has_priority = FALSE, first_object = FALSE, violation = FALSE;
-	imquic_moq_data_message_type_to_subgroup_header(moq->version, dtype,
+	imquic_moq_data_message_type_to_subgroup_header(moq->version, moq_stream->type,
 		&has_subgroup, &is_sgid0, &has_prop, &is_eog, &has_priority, &first_object, &violation);
 	IMQUIC_LOG(IMQUIC_LOG_HUGE, "[%s][MoQ] SUBGROUP_HEADER type %02x: sg=%d, sgid0=%d, prop=%d, eog=%d, pri=%d, fobj=%d, viol=%d\n",
-		imquic_get_connection_name(moq->conn), dtype, has_subgroup, is_sgid0, has_prop, is_eog, has_priority, first_object, violation);
+		imquic_get_connection_name(moq->conn), moq_stream->type, has_subgroup, is_sgid0, has_prop, is_eog, has_priority, first_object, violation);
 	IMQUIC_MOQ_CHECK_ERR(violation, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid SUBGROUP_HEADER type");
 	if(has_subgroup) {
 		if(blen-offset == 0) {
 			/* Waiting for more data */
-			error = 0;
-			return 0;
+			if(error)
+				*error = 0;
+			return -1;
 		}
 		subgroup_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
@@ -4630,8 +4651,9 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 	if(has_priority) {
 		if(blen-offset == 0) {
 			/* Waiting for more data */
-			error = 0;
-			return 0;
+			if(error)
+				*error = 0;
+			return -1;
 		}
 		priority = bytes[offset];
 		offset++;
@@ -4639,23 +4661,23 @@ size_t imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stre
 			imquic_get_connection_name(moq->conn), priority);
 	}
 	/* Track these properties */
-	if(moq_stream != NULL) {
-		moq_stream->request_id = 0;
-		moq_stream->track_alias = track_alias;
-		moq_stream->group_id = group_id;
-		moq_stream->subgroup_id = subgroup_id;
-		moq_stream->priority_set = has_priority;
-		moq_stream->priority = priority;
-		moq_stream->first_of_subgroup = (first_object > 0);
-		moq_stream->buffer = imquic_buffer_create(NULL, 0);
-		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subgroup_header");
-			imquic_moq_qlog_subgroup_header_parsed(moq->conn->qlog, moq_stream, bytes, offset);
-		}
+	moq_stream->request_id = 0;
+	moq_stream->track_alias = track_alias;
+	moq_stream->group_id = group_id;
+	moq_stream->subgroup_id = subgroup_id;
+	moq_stream->priority_set = has_priority;
+	moq_stream->priority = priority;
+	moq_stream->first_of_subgroup = (first_object > 0);
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subgroup_header");
+		imquic_moq_qlog_subgroup_header_parsed(moq->conn->qlog, moq_stream, bytes, offset);
 	}
 	if(error)
 		*error = 0;
-	return offset;
+	/* Move on */
+	imquic_buffer_shift(moq_stream->buffer, offset);
+	/* Done */
+	return 0;
 }
 
 int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete, uint8_t *error) {
@@ -4761,9 +4783,11 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 	return 0;
 }
 
-size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, uint8_t *error) {
-	if(bytes == NULL || blen < 1)
-		return 0;
+int imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *error) {
+	if(moq_stream == NULL || moq_stream->buffer == NULL || moq_stream->buffer->bytes == NULL || moq_stream->buffer->length < 1)
+		return -1;	/* Not enough data, try again later */
+	uint8_t *bytes = moq_stream->buffer->bytes;
+	size_t blen = moq_stream->buffer->length;
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	size_t offset = 0;
@@ -4798,18 +4822,18 @@ size_t imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream 
 	}
 	imquic_mutex_unlock(&moq->mutex);
 	/* Track these properties */
-	if(moq_stream != NULL) {
-		moq_stream->request_id = request_id;
-		moq_stream->buffer = imquic_buffer_create(NULL, 0);
-		moq_stream->ascending = req_stream->ascending;
-		if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-			imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "fetch_header");
-			imquic_moq_qlog_fetch_header_parsed(moq->conn->qlog, moq_stream, bytes, offset);
-		}
+	moq_stream->request_id = request_id;
+	moq_stream->ascending = req_stream->ascending;
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "fetch_header");
+		imquic_moq_qlog_fetch_header_parsed(moq->conn->qlog, moq_stream, bytes, offset);
 	}
 	if(error)
 		*error = 0;
-	return offset;
+	/* Move on */
+	imquic_buffer_shift(moq_stream->buffer, offset);
+	/* Done */
+	return 0;
 }
 
 int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete, uint8_t *error) {
