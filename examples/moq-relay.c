@@ -1323,6 +1323,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
 	uint64_t filter_type = 0;
+	gboolean next_group_start = FALSE;
 	if(version < IMQUIC_MOQ_VERSION_20) {
 		/* Legacy format */
 		filter_type = parameters->location_filter_set ?
@@ -1348,6 +1349,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> End group [%"SCNu64"]\n",
 				imquic_get_connection_name(conn), s->sub_start.group, s->sub_start.object, s->sub_end.group);
 		}
+		next_group_start = (filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START);
 	} else {
 		/* New format */
 		uint64_t filter_type = parameters->location_filter_set ?
@@ -1363,6 +1365,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 					/* Only start group provided: relative start */
 					if(largest != NULL && largest->group_id >= parameters->location_filter.range.start.group)
 						s->sub_start.group = largest->group_id + 1 - parameters->location_filter.range.start.group;
+					next_group_start = (parameters->location_filter.range.start.group == 0);
 				} else {
 					/* Start object provided too: absolute start */
 					s->sub_start.group = parameters->location_filter.range.start.group;
@@ -1501,8 +1504,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		/* FIXME Check if the provided filter is NextGroupStart, and if so,
 		 * if this track advertised DYNAMIC_GROUPS: in that case, we send a
 		 * new REQUEST_UPDATE up to the publisher with NEW_GROUP_REQUEST */
-		if(filter_type == IMQUIC_MOQ_FILTER_NEXT_GROUP_START && largest != NULL) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a NextGroupStart filter\n",
+		if(next_group_start && largest != NULL) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a subscription for the next group start\n",
 				imquic_get_connection_name(conn));
 			gboolean new_group_request = FALSE;
 			GList *temp = s->track->properties;
