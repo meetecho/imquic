@@ -5228,6 +5228,7 @@ size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_s
 			moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str, timeout);
 	} else {
 		/* FIXME Got a GOAWAY for a specific request, any additional check needed? */
+		IMQUIC_MOQ_CHECK_ERR(!moq_stream->request_sender, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Got a GOAWAY from the request sender");
 		/* Notify the application */
 		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_request_goaway)
 			moq->conn->socket->callbacks.moq.incoming_request_goaway(moq->conn, request_id, uri_str, timeout);
