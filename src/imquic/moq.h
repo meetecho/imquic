@@ -1772,7 +1772,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn,
 /*! \brief Function to accept an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
- * @param largest The largest group/object IDs
+ * @param largest The largest group/object IDs (ignored starting from v23, should be a property)
  * @param parameters The parameters to add to the request
  * @param track_properties List of track properties to add, if any
  * @returns 0 in case of success, a negative integer otherwise */

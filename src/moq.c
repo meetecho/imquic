@@ -2427,7 +2427,7 @@ next:
 			} else if(type == IMQUIC_MOQ_FETCH) {
 				/* Parse this FETCH message */
 				parsed = imquic_moq_parse_fetch(moq, moq_stream, &bytes[offset], plen, &error);
-			} else if(type == IMQUIC_MOQ_FETCH_OK) {
+			} else if(type == IMQUIC_MOQ_FETCH_OK && moq->version < IMQUIC_MOQ_VERSION_23) {
 				/* Parse this FETCH_OK message */
 				parsed = imquic_moq_parse_fetch_ok(moq, moq_stream, &bytes[offset], plen, &error);
 			} else if(type == IMQUIC_MOQ_TRACK_STATUS) {
@@ -3009,7 +3009,7 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	imquic_moq_message_type type = GPOINTER_TO_UINT(g_hash_table_lookup(moq->requests, &request_id));
 	g_hash_table_remove(moq->requests, &request_id);
 	imquic_mutex_unlock(&moq->mutex);
-	if(type != IMQUIC_MOQ_TRACK_STATUS)
+	if(type != IMQUIC_MOQ_TRACK_STATUS && type != IMQUIC_MOQ_FETCH)
 		g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
 	if(prop_len > 0 && type != IMQUIC_MOQ_TRACK_STATUS)
 		imquic_moq_request_parameters_cleanup(&parameters, TRUE, FALSE);
@@ -3043,6 +3043,13 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 		case IMQUIC_MOQ_REQUEST_UPDATE:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.request_update_accepted)
 				moq->conn->socket->callbacks.moq.request_update_accepted(moq->conn, request_id, &parameters);
+			break;
+		case IMQUIC_MOQ_FETCH:
+			if(parameters.group_order_set)
+				moq_stream->ascending = (parameters.group_order != IMQUIC_MOQ_ORDERING_DESCENDING);
+			if(moq->conn->socket && moq->conn->socket->callbacks.moq.fetch_accepted)
+				moq->conn->socket->callbacks.moq.fetch_accepted(moq->conn, request_id, NULL, &parameters, track_properties);
+			g_list_free_full(track_properties, (GDestroyNotify)imquic_moq_property_free);
 			break;
 		case IMQUIC_MOQ_TRACK_STATUS:
 			if(moq->conn->socket && moq->conn->socket->callbacks.moq.track_status_accepted)
@@ -8883,7 +8890,7 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, imquic
 		imquic_moq_request_parameters *parameters, GList *track_properties) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
-	if(moq == NULL || largest == NULL) {
+	if(moq == NULL || (moq->version < IMQUIC_MOQ_VERSION_23 && largest == NULL)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);
@@ -8914,13 +8921,19 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id, imquic
 		imquic_mutex_unlock(&moq->mutex);
 	}
 	uint8_t buffer[200];
-	size_t blen = sizeof(buffer);
-	/* TODO Make other properties configurable */
-	size_t f_len = imquic_moq_add_fetch_ok(moq, moq_stream, buffer, blen,
-		request_id,
-		0,	/* TODO End of track */
-		largest,	/* Largest location */
-		parameters, track_properties);
+	size_t blen = sizeof(buffer), f_len = 0;
+	if(moq->version < IMQUIC_MOQ_VERSION_23) {
+		/* Send the legacy FETCH_OK */
+		/* TODO Make other properties configurable */
+		f_len = imquic_moq_add_fetch_ok(moq, moq_stream, buffer, blen,
+			request_id,
+			0,	/* TODO End of track */
+			largest,	/* Largest location */
+			parameters, track_properties);
+	} else {
+		/* Send a REQUEST_OK */
+		f_len = imquic_moq_add_request_ok(moq, moq_stream, buffer, blen, request_id, parameters, NULL);
+	}
 	imquic_connection_send_on_stream(conn,
 		moq_stream ? moq_stream->stream_id : moq->control_stream_id,
 		buffer, f_len, FALSE);
