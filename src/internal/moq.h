@@ -228,6 +228,7 @@ typedef enum imquic_moq_setup_option_type {
 	IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES = 0x06,
 	IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION = 0x07,
 	IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES = 0x08,
+	IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE = 0x09,	/* Added in v23 */
 } imquic_moq_setup_option_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_setup_option_type value.
  * @param type The imquic_moq_setup_option_type value
@@ -302,6 +303,10 @@ typedef struct imquic_moq_setup_options {
 	gboolean max_request_updates_set;
 	/*! \brief Value of the MAX_REQUEST_UPDATES parameter */
 	uint64_t max_request_updates;
+	/*! \brief Whether the MAX_CONTROL_MESSAGE_SIZE parameter is set */
+	gboolean max_control_messages_size_set;
+	/*! \brief Value of the MAX_CONTROL_MESSAGE_SIZE parameter */
+	uint64_t max_control_messages_size;
 	/*! \brief Whether there's unknown parameters */
 	gboolean unknown;
 } imquic_moq_setup_options;
@@ -368,6 +373,8 @@ typedef struct imquic_moq_context {
 	uint64_t max_filter_ranges, local_max_filter_ranges;
 	/*! \brief Maximum Request updates we can send and the one we accept */
 	uint64_t max_request_updates, local_max_request_updates;
+	/*! \brief Maximum Control Message Size we can use and the one we accept */
+	uint64_t max_control_messages_size, local_max_control_messages_size;
 	/*! \brief Buffer to process incoming messages */
 	imquic_buffer *buffer;
 	/*! \brief Mutex */

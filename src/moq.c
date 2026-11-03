@@ -201,6 +201,7 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 	moq->next_request_id = moq->is_server ? 1 : 0;
 	moq->expected_request_id = moq->is_server ? 0 : 1;
 	moq->local_max_request_updates = 1;		/* FIXME */
+	moq->local_max_control_messages_size = 65535;	/* FIXME */
 	const char *alpn = imquic_is_connection_webtransport(conn) ?
 		imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn);
 	moq->version = imquic_moq_version_from_alpn(alpn, conn->socket->moq_version);
@@ -317,6 +318,10 @@ void imquic_moq_new_connection(imquic_connection *conn, void *user_data) {
 		if(moq->version >= IMQUIC_MOQ_VERSION_19 && moq->local_max_request_updates > 0) {
 			parameters.max_request_updates_set = TRUE;
 			parameters.max_request_updates = moq->local_max_request_updates;
+		}
+		if(moq->version >= IMQUIC_MOQ_VERSION_23) {
+			parameters.max_control_messages_size_set = TRUE;
+			parameters.max_control_messages_size = moq->local_max_control_messages_size;
 		}
 		/* Add the implementation */
 		parameters.moqt_implementation_set = TRUE;
@@ -1026,6 +1031,8 @@ const char *imquic_moq_setup_option_type_str(imquic_moq_setup_option_type type) 
 			return "MOQT_IMPLEMENTATION";
 		case IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES:
 			return "MAX_REQUEST_UPDATES";
+		case IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE:
+			return "MAX_CONTROL_MESSAGE_SIZE";
 		default: break;
 	}
 	return NULL;
@@ -1466,8 +1473,10 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES));
 		if(options->moqt_implementation_set)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION));
-		if(options->max_request_updates && moq->version >= IMQUIC_MOQ_VERSION_19)
+		if(options->max_request_updates_set && moq->version >= IMQUIC_MOQ_VERSION_19)
 			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES));
+		if(options->max_control_messages_size_set && moq->version >= IMQUIC_MOQ_VERSION_23)
+			list = g_list_append(list, GUINT_TO_POINTER(IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE));
 		/* For newer versions, we may add a GREASE option */
 		if(moq->version >= IMQUIC_MOQ_VERSION_17 && moq->do_grease)
 			list = g_list_append(list, GUINT_TO_POINTER(imquic_moq_random_grease()));
@@ -1513,6 +1522,10 @@ size_t imquic_moq_setup_options_serialize(imquic_moq_context *moq,
 					offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
 						new_id, last_id,
 						options->max_request_updates);
+				} else if(new_id == IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE) {
+					offset += imquic_moq_setup_option_add_int(moq, &bytes[offset], blen-offset,
+						new_id, last_id,
+						options->max_control_messages_size);
 				} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(new_id)) {
 					/* Add a GREASE setup option */
 					if(new_id % 2 == 0) {
@@ -2570,7 +2583,7 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		/* Update the value we have */
 		moq->max_request_id = options.max_request_id;
 	}
-	if(options.max_auth_token_cache_size) {
+	if(options.max_auth_token_cache_size_set) {
 		/* Update the value we have */
 		moq->max_auth_token_cache_size = options.max_auth_token_cache_size;
 	}
@@ -2588,6 +2601,10 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	if(options.max_request_updates_set) {
 		/* Update the value we have */
 		moq->max_request_updates = options.max_request_updates;
+	}
+	if(options.max_control_messages_size_set) {
+		/* Update the value we have */
+		moq->max_control_messages_size = options.max_control_messages_size;
 	}
 	if(options.path_set) {
 		/* TODO Handle and validate */
@@ -2676,12 +2693,24 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		/* Update the value we have */
 		moq->max_auth_token_cache_size = options.max_auth_token_cache_size;
 	}
+	if(options.max_filter_ranges_set) {
+		/* Update the value we have */
+		moq->max_filter_ranges = options.max_filter_ranges;
+	}
 	if(options.moqt_implementation_set) {
 		/* Take note of the implemntation */
 		g_free(moq->peer_implementation);
 		moq->peer_implementation = NULL;
 		if(strlen(options.moqt_implementation) > 0)
 			moq->peer_implementation = g_strdup(options.moqt_implementation);
+	}
+	if(options.max_request_updates_set) {
+		/* Update the value we have */
+		moq->max_request_updates = options.max_request_updates;
+	}
+	if(options.max_control_messages_size_set) {
+		/* Update the value we have */
+		moq->max_control_messages_size = options.max_control_messages_size;
 	}
 	if(options.path_set) {
 		/* Servers can't use PATH */
@@ -2727,9 +2756,17 @@ size_t imquic_moq_parse_setup(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, error);
 		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SETUP");
 	}
+	if(options.max_request_id_set) {
+		/* Update the value we have */
+		moq->max_request_id = options.max_request_id;
+	}
 	if(options.max_auth_token_cache_size_set) {
 		/* Update the value we have */
 		moq->max_auth_token_cache_size = options.max_auth_token_cache_size;
+	}
+	if(options.max_filter_ranges_set) {
+		/* Update the value we have */
+		moq->max_filter_ranges = options.max_filter_ranges;
 	}
 	if(options.moqt_implementation_set) {
 		/* Take note of the implemntation */
@@ -2737,6 +2774,14 @@ size_t imquic_moq_parse_setup(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 		moq->peer_implementation = NULL;
 		if(strlen(options.moqt_implementation) > 0)
 			moq->peer_implementation = g_strdup(options.moqt_implementation);
+	}
+	if(options.max_request_updates_set) {
+		/* Update the value we have */
+		moq->max_request_updates = options.max_request_updates;
+	}
+	if(options.max_control_messages_size_set) {
+		/* Update the value we have */
+		moq->max_control_messages_size = options.max_control_messages_size;
 	}
 	if(options.path_set) {
 		/* Servers can't use PATH, and it's not allowed on WebTransport either */
@@ -6325,6 +6370,13 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_request_updates);
 		len = length;
+	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE) {
+		params->max_control_messages_size = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		params->max_control_messages_size_set = TRUE;
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
+			imquic_get_connection_name(moq->conn), params->max_control_messages_size);
+		len = length;
 	} else if(moq->version >= IMQUIC_MOQ_VERSION_17 && imquic_moq_is_grease(type)) {
 		/* This is a GREASE setup option, just skip it */
 		if(type % 2 == 0) {
@@ -9637,11 +9689,29 @@ void imquic_qlog_moq_message_add_setup_options(json_t *message, imquic_moq_setup
 		json_object_set_new(authority, "value", json_string(options->authority));
 		json_array_append_new(opts, authority);
 	}
+	if(options->max_filter_ranges_set) {
+		json_t *max_filter_ranges = json_object();
+		json_object_set_new(max_filter_ranges, "name", json_string("max_filter_ranges"));
+		json_object_set_new(max_filter_ranges, "value", json_integer(options->max_filter_ranges));
+		json_array_append_new(opts, max_filter_ranges);
+	}
 	if(options->moqt_implementation_set) {
 		json_t *moqt_implementation = json_object();
 		json_object_set_new(moqt_implementation, "name", json_string("moqt_implementation"));
 		json_object_set_new(moqt_implementation, "value", json_string(options->moqt_implementation));
 		json_array_append_new(opts, moqt_implementation);
+	}
+	if(options->max_request_updates_set) {
+		json_t *max_request_updates = json_object();
+		json_object_set_new(max_request_updates, "name", json_string("max_request_updates"));
+		json_object_set_new(max_request_updates, "value", json_integer(options->max_request_updates));
+		json_array_append_new(opts, max_request_updates);
+	}
+	if(options->max_control_messages_size_set) {
+		json_t *max_control_messages_size = json_object();
+		json_object_set_new(max_control_messages_size, "name", json_string("max_control_messages_size"));
+		json_object_set_new(max_control_messages_size, "value", json_integer(options->max_control_messages_size));
+		json_array_append_new(opts, max_control_messages_size);
 	}
 	if(options->unknown) {
 		json_t *unknown = json_object();
