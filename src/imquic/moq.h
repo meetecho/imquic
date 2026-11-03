@@ -590,10 +590,18 @@ typedef struct imquic_moq_request_parameters {
 	gboolean largest_object_set;
 	/*! \brief Value of the LARGEST_OBJECT parameter */
 	imquic_moq_location largest_object;
-	/*! \brief Whether the FORWARD parameter is set */
+	/*! \brief Whether the FORWARD parameter is set
+	 * \note Deprecated in v23, where PAUSED is used instead */
 	gboolean forward_set;
-	/*! \brief Value of the FORWARD parameter */
+	/*! \brief Value of the FORWARD parameter
+	 * \note Deprecated in v23, where PAUSED is used instead */
 	gboolean forward;
+	/*! \brief Whether the PAUSED parameter is set
+	 * \note Added in v23, ignored before */
+	gboolean paused_set;
+	/*! \brief Value of the PAUSED parameter
+	 * \note Added in v23, ignored before */
+	gboolean paused;
 	/*! \brief Whether the NEW_GROUP_REQUEST parameter is set */
 	gboolean new_group_request_set;
 	/*! \brief Value of the NEW_GROUP_REQUEST parameter */
@@ -606,6 +614,10 @@ typedef struct imquic_moq_request_parameters {
 	gboolean include_properties_set;
 	/*! \brief Value of the INCLUDE_PROPERTIES parameter */
 	gboolean include_properties;
+	/*! \brief Whether the SUBSCRIBE_TRACKS_ID parameter is set */
+	gboolean subscribe_tracks_id_set;
+	/*! \brief Value of the SUBSCRIBE_TRACKS_ID parameter */
+	uint64_t subscribe_tracks_id;
 	/*! \brief Whether there's unknown parameters
 	 * \note Only set by the stack, ignored if set by the application */
 	gboolean unknown;

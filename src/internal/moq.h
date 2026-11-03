@@ -228,7 +228,8 @@ typedef enum imquic_moq_setup_option_type {
 	IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES = 0x06,
 	IMQUIC_MOQ_SETUP_OPTION_MOQT_IMPLEMENTATION = 0x07,
 	IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES = 0x08,
-	IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE = 0x09,	/* Added in v23 */
+	/* FIXME 0x09 in the draft, but it's supposed to be a number */
+	IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE = 0x0A,	/* Added in v23 */
 } imquic_moq_setup_option_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_setup_option_type value.
  * @param type The imquic_moq_setup_option_type value
@@ -245,7 +246,8 @@ typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_EXPIRES = 0x8,
 	IMQUIC_MOQ_REQUEST_PARAM_LARGEST_OBJECT = 0x9,
 	IMQUIC_MOQ_REQUEST_PARAM_FILL_TIMEOUT = 0x0A,	/* Added in v18 */
-	IMQUIC_MOQ_REQUEST_PARAM_FORWARD = 0x10,
+	IMQUIC_MOQ_REQUEST_PARAM_FORWARD = 0x10,	/* Deprecated in v23 */
+	IMQUIC_MOQ_REQUEST_PARAM_PAUSED = 0x11,	/* Added in v23 */
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBER_PRIORITY = 0x20,
 	IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER = 0x21,
 	IMQUIC_MOQ_REQUEST_PARAM_GROUP_ORDER = 0x22,
@@ -258,6 +260,7 @@ typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_NEW_GROUP_REQUEST = 0x32,
 	IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX = 0x34,	/* Added in v18 */
 	IMQUIC_MOQ_REQUEST_PARAM_INCLUDE_PROPERTIES = 0x35,	/* Added in v20 */
+	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBE_TRACKS_ID = 0x36,	/* Added in v23 */
 } imquic_moq_request_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_parameter_type value.
  * @param type The imquic_moq_request_parameter_type value
