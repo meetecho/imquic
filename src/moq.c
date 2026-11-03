@@ -581,8 +581,8 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 			return "Invalid Request ID";
 		case IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS:
 			return "Duplicate Track Alias";
-		case IMQUIC_MOQ_KEYVALUE_FORMATTING_ERROR:
-			return "Key-Value Formatting Error";
+		case IMQUIC_MOQ_MALFORMED_KEY_VALUE:
+			return "Malformed Key Value";
 		case IMQUIC_MOQ_INVALID_REQUIRED_REQUEST_ID:
 			return "Invalid Required Request ID";
 		case IMQUIC_MOQ_INVALID_PATH:
@@ -613,6 +613,32 @@ const char *imquic_moq_error_code_str(imquic_moq_error_code code) {
 			return "Malformed Authority";
 		case IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES:
 			return "Too Many Request Updates";
+		case IMQUIC_MOQ_INVALID_STREAM_HEADER:
+			return "Invalid Stream Header";
+		case IMQUIC_MOQ_MALFORMED_OBJECT:
+			return "Malformed Object";
+		case IMQUIC_MOQ_INVALID_OBJECT_STATUS:
+			return "Invalid Object Status";
+		case IMQUIC_MOQ_TRUNCATED_OBJECT:
+			return "Truncated Object";
+		case IMQUIC_MOQ_MALFORMED_MESSAGE:
+			return "Malformed Message";
+		case IMQUIC_MOQ_INVALID_FIELD:
+			return "Invalid Field";
+		case IMQUIC_MOQ_INVALID_TRACK_NAMESPACE:
+			return "Invalid Track Namespace";
+		case IMQUIC_MOQ_UNEXPECTED_MESSAGE:
+			return "Unexpected Message";
+		case IMQUIC_MOQ_ROLE_VIOLATION:
+			return "Role Violation";
+		case IMQUIC_MOQ_INVALID_PARAMETER:
+			return "Invalid Parameter";
+		case IMQUIC_MOQ_CLOSED_CONTROL_STREAM:
+			return "Closed Control Stream";
+		case IMQUIC_MOQ_DELTA_ENCODING_OVERFLOW:
+			return "Delta Encoding Overflow";
+		case IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED:
+			return "Field Length Exceeded";
 		case IMQUIC_MOQ_UNKNOWN_ERROR:
 			return "Unknown Error";
 		default: break;
@@ -638,6 +664,8 @@ const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code
 			return "Going Away";
 		case IMQUIC_MOQ_REQERR_EXCESSIVE_LOAD:
 			return "Excessive Load";
+		case IMQUIC_MOQ_REQERR_UNAVAILABLE:
+			return "Unavailable";
 		case IMQUIC_MOQ_REQERR_DOES_NOT_EXIST:
 			return "Does Not Exist";
 		case IMQUIC_MOQ_REQERR_INVALID_RANGE:
@@ -681,6 +709,8 @@ const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code) {
 			return "Going Away";
 		case IMQUIC_MOQ_PUBDONE_EXPIRED:
 			return "Expired";
+		case IMQUIC_MOQ_PUBDONE_EXPIRED_AUTH_TOKEN:
+			return "Expired Auth Token";
 		case IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND:
 			return "Too Far Behind";
 		case IMQUIC_MOQ_PUBDONE_UPDATE_FAILED:
