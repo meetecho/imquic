@@ -2045,7 +2045,7 @@ void imquic_moq_request_parameters_destroy(imquic_moq_request_parameters *parame
 		} else { \
 			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, error_message); \
 		} \
-		IMQUIC_MOQ_CHECK_ERR(tn_len > 4096, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid track name length"); \
+		IMQUIC_MOQ_CHECK_ERR(tn_len == 0 || tn_len > 4096, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid track name length"); \
 		offset += length; \
 		IMQUIC_MOQ_CHECK_ERR(tn_len > blen-offset, NULL, 0, 0, error_message); \
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Name (%"SCNu64" bytes)\n", \
@@ -2053,7 +2053,7 @@ void imquic_moq_request_parameters_destroy(imquic_moq_request_parameters *parame
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %.*s\n", \
 			imquic_get_connection_name(moq->conn), (int)tn_len, &bytes[offset]); \
 		tn.length = tn_len; \
-		tn.buffer = tn_len ? &bytes[offset] : NULL; \
+		tn.buffer = &bytes[offset]; \
 		offset += tn_len; \
 	} while(0)
 
@@ -2090,16 +2090,14 @@ void imquic_moq_request_parameters_destroy(imquic_moq_request_parameters *parame
 
 #define IMQUIC_MOQ_ADD_TRACKNAME(request) \
 	do { \
-		if(track_name != NULL && track_name->length > 4096) { \
+		if(track_name == NULL || track_name->length == 0 || track_name->length > 4096) { \
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid track name length\n", \
 				imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(request, moq->version)); \
 			return 0; \
 		} \
-		offset += imquic_write_moqint(moq->version, track_name ? track_name->length : 0, &bytes[offset], blen-offset); \
-		if(track_name != NULL && track_name->length > 0) { \
-			memcpy(&bytes[offset], track_name->buffer, track_name->length); \
-			offset += track_name->length; \
-		} \
+		offset += imquic_write_moqint(moq->version, track_name->length, &bytes[offset], blen-offset); \
+		memcpy(&bytes[offset], track_name->buffer, track_name->length); \
+		offset += track_name->length; \
 	} while(0)
 
 #define IMQUIC_MOQ_ADD_MESSAGE_TYPE(type) \

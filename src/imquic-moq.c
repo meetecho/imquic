@@ -462,23 +462,21 @@ void imquic_moq_namespace_free(imquic_moq_namespace *tns) {
 }
 
 imquic_moq_track *imquic_moq_track_create(uint8_t *buffer, size_t blen) {
-	if(buffer == NULL)
-		blen = 0;
+	if(buffer == NULL || blen == 0 || blen > 4096)
+		return NULL;
 	imquic_moq_track *track = g_malloc(sizeof(imquic_moq_track));
 	track->length = blen;
-	if(blen > 0) {
-		track->buffer = g_malloc(blen);
-		memcpy(track->buffer, buffer, blen);
-	}
+	track->buffer = g_malloc(blen);
+	memcpy(track->buffer, buffer, blen);
 	return track;
 }
 
 const char *imquic_moq_track_str(imquic_moq_track *tn, char *buffer, size_t blen) {
+	if(tn == NULL || tn->buffer == NULL || tn->length == 0 || tn->length > 4096)
+		return NULL;
 	if(buffer == NULL)
 		return NULL;
 	*buffer = '\0';
-	if(tn == NULL || tn->buffer == 0 || tn->length == 0)
-		return buffer;
 	size_t offset = imquic_moq_track_render(tn->buffer, tn->length, buffer, blen);
 	if(offset >= blen)
 		goto trunc;
@@ -489,7 +487,7 @@ trunc:
 }
 
 imquic_moq_track *imquic_moq_track_from_str(const char *tn) {
-	if(tn == NULL)
+	if(tn == NULL || strlen(tn) == 0)
 		return NULL;
 	uint8_t buffer[4096] = {0};
 	size_t tn_len = strlen(tn), i = 0, offset = 0;
@@ -543,13 +541,9 @@ imquic_moq_track *imquic_moq_track_duplicate(imquic_moq_track *tn) {
 }
 
 gboolean imquic_moq_track_is_valid(imquic_moq_track *tn) {
-	if(tn == NULL)
-		return TRUE;
-	if(tn->buffer != NULL && tn->length == 0)
-		tn->buffer = NULL;
-	if(tn->buffer == NULL && tn->length > 0)
+	if(tn == NULL || tn->buffer == NULL || tn->length == 0 || tn->length > 4096)
 		return FALSE;
-	return tn->length < 4096;
+	return TRUE;
 }
 
 void imquic_moq_track_free(imquic_moq_track *tn) {
