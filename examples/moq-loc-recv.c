@@ -371,8 +371,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	/* Let's subscribe to the provided namespace/track(s) */
 	imquic_moq_request_parameters params;
 	imquic_moq_request_parameters_init_defaults(&params);
+	/* Legacy uses FORWARD, newer versions use PAUSED */
 	params.forward_set = TRUE;
 	params.forward = TRUE;
+	params.paused_set = TRUE;
+	params.paused = FALSE;
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
 	imquic_moq_request_parameters fill_parameters;
@@ -638,8 +641,11 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			/* Subscribe to the tracks we found */
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
+			/* Legacy uses FORWARD, newer versions use PAUSED */
 			params.forward_set = TRUE;
 			params.forward = TRUE;
+			params.paused_set = TRUE;
+			params.paused = FALSE;
 			params.subscriber_priority_set = TRUE;
 			params.subscriber_priority = 128;
 			if(audio_tn != NULL) {

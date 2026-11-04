@@ -474,8 +474,11 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 					imquic_get_connection_name(annc->pub->conn));
 				imquic_moq_request_parameters rparams = { 0 };
 				track->forward = TRUE;
+				/* Legacy uses FORWARD, newer versions use PAUSED */
 				rparams.forward_set = TRUE;
 				rparams.forward = TRUE;
+				rparams.paused_set = TRUE;
+				rparams.paused = FALSE;
 				uint64_t update_request_id = imquic_moq_get_next_request_id(annc->pub->conn);
 				imquic_moq_update_request(annc->pub->conn, update_request_id, track->request_id, &rparams);
 			}
@@ -880,7 +883,11 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	track->published = TRUE;
 	track->pending = FALSE;
 	track->track_alias_valid = TRUE;
-	track->forward = parameters->forward;
+	track->forward = TRUE;
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	if((version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && parameters->paused) ||
+			(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && !parameters->forward))
+		track->forward = FALSE;
 	track->properties = imquic_moq_properties_duplicate(track_properties);
 	imquic_moq_property *pub_prio = imquic_moq_property_find(track->properties, IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY);
 	if(pub_prio != NULL)
@@ -918,17 +925,20 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 			imquic_get_connection_name(conn), request_id);
 		return;
 	}
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
-		imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
 	s->active = TRUE;
-	s->forward = parameters->forward;
+	s->forward = TRUE;
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	if((version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && parameters->paused) ||
+			(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && !parameters->forward))
+		s->forward = FALSE;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
+		imquic_get_connection_name(conn), (s->forward ? "enabled" : "disabled"));
 	/* Check the location filter: its format differs depending on the version */
 	imquic_moq_object *largest = NULL;
 	if(s->track != NULL && s->track->objects != NULL)
 		largest = (imquic_moq_object *)s->track->objects->data;
 	s->sub_end.group = IMQUIC_MAX_VARINT;
 	s->sub_end.object = IMQUIC_MAX_VARINT;
-	imquic_moq_version version = imquic_moq_get_version(conn);
 	if(version < IMQUIC_MOQ_VERSION_20) {
 		/* Legacy format */
 		uint64_t filter_type = parameters->location_filter_set ?
@@ -1168,15 +1178,19 @@ static void imquic_demo_incoming_track_status(imquic_connection *conn, uint64_t 
 		imquic_moq_reject_track_status(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Namespace not found", 0, NULL);
 		return;
 	}
+	gboolean forward = TRUE;
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	if((version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && parameters->paused) ||
+			(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && !parameters->forward))
+		forward = FALSE;
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
-		imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
+		imquic_get_connection_name(conn), (forward ? "enabled" : "disabled"));
 	/* Check the location filter: its format differs depending on the version */
 	imquic_moq_object *largest = NULL;
 	imquic_mutex_lock(&track->mutex);
 	if(!track->pending && track->objects != NULL)
 		largest = (imquic_moq_object *)track->objects->data;
 	imquic_moq_location start = { 0 };
-	imquic_moq_version version = imquic_moq_get_version(conn);
 	if(version < IMQUIC_MOQ_VERSION_20) {
 		/* Legacy format */
 		uint64_t filter_type = parameters->location_filter_set ?
@@ -1312,11 +1326,14 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 	g_hash_table_insert(sub->subscriptions, imquic_uint64_dup(track_alias), s);
 	imquic_mutex_lock(&track->mutex);
 	track->subscriptions = g_list_append(track->subscriptions, s);
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
-		imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
-	s->forward = parameters->forward;
-	/* Check the location filter: its format differs depending on the version */
 	imquic_moq_version version = imquic_moq_get_version(conn);
+	s->forward = TRUE;
+	if((version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && parameters->paused) ||
+			(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && !parameters->forward))
+		s->forward = FALSE;
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
+		imquic_get_connection_name(conn), (s->forward ? "enabled" : "disabled"));
+	/* Check the location filter: its format differs depending on the version */
 	imquic_moq_object *largest = NULL;
 	if(!track->pending && track->objects != NULL)
 		largest = (imquic_moq_object *)track->objects->data;
@@ -1401,8 +1418,12 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_filters_print(version, s->filters);
 	}
 	/* Check if there's a FILL_PARAMETERS for a fill FETCH stream */
+	gboolean forward_set = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set);
+	gboolean forward = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && !parameters->paused) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && parameters->forward);
 	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL &&
-			!track->pending && ((!parameters->forward_set && track->forward) || (parameters->forward_set && parameters->forward))) {
+			!track->pending && ((!forward_set && track->forward) || (forward_set && forward))) {
 		/* Create a FETCH subscription to this track, and add to the list of fetches to serve */
 		s->fill_fetch = imquic_demo_moq_subscription_create(sub, NULL, request_id, 0);
 		if(parameters->fill_parameters->filters_set && parameters->fill_parameters->filters != NULL) {
@@ -1523,8 +1544,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 				imquic_moq_request_parameters rparams = { 0 };
 				if(s->forward && !track->forward) {
 					track->forward = TRUE;
+					/* Legacy uses FORWARD, newer versions use PAUSED */
 					rparams.forward_set = TRUE;
 					rparams.forward = TRUE;
+					rparams.paused_set = TRUE;
+					rparams.paused = FALSE;
 				}
 				rparams.new_group_request_set = TRUE;
 				rparams.new_group_request = largest->group_id + 1;
@@ -1536,8 +1560,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 				imquic_get_connection_name(annc->pub->conn));
 			imquic_moq_request_parameters rparams = { 0 };
 			track->forward = TRUE;
+			/* Legacy uses FORWARD, newer versions use PAUSED */
 			rparams.forward_set = TRUE;
 			rparams.forward = TRUE;
+			rparams.paused_set = TRUE;
+			rparams.paused = FALSE;
 			uint64_t update_request_id = imquic_moq_get_next_request_id(annc->pub->conn);
 			imquic_moq_update_request(annc->pub->conn, update_request_id, track->request_id, &rparams);
 		}
@@ -1553,8 +1580,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		params.subscriber_priority = parameters->subscriber_priority;
 		params.group_order_set = parameters->group_order_set;
 		params.group_order = parameters->group_order;
+		/* Legacy uses FORWARD, newer versions use PAUSED */
 		params.forward_set = TRUE;
 		params.forward = TRUE;
+		params.paused_set = TRUE;
+		params.paused = FALSE;
 		if(imquic_moq_get_version(annc->pub->conn) < IMQUIC_MOQ_VERSION_20) {
 			/* No need for newer versions, no location filter means unfiltered already */
 			params.location_filter_set = TRUE;
@@ -1667,6 +1697,7 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id, sub_request_id);
+	imquic_moq_version version = imquic_moq_get_version(conn);
 	/* Find what the original request was about */
 	gboolean found = FALSE;
 	imquic_demo_moq_monitor *mon = NULL;
@@ -1712,8 +1743,10 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		/* Clean up the previous info */
 		g_hash_table_remove_all(mon->published);
 		g_hash_table_remove_all(mon->known_tracks);
-		if(parameters->forward_set)
-			mon->forward = parameters->forward;
+		mon->forward = TRUE;
+		if((version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && parameters->paused) ||
+				(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && !parameters->forward))
+			mon->forward = FALSE;
 		g_free(mon->ns);
 		imquic_moq_namespace_free(mon->tns);
 		mon->tns = imquic_moq_namespace_duplicate(parameters->track_namespace_prefix);
@@ -1759,13 +1792,21 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 	}
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
-	if(parameters->forward_set) {
+	/* Check if forwarding changed, depending on version we check FORWARD or PAUSE */
+	gboolean forward_set = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set);
+	gboolean forward = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && !parameters->paused) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && parameters->forward);
+	if(forward_set) {
 		/* TODO Update start location and end group too */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Object forwarding %s\n",
-			imquic_get_connection_name(conn), (parameters->forward ? "enabled" : "disabled"));
-		s->forward = parameters->forward;
+			imquic_get_connection_name(conn), (forward ? "enabled" : "disabled"));
+		s->forward = forward;
+		/* Legacy uses FORWARD, newer versions use PAUSED */
 		rparams.forward_set = TRUE;
-		rparams.forward = parameters->forward;
+		rparams.forward = forward;
+		rparams.paused_set = TRUE;
+		rparams.paused = !forward;
 	}
 	/* FIXME Check if the request contains a NEW_GROUP_REQUEST, and if so,
 	 * if this track advertised DYNAMIC_GROUPS: in that case, we send a
@@ -1789,8 +1830,11 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 			imquic_moq_request_parameters rparams = { 0 };
 			if(s->forward && !s->track->forward) {
 				s->track->forward = TRUE;
+				/* Legacy uses FORWARD, newer versions use PAUSED */
 				rparams.forward_set = TRUE;
 				rparams.forward = TRUE;
+				rparams.paused_set = TRUE;
+				rparams.paused = FALSE;
 			}
 			rparams.new_group_request_set = TRUE;
 			rparams.new_group_request = 1;
@@ -1802,15 +1846,17 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 			imquic_get_connection_name(s->track->annc->pub->conn));
 		imquic_moq_request_parameters rparams = { 0 };
 		s->track->forward = TRUE;
+		/* Legacy uses FORWARD, newer versions use PAUSED */
 		rparams.forward_set = TRUE;
 		rparams.forward = TRUE;
+		rparams.paused_set = TRUE;
+		rparams.paused = FALSE;
 		uint64_t update_request_id = imquic_moq_get_next_request_id(s->track->annc->pub->conn);
 		imquic_moq_update_request(s->track->annc->pub->conn, update_request_id, s->track->request_id, &rparams);
 	}
 	/* Check if there's a FILL_PARAMETERS for a fill FETCH stream */
-	imquic_moq_version version = imquic_moq_get_version(conn);
 	if(s->track != NULL && version >= IMQUIC_MOQ_VERSION_20 && parameters->fill_parameters_set && parameters->fill_parameters != NULL &&
-			((!parameters->forward_set && s->track->forward) || (parameters->forward_set && parameters->forward))) {
+			((!forward_set && s->track->forward) || (forward_set && forward))) {
 		/* Create a FETCH subscription to this track, and add to the list of fetches to serve */
 		imquic_demo_moq_subscription *fill_fetch = imquic_demo_moq_subscription_create(sub, NULL, request_id, 0);
 		fill_fetch->fetch = TRUE;

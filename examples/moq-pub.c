@@ -117,8 +117,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.group_order_set = TRUE;
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+		/* Legacy uses FORWARD, newer versions use PAUSED */
 		params.forward_set = TRUE;
 		params.forward = TRUE;
+		params.paused_set = TRUE;
+		params.paused = FALSE;
 		if(options.auth_info && strlen(options.auth_info) > 0) {
 			params.auth_token_set = TRUE;
 			params.auth_token_len = sizeof(params.auth_token);
@@ -166,12 +169,9 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	/* Start sending objects */
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
-	gboolean forward = TRUE;	/* FIXME Subscribers can change this in REQUEST_UPDATE */
-	if(forward) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
-			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
-		g_atomic_int_set(&send_objects, 1);
-	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
+	g_atomic_int_set(&send_objects, 1);
 }
 
 static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
@@ -292,7 +292,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
 	}
-	gboolean forward = parameters->forward_set && parameters->forward;
+	/* By default we start sending objects, unless FORWARD/PAUSE tell us otherwise */
+	gboolean forward = TRUE;
+	if((moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && parameters->paused) ||
+			(moq_version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && !parameters->forward))
+		forward = FALSE;
 	/* Accept the subscription */
 	moq_request_id = request_id;
 	imquic_moq_request_parameters rparams;
@@ -327,7 +331,12 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id, sub_request_id);
 	/* Check if we're forwarding stuff, now */
-	gboolean forward = parameters->forward_set && parameters->forward;
+	gboolean forward_set = (moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set) ||
+		(moq_version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set);
+	if(!forward_set)
+		return;
+	gboolean forward = (moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && !parameters->paused) ||
+		(moq_version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && parameters->forward);
 	if(forward && g_atomic_int_compare_and_exchange(&send_objects, 0, 1)) {
 		/* Start sending objects */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects\n",

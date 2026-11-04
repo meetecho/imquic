@@ -108,11 +108,16 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 	if(options.subscribe_namespace) {
 		/* Only send a SUBSCRIBE_NAMESPACE and/or a SUBSCRIBE_TRACKS: the relay will
-		 * send us a PUBLISH request when there's something we can subscribe to */
+		 * send us a PUBLISH request when there's something we can subscribe to.
+		 * Depending on the version, we use FORWARD or PAUSE for media delivery */
 		params.forward_set = TRUE;
 		params.forward = TRUE;
-		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
+		params.paused_set = TRUE;
+		params.paused = FALSE;
+		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 			params.forward = FALSE;
+			params.paused = TRUE;
+		}
 		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
 			/* Older versions of MoQ used SUBSCRIBE_NAMESPACE to get PUBLISH too */
 			sn_request_id = imquic_moq_get_next_request_id(conn);
@@ -165,11 +170,16 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	fparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 	if(options.fetch && !strcasecmp(options.fetch, "descending"))
 		fparams.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
-	/* Check if we need to request forwarding right away, or if we'll ask send an update later */
+	/* Check if we need to request forwarding right away, or if we'll ask send an
+	 * update later: depending on the version, we use FORWARD or PAUSED */
 	params.forward_set = TRUE;
 	params.forward = TRUE;
-	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
+	params.paused_set = TRUE;
+	params.paused = FALSE;
+	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		params.forward = FALSE;
+		params.paused = TRUE;
+	}
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
 	params.group_order_set = TRUE;
@@ -422,8 +432,11 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			imquic_moq_track *new_tn = redirect->track_name ? redirect->track_name : old_tn;
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
+			/* Legacy uses FORWARD, newer versions use PAUSED */
 			params.forward_set = TRUE;
 			params.forward = TRUE;
+			params.paused_set = TRUE;
+			params.paused = FALSE;
 			params.subscriber_priority_set = TRUE;
 			params.subscriber_priority = 128;
 			params.group_order_set = TRUE;
@@ -483,8 +496,11 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
+	/* Legacy uses FORWARD, newer versions use PAUSED */
 	rparams.forward_set = TRUE;
 	rparams.forward = TRUE;
+	rparams.paused_set = TRUE;
+	rparams.paused = FALSE;
 	rparams.subscriber_priority_set = TRUE;
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
@@ -505,6 +521,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	}
 	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
+		rparams.paused = TRUE;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 			imquic_get_connection_name(conn), options.update_subscribe);
 		request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
@@ -1022,8 +1039,11 @@ int main(int argc, char *argv[]) {
 				/* The verb has a different syntax, starting from v14 */
 				imquic_moq_request_parameters params;
 				imquic_moq_request_parameters_init_defaults(&params);
+				/* Legacy uses FORWARD, newer versions use PAUSED */
 				params.forward_set = TRUE;
 				params.forward = TRUE;
+				params.paused_set = TRUE;
+				params.paused = FALSE;
 				params.subscriber_priority_set = TRUE;
 				params.subscriber_priority = 128;
 				/* The format of the location filter changed in v20 */

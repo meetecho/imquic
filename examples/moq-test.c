@@ -494,9 +494,15 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 	}
 	/* Update the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &sub_request_id);
-	if(s && !s->fetch && parameters->forward_set) {
+	/* Check if forwarding changed, depending on version we check FORWARD or PAUSE */
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	gboolean forward_set = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set);
+	gboolean forward = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && !parameters->paused) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && parameters->forward);
+	if(s && !s->fetch && forward_set) {
 		/* TODO Update start location and end group too */
-		s->forward = parameters->forward;
+		s->forward = forward;
 	}
 	g_mutex_unlock(&mutex);
 }

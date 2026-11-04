@@ -880,8 +880,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.group_order_set = TRUE;
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+		/* Legacy uses FORWARD, newer versions use PAUSED */
 		params.forward_set = TRUE;
 		params.forward = forward;
+		params.paused_set = TRUE;
+		params.paused = !forward;
 		/* Catalog track */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, catalog_tn);
 		catalog_request_id = imquic_moq_get_next_request_id(conn);
