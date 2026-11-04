@@ -4767,7 +4767,10 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		.payload_len = p_len,
 		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_SUBGROUP,
-		.end_of_stream = complete
+		/* We may be getting multiple objects from the same picoquic data
+		 * notification, so if a FIN is involved, only mark the end of
+		 * the stream when we've processed all the data we were passed */
+		.end_of_stream = complete && (offset + p_len == blen)
 	};
 	if(moq_stream != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
 		imquic_moq_qlog_subgroup_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
@@ -4969,7 +4972,10 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		.payload_len = p_len,
 		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_FETCH,
-		.end_of_stream = complete
+		/* We may be getting multiple objects from the same picoquic data
+		 * notification, so if a FIN is involved, only mark the end of
+		 * the stream when we've processed all the data we were passed */
+		.end_of_stream = complete && (offset + p_len == blen)
 	};
 	if(moq_stream != NULL && moq->conn->qlog != NULL && moq->conn->qlog->moq)
 		imquic_moq_qlog_fetch_object_parsed(moq->conn->qlog, moq_stream->stream_id, &object);
