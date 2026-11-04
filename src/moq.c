@@ -8843,7 +8843,8 @@ int imquic_moq_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL) ||
-			(moq->version < IMQUIC_MOQ_VERSION_20 && range == NULL)) {
+			(moq->version < IMQUIC_MOQ_VERSION_20 && range == NULL) ||
+			(parameters != NULL && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START)) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Invalid arguments\n",
 			imquic_get_connection_name(conn));
 		imquic_mutex_unlock(&moq_mutex);

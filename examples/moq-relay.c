@@ -2199,6 +2199,15 @@ static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request
 		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_DOES_NOT_EXIST, "Track not found", 0, NULL);
 		return;
 	}
+	/* Make sure the location filter is not relative */
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->location_filter_set && parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START) {
+		imquic_mutex_unlock(&mutex);
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Invalid range\n",
+			imquic_get_connection_name(conn));
+		imquic_moq_reject_fetch(conn, request_id, IMQUIC_MOQ_REQERR_INVALID_RANGE, "Invalid range", 0, NULL);
+		return;
+	}
 	/* Create a subscriber, if needed */
 	imquic_demo_moq_subscriber *sub = g_hash_table_lookup(subscribers, conn);
 	if(sub == NULL) {
@@ -2235,27 +2244,20 @@ static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request
 		.start = { .group = 0, .object = 0 },
 		.end = { .group = UINT64_MAX, .object = UINT64_MAX }
 	};
-	imquic_moq_version version = imquic_moq_get_version(conn);
 	imquic_moq_location_filter_type filter_type = IMQUIC_MOQ_LOCATION_FILTER_NONE;
 	if(version >= IMQUIC_MOQ_VERSION_20 && parameters->location_filter_set && parameters->location_filter.type > IMQUIC_MOQ_LOCATION_FILTER_NONE) {
 		filter_type = parameters->location_filter.type;
 		if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT) {
 			local_range.start = largest;
 		} else if(parameters->location_filter.type > IMQUIC_MOQ_LOCATION_FILTER_NONE && parameters->location_filter.type < IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT) {
-			if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START) {
-				/* Only start group provided: relative start */
-				if(largest.group >= parameters->location_filter.range.start.group)
-					local_range.start.group = largest.group + 1 - parameters->location_filter.range.start.group;
-			} else {
-				/* Start group provided too: absolute start */
-				local_range.start.group = parameters->location_filter.range.start.group;
-				local_range.start.object = parameters->location_filter.range.start.object;
-				if(parameters->location_filter.type > IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START) {
-					/* End group provided: fields are absolute */
-					local_range.end.group = parameters->location_filter.range.end.group;
-					if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE)
-						local_range.end.object = parameters->location_filter.range.end.object;
-				}
+			/* Can't be a relative filter, so it will be absolute*/
+			local_range.start.group = parameters->location_filter.range.start.group;
+			local_range.start.object = parameters->location_filter.range.start.object;
+			if(parameters->location_filter.type > IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_START) {
+				/* End group provided: fields are absolute */
+				local_range.end.group = parameters->location_filter.range.end.group;
+				if(parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_ABSOLUTE_RANGE)
+					local_range.end.object = parameters->location_filter.range.end.object;
 			}
 		}
 	} else if(version < IMQUIC_MOQ_VERSION_20) {
