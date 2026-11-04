@@ -565,7 +565,7 @@ static void imquic_moq_interop_ready(imquic_connection *conn) {
 		imquic_moq_request_parameters parameters;
 		imquic_moq_request_parameters_init_defaults(&parameters);
 		parameters.rendezvous_timeout_set = TRUE;
-		parameters.rendezvous_timeout = 500000;
+		parameters.rendezvous_timeout = 500; /* milliseconds (MOQT §9.20.6); was 500000 by mistake */
 		imquic_moq_subscribe(conn, client->request_id, &tns[0], &tn, &parameters);
 		if(verbose)
 			test->subtests = g_list_append(test->subtests, g_strdup("subscriber subscribed to non-existing rendezvous track"));
