@@ -1406,6 +1406,16 @@ size_t imquic_moq_parameter_add_location(imquic_moq_context *moq, uint8_t *bytes
  * @returns The size of the parameter, if successful, or 0 otherwise */
 size_t imquic_moq_parameter_add_location_filter(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint64_t param, uint64_t prev, imquic_moq_location_filter *location_filter);
+/*! \brief Helper to add a MoQ parameter with fill parameters to a buffer
+ * @param moq The imquic_moq_context instance the parameter is for
+ * @param bytes Buffer to add the parameter to
+ * @param blen Size of the buffer
+ * @param param ID of the parameter to add
+ * @param prev ID of the previously added parameter, if we're delta-encoding
+ * @param fill_parameters The fill parameters parameter to add
+ * @returns The size of the parameter, if successful, or 0 otherwise */
+size_t imquic_moq_parameter_add_fill_parameters(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint64_t param, uint64_t prev, imquic_moq_request_parameters *fill_parameters);
 /*! \brief Helper to add a MoQ parameter with generic data to a buffer
  * @param moq The imquic_moq_context instance the parameter is for
  * @param bytes Buffer to add the parameter to
