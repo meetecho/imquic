@@ -493,6 +493,10 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(track_properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
+	if(moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->subscribe_tracks_id_set) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Originated by Subscribe Tracks '%"SCNu64"'\n",
+			imquic_get_connection_name(conn), parameters->subscribe_tracks_id);
+	}
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
