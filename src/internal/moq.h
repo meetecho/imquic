@@ -921,10 +921,10 @@ size_t imquic_moq_add_request_ok(imquic_moq_context *moq, imquic_moq_stream *moq
  * @param error Error code associated to the message
  * @param reason Verbose description of the error, if any
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if any
+ * @param error_details Error details, if any
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_request_error(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-	uint8_t *bytes, size_t blen, size_t *start, uint64_t request_id, uint64_t error, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	uint8_t *bytes, size_t blen, size_t *start, uint64_t request_id, uint64_t error, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Helper method to add a \c PUBLISH_NAMESPACE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -1314,6 +1314,15 @@ size_t imquic_moq_add_padding(imquic_moq_context *moq, uint8_t *bytes, size_t bl
  * @returns The size of the generated properties block, if successful, or 0 otherwise */
 size_t imquic_moq_add_properties(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
 	uint8_t *properties, size_t prlen, gboolean prefix);
+/*! \brief Helper method to add error details to a buffer
+ * @param moq The imquic_moq_context generating the message
+ * @param bytes The buffer to add the error details to
+ * @param blen The size of the buffer
+ * @param error_details The buffer containing the error details, if any
+ * @param edlen The size of the error details buffer
+ * @returns The size of the generated error_details block, if successful, or 0 otherwise */
+size_t imquic_moq_add_error_details(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
+	uint8_t *error_details, size_t edlen);
 ///@}
 
 /** @name Parsing and building MoQ setup options (TLV)
@@ -1480,7 +1489,7 @@ typedef struct imquic_moq_callbacks {
 	void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_ERROR messages */
 	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE_DONE messages
 	 * \note This message was deprecated in v17 */
 	void (* publish_namespace_done)(imquic_connection *conn, uint64_t request_id);
@@ -1491,7 +1500,7 @@ typedef struct imquic_moq_callbacks {
 	void (* publish_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_ERROR messages */
 	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE messages */
 	void (* incoming_subscribe)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
@@ -1499,14 +1508,14 @@ typedef struct imquic_moq_callbacks {
 	void (* subscribe_accepted)(imquic_connection *conn, uint64_t request_id, uint64_t track_alias, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_ERROR messages */
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified about incoming \c REQUEST_UPDATE messages */
 	void (* request_updated)(imquic_connection *conn, uint64_t request_id, uint64_t sub_request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about an ACK to a previously sent \c REQUEST_UPDATE message */
 	void (* request_update_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming errors to a previously \c REQUEST_UPDATE message */
 	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_STATE_NOTIFY messages */
 	void (* publish_state_notify)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_DONE messages */
@@ -1523,7 +1532,7 @@ typedef struct imquic_moq_callbacks {
 	void (* subscribe_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_NAMESPACE_ERROR messages */
 	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified about incoming \c UNSUBSCRIBE_NAMESPACE messages, or when the bidirectional stream is closed */
 	void (* incoming_unsubscribe_namespace)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c SUBSCRIBE_TRACKS messages */
@@ -1533,7 +1542,7 @@ typedef struct imquic_moq_callbacks {
 	void (* subscribe_tracks_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified when a \c SUBSCRIBE_TRACKS returned an error */
 	void (* subscribe_tracks_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified the \c SUBSCRIBE_TRACKS bidirectional stream is closed */
 	void (* incoming_unsubscribe_tracks)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c NAMESPACE messages */
@@ -1553,7 +1562,7 @@ typedef struct imquic_moq_callbacks {
 	void (* fetch_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c FETCH_ERROR messages */
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS messages */
 	void (* incoming_track_status)(imquic_connection *conn, uint64_t request_id,
 		imquic_moq_namespace *tns, imquic_moq_track *tn, imquic_moq_request_parameters *parameters);
@@ -1561,7 +1570,7 @@ typedef struct imquic_moq_callbacks {
 	void (* track_status_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters, GList *track_properties);
 	/*! \brief Callback function to be notified about incoming \c TRACK_STATUS_ERROR messages */
 	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+		const char *reason, uint64_t retry_interval, GList *error_details);
 	/*! \brief Callback function to be notified about incoming MoQ objects */
 	void (* incoming_object)(imquic_connection *conn, imquic_moq_object *object);
 	/*! \brief Callback function to be notified about incoming \c GOAWAY messages */
@@ -1643,11 +1652,16 @@ void imquic_qlog_moq_message_add_setup_options(json_t *message, imquic_moq_setup
  * @param name The name the array should have in the message object */
 void imquic_qlog_moq_message_add_request_parameters(json_t *message, imquic_moq_version version,
 	imquic_moq_request_parameters *parameters, const char *name);
-/*! \brief Helper to add a stringified array of propertie headers to a message
+/*! \brief Helper to add a stringified array of propertyes to a message
  * @param message The message object to update
  * @param properties The list of properties to convert
  * @param name The name the array should have in the message object */
 void imquic_qlog_moq_message_add_properties(json_t *message, GList *properties, const char *name);
+/*! \brief Helper to add a stringified array of error details to a message
+ * @param message The message object to update
+ * @param error_details The list of error details to convert
+ * @param name The name the array should have in the message object */
+void imquic_qlog_moq_message_add_error_details(json_t *message, GList *error_details, const char *name);
 /*! \brief Add a \c control_message_created event
  * @param qlog The imquic_qlog instance to add the event to
  * @param stream_id The Stream ID used for this message

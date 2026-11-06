@@ -348,9 +348,11 @@ static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t 
 }
 
 static void imquic_demo_track_status_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error querying the track status via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -397,12 +399,33 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Check if it's a redirect (needs v18 at least) or an actual error */
 	if(error_code == IMQUIC_MOQ_REQERR_REDIRECT) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- This is a redirect:\n", imquic_get_connection_name(conn));
+		/* Parse the error details to find a redirect structure */
+		imquic_moq_redirect *redirect = NULL;
+		GList *temp = error_details;
+		while(temp != NULL) {
+			imquic_moq_error_detail *error_detail = (imquic_moq_error_detail *)temp->data;
+			if(error_detail->type == IMQUIC_MOQ_ERROR_DETAIL_REDIRECT) {
+				/* Found */
+				redirect = imquic_moq_parse_redirect_error_detail(moq_version, error_detail);
+				break;
+			}
+			temp = temp->next;
+		}
+		if(redirect == NULL) {
+			/* FIXME No redirect error detail, it's a malformed message */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s]  -- No Redirect Error Detail found, malformed message\n",
+				imquic_get_connection_name(conn));
+			g_atomic_int_inc(&stop);
+			return;
+		}
 		if(redirect->connect_uri != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Connect URI: %s\n",
 				imquic_get_connection_name(conn), redirect->connect_uri);
@@ -422,6 +445,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 		if(redirect->connect_uri != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] We don't support reconnecting to a different backend in this demo, give up\n",
 				imquic_get_connection_name(conn));
+			imquic_moq_redirect_destroy(redirect);
 		} else {
 			/* Get the namespace and track name we tried subscring to before */
 			imquic_moq_namespace *old_tns = g_hash_table_lookup(namespaces_by_reqid, &request_id);
@@ -458,6 +482,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			g_hash_table_insert(namespaces_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_namespace_duplicate(new_tns));
 			g_hash_table_insert(tracks_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_track_duplicate(new_tn));
 			imquic_moq_subscribe(conn, new_request_id, new_tns, new_tn, &params);
+			imquic_moq_redirect_destroy(redirect);
 			return;
 		}
 	}
@@ -471,9 +496,11 @@ static void imquic_demo_request_update_accepted(imquic_connection *conn, uint64_
 }
 
 static void imquic_demo_request_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error updating our subscription via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id,
@@ -561,9 +588,11 @@ static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request
 }
 
 static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error fetching via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here, unless it was a joining FETCH */
 	if(options.join_offset < 0)
 		g_atomic_int_inc(&stop);
@@ -580,9 +609,11 @@ static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, ui
 }
 
 static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -593,9 +624,11 @@ static void imquic_demo_subscribe_tracks_accepted(imquic_connection *conn, uint6
 }
 
 static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace tracks in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }

@@ -1113,7 +1113,7 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 }
 
 static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
 	/* Find the subscriber */
@@ -1659,7 +1659,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	/* Our subscription to a publisher was rejected */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
@@ -1685,7 +1685,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 	while(temp) {
 		imquic_demo_moq_subscription *s = (imquic_demo_moq_subscription *)temp->data;
 		if(s && s->sub && s->sub->conn)
-			imquic_moq_reject_subscribe(s->sub->conn, s->request_id, error_code, reason, retry_interval, redirect);
+			imquic_moq_reject_subscribe(s->sub->conn, s->request_id, error_code, reason, retry_interval, error_details);
 		temp = temp->next;
 	}
 	imquic_mutex_unlock(&track->mutex);
