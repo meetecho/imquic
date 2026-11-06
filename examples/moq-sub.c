@@ -108,11 +108,16 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	}
 	if(options.subscribe_namespace) {
 		/* Only send a SUBSCRIBE_NAMESPACE and/or a SUBSCRIBE_TRACKS: the relay will
-		 * send us a PUBLISH request when there's something we can subscribe to */
+		 * send us a PUBLISH request when there's something we can subscribe to.
+		 * Depending on the version, we use FORWARD or PAUSE for media delivery */
 		params.forward_set = TRUE;
 		params.forward = TRUE;
-		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
+		params.paused_set = TRUE;
+		params.paused = FALSE;
+		if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 			params.forward = FALSE;
+			params.paused = TRUE;
+		}
 		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
 			/* Older versions of MoQ used SUBSCRIBE_NAMESPACE to get PUBLISH too */
 			sn_request_id = imquic_moq_get_next_request_id(conn);
@@ -165,11 +170,16 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	fparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 	if(options.fetch && !strcasecmp(options.fetch, "descending"))
 		fparams.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
-	/* Check if we need to request forwarding right away, or if we'll ask send an update later */
+	/* Check if we need to request forwarding right away, or if we'll ask send an
+	 * update later: depending on the version, we use FORWARD or PAUSED */
 	params.forward_set = TRUE;
 	params.forward = TRUE;
-	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0))
+	params.paused_set = TRUE;
+	params.paused = FALSE;
+	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		params.forward = FALSE;
+		params.paused = TRUE;
+	}
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
 	params.group_order_set = TRUE;
@@ -338,9 +348,11 @@ static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t 
 }
 
 static void imquic_demo_track_status_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error querying the track status via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -387,12 +399,33 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Check if it's a redirect (needs v18 at least) or an actual error */
 	if(error_code == IMQUIC_MOQ_REQERR_REDIRECT) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- This is a redirect:\n", imquic_get_connection_name(conn));
+		/* Parse the error details to find a redirect structure */
+		imquic_moq_redirect *redirect = NULL;
+		GList *temp = error_details;
+		while(temp != NULL) {
+			imquic_moq_error_detail *error_detail = (imquic_moq_error_detail *)temp->data;
+			if(error_detail->type == IMQUIC_MOQ_ERROR_DETAIL_REDIRECT) {
+				/* Found */
+				redirect = imquic_moq_parse_redirect_error_detail(moq_version, error_detail);
+				break;
+			}
+			temp = temp->next;
+		}
+		if(redirect == NULL) {
+			/* FIXME No redirect error detail, it's a malformed message */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s]  -- No Redirect Error Detail found, malformed message\n",
+				imquic_get_connection_name(conn));
+			g_atomic_int_inc(&stop);
+			return;
+		}
 		if(redirect->connect_uri != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Connect URI: %s\n",
 				imquic_get_connection_name(conn), redirect->connect_uri);
@@ -412,6 +445,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 		if(redirect->connect_uri != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] We don't support reconnecting to a different backend in this demo, give up\n",
 				imquic_get_connection_name(conn));
+			imquic_moq_redirect_destroy(redirect);
 		} else {
 			/* Get the namespace and track name we tried subscring to before */
 			imquic_moq_namespace *old_tns = g_hash_table_lookup(namespaces_by_reqid, &request_id);
@@ -422,8 +456,11 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			imquic_moq_track *new_tn = redirect->track_name ? redirect->track_name : old_tn;
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
+			/* Legacy uses FORWARD, newer versions use PAUSED */
 			params.forward_set = TRUE;
 			params.forward = TRUE;
+			params.paused_set = TRUE;
+			params.paused = FALSE;
 			params.subscriber_priority_set = TRUE;
 			params.subscriber_priority = 128;
 			params.group_order_set = TRUE;
@@ -445,6 +482,7 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			g_hash_table_insert(namespaces_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_namespace_duplicate(new_tns));
 			g_hash_table_insert(tracks_by_reqid, imquic_uint64_dup(new_request_id), imquic_moq_track_duplicate(new_tn));
 			imquic_moq_subscribe(conn, new_request_id, new_tns, new_tn, &params);
+			imquic_moq_redirect_destroy(redirect);
 			return;
 		}
 	}
@@ -458,9 +496,11 @@ static void imquic_demo_request_update_accepted(imquic_connection *conn, uint64_
 }
 
 static void imquic_demo_request_update_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error updating our subscription via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 }
 
 static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t request_id,
@@ -480,11 +520,18 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 		imquic_moq_print_auth_info(conn, parameters->auth_token, parameters->auth_token_len);
 	if(track_properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
+	if(moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->subscribe_tracks_id_set) {
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Originated by Subscribe Tracks '%"SCNu64"'\n",
+			imquic_get_connection_name(conn), parameters->subscribe_tracks_id);
+	}
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
+	/* Legacy uses FORWARD, newer versions use PAUSED */
 	rparams.forward_set = TRUE;
 	rparams.forward = TRUE;
+	rparams.paused_set = TRUE;
+	rparams.paused = FALSE;
 	rparams.subscriber_priority_set = TRUE;
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
@@ -505,6 +552,7 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	}
 	if(options.update_subscribe > 0 && (options.fetch == NULL || options.join_offset >= 0)) {
 		rparams.forward = FALSE;
+		rparams.paused = TRUE;
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 			imquic_get_connection_name(conn), options.update_subscribe);
 		request_ids = g_list_append(request_ids, imquic_uint64_dup(request_id));
@@ -540,9 +588,11 @@ static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request
 }
 
 static void imquic_demo_fetch_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error fetching via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here, unless it was a joining FETCH */
 	if(options.join_offset < 0)
 		g_atomic_int_inc(&stop);
@@ -559,9 +609,11 @@ static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, ui
 }
 
 static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -572,9 +624,11 @@ static void imquic_demo_subscribe_tracks_accepted(imquic_connection *conn, uint6
 }
 
 static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace tracks in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -1022,8 +1076,11 @@ int main(int argc, char *argv[]) {
 				/* The verb has a different syntax, starting from v14 */
 				imquic_moq_request_parameters params;
 				imquic_moq_request_parameters_init_defaults(&params);
+				/* Legacy uses FORWARD, newer versions use PAUSED */
 				params.forward_set = TRUE;
 				params.forward = TRUE;
+				params.paused_set = TRUE;
+				params.paused = FALSE;
 				params.subscriber_priority_set = TRUE;
 				params.subscriber_priority = 128;
 				/* The format of the location filter changed in v20 */

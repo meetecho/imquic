@@ -18,3 +18,4 @@ All notable changes to this project will be documented in this file.
 ## [v0.0.3] - XXXX-XX-XX
 
 - Switched to picoquic's "just in time" APIs for sending STREAM data
+- Added support for MoQT v23

@@ -320,8 +320,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	 * send us a PUBLISH request when there's something we can subscribe to */
 	imquic_moq_request_parameters params;
 	imquic_moq_request_parameters_init_defaults(&params);
+	/* Legacy uses FORWARD, newer versions use PAUSED */
 	params.forward_set = TRUE;
 	params.forward = TRUE;
+	params.paused_set = TRUE;
+	params.paused = FALSE;
 	imquic_moq_namespace *bak = pub_namespace[0].next;
 	pub_namespace[0].next = NULL;
 	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
@@ -343,9 +346,11 @@ static void imquic_demo_subscribe_namespace_accepted(imquic_connection *conn, ui
 }
 
 static void imquic_demo_subscribe_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -357,9 +362,11 @@ static void imquic_demo_subscribe_tracks_accepted(imquic_connection *conn, uint6
 }
 
 static void imquic_demo_subscribe_tracks_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing to namespace tracks in request '%"SCNu64"': error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -422,8 +429,11 @@ static void imquic_demo_incoming_publish(imquic_connection *conn, uint64_t reque
 	/* Done */
 	imquic_moq_request_parameters rparams;
 	imquic_moq_request_parameters_init_defaults(&rparams);
+	/* Legacy uses FORWARD, newer versions use PAUSED */
 	rparams.forward_set = TRUE;
 	rparams.forward = TRUE;
+	rparams.paused_set = TRUE;
+	rparams.paused = FALSE;
 	rparams.subscriber_priority_set = TRUE;
 	rparams.subscriber_priority = 128;
 	rparams.group_order_set = TRUE;
@@ -609,8 +619,11 @@ static int imquic_demo_handle_input(void) {
 			imquic_moq_request_parameters_init_defaults(&params);
 			params.group_order_set = TRUE;
 			params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+			/* Legacy uses FORWARD, newer versions use PAUSED */
 			params.forward_set = TRUE;
 			params.forward = TRUE;
+			params.paused_set = TRUE;
+			params.paused = FALSE;
 			pub_request_id = imquic_moq_get_next_request_id(moq_conn);
 			imquic_moq_publish(moq_conn, pub_request_id, &pub_namespace[0], &pub_track, pub_track_alias, &params, NULL);
 			state = DEMO_TALKING;
