@@ -488,6 +488,125 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
+/** @name MoQ error and status codes
+ */
+///@{
+/*! \brief Generic error codes */
+typedef enum imquic_moq_error_code {
+	IMQUIC_MOQ_NO_ERROR = 0x0,
+	IMQUIC_MOQ_INTERNAL_ERROR = 0x1,
+	IMQUIC_MOQ_UNAUTHORIZED = 0x2,
+	IMQUIC_MOQ_PROTOCOL_VIOLATION = 0x3,
+	IMQUIC_MOQ_INVALID_REQUEST_ID = 0x4,
+	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x5,
+	IMQUIC_MOQ_MALFORMED_KEY_VALUE = 0x6,	/* Was KEYVALUE_FORMATTING_ERROR, renamed in v23 */
+		IMQUIC_MOQ_INVALID_REQUIRED_REQUEST_ID = 0x7,	/* Deprecated in v18 */
+		IMQUIC_MOQ_TOO_MANY_REQUESTS = 0x7,		/* Deprecated in v17 */
+	IMQUIC_MOQ_INVALID_PATH = 0x8,
+	IMQUIC_MOQ_MALFORMED_PATH = 0x9,
+	IMQUIC_MOQ_GOAWAY_TIMEOUT = 0x10,
+	IMQUIC_MOQ_CONTROL_MESSAGE_TIMEOUT = 0x11,
+	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
+	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
+	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
+	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,	/* Deprecated in v20 */
+	IMQUIC_MOQ_MALFORMED_AUTH_TOKEN = 0x16,
+	IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS = 0x17,
+	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
+	IMQUIC_MOQ_INVALID_AUTHORITY = 0x19,
+	IMQUIC_MOQ_MALFORMED_AUTHORITY = 0x1A,
+	IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES = 0x1B,		/* Added in v19 */
+	IMQUIC_MOQ_INVALID_STREAM_HEADER = 0x200,		/* Added in v23 */
+	IMQUIC_MOQ_MALFORMED_OBJECT = 0x201,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_OBJECT_STATUS = 0x202,		/* Added in v23 */
+	IMQUIC_MOQ_TRUNCATED_OBJECT = 0x203,		/* Added in v23 */
+	IMQUIC_MOQ_MALFORMED_MESSAGE = 0x300,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_FIELD = 0x301,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_TRACK_NAMESPACE = 0x302,		/* Added in v23 */
+	IMQUIC_MOQ_UNEXPECTED_MESSAGE = 0x303,		/* Added in v23 */
+	IMQUIC_MOQ_ROLE_VIOLATION = 0x304,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_PARAMETER = 0x305,		/* Added in v23 */
+	IMQUIC_MOQ_CLOSED_CONTROL_STREAM = 0x306,		/* Added in v23 */
+	IMQUIC_MOQ_DELTA_ENCODING_OVERFLOW = 0x400,		/* Added in v23 */
+	IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED = 0x401,		/* Added in v23 */
+	/* Not an actual error */
+	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
+} imquic_moq_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_error_code value.
+ * @param code The imquic_moq_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_error_code_str(imquic_moq_error_code code);
+
+/*! \brief Request error codes */
+typedef enum imquic_moq_request_error_code {
+	IMQUIC_MOQ_REQERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_REQERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_REQERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_REQERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_REQERR_MALFORMED_AUTH_TOKEN = 0x4,
+	IMQUIC_MOQ_REQERR_EXPIRED_AUTH_TOKEN = 0x5,
+	IMQUIC_MOQ_REQERR_GOING_AWAY = 0x6,
+	IMQUIC_MOQ_REQERR_EXCESSIVE_LOAD = 0x9,
+	IMQUIC_MOQ_REQERR_UNAVAILABLE = 0xA,
+	/* The following are returned by publishers */
+	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
+	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
+	IMQUIC_MOQ_REQERR_MALFORMED_TRACK = 0x12,
+		IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,	/* Deprecated in v19 */
+	/* The following are returned by subscribers */
+	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
+	/* Others */
+	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,	/* Deprecated in v23 */
+	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
+	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,	/* Deprecated in v20 */
+	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
+	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
+	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
+	IMQUIC_MOQ_REQERR_INVALID_FILTER = 0x36,	/* Added in v19 */
+} imquic_moq_request_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
+ * @param code The imquic_moq_request_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code);
+
+/*! \brief Publish done codes */
+typedef enum imquic_moq_pub_done_code {
+	IMQUIC_MOQ_PUBDONE_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_PUBDONE_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
+	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,	/* Deprecated in v20 */
+	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
+	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,	/* Swapped in v18 */
+	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,	/* Swapped in v18 */
+	IMQUIC_MOQ_PUBDONE_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v23 */
+	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
+	IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD = 0x9,
+	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
+} imquic_moq_pub_done_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_pub_done_code value.
+ * @param code The imquic_moq_pub_done_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code);
+
+/*! \brief RESET_STREAM error codes */
+typedef enum imquic_moq_reset_stream_code {
+	IMQUIC_MOQ_RESET_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_RESET_CANCELLED = 0x1,
+	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
+	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
+	IMQUIC_MOQ_RESET_GOING_AWAY = 0x4,	/* Added in v18 */
+	IMQUIC_MOQ_RESET_TOO_FAR_BEHIND = 0x5,
+	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x6,	/* Value changed in v18, deprecated in v23 */
+	IMQUIC_MOQ_RESET_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v18 */
+	IMQUIC_MOQ_RESET_EXCESSIVE_LOAD = 0x9,
+	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
+} imquic_moq_reset_stream_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_reset_stream_code value.
+ * @param code The imquic_moq_reset_stream_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
+///@}
+
 /*! \brief MoQ location filter (new)
  * \note Added in v20 */
 typedef struct imquic_moq_location_filter {
@@ -774,8 +893,9 @@ const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_
  * @param version The version of the connection
  * @param properties The buffer containing the properties data
  * @param plen The size of the buffer containing the properties data
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns A GList instance containing a set of imquic_moq_property, if successful, or NULL if no properties were found */
-GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t plen);
+GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t plen, imquic_moq_error_code *error);
 /*! \brief Helper mode to craft a properties buffer out of a GList of imquic_moq_property
  * @param[in] version The version of the connection
  * @param[in] properties The list of properties to serialize
@@ -900,8 +1020,9 @@ const char *imquic_moq_error_detail_type_str(imquic_moq_version version, imquic_
  * @param version The version of the connection
  * @param error_details The buffer containing the error details data
  * @param edlen The size of the buffer containing the error details data
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns A GList instance containing a set of imquic_moq_error_detail, if successful, or NULL if no error_details were found */
-GList *imquic_moq_parse_error_details(imquic_moq_version version, uint8_t *error_details, size_t edlen);
+GList *imquic_moq_parse_error_details(imquic_moq_version version, uint8_t *error_details, size_t edlen, imquic_moq_error_code *error);
 /*! \brief Helper mode to craft a error details buffer out of a GList of imquic_moq_error_detail
  * @param[in] version The version of the connection
  * @param[in] error_details The list of error details to serialize
@@ -928,8 +1049,9 @@ typedef struct imquic_moq_redirect {
  * @param version The version of the connection
  * @param bytes The buffer containing the data to parse
  * @param blen The size of the buffer
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns A pointer to a imquic_moq_redirect instance, if successful, or NULL otherwise */
-imquic_moq_redirect *imquic_moq_parse_redirect_error_detail(imquic_moq_version version, imquic_moq_error_detail *error_detail);
+imquic_moq_redirect *imquic_moq_parse_redirect_error_detail(imquic_moq_version version, imquic_moq_error_detail *error_detail, imquic_moq_error_code *error);
 /*! \brief Helper mode to craft a redirect error_detail buffer out of a imquic_moq_redirect instance
  * \note The caller owns the returned instance, and is responsible of freeing it and its content
  * @param[in] version The version of the connection
@@ -1011,8 +1133,9 @@ typedef struct imquic_moq_auth_token {
  * @param[in] bytes The buffer containing the auth token data
  * @param[in] blen The size of the buffer containing the auth token data data
  * @param[out] token The imquic_moq_auth_token to put the parsed token info to
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns 0 in case of success, or a negative integer otherwise */
-int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size_t blen, imquic_moq_auth_token *token);
+int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size_t blen, imquic_moq_auth_token *token, imquic_moq_error_code *error);
 /*! \brief Helper mode to craft an auth token buffer out of a imquic_moq_auth_token instance
  * @param[in] version The MoQ version used on the connection
  * @param[in] token The imquic_moq_auth_token instance to serialize
@@ -1020,125 +1143,6 @@ int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size
  * @param[in] blen The size of the buffer to write to
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_auth_token(imquic_moq_version version, imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
-///@}
-
-/** @name MoQ error and status codes
- */
-///@{
-/*! \brief Generic error codes */
-typedef enum imquic_moq_error_code {
-	IMQUIC_MOQ_NO_ERROR = 0x0,
-	IMQUIC_MOQ_INTERNAL_ERROR = 0x1,
-	IMQUIC_MOQ_UNAUTHORIZED = 0x2,
-	IMQUIC_MOQ_PROTOCOL_VIOLATION = 0x3,
-	IMQUIC_MOQ_INVALID_REQUEST_ID = 0x4,
-	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x5,
-	IMQUIC_MOQ_MALFORMED_KEY_VALUE = 0x6,	/* Was KEYVALUE_FORMATTING_ERROR, renamed in v23 */
-		IMQUIC_MOQ_INVALID_REQUIRED_REQUEST_ID = 0x7,	/* Deprecated in v18 */
-		IMQUIC_MOQ_TOO_MANY_REQUESTS = 0x7,		/* Deprecated in v17 */
-	IMQUIC_MOQ_INVALID_PATH = 0x8,
-	IMQUIC_MOQ_MALFORMED_PATH = 0x9,
-	IMQUIC_MOQ_GOAWAY_TIMEOUT = 0x10,
-	IMQUIC_MOQ_CONTROL_MESSAGE_TIMEOUT = 0x11,
-	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
-	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
-	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
-	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,	/* Deprecated in v20 */
-	IMQUIC_MOQ_MALFORMED_AUTH_TOKEN = 0x16,
-	IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS = 0x17,
-	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
-	IMQUIC_MOQ_INVALID_AUTHORITY = 0x19,
-	IMQUIC_MOQ_MALFORMED_AUTHORITY = 0x1A,
-	IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES = 0x1B,		/* Added in v19 */
-	IMQUIC_MOQ_INVALID_STREAM_HEADER = 0x200,		/* Added in v23 */
-	IMQUIC_MOQ_MALFORMED_OBJECT = 0x201,		/* Added in v23 */
-	IMQUIC_MOQ_INVALID_OBJECT_STATUS = 0x202,		/* Added in v23 */
-	IMQUIC_MOQ_TRUNCATED_OBJECT = 0x203,		/* Added in v23 */
-	IMQUIC_MOQ_MALFORMED_MESSAGE = 0x300,		/* Added in v23 */
-	IMQUIC_MOQ_INVALID_FIELD = 0x301,		/* Added in v23 */
-	IMQUIC_MOQ_INVALID_TRACK_NAMESPACE = 0x302,		/* Added in v23 */
-	IMQUIC_MOQ_UNEXPECTED_MESSAGE = 0x303,		/* Added in v23 */
-	IMQUIC_MOQ_ROLE_VIOLATION = 0x304,		/* Added in v23 */
-	IMQUIC_MOQ_INVALID_PARAMETER = 0x305,		/* Added in v23 */
-	IMQUIC_MOQ_CLOSED_CONTROL_STREAM = 0x306,		/* Added in v23 */
-	IMQUIC_MOQ_DELTA_ENCODING_OVERFLOW = 0x400,		/* Added in v23 */
-	IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED = 0x401,		/* Added in v23 */
-	/* Not an actual error */
-	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
-} imquic_moq_error_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_error_code value.
- * @param code The imquic_moq_error_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_error_code_str(imquic_moq_error_code code);
-
-/*! \brief Request error codes */
-typedef enum imquic_moq_request_error_code {
-	IMQUIC_MOQ_REQERR_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_REQERR_UNAUTHORIZED = 0x1,
-	IMQUIC_MOQ_REQERR_TIMEOUT = 0x2,
-	IMQUIC_MOQ_REQERR_NOT_SUPPORTED = 0x3,
-	IMQUIC_MOQ_REQERR_MALFORMED_AUTH_TOKEN = 0x4,
-	IMQUIC_MOQ_REQERR_EXPIRED_AUTH_TOKEN = 0x5,
-	IMQUIC_MOQ_REQERR_GOING_AWAY = 0x6,
-	IMQUIC_MOQ_REQERR_EXCESSIVE_LOAD = 0x9,
-	IMQUIC_MOQ_REQERR_UNAVAILABLE = 0xA,
-	/* The following are returned by publishers */
-	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
-	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
-	IMQUIC_MOQ_REQERR_MALFORMED_TRACK = 0x12,
-		IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,	/* Deprecated in v19 */
-	/* The following are returned by subscribers */
-	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
-	/* Others */
-	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,	/* Deprecated in v23 */
-	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
-	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,	/* Deprecated in v20 */
-	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
-	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
-	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
-	IMQUIC_MOQ_REQERR_INVALID_FILTER = 0x36,	/* Added in v19 */
-} imquic_moq_request_error_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
- * @param code The imquic_moq_request_error_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code);
-
-/*! \brief Publish done codes */
-typedef enum imquic_moq_pub_done_code {
-	IMQUIC_MOQ_PUBDONE_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_PUBDONE_UNAUTHORIZED = 0x1,
-	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
-	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,	/* Deprecated in v20 */
-	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
-	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,	/* Swapped in v18 */
-	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,	/* Swapped in v18 */
-	IMQUIC_MOQ_PUBDONE_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v23 */
-	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
-	IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD = 0x9,
-	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
-} imquic_moq_pub_done_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_pub_done_code value.
- * @param code The imquic_moq_pub_done_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code);
-
-/*! \brief RESET_STREAM error codes */
-typedef enum imquic_moq_reset_stream_code {
-	IMQUIC_MOQ_RESET_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_RESET_CANCELLED = 0x1,
-	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
-	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
-	IMQUIC_MOQ_RESET_GOING_AWAY = 0x4,	/* Added in v18 */
-	IMQUIC_MOQ_RESET_TOO_FAR_BEHIND = 0x5,
-	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x6,	/* Value changed in v18, deprecated in v23 */
-	IMQUIC_MOQ_RESET_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v18 */
-	IMQUIC_MOQ_RESET_EXCESSIVE_LOAD = 0x9,
-	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
-} imquic_moq_reset_stream_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_reset_stream_code value.
- * @param code The imquic_moq_reset_stream_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 ///@}
 
 /** @name MoQ endpoints management

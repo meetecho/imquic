@@ -414,7 +414,8 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			imquic_moq_error_detail *error_detail = (imquic_moq_error_detail *)temp->data;
 			if(error_detail->type == IMQUIC_MOQ_ERROR_DETAIL_REDIRECT) {
 				/* Found */
-				redirect = imquic_moq_parse_redirect_error_detail(moq_version, error_detail);
+				imquic_moq_error_code error = IMQUIC_MOQ_NO_ERROR;
+				redirect = imquic_moq_parse_redirect_error_detail(moq_version, error_detail, &error);
 				break;
 			}
 			temp = temp->next;

@@ -538,7 +538,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		size_t skip = length;
 		GList *pvt_properties = NULL;
 		if(prop_len > 0) {
-			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);
+			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len, NULL);
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d private properties\n", g_list_length(pvt_properties));
 			if(pvt_properties != NULL)
 				imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, pvt_properties);

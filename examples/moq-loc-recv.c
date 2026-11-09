@@ -311,7 +311,7 @@ static void imquic_demo_process_video_buffer(void) {
 		skip += length;
 		GList *pvt_properties = NULL;
 		if(prop_len > 0) {
-			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);
+			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len, NULL);
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d private properties\n", g_list_length(pvt_properties));
 			if(pvt_properties != NULL)
 				imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, pvt_properties);
@@ -501,7 +501,8 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 			imquic_moq_error_detail *error_detail = (imquic_moq_error_detail *)temp->data;
 			if(error_detail->type == IMQUIC_MOQ_ERROR_DETAIL_REDIRECT) {
 				/* Found */
-				redirect = imquic_moq_parse_redirect_error_detail(moq_version, error_detail);
+				imquic_moq_error_code error = IMQUIC_MOQ_NO_ERROR;
+				redirect = imquic_moq_parse_redirect_error_detail(moq_version, error_detail, &error);
 				break;
 			}
 			temp = temp->next;
@@ -814,7 +815,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		skip += length;
 		GList *pvt_properties = NULL;
 		if(prop_len > 0) {
-			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);
+			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len, NULL);
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d private properties\n", g_list_length(pvt_properties));
 			if(pvt_properties != NULL)
 				imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, pvt_properties);
