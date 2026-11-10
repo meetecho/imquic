@@ -1936,17 +1936,17 @@ imquic_moq_subscription *imquic_moq_subscription_create(uint64_t request_id, uin
 	imquic_moq_subscription *moq_sub = g_malloc0(sizeof(imquic_moq_subscription));
 	moq_sub->request_id = request_id;
 	moq_sub->track_alias = track_alias;
-	moq_sub->stream = NULL;
 	moq_sub->streams_by_subgroup = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_stream_destroy);
+	moq_sub->fetch_streams = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_stream_destroy);
 	return moq_sub;
 }
 
 void imquic_moq_subscription_destroy(imquic_moq_subscription *moq_sub) {
 	if(moq_sub != NULL) {
-		if(moq_sub->stream != NULL)
-			imquic_moq_stream_destroy(moq_sub->stream);
 		g_hash_table_unref(moq_sub->streams_by_subgroup);
+		g_hash_table_unref(moq_sub->fetch_streams);
 		g_free(moq_sub);
 	}
 }
@@ -8596,19 +8596,23 @@ int imquic_moq_publish_done(imquic_connection *conn, uint64_t request_id, imquic
 	}
 	uint64_t streams_count = moq_sub->streams_count;
 	/* Close all object streams, if needed */
-	if(moq_sub->stream != NULL && !moq_sub->stream->closed) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing unique stream '%"SCNu64"'\n",
-			imquic_get_connection_name(conn), moq_sub->stream->stream_id);
-		moq_sub->stream->closed = TRUE;
-		imquic_connection_send_on_stream(conn, moq_sub->stream->stream_id, NULL, 0, TRUE);
-	}
 	GHashTableIter iter;
 	gpointer value;
 	g_hash_table_iter_init(&iter, moq_sub->streams_by_subgroup);
 	while(g_hash_table_iter_next(&iter, NULL, &value)) {
 		imquic_moq_stream *stream = value;
 		if(!stream->closed) {
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing stream '%"SCNu64"'\n",
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing subscription stream '%"SCNu64"'\n",
+				imquic_get_connection_name(conn), stream->stream_id);
+			stream->closed = TRUE;
+			imquic_connection_send_on_stream(conn, stream->stream_id, NULL, 0, TRUE);
+		}
+	}
+	g_hash_table_iter_init(&iter, moq_sub->fetch_streams);
+	while(g_hash_table_iter_next(&iter, NULL, &value)) {
+		imquic_moq_stream *stream = value;
+		if(!stream->closed) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s][MoQ] Closing fetch stream '%"SCNu64"'\n",
 				imquic_get_connection_name(conn), stream->stream_id);
 			stream->closed = TRUE;
 			imquic_connection_send_on_stream(conn, stream->stream_id, NULL, 0, TRUE);
@@ -9828,7 +9832,7 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			g_free(buffer);
 			return -1;
 		}
-		imquic_moq_stream *moq_stream = moq_sub->stream;
+		imquic_moq_stream *moq_stream = g_hash_table_lookup(moq_sub->fetch_streams, &object->request_id);
 		if(moq_stream == NULL) {
 			if(!valid_pkt && object->end_of_stream) {
 				/* Nothing to do here */
@@ -9844,8 +9848,10 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->priority = object->priority;
 			moq_stream->ascending = moq_sub->ascending;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
-			moq_sub->stream = moq_stream;
-			moq_sub->streams_count++;
+			g_hash_table_insert(moq_sub->fetch_streams, imquic_dup_uint64(object->request_id), moq_stream);
+			/* Fill FETCH streams add up to the PUBLISH_DONE streams count */
+			if(object->fill_fetch)
+				moq_sub->streams_count++;
 			imquic_mutex_unlock(&moq->mutex);
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_stream_type_set(conn->qlog, TRUE, moq_stream->stream_id, "fetch_header");

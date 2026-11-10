@@ -503,10 +503,10 @@ typedef struct imquic_moq_subscription {
 	gboolean fill_fetch;
 	/*! \brief If this is a FETCH stream, whether it's in ascending or descending order */
 	gboolean ascending;
-	/*! \brief Stream for this subscription, in case it's a single one */
-	imquic_moq_stream *stream;
 	/*! \brief Streams for this subscription, indexed by subgroup */
 	GHashTable *streams_by_subgroup;
+	/*! \brief Fetch streams for this subscription (direct or fill), indexed by request ID */
+	GHashTable *fetch_streams;
 	/*! \brief Count of how many streams were used for this subscription */
 	size_t streams_count;
 } imquic_moq_subscription;

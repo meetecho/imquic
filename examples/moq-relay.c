@@ -2348,6 +2348,10 @@ static void imquic_demo_incoming_fetch(imquic_connection *conn, uint64_t request
 	imquic_moq_request_parameters_init_defaults(&rparams);
 	rparams.group_order_set = parameters->group_order_set;
 	rparams.group_order = parameters->group_order;
+	if(end_location.group == largest.group && end_location.object >= largest.object) {
+		rparams.largest_object_set = TRUE;
+		rparams.largest_object = largest;
+	}
 	imquic_moq_accept_fetch(conn, request_id, &end_location, &rparams, track->properties);
 	imquic_mutex_unlock(&mutex);
 }

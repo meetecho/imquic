@@ -580,10 +580,18 @@ static void imquic_demo_publish_done(imquic_connection *conn, uint64_t request_i
 
 static void imquic_demo_fetch_accepted(imquic_connection *conn, uint64_t request_id, imquic_moq_location *largest,
 		imquic_moq_request_parameters *parameters, GList *track_properties) {
-	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; largest group/object %"SCNu64"/%"SCNu64"; %d properties)\n",
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Fetch %"SCNu64" accepted (%s order; %d properties)\n",
 		imquic_get_connection_name(conn), request_id,
-		imquic_moq_group_order_str(parameters->group_order),
-		largest->group, largest->object, g_list_length(track_properties));
+		imquic_moq_group_order_str(parameters->group_order), g_list_length(track_properties));
+	if(moq_version < IMQUIC_MOQ_VERSION_22) {
+		/* Legacy version: largest object provided here */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest group/object %"SCNu64"/%"SCNu64"\n",
+			imquic_get_connection_name(conn), largest->group, largest->object);
+	} else if(parameters->largest_object_set) {
+		/* Newer version: largest object provided as a parameter */
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest group/object %"SCNu64"/%"SCNu64"\n",
+			imquic_get_connection_name(conn), parameters->largest_object.group, parameters->largest_object.object);
+	}
 	if(track_properties != NULL)
 		imquic_moq_properties_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, track_properties);
 }
