@@ -55,6 +55,44 @@ static GHashTable *moq_pending_streams = NULL;
 static gboolean imquic_moq_is_grease(uint64_t value);
 static uint64_t imquic_moq_random_grease(void);
 
+/* When sending objects using SUBGROUP_HEADER, group and subgroup are
+ * both keys, so we need a struct to use as index in the hashtable, and
+ * associated hashing/equal functions to use them in GLib's tables */
+typedef struct imquic_moq_group_subgroup {
+	uint64_t group_id;
+	uint64_t subgroup_id;
+} imquic_moq_group_subgroup;
+static imquic_moq_group_subgroup *imquic_moq_group_subgroup_create(uint64_t group_id, uint64_t subgroup_id) {
+	imquic_moq_group_subgroup *gsg = g_malloc(sizeof(imquic_moq_group_subgroup));
+	gsg->group_id = group_id;
+	gsg->subgroup_id = subgroup_id;
+	return gsg;
+}
+static uint64_t imquic_moq_group_subgroup_mix64(uint64_t x) {
+	x ^= x >> 30;
+	x *= UINT64_C(0xbf58476d1ce4e5b9);
+	x ^= x >> 27;
+	x *= UINT64_C(0x94d049bb133111eb);
+	x ^= x >> 31;
+	return x;
+}
+static guint imquic_moq_group_subgroup_hash(gconstpointer key) {
+	const imquic_moq_group_subgroup *k = key;
+	uint64_t h1 = imquic_moq_group_subgroup_mix64(k->group_id);
+	uint64_t h2 = imquic_moq_group_subgroup_mix64(k->subgroup_id);
+	uint64_t h = imquic_moq_group_subgroup_mix64(h1 ^ h2);
+	return (guint)(h ^ (h >> 32));
+}
+static gboolean imquic_moq_group_subgroup_equal(gconstpointer a, gconstpointer b) {
+	if(a == NULL && b == NULL)
+		return TRUE;
+	if(a == NULL || b == NULL)
+		return FALSE;
+	const imquic_moq_group_subgroup *ka = a;
+	const imquic_moq_group_subgroup *kb = b;
+	return (ka->group_id == kb->group_id) && (ka->subgroup_id == kb->subgroup_id);
+}
+
 /* Initialization */
 static void imquic_moq_context_destroy(imquic_moq_context *moq);
 static void imquic_moq_context_free(const imquic_refcount *moq_ref);
@@ -1936,7 +1974,7 @@ imquic_moq_subscription *imquic_moq_subscription_create(uint64_t request_id, uin
 	imquic_moq_subscription *moq_sub = g_malloc0(sizeof(imquic_moq_subscription));
 	moq_sub->request_id = request_id;
 	moq_sub->track_alias = track_alias;
-	moq_sub->streams_by_subgroup = g_hash_table_new_full(g_int64_hash, g_int64_equal,
+	moq_sub->streams_by_subgroup = g_hash_table_new_full(imquic_moq_group_subgroup_hash, imquic_moq_group_subgroup_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_stream_destroy);
 	moq_sub->fetch_streams = g_hash_table_new_full(g_int64_hash, g_int64_equal,
 		(GDestroyNotify)g_free, (GDestroyNotify)imquic_moq_stream_destroy);
@@ -9718,8 +9756,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			g_free(buffer);
 			return -1;
 		}
-		/* FIXME Create a single lookup key out of both group and subgroup IDs */
-		uint64_t lookup_id = (object->group_id << 32) + object->subgroup_id;
+		/* Create a single lookup key out of both group and subgroup IDs */
+		imquic_moq_group_subgroup lookup_id = { .group_id = object->group_id, .subgroup_id = object->subgroup_id };
 		imquic_moq_stream *moq_stream = g_hash_table_lookup(moq_sub->streams_by_subgroup, &lookup_id);
 		if(moq_stream == NULL) {
 			if(!valid_pkt && object->end_of_stream) {
@@ -9748,7 +9786,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->priority_set = object->priority_set;
 			moq_stream->priority = object->priority;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
-			g_hash_table_insert(moq_sub->streams_by_subgroup, imquic_dup_uint64(lookup_id), moq_stream);
+			g_hash_table_insert(moq_sub->streams_by_subgroup,
+				imquic_moq_group_subgroup_create(object->group_id, object->subgroup_id), moq_stream);
 			moq_sub->streams_count++;
 			imquic_mutex_unlock(&moq->mutex);
 			if(conn->qlog != NULL && conn->qlog->moq)
