@@ -297,7 +297,7 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 	uint8_t *payload = bytes;
 	size_t p_offset = 0;
 	uint8_t length = 0;
-	if(new_stream && !h3c->webtransport && !stream->bidirectional &&
+	if(new_stream && !stream->bidirectional &&
 			stream->stream_id != h3c->remote_control_stream &&
 			stream->stream_id != h3c->remote_qpack_encoder_stream &&
 			stream->stream_id != h3c->remote_qpack_decoder_stream) {
@@ -323,6 +323,13 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 			/* FIXME */
 			if(h3c->qpack == NULL)
 				h3c->qpack = imquic_qpack_context_create(4096);
+		} else if(stream_type == IMQUIC_HTTP3_WEBTRANSPORT_UNI_STREAM) {
+			/* WebTransport data stream (unidirectional) */
+			uint64_t session_id = imquic_read_varint(&payload[p_offset], blen-p_offset, &length);
+			p_offset += length;
+			IMQUIC_LOG(IMQUIC_LOG_VERB, "  -- Session ID: %"SCNu64"\n", session_id);
+			/* We'll need to skip these initial bytes when handling the data */
+			stream->skip_in = p_offset;
 		}
 	} else if(new_stream && h3c->webtransport) {
 		uint64_t frame_type = imquic_read_varint(&payload[p_offset], blen-p_offset, &length);
