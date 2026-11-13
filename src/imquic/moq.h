@@ -1046,16 +1046,15 @@ typedef struct imquic_moq_redirect {
 } imquic_moq_redirect;
 /*! \brief Helper mode to parse a Redirect error detail instance to a imquic_moq_redirect instance
  * \note The caller owns the returned instance, and is responsible of freeing it and its content
- * @param version The version of the connection
- * @param bytes The buffer containing the data to parse
- * @param blen The size of the buffer
+ * @param[in] version The version of the connection
+ * @param[in] error_detail The imquic_moq_error_detail instance to parse
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns A pointer to a imquic_moq_redirect instance, if successful, or NULL otherwise */
 imquic_moq_redirect *imquic_moq_parse_redirect_error_detail(imquic_moq_version version, imquic_moq_error_detail *error_detail, imquic_moq_error_code *error);
 /*! \brief Helper mode to craft a redirect error_detail buffer out of a imquic_moq_redirect instance
  * \note The caller owns the returned instance, and is responsible of freeing it and its content
- * @param[in] version The version of the connection
- * @param[in] redirect_error_detail The imquic_moq_redirect instance to serialize
+ * @param version The version of the connection
+ * @param redirect_error_detail The imquic_moq_redirect instance to serialize
  * @returns A pointer to a imquic_moq_error_details instance, if successful, or NULL otherwise */
 imquic_moq_error_detail *imquic_moq_build_redirect_error_detail(imquic_moq_version version, imquic_moq_redirect *redirect_error_detail);
 /*! \brief Helper to free an allocated imquic_moq_redirect instance
