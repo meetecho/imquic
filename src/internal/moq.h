@@ -1752,6 +1752,24 @@ void imquic_moq_qlog_fetch_object_created(imquic_qlog *qlog, uint64_t stream_id,
  * @param stream_id The Stream ID used for this object
  * @param object The object instance */
 void imquic_moq_qlog_fetch_object_parsed(imquic_qlog *qlog, uint64_t stream_id, imquic_moq_object *object);
+/*! \brief Add a \c padding_datagram_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param padding How many bytes of padding were sent */
+void imquic_moq_qlog_padding_datagram_created(imquic_qlog *qlog, size_t padding);
+/*! \brief Add a \c padding_datagram_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param padding How many bytes of padding were parsed */
+void imquic_moq_qlog_padding_datagram_parsed(imquic_qlog *qlog, size_t padding);
+/*! \brief Add a \c padding_stream_created event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this padding
+ * @param padding How many bytes of padding were sent */
+void imquic_moq_qlog_padding_stream_created(imquic_qlog *qlog, uint64_t stream_id, size_t padding);
+/*! \brief Add a \c padding_stream_parsed event
+ * @param qlog The imquic_qlog instance to add the event to
+ * @param stream_id The Stream ID used for this padding
+ * @param padding How many bytes of padding were parsed */
+void imquic_moq_qlog_padding_stream_parsed(imquic_qlog *qlog, uint64_t stream_id, size_t padding);
 ///@}
 
 #endif
