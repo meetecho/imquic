@@ -2769,16 +2769,17 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t opts_num = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(opts_num > 0 && (length == 0 || length >= blen-offset), NULL, 0, 0, "Broken CLIENT_SETUP");
-	IMQUIC_MOQ_CHECK_ERR(opts_num == 0 && (length == 0 || length > blen-offset), NULL, 0, 0, "Broken CLIENT_SETUP");
+	IMQUIC_MOQ_CHECK_ERR(opts_num > 0 && (length == 0 || length >= blen-offset), error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken CLIENT_SETUP");
+	IMQUIC_MOQ_CHECK_ERR(opts_num == 0 && (length == 0 || length > blen-offset), error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken CLIENT_SETUP");
 	offset += length;
-	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" parameters:\n",
+	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" options:\n",
 		imquic_get_connection_name(moq->conn), opts_num);
 	imquic_moq_setup_options options = { 0 };
 	uint64_t opt = 0, i = 0;
+	imquic_moq_error_code error_code = IMQUIC_MOQ_NO_ERROR;
 	for(i = 0; i<opts_num; i++) {
-		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken CLIENT_SETUP");
+		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, &error_code);
+		IMQUIC_MOQ_CHECK_ERR(error_code > 0, error, error_code, 0, "Broken CLIENT_SETUP");
 	}
 	if(options.max_request_id_set) {
 		/* Update the value we have */
@@ -2829,7 +2830,7 @@ size_t imquic_moq_parse_client_setup(imquic_moq_context *moq, uint8_t *bytes, si
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, imquic_moq_get_control_stream(moq), bytes-pre, offset+pre, message);
 	}
 	/* Notify the application, if we have a callback */
-	uint64_t error_code = 0;
+	error_code = IMQUIC_MOQ_NO_ERROR;
 	if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_moq_connection) {
 		error_code = moq->conn->socket->callbacks.moq.incoming_moq_connection(moq->conn,
 			(options.auth_token_set ? options.auth_token : NULL),
@@ -2874,17 +2875,18 @@ size_t imquic_moq_parse_server_setup(imquic_moq_context *moq, uint8_t *bytes, si
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t opts_num = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(opts_num > 0 && (length == 0 || length >= blen-offset), NULL, 0, 0, "Broken SERVER_SETUP");
-	IMQUIC_MOQ_CHECK_ERR(opts_num == 0 && (length == 0 || length > blen-offset), NULL, 0, 0, "Broken SERVER_SETUP");
+	IMQUIC_MOQ_CHECK_ERR(opts_num > 0 && (length == 0 || length >= blen-offset), error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SERVER_SETUP");
+	IMQUIC_MOQ_CHECK_ERR(opts_num == 0 && (length == 0 || length > blen-offset), error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SERVER_SETUP");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- %"SCNu64" options:\n",
 		imquic_get_connection_name(moq->conn), opts_num);
 	uint64_t i = 0;
 	imquic_moq_setup_options options = { 0 };
 	uint64_t opt = 0;
+	imquic_moq_error_code error_code = IMQUIC_MOQ_NO_ERROR;
 	for(i = 0; i<opts_num; i++) {
-		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SERVER_SETUP");
+		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, &error_code);
+		IMQUIC_MOQ_CHECK_ERR(error_code > 0, error, error_code, 0, "Broken SERVER_SETUP");
 	}
 	if(options.max_request_id_set) {
 		/* Update the value we have */
@@ -2953,9 +2955,10 @@ size_t imquic_moq_parse_setup(imquic_moq_context *moq, uint8_t *bytes, size_t bl
 	size_t offset = 0;
 	imquic_moq_setup_options options = { 0 };
 	uint64_t opt = 0;
+	imquic_moq_error_code error_code = IMQUIC_MOQ_NO_ERROR;
 	while(bytes != NULL && offset < blen) {
-		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, error);
-		IMQUIC_MOQ_CHECK_ERR(error && *error, NULL, 0, 0, "Broken SETUP");
+		offset += imquic_moq_parse_setup_option(moq, &bytes[offset], blen-offset, &options, &opt, &error_code);
+		IMQUIC_MOQ_CHECK_ERR(error_code > 0, error, error_code, 0, "Broken SETUP");
 	}
 	if(options.max_request_id_set) {
 		/* Update the value we have */
@@ -3033,7 +3036,7 @@ size_t imquic_moq_parse_max_request_id(imquic_moq_context *moq, uint8_t *bytes, 
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t max = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length) + 1;
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken MAX_REQUEST_ID");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken MAX_REQUEST_ID");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Maximum Request ID %"SCNu64":\n",
 		imquic_get_connection_name(moq->conn), max);
@@ -3059,7 +3062,7 @@ size_t imquic_moq_parse_requests_blocked(imquic_moq_context *moq, uint8_t *bytes
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t max = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken REQUESTS_BLOCKED");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUESTS_BLOCKED");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Maximum Request ID %"SCNu64":\n",
 		imquic_get_connection_name(moq->conn), max);
@@ -3090,7 +3093,7 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	uint64_t request_id = 0;
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken REQUEST_OK");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -3214,7 +3217,7 @@ size_t imquic_moq_parse_request_error(imquic_moq_context *moq, imquic_moq_stream
 	uint64_t request_id = 0;
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken REQUEST_ERROR");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_ERROR");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -3227,22 +3230,21 @@ size_t imquic_moq_parse_request_error(imquic_moq_context *moq, imquic_moq_stream
 		}
 	}
 	uint64_t error_code = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken REQUEST_ERROR");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_ERROR");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_error_code_str(error_code), error_code);
 	uint64_t retry_interval = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken REQUEST_ERROR");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_ERROR");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Retry Interval: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), retry_interval);
 	uint64_t rs_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken REQUEST_ERROR");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_ERROR");
 	offset += length;
 	char reason[1024], *reason_str = NULL;
 	if(rs_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken REQUEST_ERROR");
-		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid reason length");
+		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset || rs_len > sizeof(reason), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
 			imquic_get_connection_name(moq->conn), reason_len, &bytes[offset]);
@@ -3354,14 +3356,14 @@ size_t imquic_moq_parse_publish_namespace(imquic_moq_context *moq, imquic_moq_st
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_NAMESPACE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
 	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_NAMESPACE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Required Request ID Delta: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), required_id_delta);
@@ -3424,7 +3426,7 @@ size_t imquic_moq_parse_publish_namespace_done(imquic_moq_context *moq, uint8_t 
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_NAMESPACE_DONE");
 	offset += length;
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("publish_namespace_done");
@@ -3447,20 +3449,19 @@ size_t imquic_moq_parse_publish_namespace_cancel(imquic_moq_context *moq, uint8_
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_NAMESPACE");
 	offset += length;
 	uint64_t error_code = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_error_code_str(error_code), error_code);
 	uint64_t rs_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
 	offset += length;
 	char reason[1024], *reason_str = NULL;
 	if(rs_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken PUBLISH_NAMESPACE_CANCEL");
-		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid reason length");
+		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset || rs_len > sizeof(reason), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
 			imquic_get_connection_name(moq->conn), reason_len, &bytes[offset]);
@@ -3497,14 +3498,14 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
 	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Required Request ID Delta: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), required_id_delta);
@@ -3516,7 +3517,7 @@ size_t imquic_moq_parse_publish(imquic_moq_context *moq, imquic_moq_stream *moq_
 	imquic_moq_track tn = { 0 };
 	IMQUIC_MOQ_PARSE_TRACKNAME(FALSE, "Broken PUBLISH", FALSE);
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), track_alias);
@@ -3597,7 +3598,7 @@ size_t imquic_moq_parse_publish_ok(imquic_moq_context *moq, imquic_moq_stream *m
 	uint64_t request_id = 0;
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken REQUEST_OK");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -3645,14 +3646,14 @@ size_t imquic_moq_parse_subscribe(imquic_moq_context *moq, imquic_moq_stream *mo
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SUBSCRIBE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
 	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SUBSCRIBE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Required Request ID Delta: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), required_id_delta);
@@ -3746,20 +3747,20 @@ size_t imquic_moq_parse_request_update(imquic_moq_context *moq, imquic_moq_strea
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken REQUEST_UPDATE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_UPDATE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t sub_request_id = 0, required_id_delta = 0;
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		sub_request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken REQUEST_UPDATE");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_UPDATE");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subscription Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), sub_request_id);
 	} else if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Required Request ID Delta: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), required_id_delta);
@@ -3842,7 +3843,7 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream 
 	uint64_t request_id = 0;
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SUBSCRIBE_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -3850,7 +3851,7 @@ size_t imquic_moq_parse_subscribe_ok(imquic_moq_context *moq, imquic_moq_stream 
 		request_id = moq_stream->request_id;
 	}
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_OK");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SUBSCRIBE_OK");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), track_alias);
@@ -3909,7 +3910,7 @@ size_t imquic_moq_parse_unsubscribe(imquic_moq_context *moq, uint8_t *bytes, siz
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken UNSUBSCRIBE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken UNSUBSCRIBE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
@@ -4001,7 +4002,7 @@ size_t imquic_moq_parse_publish_done(imquic_moq_context *moq, imquic_moq_stream 
 	uint64_t request_id = 0;
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken REQUEST_OK");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken REQUEST_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
@@ -4009,22 +4010,21 @@ size_t imquic_moq_parse_publish_done(imquic_moq_context *moq, imquic_moq_stream 
 		request_id = moq_stream->request_id;
 	}
 	uint64_t status_code = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_DONE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Status Code: %s (%"SCNu64")\n",
 		imquic_get_connection_name(moq->conn), imquic_moq_pub_done_code_str(status_code), status_code);
 	uint64_t streams_count = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_DONE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Streams Count: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), streams_count);
 	uint64_t rs_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken PUBLISH_DONE");
 	offset += length;
 	char reason[1024], *reason_str = NULL;
 	if(rs_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset, NULL, 0, 0, "Broken PUBLISH_DONE");
-		IMQUIC_MOQ_CHECK_ERR(rs_len > sizeof(reason), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid reason length");
+		IMQUIC_MOQ_CHECK_ERR(rs_len > blen-offset || rs_len > sizeof(reason), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid reason length");
 		int reason_len = (int)rs_len;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Reason Phrase: %.*s\n",
 			imquic_get_connection_name(moq->conn), reason_len, &bytes[offset]);
@@ -4068,7 +4068,7 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SUBSCRIBE_NAMESPACE");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
@@ -4087,7 +4087,8 @@ size_t imquic_moq_parse_subscribe_namespace(imquic_moq_context *moq, imquic_moq_
 	imquic_moq_subscribe_namespace_options subscribe_options = IMQUIC_MOQ_WANT_NAMESPACE;
 	if(moq->version < IMQUIC_MOQ_VERSION_18) {
 		subscribe_options = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset || subscribe_options > IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, NULL, 0, 0, "Broken SUBSCRIBE_NAMESPACE");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset || subscribe_options > IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE,
+			error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SUBSCRIBE_NAMESPACE");
 		offset += length;
 	}
 	/* Parse request parameters */
@@ -4153,7 +4154,7 @@ size_t imquic_moq_parse_subscribe_tracks(imquic_moq_context *moq, imquic_moq_str
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBSCRIBE_TRACKS");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken SUBSCRIBE_TRACKS");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
@@ -4337,14 +4338,14 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
 	uint64_t required_id_delta = 0;
 	if(moq->version == IMQUIC_MOQ_VERSION_17) {
 		required_id_delta = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Required Request ID Delta: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), required_id_delta);
@@ -4359,7 +4360,7 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 	/* Versions older than v20 envisaged different types of FETCH */
 	if(moq->version < IMQUIC_MOQ_VERSION_20) {
 		type = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 		offset += length;
 	}
 	if(type == IMQUIC_MOQ_FETCH_STANDALONE) {
@@ -4370,32 +4371,32 @@ size_t imquic_moq_parse_fetch(imquic_moq_context *moq, imquic_moq_stream *moq_st
 		 * request: now this information is in the LOCATION_FILTER parameter */
 		if(moq->version < IMQUIC_MOQ_VERSION_20) {
 			range.start.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 			offset += length;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Group: %"SCNu64"\n",
 				imquic_get_connection_name(moq->conn), range.start.group);
 			range.start.object = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 			offset += length;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- Start Object: %"SCNu64"\n",
 				imquic_get_connection_name(moq->conn), range.start.object);
 			range.end.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 			offset += length;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Group: %"SCNu64"\n",
 				imquic_get_connection_name(moq->conn), range.end.group);
 			range.end.object = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 			offset += length;
 			IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Object: %"SCNu64"\n",
 				imquic_get_connection_name(moq->conn), range.end.object);
 		}
 	} else if(type == IMQUIC_MOQ_FETCH_JOINING_RELATIVE || type == IMQUIC_MOQ_FETCH_JOINING_ABSOLUTE) {
 		joining_request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 		offset += length;
 		joining_start = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH");
 		offset += length;
 	} else {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Broken FETCH, invalid type '%d'\n",
@@ -4510,7 +4511,7 @@ size_t imquic_moq_parse_fetch_cancel(imquic_moq_context *moq, uint8_t *bytes, si
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken FETCH_CANCEL");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH_CANCEL");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
@@ -4551,27 +4552,27 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq
 	uint64_t request_id = 0;
 	if(moq->version <= IMQUIC_MOQ_VERSION_16) {
 		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken REQUEST_OK");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH_OK");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), request_id);
 	} else {
 		request_id = moq_stream->request_id;
 	}
-	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH_OK");
 	uint8_t end_of_track = bytes[offset];
 	offset++;
-	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, NULL, 0, 0, "Broken FETCH_OK");
+	IMQUIC_MOQ_CHECK_ERR(blen-offset == 0, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH_OK");
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- End Of Track: %"SCNu8")\n",
 		imquic_get_connection_name(moq->conn), end_of_track);
 	imquic_moq_location largest = { 0 };
 	largest.group = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH_OK");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH_OK");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Group ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), largest.group);
 	largest.object = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken FETCH_OK");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken FETCH_OK");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Largest Object ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), largest.object);
@@ -4634,7 +4635,7 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken TRACK_STATUS");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken TRACK_STATUS");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID: %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
@@ -4706,6 +4707,81 @@ size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream 
 	return offset;
 }
 
+size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, size_t pre, imquic_moq_error_code *error) {
+	if(error)
+		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
+	if(bytes == NULL || blen < 1)
+		return 0;
+	size_t offset = 0;
+	uint8_t length = 0;
+	uint64_t uri_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_MESSAGE, 0, "Broken GOAWAY");
+	offset += length;
+	char uri[8192], *uri_str = NULL;
+	if(uri_len > 0) {
+		IMQUIC_MOQ_CHECK_ERR(moq->is_server, error, IMQUIC_MOQ_ROLE_VIOLATION, 0, "Clients can't provide a new session URI");
+		IMQUIC_MOQ_CHECK_ERR(uri_len > blen-offset || uri_len > sizeof(uri), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid new session URI length");
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- New session URI:\n",
+			imquic_get_connection_name(moq->conn));
+		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %.*s\n",
+			imquic_get_connection_name(moq->conn), (int)uri_len, &bytes[offset]);
+		if(uri_len > 0) {
+			g_snprintf(uri, sizeof(uri), "%.*s\n", (int)uri_len, &bytes[offset]);
+			uri_str = uri;
+		}
+	}
+	offset += uri_len;
+	uint64_t timeout = 0;
+	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
+		timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken GOAWAY");
+		offset += length;
+	}
+	uint64_t request_id = 0;
+	if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL) {
+		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken GOAWAY");
+		offset += length;
+	}
+	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
+		json_t *message = imquic_qlog_moq_message_prepare("goaway");
+		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)uri_str, uri_len);
+		if(moq->version >= IMQUIC_MOQ_VERSION_17)
+			json_object_set_new(message, "timeout", json_integer(timeout));
+		if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
+			json_object_set_new(message, "request_id", json_integer(request_id));
+		imquic_moq_qlog_control_message_parsed(moq->conn->qlog,
+			moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq),
+			bytes-pre, offset+pre, message);
+	}
+	if(moq_stream == NULL) {
+		if(moq->version >= IMQUIC_MOQ_VERSION_18) {
+			/* Make sure this is in line with the expected request ID: parity is reversed for GOAWAY */
+			IMQUIC_MOQ_CHECK_ERR(((!moq->is_server && request_id % 2 == 0) || (moq->is_server && request_id % 2 != 0)),
+				error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
+			moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
+		}
+		/* Got a GOAWAY on the control stream */
+		IMQUIC_MOQ_CHECK_ERR(!g_atomic_int_compare_and_exchange(&moq->got_goaway, 0, 1),
+			error, IMQUIC_MOQ_UNEXPECTED_MESSAGE, 0, "Multiple GOAWAY messages received");
+		/* Notify the application */
+		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_goaway)
+			moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str, timeout);
+	} else {
+		/* FIXME Got a GOAWAY for a specific request, any additional check needed? */
+		IMQUIC_MOQ_CHECK_ERR(!moq_stream->request_sender, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Got a GOAWAY from the request sender");
+		/* Got a GOAWAY on the request stream */
+		IMQUIC_MOQ_CHECK_ERR(!g_atomic_int_compare_and_exchange(&moq_stream->got_goaway, 0, 1),
+			error, IMQUIC_MOQ_UNEXPECTED_MESSAGE, 0, "Multiple GOAWAY messages received");
+		/* Notify the application */
+		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_request_goaway)
+			moq->conn->socket->callbacks.moq.incoming_request_goaway(moq->conn, request_id, uri_str, timeout);
+	}
+	if(error)
+		*error = IMQUIC_MOQ_NO_ERROR;
+	return offset;
+}
+
 size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, imquic_moq_datagram_message_type dtype, imquic_moq_error_code *error) {
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
@@ -4717,19 +4793,19 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), track_alias);
 	uint64_t group_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:          %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
 	uint64_t object_id = 0;
 	if(has_oid) {
 		object_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM");
 		offset += length;
 	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object ID:         %"SCNu64"\n",
@@ -4745,13 +4821,13 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	if(has_prop) {
 		/* The object contains properties */
 		prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM");
 		IMQUIC_MOQ_CHECK_ERR(prop_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Properties length is 0 but type is OBJECT_DATAGRAM");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Properties Length:  %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), prop_len);
 		prop_offset = offset;
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || prop_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || prop_len >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM");
 		offset += prop_len;
 	}
 	GList *properties = NULL;
@@ -4799,19 +4875,19 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM_STATUS");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track Alias:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), track_alias);
 	uint64_t group_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM_STATUS");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:          %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
 	uint64_t object_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 	if(has_oid) {
 		object_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM_STATUS");
 		offset += length;
 	}
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object ID:         %"SCNu64"\n",
@@ -4827,23 +4903,23 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 	if(has_prop) {
 		/* The object contains properties */
 		prop_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM_STATUS");
 		IMQUIC_MOQ_CHECK_ERR(prop_len == 0, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Properties length is 0 but type is OBJECT_DATAGRAM_STATUS");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Properties Length:  %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), prop_len);
 		prop_offset = offset;
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || prop_len >= blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || prop_len >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM_STATUS");
 		offset += prop_len;
 	}
 	GList *properties = NULL;
 	if(prop_offset > 0 && prop_len > 0) {
 		imquic_moq_error_code error_code = IMQUIC_MOQ_NO_ERROR;
 		properties = imquic_moq_parse_properties(moq->version, &bytes[prop_offset], prop_len, &error_code);
-		IMQUIC_MOQ_CHECK_ERR(error_code > 0, error, error_code, 0, "Error parsing OBJECT_DATAGRAM_STATUSs properties");
+		IMQUIC_MOQ_CHECK_ERR(error_code > 0, error, error_code, 0, "Error parsing OBJECT_DATAGRAM_STATUS properties");
 	}
 	uint64_t object_status = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken OBJECT_DATAGRAM_STATUS");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken OBJECT_DATAGRAM_STATUS");
 	IMQUIC_MOQ_CHECK_ERR(object_status > IMQUIC_MOQ_END_OF_TRACK, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid object status");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Object Status:     %"SCNu64"\n",
@@ -4885,12 +4961,12 @@ int imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream 
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken SUBGROUP_HEADER");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Track alias:       %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), track_alias);
 	uint64_t group_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken SUBGROUP_HEADER");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Group ID:          %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), group_id);
@@ -4911,7 +4987,7 @@ int imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream 
 			return -1;
 		}
 		subgroup_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken SUBGROUP_HEADER");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken SUBGROUP_HEADER");
 		offset += length;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Subgroup ID:       %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), subgroup_id);
@@ -5068,7 +5144,7 @@ int imquic_moq_parse_fetch_header(imquic_moq_context *moq, imquic_moq_stream *mo
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken FETCH_HEADER");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_MALFORMED_OBJECT, 0, "Broken FETCH_HEADER");
 	offset += length;
 	IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Request ID:      %"SCNu64"\n",
 		imquic_get_connection_name(moq->conn), request_id);
@@ -5317,79 +5393,6 @@ int imquic_moq_parse_padding_stream(imquic_moq_context *moq, imquic_moq_stream *
 		moq_stream->closed = TRUE;
 	/* Done */
 	return 0;
-}
-
-size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, size_t pre, imquic_moq_error_code *error) {
-	if(error)
-		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
-	if(bytes == NULL || blen < 1)
-		return 0;
-	size_t offset = 0;
-	uint8_t length = 0;
-	uint64_t uri_len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken GOAWAY");
-	offset += length;
-	char uri[8192], *uri_str = NULL;
-	if(uri_len > 0) {
-		IMQUIC_MOQ_CHECK_ERR(moq->is_server, error, IMQUIC_MOQ_ROLE_VIOLATION, 0, "Clients can't provide a new session URI");
-		IMQUIC_MOQ_CHECK_ERR(uri_len > blen-offset, NULL, 0, 0, "Broken GOAWAY");
-		IMQUIC_MOQ_CHECK_ERR(uri_len > sizeof(uri), error, IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED, 0, "Invalid new session URI length");
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- New session URI:\n",
-			imquic_get_connection_name(moq->conn));
-		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- %.*s\n",
-			imquic_get_connection_name(moq->conn), (int)uri_len, &bytes[offset]);
-		if(uri_len > 0) {
-			g_snprintf(uri, sizeof(uri), "%.*s\n", (int)uri_len, &bytes[offset]);
-			uri_str = uri;
-		}
-	}
-	offset += uri_len;
-	uint64_t timeout = 0;
-	if(moq->version >= IMQUIC_MOQ_VERSION_17) {
-		timeout = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken GOAWAY");
-		offset += length;
-	}
-	uint64_t request_id = 0;
-	if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL) {
-		request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, NULL, 0, 0, "Broken GOAWAY");
-		offset += length;
-	}
-	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
-		json_t *message = imquic_qlog_moq_message_prepare("goaway");
-		imquic_qlog_event_add_raw(message, "new_session_uri", (uint8_t *)uri_str, uri_len);
-		if(moq->version >= IMQUIC_MOQ_VERSION_17)
-			json_object_set_new(message, "timeout", json_integer(timeout));
-		if(moq->version == IMQUIC_MOQ_VERSION_18 && moq_stream == NULL)
-			json_object_set_new(message, "request_id", json_integer(request_id));
-		imquic_moq_qlog_control_message_parsed(moq->conn->qlog,
-			moq_stream ? moq_stream->stream_id : imquic_moq_get_control_stream(moq),
-			bytes-pre, offset+pre, message);
-	}
-	if(moq_stream == NULL) {
-		if(moq->version >= IMQUIC_MOQ_VERSION_18) {
-			/* Make sure this is in line with the expected request ID: parity is reversed for GOAWAY */
-			IMQUIC_MOQ_CHECK_ERR(((!moq->is_server && request_id % 2 == 0) || (moq->is_server && request_id % 2 != 0)),
-				error, IMQUIC_MOQ_INVALID_REQUEST_ID, 0, "Invalid Request ID");
-			moq->expected_request_id = request_id + IMQUIC_MOQ_REQUEST_ID_INCREMENT;
-		}
-		/* Got a GOAWAY on the control stream */
-		IMQUIC_MOQ_CHECK_ERR(!g_atomic_int_compare_and_exchange(&moq->got_goaway, 0, 1),
-			error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Multiple GOAWAY messages received");
-		/* Notify the application */
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_goaway)
-			moq->conn->socket->callbacks.moq.incoming_goaway(moq->conn, uri_str, timeout);
-	} else {
-		/* FIXME Got a GOAWAY for a specific request, any additional check needed? */
-		IMQUIC_MOQ_CHECK_ERR(!moq_stream->request_sender, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Got a GOAWAY from the request sender");
-		/* Notify the application */
-		if(moq->conn->socket && moq->conn->socket->callbacks.moq.incoming_request_goaway)
-			moq->conn->socket->callbacks.moq.incoming_request_goaway(moq->conn, request_id, uri_str, timeout);
-	}
-	if(error)
-		*error = IMQUIC_MOQ_NO_ERROR;
-	return offset;
 }
 
 /* Message building */
@@ -6559,14 +6562,14 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 	if(error)
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 1) {
-		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't parse MoQ setup parameter: not enough data (%zu bytes)\n",
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Can't parse MoQ setup option: not enough data (%zu bytes)\n",
 			imquic_get_connection_name(moq->conn), bytes ? blen : 0);
 		return 0;
 	}
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t type = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+	IMQUIC_MOQ_CHECK_ERR(length == 0 || length >= blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 	offset += length;
 	type += *param_type;
 	*param_type = type;
@@ -6575,9 +6578,9 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 	uint64_t len = 0;
 	if(type % 2 == 1) {
 		len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0, NULL, 0, 0, "Broken MoQ setup parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 		offset += length;
-		IMQUIC_MOQ_CHECK_ERR(len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		IMQUIC_MOQ_CHECK_ERR(len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 	}
 	/* Update the parsed parameter */
 	if(type == IMQUIC_MOQ_SETUP_OPTION_PATH) {
@@ -6588,14 +6591,14 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 			imquic_get_connection_name(moq->conn), params->path);
 	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_ID) {
 		params->max_request_id = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 		params->max_request_id_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_request_id);
 		len = length;
 	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_AUTH_TOKEN_CACHE_SIZE) {
 		params->max_auth_token_cache_size = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 		params->max_auth_token_cache_size_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_request_id);
@@ -6621,7 +6624,7 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 			imquic_get_connection_name(moq->conn), params->authority);
 	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_FILTER_RANGES) {
 		params->max_filter_ranges = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 		params->max_filter_ranges_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_filter_ranges);
@@ -6634,14 +6637,14 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 			imquic_get_connection_name(moq->conn), params->moqt_implementation);
 	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_REQUEST_UPDATES) {
 		params->max_request_updates = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 		params->max_request_updates_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_request_updates);
 		len = length;
 	} else if(type == IMQUIC_MOQ_SETUP_OPTION_MAX_CONTROL_MESSAGE_SIZE) {
 		params->max_control_messages_size = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+		IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 		params->max_control_messages_size_set = TRUE;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- -- -- %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), params->max_control_messages_size);
@@ -6650,7 +6653,7 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 		/* This is a GREASE setup option, just skip it */
 		if(type % 2 == 0) {
 			(void)imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 			len = length;
 		}
 	} else {
@@ -6659,7 +6662,7 @@ size_t imquic_moq_parse_setup_option(imquic_moq_context *moq, uint8_t *bytes, si
 		params->unknown = TRUE;
 		if(type % 2 == 0) {
 			(void)imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
-			IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, NULL, 0, 0, "Broken MoQ setup parameter");
+			IMQUIC_MOQ_CHECK_ERR(length == 0 || len > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ setup option");
 			len = length;
 		}
 	}
@@ -7280,6 +7283,8 @@ size_t imquic_moq_parse_request_parameters(imquic_moq_context *moq, uint8_t *byt
 	if((params > 0 && (length == 0 || length >= blen-offset)) || (params == 0 && (length == 0 || length > blen-offset))) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't parse MoQ request parameters: invalid parameters number\n",
 			imquic_get_connection_name(moq->conn));
+		if(error)
+			*error = IMQUIC_MOQ_INVALID_PARAMETER;
 		return 0;
 	}
 	offset += length;
@@ -7291,16 +7296,22 @@ size_t imquic_moq_parse_request_parameters(imquic_moq_context *moq, uint8_t *byt
 	imquic_moq_request_parameters_init_defaults(parameters);
 	uint64_t i = 0, param = 0;
 	for(i = 0; i<params; i++) {
-		if(blen-offset == 0)
+		if(blen-offset == 0) {
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't parse MoQ request parameters: buffer ended\n",
+				imquic_get_connection_name(moq->conn));
+			if(error)
+				*error = IMQUIC_MOQ_INVALID_PARAMETER;
 			return 0;
-		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, parameters, &param, error);
-		if(offset > blen || (error && *error)) {
+		}
+		imquic_moq_error_code error_code = IMQUIC_MOQ_NO_ERROR;
+		offset += imquic_moq_parse_request_parameter(moq, &bytes[offset], blen-offset, parameters, &param, &error_code);
+		if(offset > blen || error_code > 0) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s][MoQ] Error parsing request parameter: %d (%s)\n",
 				imquic_get_connection_name(moq->conn),
-				(error ? *error : 0), imquic_moq_error_code_str(error ? *error : 0));
+				error_code, imquic_moq_error_code_str(error_code));
 			imquic_moq_request_parameters_cleanup(parameters, TRUE, TRUE);
 			if(error)
-				*error = IMQUIC_MOQ_PROTOCOL_VIOLATION;
+				*error = error_code;
 			return 0;
 		}
 	}

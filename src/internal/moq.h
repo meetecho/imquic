@@ -478,6 +478,8 @@ typedef struct imquic_moq_stream {
 	gboolean closed;
 	/*! \brief Mutex */
 	imquic_mutex mutex;
+	/*! \brief Whether we have received a GOAWAY on this stream */
+	volatile gint got_goaway;
 	/*! \brief Whether this instance has been destroyed (reference counting) */
 	volatile gint destroyed;
 	/*! \brief Reference counter */
@@ -778,6 +780,15 @@ size_t imquic_moq_parse_fetch_ok(imquic_moq_context *moq, imquic_moq_stream *moq
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns The size of the parsed message, if successful, or 0 otherwise */
 size_t imquic_moq_parse_track_status(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, size_t pre, imquic_moq_error_code *error);
+/*! \brief Helper to parse a \c GOAWAY message
+ * @param[in] moq The imquic_moq_context instance the message is for
+ * @param[in] moq_stream The imquic_moq_stream instance the request data is from, if not from the control stream
+ * @param[in] bytes The buffer containing the message to parse
+ * @param[in] blen Size of the buffer to parse
+ * @param[in] pre Size of the type+length prefix before the buffer (only for QLOG purposes)
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns The size of the parsed message, if successful, or 0 otherwise */
+size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, size_t pre, imquic_moq_error_code *error);
 /*! \brief Helper to parse an \c OBJECT_DATAGRAM message
  * @param[in] moq The imquic_moq_context instance the message is for
  * @param[in] bytes The buffer containing the message to parse
@@ -838,15 +849,6 @@ size_t imquic_moq_parse_padding_datagram(imquic_moq_context *moq, uint8_t *bytes
  * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns 0 in case of success, or a negative integer otherwise */
 int imquic_moq_parse_padding_stream(imquic_moq_context *moq, imquic_moq_stream *moq_stream, gboolean complete, imquic_moq_error_code *error);
-/*! \brief Helper to parse a \c GOAWAY message
- * @param[in] moq The imquic_moq_context instance the message is for
- * @param[in] moq_stream The imquic_moq_stream instance the request data is from, if not from the control stream
- * @param[in] bytes The buffer containing the message to parse
- * @param[in] blen Size of the buffer to parse
- * @param[in] pre Size of the type+length prefix before the buffer (only for QLOG purposes)
- * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
- * @returns The size of the parsed message, if successful, or 0 otherwise */
-size_t imquic_moq_parse_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_stream, uint8_t *bytes, size_t blen, size_t pre, imquic_moq_error_code *error);
 ///@}
 
 /** @name Building MoQ messages
@@ -1478,7 +1480,7 @@ typedef struct imquic_moq_callbacks {
 	 * \note This only makes sense for servers: to accept a connection, servers
 	 * must simply return \c 0 ; to reject a connection, servers must return an
 	 * error code. If a callback is not configured, a \c SERVER_SETUP is sent automatically. */
-	uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen);
+	imquic_moq_error_code (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen);
 	/*! \brief Callback function to be notified when a MoQ connection is ready (setup performed on both ends) */
 	void (* moq_ready)(imquic_connection *conn);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_NAMESPACE messages */

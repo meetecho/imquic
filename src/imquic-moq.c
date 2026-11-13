@@ -566,7 +566,7 @@ void imquic_set_new_moq_connection_cb(imquic_endpoint *endpoint,
 }
 
 void imquic_set_incoming_moq_connection_cb(imquic_endpoint *endpoint,
-		uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen)) {
+		imquic_moq_error_code (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");

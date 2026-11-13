@@ -1237,7 +1237,7 @@ void imquic_set_new_moq_connection_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_moq_connection Pointer to the function that will be invoked when MoQ is ready to be used */
 void imquic_set_incoming_moq_connection_cb(imquic_endpoint *endpoint,
-	uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen));
+	imquic_moq_error_code (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when a MoQ connection
  * has been successfully established. After this, the MoQ APIs can be used
  * to start exchanging MoQ messages.

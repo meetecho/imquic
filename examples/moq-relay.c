@@ -686,7 +686,7 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[+] Relay is now handling %u connections\n", g_hash_table_size(connections));
 }
 
-static uint64_t imquic_demo_incoming_moq_connection(imquic_connection *conn, uint8_t *auth, size_t authlen) {
+static imquic_moq_error_code imquic_demo_incoming_moq_connection(imquic_connection *conn, uint8_t *auth, size_t authlen) {
 	/* We got a CLIENT_SETUP */
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got a new MoQ connection attempt\n",
 		imquic_get_connection_name(conn));
