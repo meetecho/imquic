@@ -1440,7 +1440,7 @@ void imquic_set_incoming_unsubscribe_tracks_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_namespace Pointer to the function that will handle the incoming \c NAMESPACE */
 void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
-	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c NAMESPACE_DONE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1800,8 +1800,9 @@ int imquic_moq_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @param tns The imquic_moq_namespace namespace this request refers to
+ * @param parameters The parameters to add to the request (added in v23, ignored otherwise)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a \c NAMESPACE_DONE request
  * \note While the request itself doesn't contain the request ID, we use
  * it to find the subscription and use the right STREAM.

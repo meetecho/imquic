@@ -1100,9 +1100,10 @@ size_t imquic_moq_add_subscribe_tracks(imquic_moq_context *moq, imquic_moq_strea
  * @param blen The size of the buffer
  * @param[out] start Output variable where the start of the written message will be in the buffer
  * @param track_namespace_suffix Namespace suffix that is advertised
+ * @param parameters The parameters to add, if any (added in v23)
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-	uint8_t *bytes, size_t blen, size_t *start, imquic_moq_namespace *track_namespace_suffix);
+	uint8_t *bytes, size_t blen, size_t *start, imquic_moq_namespace *track_namespace_suffix, imquic_moq_request_parameters *parameters);
 /*! \brief Helper method to add a \c NAMESPACE_DONE message to a buffer
  * @param moq The imquic_moq_context generating the message
  * @param moq_stream The imquic_moq_stream instance the message is for
@@ -1551,7 +1552,7 @@ typedef struct imquic_moq_callbacks {
 	/*! \brief Callback function to be notified the \c SUBSCRIBE_TRACKS bidirectional stream is closed */
 	void (* incoming_unsubscribe_tracks)(imquic_connection *conn, uint64_t request_id);
 	/*! \brief Callback function to be notified about incoming \c NAMESPACE messages */
-	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
 	/*! \brief Callback function to be notified about incoming \c NAMESPACE_DONE messages */
 	void (* incoming_namespace_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
 	/*! \brief Callback function to be notified about incoming \c PUBLISH_SKIPPED messages */

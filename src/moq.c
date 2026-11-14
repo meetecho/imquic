@@ -4238,11 +4238,25 @@ size_t imquic_moq_parse_namespace(imquic_moq_context *moq, imquic_moq_stream *mo
 	imquic_moq_namespace tns[32];
 	memset(&tns, 0, sizeof(tns));
 	uint64_t tns_num = 0, i = 0;
-	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE, tns_num, i, "Broken NAMESPACE", TRUE);
+	IMQUIC_MOQ_PARSE_NAMESPACES(IMQUIC_MOQ_NAMESPACE, tns_num, i, "Broken NAMESPACE", moq->version < IMQUIC_MOQ_VERSION_23);
 	IMQUIC_MOQ_CHECK_ERR((tns_num + moq_stream->namespace_prefix_size) > 32, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Invalid number of namespaces");
+	/* Parse request parameters too, if the version is recent enough */
+	uint64_t params_num = 0;
+	imquic_moq_request_parameters parameters;
+	if(moq->version >= IMQUIC_MOQ_VERSION_23) {
+		imquic_moq_error_code error_code = IMQUIC_MOQ_NO_ERROR;
+		offset += imquic_moq_parse_request_parameters(moq, &bytes[offset], blen-offset, &parameters, &params_num, &error_code);
+		if(offset > blen || error_code > 0)
+			imquic_moq_request_parameters_cleanup(&parameters, TRUE, TRUE);
+		IMQUIC_MOQ_CHECK_ERR(offset > blen || error_code > 0, error, error_code, 0, "Error parsing NAMESPACE parameters");
+	}
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("namespace");
 		imquic_qlog_moq_message_add_namespace(message, (tns_num > 0 ? &tns[0] : NULL), "track_namespace_suffix");
+		if(moq->version >= IMQUIC_MOQ_VERSION_23) {
+			json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+			imquic_qlog_moq_message_add_request_parameters(message, moq->version, &parameters, "parameters");
+		}
 		imquic_moq_qlog_control_message_parsed(moq->conn->qlog, moq_stream->stream_id, bytes-pre, offset+pre, message);
 	}
 	/* Notify the application */
@@ -4250,7 +4264,8 @@ size_t imquic_moq_parse_namespace(imquic_moq_context *moq, imquic_moq_stream *mo
 		/* Prepare the full track namespace */
 		if(tns_num > 0)
 			moq_stream->last_tuple->next = &tns[0];
-		moq->conn->socket->callbacks.moq.incoming_namespace(moq->conn, moq_stream->request_id, moq_stream->namespace_prefix);
+		moq->conn->socket->callbacks.moq.incoming_namespace(moq->conn, moq_stream->request_id,
+			moq_stream->namespace_prefix, (moq->version >= IMQUIC_MOQ_VERSION_23 ? &parameters : NULL));
 		moq_stream->last_tuple->next = NULL;
 	}
 	if(error)
@@ -6006,7 +6021,7 @@ size_t imquic_moq_add_subscribe_tracks(imquic_moq_context *moq, imquic_moq_strea
 }
 
 size_t imquic_moq_add_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_stream,
-		uint8_t *bytes, size_t blen, size_t *start, imquic_moq_namespace *track_namespace) {
+		uint8_t *bytes, size_t blen, size_t *start, imquic_moq_namespace *track_namespace, imquic_moq_request_parameters *parameters) {
 	if(bytes == NULL || start == NULL || blen < IMQUIC_MOQ_MESSAGE_PREFIX+1 || moq_stream == NULL) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
 			imquic_get_connection_name(moq->conn), imquic_moq_message_type_str(IMQUIC_MOQ_NAMESPACE, moq->version));
@@ -6015,12 +6030,18 @@ size_t imquic_moq_add_namespace(imquic_moq_context *moq, imquic_moq_stream *moq_
 	size_t moffset = 0, offset = IMQUIC_MOQ_MESSAGE_PREFIX;
 	/* FIXME A tuple of size 0 is allowed here, this macro needs fixing */
 	IMQUIC_MOQ_ADD_MESSAGE_TYPE(IMQUIC_MOQ_NAMESPACE);
-	/* FIXME A tuple of size 0 is allowed here, this macro needs fixing */
 	IMQUIC_MOQ_ADD_NAMESPACES(IMQUIC_MOQ_NAMESPACE);
+	uint8_t params_num = 0;
+	if(moq->version >= IMQUIC_MOQ_VERSION_23)
+		offset += imquic_moq_request_parameters_serialize(moq, IMQUIC_MOQ_NAMESPACE, parameters, &bytes[offset], blen-offset, &params_num);
 	IMQUIC_MOQ_ADD_MESSAGE_LENGTH();
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		json_t *message = imquic_qlog_moq_message_prepare("namespace");
 		imquic_qlog_moq_message_add_namespace(message, track_namespace, "track_namespace_suffix");
+		if(moq->version >= IMQUIC_MOQ_VERSION_23) {
+			json_object_set_new(message, "number_of_parameters", json_integer(params_num));
+			imquic_qlog_moq_message_add_request_parameters(message, moq->version, parameters, "parameters");
+		}
 		imquic_moq_qlog_control_message_created(moq->conn->qlog, moq_stream->stream_id, bytes + *start, offset - *start, message);
 	}
 	return offset - *start;
@@ -9077,7 +9098,7 @@ int imquic_moq_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id) 
 	return 0;
 }
 
-int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
 	imquic_mutex_lock(&moq_mutex);
 	imquic_moq_context *moq = g_hash_table_lookup(moq_sessions, conn);
 	if(moq == NULL || !imquic_moq_namespace_is_valid(tns, TRUE, NULL)) {
@@ -9126,7 +9147,7 @@ int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, im
 	/* Prepare the message */
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), start = 0;
-	size_t nn_len = imquic_moq_add_namespace(moq, moq_stream, buffer, blen, &start, tns_suffix);
+	size_t nn_len = imquic_moq_add_namespace(moq, moq_stream, buffer, blen, &start, tns_suffix, parameters);
 	/* Send on the dedicated bidirectional STREAM */
 	imquic_connection_send_on_stream(conn, moq_stream->stream_id,
 		buffer + start, nn_len, FALSE);

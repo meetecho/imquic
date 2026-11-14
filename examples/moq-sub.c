@@ -316,7 +316,7 @@ static void imquic_demo_publish_namespace_done(imquic_connection *conn, uint64_t
 		imquic_get_connection_name(conn), request_id);
 }
 
-static void imquic_demo_incoming_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns) {
+static void imquic_demo_incoming_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters) {
 	/* We received a NAMESPACE (newer MoQ version) */
 	char buffer[256];
 	const char *ns = imquic_moq_namespace_str(tns, buffer, sizeof(buffer), TRUE);

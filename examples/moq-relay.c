@@ -422,7 +422,7 @@ static void imquic_demo_alert_monitors(imquic_demo_moq_published_namespace *annc
 					/* Send a NAMESPACE: we pass the full track namespace,
 					 * the stack will automatically get the suffix for us */
 					g_hash_table_insert(mon->published, g_strdup(annc->track_namespace), GUINT_TO_POINTER(1));
-					imquic_moq_notify_namespace(mon->conn, mon->request_id, tns);
+					imquic_moq_notify_namespace(mon->conn, mon->request_id, tns, NULL);
 				} else if(done && mon->published) {
 					/* Send a PUBLISH_NAMESPACE_DONE or a NAMESPACE_DONE, depending on the version */
 					g_hash_table_remove(mon->published, annc->track_namespace);
