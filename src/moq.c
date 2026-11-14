@@ -1083,6 +1083,13 @@ void imquic_moq_parse_fetch_serialization_flags(imquic_moq_version version, uint
 			*end_of_group = (flags == (uint64_t)0x80);
 		if(end_of_track)
 			*end_of_track = (flags == (uint64_t)0x81);
+		if(version >= IMQUIC_MOQ_VERSION_23 && (flags == (uint64_t)0x8C ||
+				flags == (uint64_t)0x10C || flags == (uint64_t)0x20C || flags == (uint64_t)0x40C)) {
+			if(group)
+				*group = TRUE;
+			if(oid)
+				*oid = TRUE;
+		}
 		return;
 	}
 	/* If we're here, we're parsing a bitmask of a single byte */
@@ -5272,6 +5279,8 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		if(moq->version >= IMQUIC_MOQ_VERSION_18 && (!has_group)) {
 			/* Object IDs are a delta, unless the group is not a delta */
 			object_id += moq_stream->last_object_id;
+			if(moq->version >= IMQUIC_MOQ_VERSION_23)
+				object_id += 2;
 		}
 	} else {
 		/* The object ID references a previous object */
@@ -9976,6 +9985,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 					(object_id - moq_stream->last_object_id > 1);
 				if(has_oid && moq_stream->got_objects && object->group_id == moq_stream->last_group_id) {
 					object_id -= moq_stream->last_object_id;
+					if(moq->version >= IMQUIC_MOQ_VERSION_23 && !has_gid)
+						object_id -= 2;
 				}
 			}
 			uint64_t flags = imquic_moq_generate_fetch_serialization_flags(moq->version,
