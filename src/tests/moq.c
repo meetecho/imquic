@@ -59,7 +59,8 @@ static void test_location_filter(void) {
 	imquic_moq_request_parameters parameters, parsed_parameters;
 	uint8_t bytes[100];
 	size_t blen = sizeof(blen), encoded = 0, decoded;
-	uint8_t params_num = 0, error = 0;
+	uint8_t params_num = 0;
+	imquic_moq_error_code error = IMQUIC_MOQ_NO_ERROR;
 	uint64_t parsed_params_num = 0;
 
 	/* Legacy (pre-v20) */
@@ -239,10 +240,51 @@ static void test_location_filter(void) {
 	}
 }
 
+static void test_redirect_error_detail(void) {
+	imquic_moq_version version = IMQUIC_MOQ_VERSION_23;
+	imquic_moq_error_code error = IMQUIC_MOQ_NO_ERROR;
+
+	imquic_moq_namespace tns[2];
+	tns[0].buffer = (uint8_t *)"moq-test";
+	tns[0].length = strlen("moq-test");
+	tns[0].next = &tns[1];
+	tns[1].buffer = (uint8_t *)"interop";
+	tns[1].length = strlen("interop");
+	tns[1].next = NULL;
+	imquic_moq_track track = {
+		.buffer = (uint8_t *)"pippozzo",
+		.length = strlen("pippozzo")
+	};
+	imquic_moq_redirect redirect = {
+		.connect_uri = (uint8_t *)"moqt://example.com",
+		.track_namespace = &tns[0],
+		.track_name = &track
+	};
+
+	imquic_moq_error_detail *error_detail = imquic_moq_build_redirect_error_detail(version, &redirect);
+	g_assert(error_detail != NULL);
+	g_assert_cmpuint(error_detail->type, ==, IMQUIC_MOQ_ERROR_DETAIL_REDIRECT);
+	g_assert(error_detail->value.data.buffer != NULL);
+	g_assert(error_detail->value.data.length != 0);
+	imquic_moq_redirect *parsed = imquic_moq_parse_redirect_error_detail(version, error_detail, &error);
+	imquic_moq_error_detail_destroy(error_detail);
+	g_assert_cmpuint(error, ==, 0);
+	g_assert(parsed != NULL);
+	g_assert(parsed->connect_uri != NULL);
+	g_assert_true(memcmp (redirect.connect_uri, parsed->connect_uri, strlen(redirect.connect_uri)) == 0);
+	g_assert(parsed->track_namespace != NULL);
+	g_assert(imquic_moq_namespace_equals(redirect.track_namespace, parsed->track_namespace));
+	g_assert(parsed->track_name != NULL);
+	g_assert(imquic_moq_track_equals(redirect.track_name, parsed->track_name));
+
+	imquic_moq_redirect_destroy(parsed);
+}
+
 int main(int argc, char *argv[]) {
 	g_test_init(&argc, &argv, NULL);
 	imquic_set_log_level(0);
 	g_test_add_func("/moq/var-int", test_var_int);
 	g_test_add_func("/moq/location-filter", test_location_filter);
+	g_test_add_func("/moq/redirect-error-detail", test_redirect_error_detail);
 	return g_test_run();
 }

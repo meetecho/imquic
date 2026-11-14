@@ -880,8 +880,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.group_order_set = TRUE;
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+		/* Legacy uses FORWARD, newer versions use PAUSED */
 		params.forward_set = TRUE;
 		params.forward = forward;
+		params.paused_set = TRUE;
+		params.paused = !forward;
 		/* Catalog track */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Publishing namespace/track '%s--%s'\n", imquic_get_connection_name(conn), pub_tns, catalog_tn);
 		catalog_request_id = imquic_moq_get_next_request_id(conn);
@@ -907,9 +910,11 @@ static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint
 }
 
 static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace: error %d (%s)\n",
 		imquic_get_connection_name(conn), error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -936,9 +941,11 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 }
 
 static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
