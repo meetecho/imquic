@@ -1444,18 +1444,18 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Invalid range (FILL_PARAMETERS)\n",
 				imquic_get_connection_name(conn));
 		} else {
-			imquic_moq_location largest = { .group = object->group_id, .object = object->object_id };
+			imquic_moq_location largest_loc = { .group = object->group_id, .object = object->object_id };
 			imquic_moq_location_range local_range = {
 				.start = { .group = 0, .object = 0 },
 				.end = { .group = UINT64_MAX, .object = UINT64_MAX }
 			};
 			if(parameters->fill_parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT) {
-				local_range.start = largest;
+				local_range.start = largest_loc;
 			} else if(parameters->fill_parameters->location_filter.type > IMQUIC_MOQ_LOCATION_FILTER_NONE && parameters->fill_parameters->location_filter.type < IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT) {
 				if(parameters->fill_parameters->location_filter.type == IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START) {
 					/* Only start group provided: relative start */
-					if(largest.group >= parameters->fill_parameters->location_filter.range.start.group)
-						local_range.start.group = largest.group + 1 - parameters->fill_parameters->location_filter.range.start.group;
+					if(largest_loc.group >= parameters->fill_parameters->location_filter.range.start.group)
+						local_range.start.group = largest_loc.group + 1 - parameters->fill_parameters->location_filter.range.start.group;
 				} else {
 					/* Start object provided too: absolute start */
 					local_range.start.group = parameters->fill_parameters->location_filter.range.start.group;
@@ -1471,7 +1471,7 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Fill FETCH range: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"] (%s)\n",
 				imquic_get_connection_name(conn), local_range.start.group, local_range.start.object, local_range.end.group, local_range.end.object,
 				imquic_moq_location_filter_type_str(parameters->fill_parameters->location_filter.type));
-			if(local_range.start.group > largest.group || (local_range.start.group == largest.group && local_range.start.object > largest.object)) {
+			if(local_range.start.group > largest_loc.group || (local_range.start.group == largest_loc.group && local_range.start.object > largest_loc.object)) {
 				IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Invalid range (FILL_PARAMETERS)\n",
 					imquic_get_connection_name(conn));
 			} else {
@@ -1521,7 +1521,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		rparams.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
 		if(largest != NULL) {
 			rparams.largest_object_set = TRUE;
-			rparams.largest_object = s->sub_start;
+			rparams.largest_object.group = largest->group_id;
+			rparams.largest_object.object = largest->object_id;
 		}
 		imquic_moq_accept_subscribe(conn, request_id, track_alias, &rparams, track->properties);
 		/* FIXME Check if the provided filter is NextGroupStart, and if so,
