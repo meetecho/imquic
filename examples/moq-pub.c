@@ -463,11 +463,23 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		.priority = (options.priority > -1 && options.priority < 256) ? options.priority : 0,
 		.first_of_subgroup = first,
 		.delivery = delivery,
+		/* We send all objects of the same group on the same stream, when
+		 * using SUBGROUP_HEADER: when using OBJECT_DATAGRAM, we only
+		 * mark the end of group bit on the last object in a group instead */
+		.end_of_group = last || (delivery == IMQUIC_MOQ_USE_SUBGROUP),
 		.end_of_stream = FALSE
 	};
-	if(imquic_moq_send_object(moq_conn, &object) == 0) {
+	int res = imquic_moq_send_object(moq_conn, &object);
+	if(res == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sent object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 			imquic_get_connection_name(moq_conn), object.request_id, object.track_alias,
+			object.group_id, object.subgroup_id, object.first_of_subgroup, object.object_id,
+			object.priority, (object.priority_set ? "set" : "omitted"),
+			object.payload_len, g_list_length(object.properties), imquic_moq_delivery_str(object.delivery),
+			imquic_moq_object_status_str(object.object_status), object.end_of_stream);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error '%d' sending object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
+			imquic_get_connection_name(moq_conn), res, object.request_id, object.track_alias,
 			object.group_id, object.subgroup_id, object.first_of_subgroup, object.object_id,
 			object.priority, (object.priority_set ? "set" : "omitted"),
 			object.payload_len, g_list_length(object.properties), imquic_moq_delivery_str(object.delivery),

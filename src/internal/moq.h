@@ -460,6 +460,8 @@ typedef struct imquic_moq_stream {
 	uint8_t priority;
 	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
 	gboolean first_of_subgroup;
+	/*! \brief Whether the end-of-group bit is set */
+	gboolean end_of_group;
 	/*! \brief Buffer to process incoming messages/objects */
 	imquic_buffer *buffer;
 	/*! \brief Whether we parsed the object header for this stream */
@@ -1204,6 +1206,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
  * @param object_status The object status (only added if the payload length is 0)
  * @param priority_set Whether the object should contain a publisher priority
  * @param priority The publisher priority to put in the message, if any
+ * @param is_eog Whether this object ends the group
  * @param payload_prefix The buffer containing the payload prefix of the object, if needed
  * @param pplen The size of the payload prefix buffer
  * @param payload The buffer containing the payload of the object
@@ -1212,7 +1215,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
  * @param prlen The size of the properties buffer
  * @returns The size of the generated message, if successful, or 0 otherwise */
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-	uint64_t group_id, uint64_t object_id, uint64_t object_status, gboolean priority_set, uint8_t priority,
+	uint64_t group_id, uint64_t object_id, uint64_t object_status, gboolean priority_set, uint8_t priority, gboolean is_eog,
 	uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen);
 /*! \brief Helper to add an \c OBJECT_DATAGRAM_STATUS message to a buffer
  * @note This assumes the connection negotiated \c DATAGRAM support

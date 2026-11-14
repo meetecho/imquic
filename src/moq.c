@@ -4788,8 +4788,8 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 	if(bytes == NULL || blen < 5)
 		return 0;
 	/* TODO Check EOG too */
-	gboolean has_prop = FALSE, has_oid = TRUE, has_priority = TRUE;
-	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_prop, NULL, &has_oid, &has_priority, NULL);
+	gboolean has_prop = FALSE, is_eog = FALSE, has_oid = TRUE, has_priority = TRUE;
+	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_prop, &is_eog, &has_oid, &has_priority, NULL);
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -4852,6 +4852,7 @@ size_t imquic_moq_parse_object_datagram(imquic_moq_context *moq, uint8_t *bytes,
 		.payload_len = blen-offset,
 		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_DATAGRAM,
+		.end_of_group = (is_eog > 0),
 		.end_of_stream = FALSE	/* No stream is involved here */
 	};
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -4870,8 +4871,8 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 		*error = IMQUIC_MOQ_UNKNOWN_ERROR;
 	if(bytes == NULL || blen < 5)
 		return 0;
-	gboolean has_prop = FALSE, has_oid = TRUE, has_priority = TRUE;
-	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_prop, NULL, &has_oid, &has_priority, NULL);
+	gboolean has_prop = FALSE, is_eog = FALSE, has_oid = TRUE, has_priority = TRUE;
+	imquic_moq_datagram_message_type_parse(moq->version, dtype, NULL, &has_prop, &is_eog, &has_oid, &has_priority, NULL);
 	size_t offset = 0;
 	uint8_t length = 0;
 	uint64_t track_alias = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
@@ -4938,6 +4939,7 @@ size_t imquic_moq_parse_object_datagram_status(imquic_moq_context *moq, uint8_t 
 		.payload_len = 0,
 		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_DATAGRAM,
+		.end_of_group = (is_eog > 0),
 		.end_of_stream = FALSE	/* No stream is involved here */
 	};
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
@@ -5015,6 +5017,7 @@ int imquic_moq_parse_subgroup_header(imquic_moq_context *moq, imquic_moq_stream 
 	moq_stream->priority_set = has_priority;
 	moq_stream->priority = priority;
 	moq_stream->first_of_subgroup = (first_object > 0);
+	moq_stream->end_of_group = (is_eog > 0);
 	if(moq->conn->qlog != NULL && moq->conn->qlog->moq) {
 		imquic_moq_qlog_stream_type_set(moq->conn->qlog, FALSE, moq_stream->stream_id, "subgroup_header");
 		imquic_moq_qlog_subgroup_header_parsed(moq->conn->qlog, moq_stream, bytes, offset);
@@ -5115,6 +5118,8 @@ int imquic_moq_parse_subgroup_header_object(imquic_moq_context *moq, imquic_moq_
 		.payload_len = p_len,
 		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+		.end_of_group = moq_stream->end_of_group,
+		.stream_id = moq_stream->stream_id,
 		/* We may be getting multiple objects from the same picoquic data
 		 * notification, so if a FIN is involved, only mark the end of
 		 * the stream when we've processed all the data we were passed */
@@ -5323,6 +5328,8 @@ int imquic_moq_parse_fetch_header_object(imquic_moq_context *moq, imquic_moq_str
 		.payload_len = p_len,
 		.properties = properties,
 		.delivery = IMQUIC_MOQ_USE_FETCH,
+		.end_of_group = end_of_group,
+		.stream_id = moq_stream->stream_id,
 		/* We may be getting multiple objects from the same picoquic data
 		 * notification, so if a FIN is involved, only mark the end of
 		 * the stream when we've processed all the data we were passed */
@@ -6270,7 +6277,7 @@ size_t imquic_moq_add_goaway(imquic_moq_context *moq, imquic_moq_stream *moq_str
 }
 
 size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, size_t blen, uint64_t request_id, uint64_t track_alias,
-		uint64_t group_id, uint64_t object_id, uint64_t object_status, gboolean priority_set, uint8_t priority,
+		uint64_t group_id, uint64_t object_id, uint64_t object_status, gboolean priority_set, uint8_t priority, gboolean is_eog,
 		uint8_t *payload_prefix, size_t pplen, uint8_t *payload, size_t plen, uint8_t *properties, size_t prlen) {
 	if(bytes == NULL || blen < 1) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ %s: invalid arguments\n",
@@ -6278,7 +6285,7 @@ size_t imquic_moq_add_object_datagram(imquic_moq_context *moq, uint8_t *bytes, s
 		return 0;
 	}
 	/* TODO Involve EOG */
-	gboolean has_prop = (properties != NULL && prlen > 0), is_eog = FALSE;
+	gboolean has_prop = (properties != NULL && prlen > 0);
 	gboolean has_oid = (object_id != 0);
 	gboolean has_priority = priority_set;
 	imquic_moq_datagram_message_type dtype = imquic_moq_datagram_message_type_return(moq->version,
@@ -9745,7 +9752,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 		if(has_payload) {
 			size_t dg_len = imquic_moq_add_object_datagram(moq, buffer, bufsize,
 				object->request_id, object->track_alias, object->group_id, object->object_id, object->object_status,
-				object->priority_set, object->priority, object->payload_prefix, object->payload_prefix_len,
+				object->priority_set, object->priority, object->end_of_group,
+				object->payload_prefix, object->payload_prefix_len,
 				object->payload, object->payload_len, properties, properties_len);
 			if(conn->qlog != NULL && conn->qlog->moq)
 				imquic_moq_qlog_object_datagram_created(conn->qlog, object);
@@ -9791,8 +9799,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->type = imquic_moq_data_message_type_from_subgroup_header(moq->version,
 				TRUE,	/* We'll explicitly specify the Subgroup ID */
 				FALSE,	/* Whether the default Subgroup ID is 0 (ignored, since we set it) */
-				TRUE,	/* We'll add the properties block, whether there are properties or not */
-				TRUE,	/* End-of-Group is set */
+				TRUE,	/* We'll always add the properties block, whether there are properties or not */
+				object->end_of_group,	/*  We take this from the object provided by the user */
 				object->priority_set,	/* Whether we'll add the Publisher Priority property */
 				object->first_of_subgroup);	/* We take this from the object provided by the user */
 			moq_stream->track_alias = object->track_alias;
@@ -9800,6 +9808,8 @@ int imquic_moq_send_object(imquic_connection *conn, imquic_moq_object *object) {
 			moq_stream->subgroup_id = object->subgroup_id;
 			moq_stream->priority_set = object->priority_set;
 			moq_stream->priority = object->priority;
+			moq_stream->first_of_subgroup = object->first_of_subgroup;
+			moq_stream->end_of_group = object->end_of_group;
 			imquic_connection_new_stream_id(conn, FALSE, &moq_stream->stream_id);
 			g_hash_table_insert(moq_sub->streams_by_subgroup,
 				imquic_moq_group_subgroup_create(object->group_id, object->subgroup_id), moq_stream);

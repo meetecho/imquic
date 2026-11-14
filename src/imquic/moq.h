@@ -811,8 +811,15 @@ typedef struct imquic_moq_object {
 	size_t payload_len;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
+	/*! \brief Stream ID used to deliver this object (ignored for IMQUIC_MOQ_USE_DATAGRAM delivery)
+	 * \note This is set by the core for incoming objects, and is ignored for outgoing ones */
+	uint64_t stream_id;
 	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
 	gboolean first_of_subgroup;
+	/*! \brief Whether the objects of this group/subgroup are the last in the group
+	 * \note This applies to multiple objects, not just the last one, considering it's
+	 * a property that is set when the first object of a \c SUBGROUP_HEADER is sent */
+	gboolean end_of_group;
 	/*! \brief Whether this signals the end of the stream */
 	gboolean end_of_stream;
 } imquic_moq_object;

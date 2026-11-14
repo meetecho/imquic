@@ -2468,12 +2468,16 @@ static void imquic_demo_incoming_fetch_cancel(imquic_connection *conn, uint64_t 
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
 	if(!options.quiet) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d, end=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 			imquic_get_connection_name(conn), object->request_id, object->track_alias,
-			object->group_id, object->subgroup_id, object->first_of_subgroup, object->object_id,
-			object->priority, (object->priority_set ? "set" : "omitted"),
+			object->group_id, object->subgroup_id, object->first_of_subgroup, object->end_of_group,
+			object->object_id, object->priority, (object->priority_set ? "set" : "omitted"),
 			object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+		if(object->delivery != IMQUIC_MOQ_USE_DATAGRAM) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Object received on stream %"SCNu64"\n",
+				imquic_get_connection_name(conn), object->stream_id);
+		}
 	}
 	/* Find the track associated to this subscription */
 	imquic_mutex_lock(&mutex);
@@ -2786,6 +2790,7 @@ int main(int argc, char *argv[]) {
 					object->request_id = s->request_id;
 					object->track_alias = s->track_alias;
 					object->delivery = IMQUIC_MOQ_USE_FETCH;
+					object->end_of_group = FALSE;	/* FIXME */
 					object->end_of_stream = (first->next == NULL);
 					if(s->filters != NULL && !imquic_moq_filters_match_object(s->filters, object)) {
 						IMQUIC_LOG(IMQUIC_LOG_VERB, "[%s] Object doesn't match filters, dropping\n",

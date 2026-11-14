@@ -771,6 +771,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
 			.properties = props,
 			.delivery = delivery,
+			.end_of_group = s->test[TUPLE_FIELD_SEND_EOG],
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
 		if(send_object) {

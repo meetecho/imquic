@@ -284,7 +284,8 @@ static int imquic_demo_send_audio(void) {
 			.payload = outgoing,
 			.payload_len = length,
 			.properties = props,
-			.delivery = IMQUIC_MOQ_USE_DATAGRAM
+			.delivery = IMQUIC_MOQ_USE_DATAGRAM,
+			.end_of_group = TRUE	/* Each object is its own group */
 		};
 		imquic_moq_send_object(moq_conn, &object);
 		g_list_free(props);

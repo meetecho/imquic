@@ -565,7 +565,8 @@ static void *imquic_demo_audio_thread(void *user_data) {
 				.payload = outgoing,
 				.payload_len = length,
 				.properties = props,
-				.delivery = IMQUIC_MOQ_USE_DATAGRAM
+				.delivery = IMQUIC_MOQ_USE_DATAGRAM,
+				.end_of_group = TRUE	/* Each object is its own group */
 			};
 			imquic_moq_send_object(moq_conn, &object);
 			g_list_free(props);
@@ -736,6 +737,7 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 					.payload_len = 0,
 					.properties = NULL,
 					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+					.end_of_group = TRUE,	/* We send all objects of the same group on the same stream */
 					.end_of_stream = TRUE
 				};
 				imquic_moq_send_object(moq_conn, &object);
@@ -824,6 +826,7 @@ static void *imquic_demo_video_enc_thread(void *user_data) {
 			.payload_len = size,
 			.properties = props,
 			.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+			.end_of_group = TRUE,	/* We send all objects of the same group on the same stream */
 			.end_of_stream = FALSE
 		};
 		video_object_id++;
@@ -1463,6 +1466,7 @@ int main(int argc, char *argv[]) {
 					.payload = (uint8_t *)json,
 					.payload_len = strlen(json),
 					.delivery = IMQUIC_MOQ_USE_SUBGROUP,
+					.end_of_group = TRUE,	/* We send all objects of the same group on the same stream */
 					.end_of_stream = TRUE
 				};
 				imquic_moq_send_object(moq_conn, &object);
