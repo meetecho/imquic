@@ -1609,7 +1609,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		imquic_moq_group_order_str(parameters->group_order),
 		g_list_length(track_properties));
 	if(parameters->largest_object_set) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Object: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
 	}

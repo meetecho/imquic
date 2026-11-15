@@ -50,7 +50,7 @@ static const char *pub_tns = NULL, *pub_tn = NULL, *pub_redirect = NULL;
 static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
-static volatile int started = 0, send_objects = 0, done_sent = 0;
+static volatile int started = 0, send_objects = 0, done_sent = 0, new_group_request = 0;
 static uint64_t max_request_id = 100;
 static imquic_moq_location sub_start = { 0 }, sub_end = { 0 };
 static uint64_t group_id = 0, object_id = 0;
@@ -132,19 +132,21 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			}
 		}
 		/* Let's add a property just for fun (may be useful for testing filters) */
-		imquic_moq_property dynamic_groups = {
+		imquic_moq_property group_order = {
 			.id = IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER,
 			.value = {
 				.number = IMQUIC_MOQ_ORDERING_ASCENDING
 			}
 		};
-		GList *props = g_list_append(NULL, &dynamic_groups);
+		GList *props = g_list_append(NULL, &group_order);
 		imquic_moq_property prop = {0};
 		if(options.default_priority > -1 && options.default_priority < 256) {
 			prop.id = IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY;
 			prop.value.number = options.default_priority;
 			props = g_list_append(props, &prop);
 		}
+		imquic_moq_property dynamic_groups = { .id = IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS, .value.number = 1 };
+		props = g_list_append(props, &dynamic_groups);
 		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], &pub_trackname, moq_track_alias, &params, props);
 		g_list_free(props);
 	}
@@ -325,6 +327,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		prop.value.number = options.default_priority;
 		props = g_list_append(props, &prop);
 	}
+	imquic_moq_property dynamic_groups = { .id = IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS, .value.number = 1 };
+	props = g_list_append(props, &dynamic_groups);
 	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, props);
 	g_list_free(props);
 	if(forward) {
@@ -339,7 +343,12 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id, sub_request_id);
-	/* Check if we're forwarding stuff, now */
+	/* Check if a new group was requested */
+	if(parameters->new_group_request_set) {
+		/* FIXME We should check what group was requested */
+		g_atomic_int_set(&new_group_request, 1);
+	}
+	/* Also check if we're forwarding stuff, now */
 	gboolean forward_set = (moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set) ||
 		(moq_version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set);
 	if(!forward_set)
@@ -781,7 +790,7 @@ int main(int argc, char *argv[]) {
 		}
 		seconds = &buffer[strlen(buffer)-2];
 		last = !strcasecmp(seconds, "59");
-		if(first || !strcasecmp(seconds, "00")) {
+		if(first || g_atomic_int_compare_and_exchange(&new_group_request, 1, 0) || !strcasecmp(seconds, "00")) {
 			/* Minute wrap, reset the group */
 			if(!first)
 				group_id++;

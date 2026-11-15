@@ -337,7 +337,7 @@ static void imquic_demo_track_status_accepted(imquic_connection *conn, uint64_t 
 		imquic_get_connection_name(conn), request_id, parameters->expires,
 		imquic_moq_group_order_str(parameters->group_order), g_list_length(track_properties));
 	if(parameters->largest_object_set) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Object: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
 	}
@@ -366,7 +366,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Track Alias: %"SCNu64"\n",
 		imquic_get_connection_name(conn), track_alias);
 	if(parameters->largest_object_set) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Object: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
 	}
@@ -395,6 +395,26 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 			imquic_get_connection_name(conn), request_id, fetch_request_id, options.join_offset);
 		imquic_moq_joining_fetch(conn, fetch_request_id, request_id,
 			FALSE, options.join_offset, &fparams);
+	}
+	if(options.new_group_request && parameters->largest_object_set) {
+		/* Check if we got a DYNAMIC_GROUPS property back: if so, send a
+		 * REQUEST_UPDATE with a NEW_GROUP_REQUEST to ask for a new group */
+		GList *temp = track_properties;
+		while(temp) {
+			imquic_moq_property *prop = (imquic_moq_property *)temp->data;
+			if(prop->id == IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS && prop->value.number == 1) {
+				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] DYNAMIC_GROUPS supported and LARGEST_OBJECT received, sending a NEW_GROUP_REQUEST in a REQUEST_UPDATE\n",
+					imquic_get_connection_name(conn));
+				imquic_moq_request_parameters params;
+				imquic_moq_request_parameters_init_defaults(&params);
+				params.new_group_request_set = TRUE;
+				params.new_group_request = parameters->largest_object.group + 1;
+				uint64_t update_request_id = imquic_moq_get_next_request_id(conn);
+				imquic_moq_update_request(conn, update_request_id, request_id, &params);
+				break;
+			}
+			temp = temp->next;
+		}
 	}
 }
 

@@ -443,7 +443,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		catalog_track_alias = track_alias;
 		if(moq_version < IMQUIC_MOQ_VERSION_20 && parameters->largest_object_set) {
 			/* There's a largest object, send a Joining FETCH */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Object: %"SCNu64"/%"SCNu64"\n",
 				imquic_get_connection_name(conn),
 				parameters->largest_object.group, parameters->largest_object.object);
 			/* Send a Joining Fetch referencing this subscription */
@@ -468,7 +468,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	else
 		audio_track_alias = track_alias;
 	if(parameters->largest_object_set) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Object: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
 		if(moq_version < IMQUIC_MOQ_VERSION_20 && video) {
