@@ -3264,7 +3264,6 @@ size_t imquic_moq_parse_request_error(imquic_moq_context *moq, imquic_moq_stream
 	GList *error_details = NULL;
 	if(moq->version >= IMQUIC_MOQ_VERSION_23) {
 		/* Error Detail */
-		IMQUIC_MOQ_CHECK_ERR(blen == offset, error, IMQUIC_MOQ_PROTOCOL_VIOLATION, 0, "Missing error details");
 		size_t ed_len = blen-offset;
 		IMQUIC_LOG(IMQUIC_MOQ_LOG_HUGE, "[%s][MoQ]  -- Error Details Length:  %"SCNu64"\n",
 			imquic_get_connection_name(moq->conn), ed_len);
