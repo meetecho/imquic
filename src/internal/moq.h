@@ -70,10 +70,10 @@ typedef enum imquic_moq_message_type {
 	IMQUIC_MOQ_PSEUDO_REQUEST = 0x0,				/* Pseudo request, only needed for FILL_PARAMETERS */
 } imquic_moq_message_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_message_type value.
- * @param type The imquic_moq_message_type value
  * @param version The version of the connection
+ * @param type The imquic_moq_message_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_message_type_str(imquic_moq_message_type type, imquic_moq_version version);
+const char *imquic_moq_message_type_str(imquic_moq_version version, imquic_moq_message_type type);
 
 /*! \brief MoQ datagram messages */
 typedef enum imquic_moq_datagram_message_type {
@@ -112,10 +112,10 @@ uint8_t imquic_moq_datagram_message_type_return(imquic_moq_version version,
 void imquic_moq_datagram_message_type_parse(imquic_moq_version version, uint8_t type,
 	gboolean *payload, gboolean *prop, gboolean *eog, gboolean *oid, gboolean *priority, gboolean *violation);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_datagram_message_type value.
- * @param type The type value
  * @param version The version of the connection
+ * @param type The type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_datagram_message_type_str(imquic_moq_datagram_message_type type, imquic_moq_version version);
+const char *imquic_moq_datagram_message_type_str(imquic_moq_version version, imquic_moq_datagram_message_type type);
 
 /*! \brief MoQ \c STREAM data messages */
 typedef enum imquic_moq_data_message_type {
@@ -163,16 +163,16 @@ uint8_t imquic_moq_data_message_type_from_subgroup_header(imquic_moq_version ver
 void imquic_moq_data_message_type_to_subgroup_header(imquic_moq_version version, uint8_t type,
 	gboolean *subgroup, gboolean *sgid0, gboolean *prop, gboolean *eog, gboolean *priority, gboolean *first_object, gboolean *violation);
 /*! \brief Helper function to serialize to string the name of a imquic_moq_data_message_type value.
- * @param type The imquic_data_moq_message_type value
  * @param version The version of the connection
+ * @param type The imquic_data_moq_message_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_data_message_type_str(imquic_moq_data_message_type type, imquic_moq_version version);
+const char *imquic_moq_data_message_type_str(imquic_moq_version version, imquic_moq_data_message_type type);
 /*! \brief Helper function to return the imquic_moq_delivery mode associated
  * to a imquic_moq_data_message_type type
- * @param type The imquic_data_moq_message_type value
  * @param version The version of the connection
+ * @param type The imquic_data_moq_message_type value
  * @returns The associated imquic_moq_delivery mode, if successful, or -1 otherwise */
-imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_data_message_type type, imquic_moq_version version);
+imquic_moq_delivery imquic_moq_data_message_type_to_delivery(imquic_moq_version version, imquic_moq_data_message_type type);
 
 /*! \brief MoQ \c FETCH subgroup flags */
 typedef enum imquic_moq_fetch_subgroup_type {
@@ -271,10 +271,10 @@ typedef enum imquic_moq_request_parameter_type {
 	IMQUIC_MOQ_REQUEST_PARAM_SUBSCRIBE_TRACKS_ID = 0x36,	/* Added in v23 */
 } imquic_moq_request_parameter_type;
 /*! \brief Helper function to serialize to string the name of a imquic_moq_request_parameter_type value.
- * @param type The imquic_moq_request_parameter_type value
  * @param version The version of the connection
+ * @param type The imquic_moq_request_parameter_type value
  * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_request_parameter_type_str(imquic_moq_request_parameter_type type, imquic_moq_version version);
+const char *imquic_moq_request_parameter_type_str(imquic_moq_version version, imquic_moq_request_parameter_type type);
 
 /*! \brief MoQ setup parameters */
 typedef struct imquic_moq_setup_options {
@@ -404,18 +404,18 @@ typedef struct imquic_moq_context {
 
 /*! \brief MoQ stream request state
  * \note Only needed for tracking the state of bidirectional requests, not media */
-typedef enum imquic_media_stream_request_state {
+typedef enum imquic_moq_stream_request_state {
 	IMQUIC_MOQ_REQUEST_STATE_NEW = 0,
 	IMQUIC_MOQ_REQUEST_STATE_SENT,
 	IMQUIC_MOQ_REQUEST_STATE_OK,
 	IMQUIC_MOQ_REQUEST_STATE_ERROR,
 	IMQUIC_MOQ_REQUEST_STATE_UPDATE_SENT,
 	IMQUIC_MOQ_REQUEST_STATE_DONE,
-} imquic_media_stream_request_state;
-/*! \brief Helper function to serialize to string the name of a imquic_media_stream_request_state value.
- * @param state The imquic_media_stream_request_state value
+} imquic_moq_stream_request_state;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_stream_request_state value.
+ * @param state The imquic_moq_stream_request_state value
  * @returns The state name as a string, if valid, or NULL otherwise */
-const char *imquic_media_stream_request_state_str(imquic_media_stream_request_state state);
+const char *imquic_moq_stream_request_state_str(imquic_moq_stream_request_state state);
 
 /*! \brief MoQ stream
  * \note This is usually used for objects (e.g., via SUBGROUP_HEADER or
@@ -428,9 +428,9 @@ typedef struct imquic_moq_stream {
 	/*! In case this is a bidirectional STREAM for a request, if this endpoint originated it */
 	gboolean request_sender;
 	/*! In case this is a bidirectional STREAM for a request, its current state */
-	imquic_media_stream_request_state request_state;
+	imquic_moq_stream_request_state request_state;
 	/*! \brief In case this is for SUBSCRIBE_NAMESPACE, the namespace prefix */
-	imquic_moq_namespace *namespace_prefix, *last_tuple;
+	imquic_moq_namespace *namespace_prefix, *updated_namespace_prefix, *last_tuple;
 	/*! \brief In case this is for SUBSCRIBE_NAMESPACE, how many tuples are in the namespace prefix */
 	uint8_t namespace_prefix_size;
 	/*! \brief Map of namespaces we've notified about */

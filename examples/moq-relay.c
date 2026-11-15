@@ -1754,23 +1754,13 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		imquic_moq_namespace_free(mon->tns);
 		mon->tns = imquic_moq_namespace_duplicate(parameters->track_namespace_prefix);
 		mon->ns = g_strdup(ns);
-		/* Check if there's events we can push and already tracks we can publish */
-		imquic_demo_moq_published_namespace *annc = g_hash_table_lookup(namespaces, ns);
-		if(annc != NULL) {
-			imquic_demo_alert_monitors(annc, NULL, FALSE);
-			if(annc->tracks) {
-				GHashTableIter iter;
-				gpointer value;
-				g_hash_table_iter_init(&iter, annc->tracks);
-				while(g_hash_table_iter_next(&iter, NULL, &value)) {
-					imquic_demo_moq_track *track = value;
-					imquic_demo_alert_monitors(NULL, track, FALSE);
-				}
-			}
-		}
 		imquic_mutex_unlock(&mutex);
 		/* Done */
 		imquic_moq_accept_request_update(conn, request_id, NULL);
+		/* Check if there's events we can push and already tracks we can publish */
+		imquic_mutex_lock(&mutex);
+		imquic_demo_moq_notify_about_namespace(parameters->track_namespace_prefix);
+		imquic_mutex_unlock(&mutex);
 		return;
 	}
 	/* Not a SUBSCRIBE_NAMESPACE or SUBSCRIBE_TRACKS, let's try SUBSCRIBE */
