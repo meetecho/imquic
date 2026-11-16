@@ -1437,11 +1437,12 @@ size_t imquic_moq_parameter_add_fill_parameters(imquic_moq_context *moq, uint8_t
  * @param blen Size of the buffer
  * @param param ID of the parameter to add
  * @param prev ID of the previously added parameter, if we're delta-encoding
+ * @param add_length Whether we should prefix the data with its length
  * @param buf The data acting as a value for the parameter to add
  * @param buflen The size of the data value
  * @returns The size of the parameter, if successful, or 0 otherwise */
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-	uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen);
+	uint64_t param, uint64_t prev, gboolean add_length, uint8_t *buf, size_t buflen);
 /*! \brief Helper method to parse a single MoQ subscribe parameter
  * @param[in] moq The imquic_moq_context instance to update with the new parameter
  * @param[in] bytes Buffer containing the parameter to parse

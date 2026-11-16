@@ -1822,7 +1822,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 				new_id = GPOINTER_TO_UINT(temp->data);
 				if(new_id == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN) {
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-						new_id, last_id,
+						new_id, last_id, TRUE,
 						parameters->auth_token, parameters->auth_token_len);
 				} else if(moq->version <= IMQUIC_MOQ_VERSION_17 && new_id == IMQUIC_MOQ_REQUEST_PARAM_DELIVERY_TIMEOUT) {
 					offset += imquic_moq_parameter_add_varint(moq, &bytes[offset], blen-offset,
@@ -1906,7 +1906,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 						temp = temp->next;
 					}
 					offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-						new_id, last_id,
+						new_id, last_id, FALSE,	/* TRACK_NAMESPACE_PREFIX is NOT Length prefixed */
 						temp_tns, toffset);
 				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_INCLUDE_PROPERTIES) {
 					offset += imquic_moq_parameter_add_uint8(moq, &bytes[offset], blen-offset,
@@ -1930,7 +1930,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 							imquic_moq_filter_type_str(filter ? filter->type : 0),
 							imquic_moq_request_parameter_type_str(moq->version, new_id));
 						offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-							new_id, last_id, NULL, 0);
+							new_id, last_id, TRUE, NULL, 0);
 					} else {
 						uint8_t ranges[256];
 						size_t rlen = sizeof(ranges);
@@ -1959,7 +1959,7 @@ size_t imquic_moq_request_parameters_serialize(imquic_moq_context *moq,
 						}
 						tf = tf->next;
 						offset += imquic_moq_parameter_add_data(moq, &bytes[offset], blen-offset,
-							new_id, last_id, ranges, roffset);
+							new_id, last_id, TRUE, ranges, roffset);
 					}
 				} else if(new_id == IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS) {
 					/* We need to serialize fill parameters as these parameters, and embed them */
@@ -3166,6 +3166,21 @@ size_t imquic_moq_parse_request_ok(imquic_moq_context *moq, imquic_moq_stream *m
 				imquic_get_connection_name(moq->conn), num, moq->max_filter_ranges);
 			imquic_moq_request_parameters_cleanup(&parameters, TRUE, FALSE);
 		}
+	}
+	if(moq_stream != NULL && (moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
+			moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_TRACKS) && moq_stream->updated_namespace_prefix != NULL) {
+		/* Update to the namespace prefix accepted, enforce it */
+		imquic_mutex_lock(&moq_stream->mutex);
+		imquic_moq_namespace_free(moq_stream->namespace_prefix);
+		moq_stream->namespace_prefix = moq_stream->updated_namespace_prefix;
+		moq_stream->last_tuple = moq_stream->namespace_prefix;
+		uint64_t tns_num = 0;
+		imquic_moq_namespace_is_valid(moq_stream->updated_namespace_prefix, FALSE, &tns_num);
+		while(moq_stream->last_tuple->next != NULL)
+			moq_stream->last_tuple = moq_stream->last_tuple->next;
+		moq_stream->namespace_prefix_size = tns_num;
+		moq_stream->updated_namespace_prefix = NULL;
+		imquic_mutex_unlock(&moq_stream->mutex);
 	}
 	switch(type) {
 		case IMQUIC_MOQ_PUBLISH:
@@ -6776,7 +6791,7 @@ size_t imquic_moq_parameter_add_location(imquic_moq_context *moq, uint8_t *bytes
 		size_t tlen = sizeof(temp);
 		size_t toffset = imquic_write_moqint(moq->version, location->group, temp, tlen);
 		toffset += imquic_write_moqint(moq->version, location->object, &temp[toffset], tlen-toffset);
-		return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, temp, toffset);
+		return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, TRUE, temp, toffset);
 	}
 	param -= prev;
 	size_t offset = 0;
@@ -6811,7 +6826,7 @@ size_t imquic_moq_parameter_add_location_filter(imquic_moq_context *moq, uint8_t
 				end_group -= location_filter->range.start.group;
 			toffset += imquic_write_moqint(moq->version, end_group, &temp[toffset], tlen-toffset);
 		}
-		return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, temp, toffset);
+		return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, TRUE, temp, toffset);
 	}
 	if(moq->version < IMQUIC_MOQ_VERSION_22) {
 		/* v20 and v21 are Length prefixed */
@@ -6832,7 +6847,7 @@ size_t imquic_moq_parameter_add_location_filter(imquic_moq_context *moq, uint8_t
 			if(location_filter->type > IMQUIC_MOQ_LOCATION_FILTER_GROUP_END)
 				toffset += imquic_write_moqint(moq->version, location_filter->range.end.object, &temp[toffset], tlen-toffset);
 		}
-		return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, temp, toffset);
+		return imquic_moq_parameter_add_data(moq, bytes, blen, param, prev, TRUE, temp, toffset);
 	}
 	/* v22 and further, type prefixed */
 	param -= prev;
@@ -6868,7 +6883,7 @@ size_t imquic_moq_parameter_add_fill_parameters(imquic_moq_context *moq, uint8_t
 	if(moq->version < IMQUIC_MOQ_VERSION_23) {
 		/* Older versions are Length prefixed */
 		return imquic_moq_parameter_add_data(moq, bytes, blen,
-			param, prev, fills, foffset);
+			param, prev, TRUE, fills, foffset);
 	}
 	/* v23 and further, number of parameters prefixed */
 	param -= prev;
@@ -6881,7 +6896,7 @@ size_t imquic_moq_parameter_add_fill_parameters(imquic_moq_context *moq, uint8_t
 }
 
 size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, size_t blen,
-		uint64_t param, uint64_t prev, uint8_t *buf, size_t buflen) {
+		uint64_t param, uint64_t prev, gboolean add_length, uint8_t *buf, size_t buflen) {
 	if((buflen > 0 && buf == NULL) || buflen > UINT16_MAX) {
 		IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s][MoQ] Can't add MoQ data parameter %"SCNu64": invalid arguments\n",
 			imquic_get_connection_name(moq->conn), param);
@@ -6899,7 +6914,8 @@ size_t imquic_moq_parameter_add_data(imquic_moq_context *moq, uint8_t *bytes, si
 	}
 	param -= prev;
 	size_t offset = imquic_write_moqint(moq->version, param, &bytes[0], blen);
-	offset += imquic_write_moqint(moq->version, buflen, &bytes[offset], blen);
+	if(add_length)
+		offset += imquic_write_moqint(moq->version, buflen, &bytes[offset], blen);
 	if(buflen > 0) {
 		memcpy(&bytes[offset], buf, buflen);
 		offset += buflen;
@@ -6934,15 +6950,14 @@ size_t imquic_moq_parse_request_parameter(imquic_moq_context *moq, uint8_t *byte
 	if((moq->version <= IMQUIC_MOQ_VERSION_16 && type % 2 == 1) ||
 			(moq->version >= IMQUIC_MOQ_VERSION_17 && moq->version < IMQUIC_MOQ_VERSION_22 &&
 				(type == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN ||
-				type == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER || type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX ||
+				type == IMQUIC_MOQ_REQUEST_PARAM_LOCATION_FILTER ||
 				type == IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS)) ||
 			(moq->version == IMQUIC_MOQ_VERSION_22 &&
 				(type == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN ||
 				type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX ||
 				type == IMQUIC_MOQ_REQUEST_PARAM_FILL_PARAMETERS)) ||
 			(moq->version >= IMQUIC_MOQ_VERSION_23 &&
-				(type == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN ||
-				type == IMQUIC_MOQ_REQUEST_PARAM_TRACK_NAMESPACE_PREFIX))) {
+				(type == IMQUIC_MOQ_REQUEST_PARAM_AUTHORIZATION_TOKEN))) {
 		len = imquic_read_moqint(moq->version, &bytes[offset], blen-offset, &length);
 		IMQUIC_MOQ_CHECK_ERR(length == 0 || length > blen-offset, error, IMQUIC_MOQ_INVALID_PARAMETER, 0, "Broken MoQ request parameter");
 		offset += length;
@@ -8464,6 +8479,13 @@ int imquic_moq_update_request(imquic_connection *conn, uint64_t request_id, uint
 			parameters->fill_parameters_set = FALSE;
 		}
 	}
+	if((moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
+			moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_TRACKS) && parameters->track_namespace_prefix_set) {
+		/* Take note of the updated track namespace prefix: we'll
+		 * only enforce it if the peer accepts the update */
+		imquic_moq_namespace_free(moq_stream->updated_namespace_prefix);
+		moq_stream->updated_namespace_prefix = imquic_moq_namespace_duplicate(&parameters->track_namespace_prefix[0]);
+	}
 	imquic_mutex_unlock(&moq->mutex);
 	/* Send the message */
 	uint8_t buffer[200];
@@ -8524,14 +8546,21 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
 	if((moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_NAMESPACE ||
 			moq_stream->request_type == IMQUIC_MOQ_SUBSCRIBE_TRACKS) && moq_stream->updated_namespace_prefix != NULL) {
 		/* Update to the namespace prefix accepted, enforce it */
+		imquic_mutex_lock(&moq_stream->mutex);
 		imquic_moq_namespace_free(moq_stream->namespace_prefix);
-		moq_stream->namespace_prefix = moq_stream->last_tuple = moq_stream->updated_namespace_prefix;
+		moq_stream->namespace_prefix = moq_stream->updated_namespace_prefix;
+		moq_stream->last_tuple = moq_stream->namespace_prefix;
 		uint64_t tns_num = 0;
 		imquic_moq_namespace_is_valid(moq_stream->updated_namespace_prefix, FALSE, &tns_num);
 		while(moq_stream->last_tuple->next != NULL)
 			moq_stream->last_tuple = moq_stream->last_tuple->next;
 		moq_stream->namespace_prefix_size = tns_num;
 		moq_stream->updated_namespace_prefix = NULL;
+		/* FIXME We should actually notify those that don't belong anymore */
+		if(moq_stream->namespaces == NULL)
+			moq_stream->namespaces = g_hash_table_new_full(g_str_hash, g_str_equal, (GDestroyNotify)g_free, NULL);
+		g_hash_table_remove_all(moq_stream->namespaces);
+		imquic_mutex_unlock(&moq_stream->mutex);
 	}
 	uint8_t buffer[200];
 	size_t blen = sizeof(buffer), start = 0;
