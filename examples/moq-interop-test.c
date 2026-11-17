@@ -132,7 +132,6 @@ static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static gboolean webtransport = FALSE;
 static char *host = NULL, *path = NULL;
 static uint16_t port = 0;
-static uint64_t max_request_id = 100;
 static GList *all_tests = NULL, *tests = NULL;
 static imquic_moq_interop_test_context *current_test = NULL;
 
@@ -488,7 +487,6 @@ static void imquic_moq_interop_new_connection(imquic_connection *conn, void *use
 		g_hash_table_insert(connections, conn, client);
 		imquic_mutex_unlock(&mutex);
 	}
-	imquic_moq_set_max_request_id(conn, max_request_id);
 }
 
 static void imquic_moq_interop_ready(imquic_connection *conn) {

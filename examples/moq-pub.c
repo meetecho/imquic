@@ -51,7 +51,6 @@ static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
 static volatile int started = 0, send_objects = 0, done_sent = 0, new_group_request = 0;
-static uint64_t max_request_id = 100;
 static imquic_moq_location sub_start = { 0 }, sub_end = { 0 };
 static uint64_t group_id = 0, object_id = 0;
 
@@ -64,7 +63,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, max_request_id);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
 		relay_authlen = sizeof(relay_auth);

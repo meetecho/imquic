@@ -55,8 +55,7 @@ static void imquic_demo_handle_signal(int signum) {
 /* Subscriber state */
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
-static uint64_t max_request_id = 100,
-	catalog_request_id = 0, catalog_fetch_request_id = 0,
+static uint64_t catalog_request_id = 0, catalog_fetch_request_id = 0,
 	audio_request_id = 0, video_request_id = 0, video_fetch_request_id = 0,
 	catalog_track_alias = 0, audio_track_alias = 0, video_track_alias = 0;
 static imquic_moq_namespace sub_namespace[32] = { 0 };
@@ -354,7 +353,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, max_request_id);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Waiting for MoQ connection to be ready (SETUP)...\n",
 		imquic_get_connection_name(conn));
 }

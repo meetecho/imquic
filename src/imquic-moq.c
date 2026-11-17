@@ -602,17 +602,6 @@ void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
-		void (* incoming_publish_namespace_cancel)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason)) {
-	if(endpoint != NULL) {
-		if(endpoint->protocol != IMQUIC_MOQ) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
-			return;
-		}
-		endpoint->callbacks.moq.incoming_publish_namespace_cancel = incoming_publish_namespace_cancel;
-	}
-}
-
 void imquic_set_publish_namespace_accepted_cb(imquic_endpoint *endpoint,
 		void (* publish_namespace_accepted)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
@@ -784,20 +773,9 @@ void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 	}
 }
 
-void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
-		void (* requests_blocked)(imquic_connection *conn, uint64_t max_request_id)) {
-	if(endpoint != NULL) {
-		if(endpoint->protocol != IMQUIC_MOQ) {
-			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
-			return;
-		}
-		endpoint->callbacks.moq.requests_blocked = requests_blocked;
-	}
-}
-
 void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
 		void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id,
-			imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters)) {
+			imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters)) {
 	if(endpoint != NULL) {
 		if(endpoint->protocol != IMQUIC_MOQ) {
 			IMQUIC_LOG(IMQUIC_LOG_WARN, "Can't set MoQ callback on non-MoQ endpoint\n");
@@ -1060,10 +1038,6 @@ void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
 /* Versions */
 const char *imquic_moq_version_str(imquic_moq_version version) {
 	switch(version) {
-		case IMQUIC_MOQ_VERSION_16:
-			return "draft-ietf-moq-transport-16";
-		case IMQUIC_MOQ_VERSION_17:
-			return "draft-ietf-moq-transport-17";
 		case IMQUIC_MOQ_VERSION_18:
 			return "draft-ietf-moq-transport-18";
 		case IMQUIC_MOQ_VERSION_19:
@@ -1077,7 +1051,7 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 		case IMQUIC_MOQ_VERSION_23:
 			return "draft-ietf-moq-transport-23";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "draft-ietf-moq-transport-XX(-from--16-to-23)";
+			return "draft-ietf-moq-transport-XX(-from--18-to-23)";
 		default: break;
 	}
 	return NULL;
@@ -1085,10 +1059,6 @@ const char *imquic_moq_version_str(imquic_moq_version version) {
 
 static const char *imquic_moq_version_alpn(imquic_moq_version version) {
 	switch(version) {
-		case IMQUIC_MOQ_VERSION_16:
-			return "moqt-16";
-		case IMQUIC_MOQ_VERSION_17:
-			return "moqt-17";
 		case IMQUIC_MOQ_VERSION_18:
 			return "moqt-18";
 		case IMQUIC_MOQ_VERSION_19:
@@ -1102,7 +1072,7 @@ static const char *imquic_moq_version_alpn(imquic_moq_version version) {
 		case IMQUIC_MOQ_VERSION_23:
 			return "moqt-23";
 		case IMQUIC_MOQ_VERSION_ANY:
-			return "moqt-23,moqt-22,moqt-21,moqt-20,moqt-19,moqt-18,moqt-17,moqt-16";
+			return "moqt-23,moqt-22,moqt-21,moqt-20,moqt-19,moqt-18";
 		default: break;
 	}
 	return NULL;
@@ -1140,7 +1110,7 @@ const char *imquic_moq_object_status_str(imquic_moq_object_status status) {
 const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_property_type type) {
 	switch(type) {
 		case IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT:
-			return (version >= IMQUIC_MOQ_VERSION_18 ? "Object Delivery Timeout" : "Delivery Timeout");
+			return "Object Delivery Timeout";
 		case IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION:
 			return "Max Cache Duration";
 		case IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT:

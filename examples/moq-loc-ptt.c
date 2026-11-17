@@ -105,7 +105,7 @@ static imquic_mutex mutex = IMQUIC_MUTEX_INITIALIZER;
 /* Local participant state */
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
-static uint64_t max_request_id = 100, sub_request_id = 0,
+static uint64_t sub_request_id = 0,
 	pub_request_id = 0, pub_track_alias = 0;
 static imquic_moq_namespace pub_namespace[2] = { 0 };
 static imquic_moq_track pub_track = { 0 };
@@ -303,7 +303,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, max_request_id);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Waiting for MoQ connection to be ready (SETUP)...\n",
 		imquic_get_connection_name(conn));
 }
@@ -328,15 +327,9 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	params.paused = FALSE;
 	imquic_moq_namespace *bak = pub_namespace[0].next;
 	pub_namespace[0].next = NULL;
-	if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
-		/* Older versions of MoQ used SUBSCRIBE_NAMESPACE to get PUBLISH too */
-		sub_request_id = imquic_moq_get_next_request_id(conn);
-		imquic_moq_subscribe_namespace(conn, sub_request_id, pub_namespace, IMQUIC_MOQ_WANT_PUBLISH, &params);
-	} else {
-		/* Use SUBSCRIBE_TRACKS for PUBLISH */
-		sub_request_id = imquic_moq_get_next_request_id(conn);
-		imquic_moq_subscribe_tracks(conn, sub_request_id, pub_namespace, &params);
-	}
+	/* Use SUBSCRIBE_TRACKS for PUBLISH */
+	sub_request_id = imquic_moq_get_next_request_id(conn);
+	imquic_moq_subscribe_tracks(conn, sub_request_id, pub_namespace, &params);
 	pub_namespace[0].next = bak;
 }
 

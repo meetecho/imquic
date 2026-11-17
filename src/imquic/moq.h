@@ -35,7 +35,7 @@
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
  * WebTransort protocol. At the time of writing, this stack
- * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v23
+ * supports MoQ versions from v18 (\ref IMQUIC_MOQ_VERSION_18) up to v23
  * (\ref IMQUIC_MOQ_VERSION_23), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
@@ -303,12 +303,8 @@
 typedef enum imquic_moq_version {
 	/* Base */
 	IMQUIC_MOQ_VERSION_BASE = 0xff000000,
-	/* Draft version -16 */
-	IMQUIC_MOQ_VERSION_MIN = 0xff000010,
-	IMQUIC_MOQ_VERSION_16 = 0xff000010,
-	/* Draft version -17 */
-	IMQUIC_MOQ_VERSION_17 = 0xff000011,
 	/* Draft version -18 */
+	IMQUIC_MOQ_VERSION_MIN = 0xff000012,
 	IMQUIC_MOQ_VERSION_18 = 0xff000012,
 	/* Draft version -19 */
 	IMQUIC_MOQ_VERSION_19 = 0xff000013,
@@ -500,8 +496,6 @@ typedef enum imquic_moq_error_code {
 	IMQUIC_MOQ_INVALID_REQUEST_ID = 0x4,
 	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x5,
 	IMQUIC_MOQ_MALFORMED_KEY_VALUE = 0x6,	/* Was KEYVALUE_FORMATTING_ERROR, renamed in v23 */
-		IMQUIC_MOQ_INVALID_REQUIRED_REQUEST_ID = 0x7,	/* Deprecated in v18 */
-		IMQUIC_MOQ_TOO_MANY_REQUESTS = 0x7,		/* Deprecated in v17 */
 	IMQUIC_MOQ_INVALID_PATH = 0x8,
 	IMQUIC_MOQ_MALFORMED_PATH = 0x9,
 	IMQUIC_MOQ_GOAWAY_TIMEOUT = 0x10,
@@ -559,8 +553,8 @@ typedef enum imquic_moq_request_error_code {
 	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,	/* Deprecated in v23 */
 	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
 	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,	/* Deprecated in v20 */
-	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
-	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
+	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,
+	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,
 	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
 	IMQUIC_MOQ_REQERR_INVALID_FILTER = 0x36,	/* Added in v19 */
 } imquic_moq_request_error_code;
@@ -576,8 +570,8 @@ typedef enum imquic_moq_pub_done_code {
 	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
 	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,	/* Deprecated in v20 */
 	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
-	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,	/* Swapped in v18 */
-	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,	/* Swapped in v18 */
+	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,
+	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,
 	IMQUIC_MOQ_PUBDONE_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v23 */
 	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
 	IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD = 0x9,
@@ -594,10 +588,10 @@ typedef enum imquic_moq_reset_stream_code {
 	IMQUIC_MOQ_RESET_CANCELLED = 0x1,
 	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
 	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
-	IMQUIC_MOQ_RESET_GOING_AWAY = 0x4,	/* Added in v18 */
+	IMQUIC_MOQ_RESET_GOING_AWAY = 0x4,
 	IMQUIC_MOQ_RESET_TOO_FAR_BEHIND = 0x5,
-	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x6,	/* Value changed in v18, deprecated in v23 */
-	IMQUIC_MOQ_RESET_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v18 */
+	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x6,	/* Deprecated in v23 */
+	IMQUIC_MOQ_RESET_EXPIRED_AUTH_TOKEN = 0x7,
 	IMQUIC_MOQ_RESET_EXCESSIVE_LOAD = 0x9,
 	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
 } imquic_moq_reset_stream_code;
@@ -618,18 +612,6 @@ typedef struct imquic_moq_location_filter {
 	imquic_moq_location_range range;
 } imquic_moq_location_filter;
 
-/*! \brief Subscribe options for namespaces
- * \note Deprecated in v18, since there's a separate \c SUBSRIBE_TRACK now */
-typedef enum imquic_moq_subscribe_namespace_options {
-	IMQUIC_MOQ_WANT_PUBLISH = 0x0,
-	IMQUIC_MOQ_WANT_NAMESPACE = 0x1,
-	IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE = 0x2,
-} imquic_moq_subscribe_namespace_options;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_subscribe_namespace_options value.
- * @param type The imquic_moq_subscribe_namespace_options value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_subscribe_namespace_options_str(imquic_moq_subscribe_namespace_options type);
-
 /*! \brief Collection of MoQ filters */
 typedef struct imquic_moq_filters imquic_moq_filters;
 
@@ -648,10 +630,6 @@ typedef struct imquic_moq_request_parameters {
 	uint8_t auth_token[256];
 	/*! \brief Size of the AUTHORIZATION_TOKEN parameter */
 	size_t auth_token_len;
-	/*! \brief Whether the DELIVERY_TIMEOUT parameter is set */
-	gboolean delivery_timeout_set;
-	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
-	uint64_t delivery_timeout;
 	/*! \brief Whether the OBJECT_DELIVERY_TIMEOUT parameter is set */
 	gboolean object_delivery_timeout_set;
 	/*! \brief Value of the OBJECT_DELIVERY_TIMEOUT parameter */
@@ -814,7 +792,7 @@ typedef struct imquic_moq_object {
 	/*! \brief Stream ID used to deliver this object (ignored for IMQUIC_MOQ_USE_DATAGRAM delivery)
 	 * \note This is set by the core for incoming objects, and is ignored for outgoing ones */
 	uint64_t stream_id;
-	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
+	/*! \brief Whether the first object in the stream contains the first object in the subgroup */
 	gboolean first_of_subgroup;
 	/*! \brief Whether the objects of this group/subgroup are the last in the group
 	 * \note This applies to multiple objects, not just the last one, considering it's
@@ -850,13 +828,11 @@ typedef struct imquic_moq_property {
  * \note The library will not try to interpret properties and their
  * payload: this is always left up to applications */
 typedef enum imquic_moq_property_type {
-	/*! \brief Object Delivery Timeout (added in v18) */
+	/*! \brief Object Delivery Timeout */
 	IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT = 0x02,
-		/*! \brief Delivery Timeout (deprecated in v18) */
-		IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT = 0x02,
 	/*! \brief Max Cache Duration */
 	IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION = 0x04,
-	/*! \brief Subgroup Delivery Timeout (added in v18) */
+	/*! \brief Subgroup Delivery Timeout */
 	IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT = 0x06,
 	/*! \brief Default Publisher Priority */
 	IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
@@ -1042,7 +1018,7 @@ size_t imquic_moq_build_error_details(imquic_moq_version version, GList *error_d
 void imquic_moq_error_detail_destroy(imquic_moq_error_detail *error_detail);
 
 /*! \brief MoQ Redirect Structure
- * \note Added in v18, a specialization of Error Details data since v23s */
+ * \note A specialization of Error Details data since v23s */
 typedef struct imquic_moq_redirect {
 	/* Connect URI */
 	char *connect_uri;
@@ -1069,7 +1045,7 @@ imquic_moq_error_detail *imquic_moq_build_redirect_error_detail(imquic_moq_versi
 void imquic_moq_redirect_destroy(imquic_moq_redirect *redirect_error_detail);
 ///@}
 
-/** @name MoQ's flavour of varint (introduced in v17)
+/** @name MoQ's flavour of varint
  */
 ///@{
 /*! \brief Read a variable size integer from a buffer
@@ -1257,16 +1233,6 @@ void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
  * @param incoming_publish_namespace Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE */
 void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
-/*! \brief Configure the callback function to be notified when there's
- * an incoming \c PUBLISH_NAMESPACE_CANCEL request.
- * \note Starting in v17, \c PUBLISH_NAMESPACE_CANCEL doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
- * \c PUBLISH_NAMESPACE closed the associated bidirectiomal stream before
- * getting a \c REQUEST_OK or \c REQUEST_ERROR back.
- * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_publish_namespace_cancel Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_CANCEL */
-void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when an
  * \c PUBLISH_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1282,8 +1248,7 @@ void imquic_set_publish_namespace_error_cb(imquic_endpoint *endpoint,
 		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c PUBLISH_NAMESPACE_DONE request.
- * \note Starting in v17, \c PUBLISH_NAMESPACE_DONE doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
+ * \note This callback is only fired if the endpoint that sent the
  * \c PUBLISH_NAMESPACE closed the associated bidirectiomal stream after
  * getting a \c REQUEST_OK or \c REQUEST_ERROR back.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1363,27 +1328,19 @@ void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
 	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE request.
- * \note Starting in v17, \c UNSUBSCRIBE doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
+ * \note This callback is only fired if the endpoint that sent the
  * \c SUBSCRIBE closed the associated bidirectiomal stream.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe Pointer to the function that will handle the incoming \c UNSUBSCRIBE */
 void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c REQUESTS_BLOCKED request.
- * \note Deprecated in v17
- * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param requests_blocked Pointer to the function that will handle the incoming \c REQUESTS_BLOCKED */
-void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
-	void (* requests_blocked)(imquic_connection *conn, uint64_t max_request_id));
-/*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE_NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe_namespace Pointer to the function that will handle the incoming \c SUBSCRIBE_NAMESPACE */
 void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters));
+		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1472,8 +1429,7 @@ void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c FETCH_CANCEL request.
- * \note Starting in v17, \c FETCH_CANCEL doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
+ * \note This callback is only fired if the endpoint that sent the
  * \c FETCH closed the associated bidirectiomal stream.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_fetch_cancel Pointer to the function that will handle the incoming \c FETCH_CANCEL */
@@ -1552,17 +1508,6 @@ void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
  * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_set_connection_auth(imquic_connection *conn, uint8_t *auth, size_t authlen);
-
-/*! \brief Helper function to set the Maximum Request ID a subscriber can send
- * \note Deprecated in v17, and so not needed anymore. For older versions,
- * if invoked before the MoQ connection setup, it will be put in the
- * setup parameter, otherwise it's sent in a \c MAX_REQUEST_ID request.
- * Notice that whatever is passed to the request will be decremented by
- * 1, as per the specification, meaning you cannot pass \c 0 as a value here
- * @param conn The imquic_connection to update
- * @param max_request_id The Maximum Request ID to enforce
- * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_id);
 
 /*! \brief Helper function to get the next Request ID we can use
  * @param conn The imquic_connection to query
@@ -1731,11 +1676,10 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID
  * @param tns The imquic_moq_namespace namespace to subscribe for
- * @param subscribe_options The subscribe options to add to the request
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
@@ -1754,8 +1698,6 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
 int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c UNSUBSCRIBE_NAMESPACE request
- * \note Starting in v16, this doesn't actually send a request, but simply
- * closes the bidirectional STREAM that was created for the subscription
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1786,8 +1728,6 @@ int imquic_moq_accept_subscribe_tracks(imquic_connection *conn, uint64_t request
 int imquic_moq_reject_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c UNSUBSCRIBE_TRACKS request
- * \note Starting in v16, this doesn't actually send a request, but simply
- * closes the bidirectional STREAM that was created for the subscription
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_TRACKS request
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1869,8 +1809,7 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
 	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
-/*! \brief Function to send a \c FETCH_CANCEL request (legacy) or close
- * the stream associated with the \c FETCH subscription (new draft versions)
+/*! \brief Function to close the stream associated with a \c FETCH
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to cancel_fetch from
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1931,14 +1870,14 @@ int imquic_moq_requests_blocked(imquic_connection *conn);
 /*! \brief Function to send a \c GOAWAY request for the whole connection
  * @param conn The imquic_connection to send the request on
  * @param uri Where the client can connect to continue the session
- * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
+ * @param timeout Timeout in ms to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout);
 /*! \brief Function to send a \c GOAWAY for an existing request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the request to address
  * @param uri Where the client can connect to continue the session
- * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
+ * @param timeout Timeout in ms to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_request_goaway(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout);
 ///@}

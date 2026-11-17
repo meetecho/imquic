@@ -298,7 +298,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, UINT64_MAX);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
 		relay_authlen = sizeof(relay_auth);

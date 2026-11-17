@@ -42,7 +42,7 @@ static void imquic_demo_handle_signal(int signum) {
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
 static GList *request_ids = NULL;
-static uint64_t max_request_id = 100, sn_request_id = 0, st_request_id = 0;
+static uint64_t sn_request_id = 0, st_request_id = 0;
 static imquic_moq_location_filter_type filter_type = IMQUIC_MOQ_LOCATION_FILTER_NEXT_OBJECT;
 static imquic_moq_location_filter_type_legacy filter_type_legacy = IMQUIC_MOQ_FILTER_LARGEST_OBJECT;
 static imquic_moq_location start_location = { 0 }, end_location = { 0 }, end_location_sub = { 0 };
@@ -67,7 +67,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, max_request_id);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
 		relay_authlen = sizeof(relay_auth);
@@ -118,43 +117,37 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			params.forward = FALSE;
 			params.paused = TRUE;
 		}
-		if(imquic_moq_get_version(conn) < IMQUIC_MOQ_VERSION_18) {
-			/* Older versions of MoQ used SUBSCRIBE_NAMESPACE to get PUBLISH too */
-			sn_request_id = imquic_moq_get_next_request_id(conn);
-			imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE, &params);
-		} else {
-			/* Use SUBSCRIBE_TRACKS for PUBLISH, but send a SUBSCRIBE_NAMESPACE too just for testing */
-			sn_request_id = imquic_moq_get_next_request_id(conn);
-			imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, IMQUIC_MOQ_WANT_NAMESPACE, &params);
-			imquic_moq_filters *filters = NULL;
-			if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
-				/* Add some filter ranges too, just form testing */
-				filters = imquic_moq_filters_create();
-				imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_TRACK_PROPERTY, 0,
-					IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER, IMQUIC_MOQ_ORDERING_ASCENDING, IMQUIC_MOQ_ORDERING_ASCENDING));
-				params.filters_set = TRUE;
-				params.filters = filters;
-			}
-			imquic_moq_request_parameters fill_parameters;
-			if(moq_version >= IMQUIC_MOQ_VERSION_20 && options.fetch != NULL && options.join_offset >= 0) {
-				/* The equivalent of Joining FETCH in newer versions are FILL_PARAMETERS */
-				IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Using FILL_PARAMETERS to mimick the Joining FETCH\n",
-					imquic_get_connection_name(moq_conn));
-				imquic_moq_request_parameters_init_defaults(&fill_parameters);
-				fill_parameters.group_order_set = TRUE;
-				fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
-				if(options.fetch && !strcasecmp(options.fetch, "descending"))
-					fill_parameters.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
-				fill_parameters.location_filter_set = TRUE;
-				fill_parameters.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
-				fill_parameters.location_filter.range.start.group = options.join_offset + 1;
-				params.fill_parameters_set = TRUE;
-				params.fill_parameters = &fill_parameters;
-			}
-			st_request_id = imquic_moq_get_next_request_id(conn);
-			imquic_moq_subscribe_tracks(conn, st_request_id, sub_namespace, &params);
-			imquic_moq_filters_destroy(filters);
+		/* Use SUBSCRIBE_TRACKS for PUBLISH, but send a SUBSCRIBE_NAMESPACE too just for testing */
+		sn_request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_subscribe_namespace(conn, sn_request_id, sub_namespace, &params);
+		imquic_moq_filters *filters = NULL;
+		if(options.test_filter_ranges && moq_version >= IMQUIC_MOQ_VERSION_19) {
+			/* Add some filter ranges too, just form testing */
+			filters = imquic_moq_filters_create();
+			imquic_moq_filters_add(filters, imquic_moq_filter_range_create(IMQUIC_MOQ_FILTER_TRACK_PROPERTY, 0,
+				IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER, IMQUIC_MOQ_ORDERING_ASCENDING, IMQUIC_MOQ_ORDERING_ASCENDING));
+			params.filters_set = TRUE;
+			params.filters = filters;
 		}
+		imquic_moq_request_parameters fill_parameters;
+		if(moq_version >= IMQUIC_MOQ_VERSION_20 && options.fetch != NULL && options.join_offset >= 0) {
+			/* The equivalent of Joining FETCH in newer versions are FILL_PARAMETERS */
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Using FILL_PARAMETERS to mimick the Joining FETCH\n",
+				imquic_get_connection_name(moq_conn));
+			imquic_moq_request_parameters_init_defaults(&fill_parameters);
+			fill_parameters.group_order_set = TRUE;
+			fill_parameters.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+			if(options.fetch && !strcasecmp(options.fetch, "descending"))
+				fill_parameters.group_order = IMQUIC_MOQ_ORDERING_DESCENDING;
+			fill_parameters.location_filter_set = TRUE;
+			fill_parameters.location_filter.type = IMQUIC_MOQ_LOCATION_FILTER_RELATIVE_START;
+			fill_parameters.location_filter.range.start.group = options.join_offset + 1;
+			params.fill_parameters_set = TRUE;
+			params.fill_parameters = &fill_parameters;
+		}
+		st_request_id = imquic_moq_get_next_request_id(conn);
+		imquic_moq_subscribe_tracks(conn, st_request_id, sub_namespace, &params);
+		imquic_moq_filters_destroy(filters);
 		if(options.update_subscribe_namespace > 0) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Scheduling a REQUEST_UPDATE in %d seconds\n",
 				imquic_get_connection_name(conn), options.update_subscribe_namespace);
