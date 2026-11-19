@@ -312,7 +312,7 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Connection established (ALPN=%s)\n",
 			name, conn->chosen_alpn);
 		conn->alpn_negotiated = TRUE;
-		if(endpoint->webtransport && !strcasecmp(conn->chosen_alpn, "h3"))
+		if(conn->http3 == NULL && endpoint->webtransport && !strcasecmp(conn->chosen_alpn, "h3"))
 			conn->http3 = imquic_http3_connection_create(conn, endpoint->wt_protocols);
 		if(conn->http3 != NULL) {
 			if(conn->is_server) {
@@ -371,6 +371,12 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		}
 		if(fin_or_event == picoquic_callback_stream_fin)
 			imquic_stream_mark_complete(stream, TRUE);
+		if(conn->http3 == NULL && !endpoint->is_server && endpoint->webtransport && !conn->alpn_negotiated) {
+			/* The server's SETTINGS may come as 0.5-RTT data, before almost_ready */
+			const char *alpn = picoquic_tls_get_negotiated_alpn(pconn);
+			if(alpn != NULL && !strcasecmp(alpn, "h3"))
+				conn->http3 = imquic_http3_connection_create(conn, endpoint->wt_protocols);
+		}
 		if(conn->http3 != NULL) {
 			/* Process the data as HTTP/3 */
 			imquic_http3_process_stream_data(conn, stream, bytes, blen, new_stream);
