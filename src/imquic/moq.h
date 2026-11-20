@@ -35,8 +35,8 @@
  * all supported versions, while for servers it will accept the first
  * offered among the supported ones, when negotiared via ALPN or
  * WebTransort protocol. At the time of writing, this stack
- * supports MoQ versions from v16 (\ref IMQUIC_MOQ_VERSION_16) up to v22
- * (\ref IMQUIC_MOQ_VERSION_22), but not all versions will be supported
+ * supports MoQ versions from v18 (\ref IMQUIC_MOQ_VERSION_18) up to v23
+ * (\ref IMQUIC_MOQ_VERSION_23), but not all versions will be supported
  * forever. It should also be pointed out that not all features of all
  * versions are currently supported, so there may be some missing functionality
  * depending on which version you decide to negotiate. The \ref IMQUIC_MOQ_VERSION_MIN
@@ -303,12 +303,8 @@
 typedef enum imquic_moq_version {
 	/* Base */
 	IMQUIC_MOQ_VERSION_BASE = 0xff000000,
-	/* Draft version -16 */
-	IMQUIC_MOQ_VERSION_MIN = 0xff000010,
-	IMQUIC_MOQ_VERSION_16 = 0xff000010,
-	/* Draft version -17 */
-	IMQUIC_MOQ_VERSION_17 = 0xff000011,
 	/* Draft version -18 */
+	IMQUIC_MOQ_VERSION_MIN = 0xff000012,
 	IMQUIC_MOQ_VERSION_18 = 0xff000012,
 	/* Draft version -19 */
 	IMQUIC_MOQ_VERSION_19 = 0xff000013,
@@ -318,7 +314,9 @@ typedef enum imquic_moq_version {
 	IMQUIC_MOQ_VERSION_21 = 0xff000015,
 	/* Draft version -22 */
 	IMQUIC_MOQ_VERSION_22 = 0xff000016,
-	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_22,
+	/* Draft version -23 */
+	IMQUIC_MOQ_VERSION_23 = 0xff000017,
+	IMQUIC_MOQ_VERSION_MAX = IMQUIC_MOQ_VERSION_23,
 	/* Any version starting from v15: for client, it means offer all supported versions;
 	 * for servers, it means accept the first supported offered version */
 	IMQUIC_MOQ_VERSION_ANY = 0xff0000ff,
@@ -433,17 +431,6 @@ gboolean imquic_moq_track_is_valid(imquic_moq_track *tn);
  * @param tn The track to free */
 void imquic_moq_track_free(imquic_moq_track *tn);
 
-/*! \brief MoQ Redirect Structure
- * \note Added in v18 */
-typedef struct imquic_moq_redirect {
-	/* Connect URI */
-	char *connect_uri;
-	/* Track Namespace */
-	imquic_moq_namespace *track_namespace;
-	/* Track Name */
-	imquic_moq_track *track_name;
-} imquic_moq_redirect;
-
 /*! \brief Group ordering for tracks */
 typedef enum imquic_moq_group_order {
 	IMQUIC_MOQ_ORDERING_ORIGINAL = 0x0,
@@ -497,6 +484,123 @@ typedef struct imquic_moq_location_range {
 	imquic_moq_location end;
 } imquic_moq_location_range;
 
+/** @name MoQ error and status codes
+ */
+///@{
+/*! \brief Generic error codes */
+typedef enum imquic_moq_error_code {
+	IMQUIC_MOQ_NO_ERROR = 0x0,
+	IMQUIC_MOQ_INTERNAL_ERROR = 0x1,
+	IMQUIC_MOQ_UNAUTHORIZED = 0x2,
+	IMQUIC_MOQ_PROTOCOL_VIOLATION = 0x3,
+	IMQUIC_MOQ_INVALID_REQUEST_ID = 0x4,
+	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x5,
+	IMQUIC_MOQ_MALFORMED_KEY_VALUE = 0x6,	/* Was KEYVALUE_FORMATTING_ERROR, renamed in v23 */
+	IMQUIC_MOQ_INVALID_PATH = 0x8,
+	IMQUIC_MOQ_MALFORMED_PATH = 0x9,
+	IMQUIC_MOQ_GOAWAY_TIMEOUT = 0x10,
+	IMQUIC_MOQ_CONTROL_MESSAGE_TIMEOUT = 0x11,
+	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
+	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
+	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
+	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,	/* Deprecated in v20 */
+	IMQUIC_MOQ_MALFORMED_AUTH_TOKEN = 0x16,
+	IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS = 0x17,
+	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
+	IMQUIC_MOQ_INVALID_AUTHORITY = 0x19,
+	IMQUIC_MOQ_MALFORMED_AUTHORITY = 0x1A,
+	IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES = 0x1B,		/* Added in v19 */
+	IMQUIC_MOQ_INVALID_STREAM_HEADER = 0x200,		/* Added in v23 */
+	IMQUIC_MOQ_MALFORMED_OBJECT = 0x201,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_OBJECT_STATUS = 0x202,		/* Added in v23 */
+	IMQUIC_MOQ_TRUNCATED_OBJECT = 0x203,		/* Added in v23 */
+	IMQUIC_MOQ_MALFORMED_MESSAGE = 0x300,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_FIELD = 0x301,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_TRACK_NAMESPACE = 0x302,		/* Added in v23 */
+	IMQUIC_MOQ_UNEXPECTED_MESSAGE = 0x303,		/* Added in v23 */
+	IMQUIC_MOQ_ROLE_VIOLATION = 0x304,		/* Added in v23 */
+	IMQUIC_MOQ_INVALID_PARAMETER = 0x305,		/* Added in v23 */
+	IMQUIC_MOQ_CLOSED_CONTROL_STREAM = 0x306,		/* Added in v23 */
+	IMQUIC_MOQ_DELTA_ENCODING_OVERFLOW = 0x400,		/* Added in v23 */
+	IMQUIC_MOQ_FIELD_LENGTH_EXCEEDED = 0x401,		/* Added in v23 */
+	/* Not an actual error */
+	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
+} imquic_moq_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_error_code value.
+ * @param code The imquic_moq_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_error_code_str(imquic_moq_error_code code);
+
+/*! \brief Request error codes */
+typedef enum imquic_moq_request_error_code {
+	IMQUIC_MOQ_REQERR_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_REQERR_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_REQERR_TIMEOUT = 0x2,
+	IMQUIC_MOQ_REQERR_NOT_SUPPORTED = 0x3,
+	IMQUIC_MOQ_REQERR_MALFORMED_AUTH_TOKEN = 0x4,
+	IMQUIC_MOQ_REQERR_EXPIRED_AUTH_TOKEN = 0x5,
+	IMQUIC_MOQ_REQERR_GOING_AWAY = 0x6,
+	IMQUIC_MOQ_REQERR_EXCESSIVE_LOAD = 0x9,
+	IMQUIC_MOQ_REQERR_UNAVAILABLE = 0xA,
+	/* The following are returned by publishers */
+	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
+	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
+	IMQUIC_MOQ_REQERR_MALFORMED_TRACK = 0x12,
+		IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,	/* Deprecated in v19 */
+	/* The following are returned by subscribers */
+	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
+	/* Others */
+	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,	/* Deprecated in v23 */
+	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
+	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,	/* Deprecated in v20 */
+	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,
+	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,
+	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
+	IMQUIC_MOQ_REQERR_INVALID_FILTER = 0x36,	/* Added in v19 */
+} imquic_moq_request_error_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
+ * @param code The imquic_moq_request_error_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code);
+
+/*! \brief Publish done codes */
+typedef enum imquic_moq_pub_done_code {
+	IMQUIC_MOQ_PUBDONE_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_PUBDONE_UNAUTHORIZED = 0x1,
+	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
+	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,	/* Deprecated in v20 */
+	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
+	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,
+	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,
+	IMQUIC_MOQ_PUBDONE_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v23 */
+	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
+	IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD = 0x9,
+	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
+} imquic_moq_pub_done_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_pub_done_code value.
+ * @param code The imquic_moq_pub_done_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code);
+
+/*! \brief RESET_STREAM error codes */
+typedef enum imquic_moq_reset_stream_code {
+	IMQUIC_MOQ_RESET_INTERNAL_ERROR = 0x0,
+	IMQUIC_MOQ_RESET_CANCELLED = 0x1,
+	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
+	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
+	IMQUIC_MOQ_RESET_GOING_AWAY = 0x4,
+	IMQUIC_MOQ_RESET_TOO_FAR_BEHIND = 0x5,
+	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x6,	/* Deprecated in v23 */
+	IMQUIC_MOQ_RESET_EXPIRED_AUTH_TOKEN = 0x7,
+	IMQUIC_MOQ_RESET_EXCESSIVE_LOAD = 0x9,
+	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
+} imquic_moq_reset_stream_code;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_reset_stream_code value.
+ * @param code The imquic_moq_reset_stream_code value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
+///@}
+
 /*! \brief MoQ location filter (new)
  * \note Added in v20 */
 typedef struct imquic_moq_location_filter {
@@ -507,18 +611,6 @@ typedef struct imquic_moq_location_filter {
 	/*! \brief The location range, depending on the type */
 	imquic_moq_location_range range;
 } imquic_moq_location_filter;
-
-/*! \brief Subscribe options for namespaces
- * \note Deprecated in v18, since there's a separate \c SUBSRIBE_TRACK now */
-typedef enum imquic_moq_subscribe_namespace_options {
-	IMQUIC_MOQ_WANT_PUBLISH = 0x0,
-	IMQUIC_MOQ_WANT_NAMESPACE = 0x1,
-	IMQUIC_MOQ_WANT_PUBLISH_AND_NAMESPACE = 0x2,
-} imquic_moq_subscribe_namespace_options;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_subscribe_namespace_options value.
- * @param type The imquic_moq_subscribe_namespace_options value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_subscribe_namespace_options_str(imquic_moq_subscribe_namespace_options type);
 
 /*! \brief Collection of MoQ filters */
 typedef struct imquic_moq_filters imquic_moq_filters;
@@ -538,10 +630,6 @@ typedef struct imquic_moq_request_parameters {
 	uint8_t auth_token[256];
 	/*! \brief Size of the AUTHORIZATION_TOKEN parameter */
 	size_t auth_token_len;
-	/*! \brief Whether the DELIVERY_TIMEOUT parameter is set */
-	gboolean delivery_timeout_set;
-	/*! \brief Value of the DELIVERY_TIMEOUT parameter */
-	uint64_t delivery_timeout;
 	/*! \brief Whether the OBJECT_DELIVERY_TIMEOUT parameter is set */
 	gboolean object_delivery_timeout_set;
 	/*! \brief Value of the OBJECT_DELIVERY_TIMEOUT parameter */
@@ -588,10 +676,18 @@ typedef struct imquic_moq_request_parameters {
 	gboolean largest_object_set;
 	/*! \brief Value of the LARGEST_OBJECT parameter */
 	imquic_moq_location largest_object;
-	/*! \brief Whether the FORWARD parameter is set */
+	/*! \brief Whether the FORWARD parameter is set
+	 * \note Deprecated in v23, where PAUSED is used instead */
 	gboolean forward_set;
-	/*! \brief Value of the FORWARD parameter */
+	/*! \brief Value of the FORWARD parameter
+	 * \note Deprecated in v23, where PAUSED is used instead */
 	gboolean forward;
+	/*! \brief Whether the PAUSED parameter is set
+	 * \note Added in v23, ignored before */
+	gboolean paused_set;
+	/*! \brief Value of the PAUSED parameter
+	 * \note Added in v23, ignored before */
+	gboolean paused;
 	/*! \brief Whether the NEW_GROUP_REQUEST parameter is set */
 	gboolean new_group_request_set;
 	/*! \brief Value of the NEW_GROUP_REQUEST parameter */
@@ -604,6 +700,10 @@ typedef struct imquic_moq_request_parameters {
 	gboolean include_properties_set;
 	/*! \brief Value of the INCLUDE_PROPERTIES parameter */
 	gboolean include_properties;
+	/*! \brief Whether the SUBSCRIBE_TRACKS_ID parameter is set */
+	gboolean subscribe_tracks_id_set;
+	/*! \brief Value of the SUBSCRIBE_TRACKS_ID parameter */
+	uint64_t subscribe_tracks_id;
 	/*! \brief Whether there's unknown parameters
 	 * \note Only set by the stack, ignored if set by the application */
 	gboolean unknown;
@@ -645,88 +745,6 @@ typedef enum imquic_moq_object_status {
  * @param status The imquic_moq_object_status property
  * @returns The type name as a string, if valid, or NULL otherwise */
 const char *imquic_moq_object_status_str(imquic_moq_object_status status);
-
-/*! \brief MoQ Property
- * \note This may contain info related to different MoQ versions, and so
- * should be considered a higher level abstraction that the internal
- * MoQ stack may (and often will) use and notify differently */
-typedef struct imquic_moq_property {
-	/*! \brief MoQ Property ID */
-	uint32_t id;
-	/*! \brief Property value, which could be either a number (even
-	 * property ID) or an octet of data with length (odd property ID) */
-	union {
-		uint64_t number;
-		struct imquic_moq_property_data {
-			uint64_t length;
-			uint8_t *buffer;
-		} data;
-	} value;
-} imquic_moq_property;
-
-/*! \brief Known MoQ Property types
- * \note The library will not try to interpret properties and their
- * payload: this is always left up to applications */
-typedef enum imquic_moq_property_type {
-	/*! \brief Object Delivery Timeout (added in v18) */
-	IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT = 0x02,
-		/*! \brief Delivery Timeout (deprecated in v18) */
-		IMQUIC_MOQ_PROPERTY_DELIVERY_TIMEOUT = 0x02,
-	/*! \brief Max Cache Duration */
-	IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION = 0x04,
-	/*! \brief Subgroup Delivery Timeout (added in v18) */
-	IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT = 0x06,
-	/*! \brief Default Publisher Priority */
-	IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
-	/*! \brief Default Group Order */
-	IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER = 0x22,
-	/*! \brief Dynamic Groups */
-	IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS = 0x30,
-	/*! \brief Prior Group ID Gap */
-	IMQUIC_MOQ_PROPERTY_PRIOR_GROUP_ID_GAP = 0x3C,
-	/*! \brief Prior Object ID Gap */
-	IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP = 0x3E,
-	/*! \brief Immutable Properties */
-	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
-	/*! \brief LOC Timestamp */
-	IMQUIC_MOQ_LOC_TIMESTAMP = 0x10,
-	/*! \brief LOC Timescale */
-	IMQUIC_MOQ_LOC_TIMESCALE = 0x08,
-	/*! \brief LOC Video Config */
-	IMQUIC_MOQ_LOC_VIDEO_CONFIG = 0x0D,
-	/*! \brief LOC Video Frame Marking */
-	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x09,
-	/*! \brief LOC Audio Config */
-	IMQUIC_MOQ_LOC_AUDIO_CONFIG = 0x0F,
-	/*! \brief LOC Audio Level */
-	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0C,
-	/*! \brief LOC Codec String */
-	IMQUIC_MOQ_LOC_CODEC_STRING = 0x11,
-	/*! \brief Encrypted List (Secure Objects) */
-	IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST = 0xA,
-	/*! \brief Padding (Secure Objects) */
-	IMQUIC_MOQ_SECOBJ_PADDING = 0x32,
-} imquic_moq_property_type;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
- * @param version The version of the connection
- * @param type The imquic_moq_property_type value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_property_type type);
-
-/*! \brief Helper mode to parse a properties buffer to a GList of imquic_moq_property
- * \note The caller owns the list, and is responsible of freeing it and its content
- * @param version The version of the connection
- * @param properties The buffer containing the properties data
- * @param plen The size of the buffer containing the properties data
- * @returns A GList instance containing a set of imquic_moq_property, if successful, or NULL if no properties were found */
-GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t plen);
-/*! \brief Helper mode to craft a properties buffer out of a GList of imquic_moq_property
- * @param[in] version The version of the connection
- * @param[in] properties The list of properties to serialize
- * @param[out] bytes The buffer to write the properties data to
- * @param[in] blen The size of the buffer to write to
- * @returns How many bytes were written, if successful */
-size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties, uint8_t *bytes, size_t blen);
 
 /*! \brief MoQ Object
  * \note This may contain info related to different MoQ versions, and so
@@ -771,11 +789,103 @@ typedef struct imquic_moq_object {
 	size_t payload_len;
 	/*! \brief How to send this object (or how it was received) */
 	imquic_moq_delivery delivery;
-	/*! \brief Whether the first object in the stream contains the first object in the subgroup (added in v18) */
+	/*! \brief Stream ID used to deliver this object (ignored for IMQUIC_MOQ_USE_DATAGRAM delivery)
+	 * \note This is set by the core for incoming objects, and is ignored for outgoing ones */
+	uint64_t stream_id;
+	/*! \brief Whether the first object in the stream contains the first object in the subgroup */
 	gboolean first_of_subgroup;
+	/*! \brief Whether the objects of this group/subgroup are the last in the group
+	 * \note This applies to multiple objects, not just the last one, considering it's
+	 * a property that is set when the first object of a \c SUBGROUP_HEADER is sent */
+	gboolean end_of_group;
 	/*! \brief Whether this signals the end of the stream */
 	gboolean end_of_stream;
 } imquic_moq_object;
+///@}
+
+/** @name MoQ properties
+ */
+///@{
+/*! \brief MoQ Property
+ * \note This may contain info related to different MoQ versions, and so
+ * should be considered a higher level abstraction that the internal
+ * MoQ stack may (and often will) use and notify differently */
+typedef struct imquic_moq_property {
+	/*! \brief MoQ Property ID */
+	uint32_t id;
+	/*! \brief Property value, which could be either a number (even
+	 * property ID) or an octet of data with length (odd property ID) */
+	union {
+		uint64_t number;
+		struct imquic_moq_property_data {
+			uint64_t length;
+			uint8_t *buffer;
+		} data;
+	} value;
+} imquic_moq_property;
+
+/*! \brief Known MoQ Property types
+ * \note The library will not try to interpret properties and their
+ * payload: this is always left up to applications */
+typedef enum imquic_moq_property_type {
+	/*! \brief Object Delivery Timeout */
+	IMQUIC_MOQ_PROPERTY_OBJECT_DELIVERY_TIMEOUT = 0x02,
+	/*! \brief Max Cache Duration */
+	IMQUIC_MOQ_PROPERTY_MAX_CACHE_DURATION = 0x04,
+	/*! \brief Subgroup Delivery Timeout */
+	IMQUIC_MOQ_PROPERTY_SUBGROUP_DELIVERY_TIMEOUT = 0x06,
+	/*! \brief Default Publisher Priority */
+	IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY = 0x0E,
+	/*! \brief Default Group Order */
+	IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER = 0x22,
+	/*! \brief Dynamic Groups */
+	IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS = 0x30,
+	/*! \brief Prior Group ID Gap */
+	IMQUIC_MOQ_PROPERTY_PRIOR_GROUP_ID_GAP = 0x3C,
+	/*! \brief Prior Object ID Gap */
+	IMQUIC_MOQ_PROPERTY_PRIOR_OBJECT_ID_GAP = 0x3E,
+	/*! \brief Immutable Properties */
+	IMQUIC_MOQ_PROPERTY_IMMUTABLE_PROPERTIES = 0xB,
+	/*! \brief LOC Timestamp */
+	IMQUIC_MOQ_LOC_TIMESTAMP = 0x10,
+	/*! \brief LOC Timescale */
+	IMQUIC_MOQ_LOC_TIMESCALE = 0x08,
+	/*! \brief LOC Video Config */
+	IMQUIC_MOQ_LOC_VIDEO_CONFIG = 0x0D,
+	/*! \brief LOC Video Frame Marking */
+	IMQUIC_MOQ_LOC_VIDEO_FRAME_MARKING = 0x09,
+	/*! \brief LOC Audio Config */
+	IMQUIC_MOQ_LOC_AUDIO_CONFIG = 0x0F,
+	/*! \brief LOC Audio Level */
+	IMQUIC_MOQ_LOC_AUDIO_LEVEL = 0x0C,
+	/*! \brief LOC Codec String */
+	IMQUIC_MOQ_LOC_CODEC_STRING = 0x11,
+	/*! \brief Encrypted List (Secure Objects) */
+	IMQUIC_MOQ_SECOBJ_ENCRYPTED_LIST = 0xA,
+	/*! \brief Padding (Secure Objects) */
+	IMQUIC_MOQ_SECOBJ_PADDING = 0x32,
+} imquic_moq_property_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_property_type value.
+ * @param version The version of the connection
+ * @param type The imquic_moq_property_type value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_property_type_str(imquic_moq_version version, imquic_moq_property_type type);
+
+/*! \brief Helper mode to parse a properties buffer to a GList of imquic_moq_property
+ * \note The caller owns the list, and is responsible of freeing it and its content
+ * @param version The version of the connection
+ * @param properties The buffer containing the properties data
+ * @param plen The size of the buffer containing the properties data
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns A GList instance containing a set of imquic_moq_property, if successful, or NULL if no properties were found */
+GList *imquic_moq_parse_properties(imquic_moq_version version, uint8_t *properties, size_t plen, imquic_moq_error_code *error);
+/*! \brief Helper mode to craft a properties buffer out of a GList of imquic_moq_property
+ * @param[in] version The version of the connection
+ * @param[in] properties The list of properties to serialize
+ * @param[out] bytes The buffer to write the properties data to
+ * @param[in] blen The size of the buffer to write to
+ * @returns How many bytes were written, if successful */
+size_t imquic_moq_build_properties(imquic_moq_version version, GList *properties, uint8_t *bytes, size_t blen);
 ///@}
 
 /** @name MoQ filters (introduced in v19)
@@ -857,7 +967,85 @@ gboolean imquic_moq_filters_match_track(imquic_moq_filters *filters, GList *prop
 void imquic_moq_filters_destroy(imquic_moq_filters *filters);
 ///@}
 
-/** @name MoQ's flavour of varint (introduced in v17)
+/** @name MoQ error details (introduced in v23s)
+ */
+///@{
+/*! \brief MoQ Error Detail
+ * \note This may contain info related to different MoQ versions, and so
+ * should be considered a higher level abstraction that the internal
+ * MoQ stack may (and often will) use and notify differently */
+typedef struct imquic_moq_error_detail {
+	/*! \brief MoQ Error Detail Type */
+	uint32_t type;
+	/*! \brief Error Detail value, which could be either a number (even
+	 * Error Detail type) or an octet of data with length (odd Error Detail ID) */
+	union {
+		uint64_t number;
+		struct imquic_moq_error_detail_data {
+			uint64_t length;
+			uint8_t *buffer;
+		} data;
+	} value;
+} imquic_moq_error_detail;
+
+typedef enum imquic_moq_error_detail_type {
+	IMQUIC_MOQ_ERROR_DETAIL_REDIRECT = 0x01,
+	IMQUIC_MOQ_ERROR_DETAIL_UNSUPPORTED_PROPERTY = 0x02,
+} imquic_moq_error_detail_type;
+/*! \brief Helper function to serialize to string the name of a imquic_moq_error_detail_type value.
+ * @param version The version of the connection
+ * @param type The imquic_moq_error_detail_type value
+ * @returns The type name as a string, if valid, or NULL otherwise */
+const char *imquic_moq_error_detail_type_str(imquic_moq_version version, imquic_moq_error_detail_type type);
+
+/*! \brief Helper mode to parse an error details buffer to a GList of imquic_moq_error_detail
+ * \note The caller owns the list, and is responsible of freeing it and its content
+ * @param version The version of the connection
+ * @param error_details The buffer containing the error details data
+ * @param edlen The size of the buffer containing the error details data
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns A GList instance containing a set of imquic_moq_error_detail, if successful, or NULL if no error_details were found */
+GList *imquic_moq_parse_error_details(imquic_moq_version version, uint8_t *error_details, size_t edlen, imquic_moq_error_code *error);
+/*! \brief Helper mode to craft a error details buffer out of a GList of imquic_moq_error_detail
+ * @param[in] version The version of the connection
+ * @param[in] error_details The list of error details to serialize
+ * @param[out] bytes The buffer to write the error details data to
+ * @param[in] blen The size of the buffer to write to
+ * @returns How many bytes were written, if successful */
+size_t imquic_moq_build_error_details(imquic_moq_version version, GList *error_details, uint8_t *bytes, size_t blen);
+/*! \brief Helper to free an allocated imquic_moq_error_detail instance
+ * @param error_detail The imquic_moq_error_detail instance to free */
+void imquic_moq_error_detail_destroy(imquic_moq_error_detail *error_detail);
+
+/*! \brief MoQ Redirect Structure
+ * \note A specialization of Error Details data since v23s */
+typedef struct imquic_moq_redirect {
+	/* Connect URI */
+	char *connect_uri;
+	/* Track Namespace */
+	imquic_moq_namespace *track_namespace;
+	/* Track Name */
+	imquic_moq_track *track_name;
+} imquic_moq_redirect;
+/*! \brief Helper mode to parse a Redirect error detail instance to a imquic_moq_redirect instance
+ * \note The caller owns the returned instance, and is responsible of freeing it and its content
+ * @param[in] version The version of the connection
+ * @param[in] error_detail The imquic_moq_error_detail instance to parse
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
+ * @returns A pointer to a imquic_moq_redirect instance, if successful, or NULL otherwise */
+imquic_moq_redirect *imquic_moq_parse_redirect_error_detail(imquic_moq_version version, imquic_moq_error_detail *error_detail, imquic_moq_error_code *error);
+/*! \brief Helper mode to craft a redirect error_detail buffer out of a imquic_moq_redirect instance
+ * \note The caller owns the returned instance, and is responsible of freeing it and its content
+ * @param version The version of the connection
+ * @param redirect_error_detail The imquic_moq_redirect instance to serialize
+ * @returns A pointer to a imquic_moq_error_details instance, if successful, or NULL otherwise */
+imquic_moq_error_detail *imquic_moq_build_redirect_error_detail(imquic_moq_version version, imquic_moq_redirect *redirect_error_detail);
+/*! \brief Helper to free an allocated imquic_moq_redirect instance
+ * @param redirect_error_detail The imquic_moq_redirect instance to free */
+void imquic_moq_redirect_destroy(imquic_moq_redirect *redirect_error_detail);
+///@}
+
+/** @name MoQ's flavour of varint
  */
 ///@{
 /*! \brief Read a variable size integer from a buffer
@@ -927,8 +1115,9 @@ typedef struct imquic_moq_auth_token {
  * @param[in] bytes The buffer containing the auth token data
  * @param[in] blen The size of the buffer containing the auth token data data
  * @param[out] token The imquic_moq_auth_token to put the parsed token info to
+ * @param[out] error In/out property, initialized to 0 and set to something else in case of parsing errors
  * @returns 0 in case of success, or a negative integer otherwise */
-int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size_t blen, imquic_moq_auth_token *token);
+int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size_t blen, imquic_moq_auth_token *token, imquic_moq_error_code *error);
 /*! \brief Helper mode to craft an auth token buffer out of a imquic_moq_auth_token instance
  * @param[in] version The MoQ version used on the connection
  * @param[in] token The imquic_moq_auth_token instance to serialize
@@ -936,110 +1125,6 @@ int imquic_moq_parse_auth_token(imquic_moq_version version, uint8_t *bytes, size
  * @param[in] blen The size of the buffer to write to
  * @returns How many bytes were written, if successful */
 size_t imquic_moq_build_auth_token(imquic_moq_version version, imquic_moq_auth_token *token, uint8_t *bytes, size_t blen);
-///@}
-
-/** @name MoQ error and status codes
- */
-///@{
-/*! \brief Generic error codes */
-typedef enum imquic_moq_error_code {
-	IMQUIC_MOQ_NO_ERROR = 0x0,
-	IMQUIC_MOQ_INTERNAL_ERROR = 0x1,
-	IMQUIC_MOQ_UNAUTHORIZED = 0x2,
-	IMQUIC_MOQ_PROTOCOL_VIOLATION = 0x3,
-	IMQUIC_MOQ_INVALID_REQUEST_ID = 0x4,
-	IMQUIC_MOQ_DUPLICATE_TRACK_ALIAS = 0x5,
-	IMQUIC_MOQ_KEYVALUE_FORMATTING_ERROR = 0x6,
-		IMQUIC_MOQ_INVALID_REQUIRED_REQUEST_ID = 0x7,	/* Deprecated in v18 */
-		IMQUIC_MOQ_TOO_MANY_REQUESTS = 0x7,		/* Deprecated in v17 */
-	IMQUIC_MOQ_INVALID_PATH = 0x8,
-	IMQUIC_MOQ_MALFORMED_PATH = 0x9,
-	IMQUIC_MOQ_GOAWAY_TIMEOUT = 0x10,
-	IMQUIC_MOQ_CONTROL_MESSAGE_TIMEOUT = 0x11,
-	IMQUIC_MOQ_DATA_STREAM_TIMEOUT = 0x12,
-	IMQUIC_MOQ_AUTH_TOKEN_CACHE_OVERFLOW = 0x13,
-	IMQUIC_MOQ_DUPLICATE_AUTH_TOKEN_ALIAS = 0x14,
-	IMQUIC_MOQ_VERSION_NEGOTIATION_FAILED = 0x15,	/* Deprecated in v20 */
-	IMQUIC_MOQ_MALFORMED_AUTH_TOKEN = 0x16,
-	IMQUIC_MOQ_UNKNOWN_AUTH_TOKEN_ALIAS = 0x17,
-	IMQUIC_MOQ_EXPIRED_AUTH_TOKEN = 0x18,
-	IMQUIC_MOQ_INVALID_AUTHORITY = 0x19,
-	IMQUIC_MOQ_MALFORMED_AUTHORITY = 0x1A,
-	IMQUIC_MOQ_TOO_MANY_REQUEST_UPDATES = 0x1B,		/* Added in v19 */
-	/* Not an actual error */
-	IMQUIC_MOQ_UNKNOWN_ERROR = 0xFF
-} imquic_moq_error_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_error_code value.
- * @param code The imquic_moq_error_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_error_code_str(imquic_moq_error_code code);
-
-/*! \brief Request error codes */
-typedef enum imquic_moq_request_error_code {
-	IMQUIC_MOQ_REQERR_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_REQERR_UNAUTHORIZED = 0x1,
-	IMQUIC_MOQ_REQERR_TIMEOUT = 0x2,
-	IMQUIC_MOQ_REQERR_NOT_SUPPORTED = 0x3,
-	IMQUIC_MOQ_REQERR_MALFORMED_AUTH_TOKEN = 0x4,
-	IMQUIC_MOQ_REQERR_EXPIRED_AUTH_TOKEN = 0x5,
-	IMQUIC_MOQ_REQERR_GOING_AWAY = 0x6,
-	IMQUIC_MOQ_REQERR_EXCESSIVE_LOAD = 0x9,
-	/* The following are returned by publishers */
-	IMQUIC_MOQ_REQERR_DOES_NOT_EXIST = 0x10,
-	IMQUIC_MOQ_REQERR_INVALID_RANGE = 0x11,
-	IMQUIC_MOQ_REQERR_MALFORMED_TRACK = 0x12,
-		IMQUIC_MOQ_REQERR_DUPLICATE_SUBSCRIPTION = 0x19,	/* Deprecated in v19 */
-	/* The following are returned by subscribers */
-	IMQUIC_MOQ_REQERR_UNINTERESTED = 0x20,
-	/* Others */
-	IMQUIC_MOQ_REQERR_PREFIX_OVERLAP = 0x30,
-	IMQUIC_MOQ_REQERR_NAMESPACE_TOO_LARGE = 0x31,
-	IMQUIC_MOQ_REQERR_INVALID_JOINING_REQUEST_ID = 0x32,	/* Deprecated in v20 */
-	IMQUIC_MOQ_REQERR_UNSUPPORTED_EXTENSION = 0x33,	/* Added in v18 */
-	IMQUIC_MOQ_REQERR_REDIRECT = 0x34,	/* Added in v18 */
-	IMQUIC_MOQ_REQERR_CONFLICTING_FILTERS = 0x35,	/* Added in v19 */
-	IMQUIC_MOQ_REQERR_INVALID_FILTER = 0x36,	/* Added in v19 */
-} imquic_moq_request_error_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_request_error_code value.
- * @param code The imquic_moq_request_error_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_request_error_code_str(imquic_moq_request_error_code code);
-
-/*! \brief Publish done codes */
-typedef enum imquic_moq_pub_done_code {
-	IMQUIC_MOQ_PUBDONE_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_PUBDONE_UNAUTHORIZED = 0x1,
-	IMQUIC_MOQ_PUBDONE_TRACK_ENDED = 0x2,
-	IMQUIC_MOQ_PUBDONE_SUBSCRIPTION_ENDED = 0x3,	/* Deprecated in v20 */
-	IMQUIC_MOQ_PUBDONE_GOING_AWAY = 0x4,
-	IMQUIC_MOQ_PUBDONE_TOO_FAR_BEHIND = 0x5,	/* Swapped in v18 */
-	IMQUIC_MOQ_PUBDONE_EXPIRED = 0x6,	/* Swapped in v18 */
-	IMQUIC_MOQ_PUBDONE_UPDATE_FAILED = 0x8,
-	IMQUIC_MOQ_PUBDONE_EXCESSIVE_LOAD = 0x9,
-	IMQUIC_MOQ_PUBDONE_MALFORMED_TRACK = 0x12,
-} imquic_moq_pub_done_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_pub_done_code value.
- * @param code The imquic_moq_pub_done_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_pub_done_code_str(imquic_moq_pub_done_code code);
-
-/*! \brief RESET_STREAM error codes */
-typedef enum imquic_moq_reset_stream_code {
-	IMQUIC_MOQ_RESET_INTERNAL_ERROR = 0x0,
-	IMQUIC_MOQ_RESET_CANCELLED = 0x1,
-	IMQUIC_MOQ_RESET_DELIVERY_TIMEOUT = 0x2,
-	IMQUIC_MOQ_RESET_SESSION_CLOSED = 0x3,
-	IMQUIC_MOQ_RESET_GOING_AWAY = 0x4,	/* Added in v18 */
-	IMQUIC_MOQ_RESET_TOO_FAR_BEHIND = 0x5,
-	IMQUIC_MOQ_RESET_UNKNOWN_OBJECT_STATUS = 0x6,	/* Value changed in v18 */
-	IMQUIC_MOQ_RESET_EXPIRED_AUTH_TOKEN = 0x7,	/* Added in v18 */
-	IMQUIC_MOQ_RESET_EXCESSIVE_LOAD = 0x9,
-	IMQUIC_MOQ_RESET_MALFORMED_TRACK = 0x12,
-} imquic_moq_reset_stream_code;
-/*! \brief Helper function to serialize to string the name of a imquic_moq_reset_stream_code value.
- * @param code The imquic_moq_reset_stream_code value
- * @returns The type name as a string, if valid, or NULL otherwise */
-const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 ///@}
 
 /** @name MoQ endpoints management
@@ -1057,7 +1142,7 @@ const char *imquic_moq_reset_stream_code_str(imquic_moq_reset_stream_code code);
 		IMQUIC_CONFIG_TLS_PASSWORD, cert_pwd,
 		IMQUIC_CONFIG_LOCAL_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_22,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_23,
 		IMQUIC_CONFIG_DONE, NULL);
  \endverbatim
  * to create a QUIC server that will automatically negotiate MoQ over
@@ -1090,7 +1175,7 @@ imquic_server *imquic_create_moq_server(const char *name, ...);
 		IMQUIC_CONFIG_REMOTE_HOST, "127.0.0.1",
 		IMQUIC_CONFIG_REMOTE_PORT, 9000,
 		IMQUIC_CONFIG_WEBTRANSPORT, TRUE,
-		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_22,
+		IMQUIC_CONFIG_MOQ_VERSION, IMQUIC_MOQ_VERSION_23,
 		IMQUIC_CONFIG_HTTP3_PATH, "/moq",
 		IMQUIC_CONFIG_DONE, NULL);
 
@@ -1134,7 +1219,7 @@ void imquic_set_new_moq_connection_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_moq_connection Pointer to the function that will be invoked when MoQ is ready to be used */
 void imquic_set_incoming_moq_connection_cb(imquic_endpoint *endpoint,
-	uint64_t (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen));
+	imquic_moq_error_code (* incoming_moq_connection)(imquic_connection *conn, uint8_t *auth, size_t authlen));
 /*! \brief Configure the callback function to be notified when a MoQ connection
  * has been successfully established. After this, the MoQ APIs can be used
  * to start exchanging MoQ messages.
@@ -1148,16 +1233,6 @@ void imquic_set_moq_ready_cb(imquic_endpoint *endpoint,
  * @param incoming_publish_namespace Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE */
 void imquic_set_incoming_publish_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_publish_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
-/*! \brief Configure the callback function to be notified when there's
- * an incoming \c PUBLISH_NAMESPACE_CANCEL request.
- * \note Starting in v17, \c PUBLISH_NAMESPACE_CANCEL doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
- * \c PUBLISH_NAMESPACE closed the associated bidirectiomal stream before
- * getting a \c REQUEST_OK or \c REQUEST_ERROR back.
- * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param incoming_publish_namespace_cancel Pointer to the function that will handle the incoming \c PUBLISH_NAMESPACE_CANCEL */
-void imquic_set_incoming_publish_namespace_cancel_cb(imquic_endpoint *endpoint,
-	void (* incoming_publish_namespace_cancel)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code, const char *reason));
 /*! \brief Configure the callback function to be notified when an
  * \c PUBLISH_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1170,11 +1245,10 @@ void imquic_set_publish_namespace_accepted_cb(imquic_endpoint *endpoint,
  * @param publish_namespace_error Pointer to the function that will fire when a \c PUBLISH_NAMESPACE is rejected */
 void imquic_set_publish_namespace_error_cb(imquic_endpoint *endpoint,
 	void (* publish_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c PUBLISH_NAMESPACE_DONE request.
- * \note Starting in v17, \c PUBLISH_NAMESPACE_DONE doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
+ * \note This callback is only fired if the endpoint that sent the
  * \c PUBLISH_NAMESPACE closed the associated bidirectiomal stream after
  * getting a \c REQUEST_OK or \c REQUEST_ERROR back.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1200,7 +1274,7 @@ void imquic_set_publish_accepted_cb(imquic_endpoint *endpoint,
  * @param publish_error Pointer to the function that will fire when a \c PUBLISH is rejected */
 void imquic_set_publish_error_cb(imquic_endpoint *endpoint,
 	void (* publish_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1220,7 +1294,7 @@ void imquic_set_subscribe_accepted_cb(imquic_endpoint *endpoint,
  * @param subscribe_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
 void imquic_set_subscribe_error_cb(imquic_endpoint *endpoint,
 	void (* subscribe_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when an update
  * is received for a request (e.g., a \c SUBSCRIBE ) we previously sent
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1239,7 +1313,7 @@ void imquic_set_request_update_accepted_cb(imquic_endpoint *endpoint,
  * @param request_update_error Pointer to the function that will fire when a \c SUBSCRIBE is rejected */
 void imquic_set_request_update_error_cb(imquic_endpoint *endpoint,
 	void (* request_update_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when a
  * \c PUBLISH_STATE_NOTIFY is received for one of our subscriptions
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1254,27 +1328,19 @@ void imquic_set_publish_done_cb(imquic_endpoint *endpoint,
 	void (* publish_done)(imquic_connection *conn, uint64_t request_id, imquic_moq_pub_done_code status_code, uint64_t streams_count, const char *reason));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE request.
- * \note Starting in v17, \c UNSUBSCRIBE doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
+ * \note This callback is only fired if the endpoint that sent the
  * \c SUBSCRIBE closed the associated bidirectiomal stream.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_unsubscribe Pointer to the function that will handle the incoming \c UNSUBSCRIBE */
 void imquic_set_incoming_unsubscribe_cb(imquic_endpoint *endpoint,
 	void (* incoming_unsubscribe)(imquic_connection *conn, uint64_t request_id));
 /*! \brief Configure the callback function to be notified when there's
- * an incoming \c REQUESTS_BLOCKED request.
- * \note Deprecated in v17
- * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
- * @param requests_blocked Pointer to the function that will handle the incoming \c REQUESTS_BLOCKED */
-void imquic_set_requests_blocked_cb(imquic_endpoint *endpoint,
-	void (* requests_blocked)(imquic_connection *conn, uint64_t max_request_id));
-/*! \brief Configure the callback function to be notified when there's
  * an incoming \c SUBSCRIBE_NAMESPACE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_subscribe_namespace Pointer to the function that will handle the incoming \c SUBSCRIBE_NAMESPACE */
 void imquic_set_incoming_subscribe_namespace_cb(imquic_endpoint *endpoint,
 	void (* incoming_subscribe_namespace)(imquic_connection *conn, uint64_t request_id,
-		imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters));
+		imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when an
  * \c SUBSCRIBE_NAMESPACE we previously sent was accepted
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1287,7 +1353,7 @@ void imquic_set_subscribe_namespace_accepted_cb(imquic_endpoint *endpoint,
  * @param subscribe_namespace_error Pointer to the function that will fire when an \c SUBSCRIBE_NAMESPACE is rejected */
 void imquic_set_subscribe_namespace_error_cb(imquic_endpoint *endpoint,
 	void (* subscribe_namespace_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_NAMESPACE request.
  * \note On newer versions, \c UNSUBSCRIBE_NAMESPACE doesn't exist anymore,
@@ -1316,7 +1382,7 @@ void imquic_set_subscribe_tracks_accepted_cb(imquic_endpoint *endpoint,
  * @param subscribe_tracks_error Pointer to the function that will fire when an \c SUBSCRIBE_TRACKS is rejected */
 void imquic_set_subscribe_tracks_error_cb(imquic_endpoint *endpoint,
 	void (* subscribe_tracks_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c UNSUBSCRIBE_TRACKS request.
  * \note On newer versions, \c UNSUBSCRIBE_TRACKS doesn't exist anymore,
@@ -1331,7 +1397,7 @@ void imquic_set_incoming_unsubscribe_tracks_cb(imquic_endpoint *endpoint,
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_namespace Pointer to the function that will handle the incoming \c NAMESPACE */
 void imquic_set_incoming_namespace_cb(imquic_endpoint *endpoint,
-	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns));
+	void (* incoming_namespace)(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c NAMESPACE_DONE request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1363,8 +1429,7 @@ void imquic_set_incoming_joining_fetch_cb(imquic_endpoint *endpoint,
 		gboolean absolute, uint64_t joining_start, imquic_moq_request_parameters *parameters));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c FETCH_CANCEL request.
- * \note Starting in v17, \c FETCH_CANCEL doesn't exist anymore,
- * so this callback is only fired if the endpoint that sent the
+ * \note This callback is only fired if the endpoint that sent the
  * \c FETCH closed the associated bidirectiomal stream.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
  * @param incoming_fetch_cancel Pointer to the function that will handle the incoming \c FETCH_CANCEL */
@@ -1383,7 +1448,7 @@ void imquic_set_fetch_accepted_cb(imquic_endpoint *endpoint,
  * @param fetch_error Pointer to the function that will fire when an \c FETCH is rejected */
 void imquic_set_fetch_error_cb(imquic_endpoint *endpoint,
 	void (* fetch_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming \c TRACK_STATUS request.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1403,7 +1468,7 @@ void imquic_set_track_status_accepted_cb(imquic_endpoint *endpoint,
  * @param track_status_error Pointer to the function that will fire when a \c TRACK_STATUS is rejected */
 void imquic_set_track_status_error_cb(imquic_endpoint *endpoint,
 	void (* track_status_error)(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect));
+		const char *reason, uint64_t retry_interval, GList *error_details));
 /*! \brief Configure the callback function to be notified when there's
  * an incoming MoQ object, independently of how it was multiplexed on the wire.
  * @param endpoint The imquic_endpoint (imquic_server or imquic_client) to configure
@@ -1443,17 +1508,6 @@ void imquic_set_moq_connection_gone_cb(imquic_endpoint *endpoint,
  * @param authlen The size of the authentication info, if any
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_set_connection_auth(imquic_connection *conn, uint8_t *auth, size_t authlen);
-
-/*! \brief Helper function to set the Maximum Request ID a subscriber can send
- * \note Deprecated in v17, and so not needed anymore. For older versions,
- * if invoked before the MoQ connection setup, it will be put in the
- * setup parameter, otherwise it's sent in a \c MAX_REQUEST_ID request.
- * Notice that whatever is passed to the request will be decremented by
- * 1, as per the specification, meaning you cannot pass \c 0 as a value here
- * @param conn The imquic_connection to update
- * @param max_request_id The Maximum Request ID to enforce
- * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_set_max_request_id(imquic_connection *conn, uint64_t max_request_id);
 
 /*! \brief Helper function to get the next Request ID we can use
  * @param conn The imquic_connection to query
@@ -1506,10 +1560,10 @@ int imquic_moq_accept_publish_namespace(imquic_connection *conn, uint64_t reques
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_publish_namespace(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c PUBLISH_NAMESPACE_DONE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the original \c PUBLISH_NAMESPACE
@@ -1539,10 +1593,10 @@ int imquic_moq_accept_publish(imquic_connection *conn, uint64_t request_id, imqu
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_publish(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c SUBSCRIBE request
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID to associate to this subscription
@@ -1567,10 +1621,10 @@ int imquic_moq_accept_subscribe(imquic_connection *conn, uint64_t request_id,
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c REQUEST_UPDATE request
  * @param conn The imquic_connection to send the request on
  * @param request_id Unique \c request_id value
@@ -1592,10 +1646,10 @@ int imquic_moq_accept_request_update(imquic_connection *conn, uint64_t request_i
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_request_update(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c PUBLISH_STATE_NOTIFY request
  * @note Added in v20
  * @param conn The imquic_connection to send the request on
@@ -1622,11 +1676,10 @@ int imquic_moq_unsubscribe(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id A unique request ID
  * @param tns The imquic_moq_namespace namespace to subscribe for
- * @param subscribe_options The subscribe options to add to the request
  * @param parameters The parameters to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_namespace *tns, imquic_moq_subscribe_namespace_options subscribe_options, imquic_moq_request_parameters *parameters);
+	imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
 /*! \brief Function to accept an incoming \c SUBSCRIBE_NAMESPACE request
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
@@ -1640,13 +1693,11 @@ int imquic_moq_accept_subscribe_namespace(imquic_connection *conn, uint64_t requ
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe_namespace(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c UNSUBSCRIBE_NAMESPACE request
- * \note Starting in v16, this doesn't actually send a request, but simply
- * closes the bidirectional STREAM that was created for the subscription
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1672,13 +1723,11 @@ int imquic_moq_accept_subscribe_tracks(imquic_connection *conn, uint64_t request
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_subscribe_tracks(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a \c UNSUBSCRIBE_TRACKS request
- * \note Starting in v16, this doesn't actually send a request, but simply
- * closes the bidirectional STREAM that was created for the subscription
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_TRACKS request
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1691,8 +1740,9 @@ int imquic_moq_unsubscribe_tracks(imquic_connection *conn, uint64_t request_id);
  * @param conn The imquic_connection to send the request on
  * @param request_id The request ID of the original \c SUBSCRIBE_NAMESPACE request
  * @param tns The imquic_moq_namespace namespace this request refers to
+ * @param parameters The parameters to add to the request (added in v23, ignored otherwise)
  * @returns 0 in case of success, a negative integer otherwise */
-int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns);
+int imquic_moq_notify_namespace(imquic_connection *conn, uint64_t request_id, imquic_moq_namespace *tns, imquic_moq_request_parameters *parameters);
 /*! \brief Function to send a \c NAMESPACE_DONE request
  * \note While the request itself doesn't contain the request ID, we use
  * it to find the subscription and use the right STREAM.
@@ -1743,7 +1793,7 @@ int imquic_moq_joining_fetch(imquic_connection *conn,
 /*! \brief Function to accept an incoming \c FETCH request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to accept
- * @param largest The largest group/object IDs
+ * @param largest The largest group/object IDs (ignored starting from v23, should be a property)
  * @param parameters The parameters to add to the request
  * @param track_properties List of track properties to add, if any
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1755,12 +1805,11 @@ int imquic_moq_accept_fetch(imquic_connection *conn, uint64_t request_id,
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_fetch(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
-/*! \brief Function to send a \c FETCH_CANCEL request (legacy) or close
- * the stream associated with the \c FETCH subscription (new draft versions)
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
+/*! \brief Function to close the stream associated with a \c FETCH
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the subscription to cancel_fetch from
  * @returns 0 in case of success, a negative integer otherwise */
@@ -1788,10 +1837,10 @@ int imquic_moq_accept_track_status(imquic_connection *conn, uint64_t request_id,
  * @param error_code The error code to send back
  * @param reason A string representation of the error, if needed
  * @param retry_interval Retry interval in ms
- * @param redirect Redirect structure, if needed
+ * @param error_details Error details, if needed
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_reject_track_status(imquic_connection *conn, uint64_t request_id,
-	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect);
+	imquic_moq_request_error_code error_code, const char *reason, uint64_t retry_interval, GList *error_details);
 /*! \brief Function to send a MoQ object
  * @note Depending on the delivery mode, to close the stream set the
  * \c end_of_stream property to \c TRUE in the object. There's no need to
@@ -1821,14 +1870,14 @@ int imquic_moq_requests_blocked(imquic_connection *conn);
 /*! \brief Function to send a \c GOAWAY request for the whole connection
  * @param conn The imquic_connection to send the request on
  * @param uri Where the client can connect to continue the session
- * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
+ * @param timeout Timeout in ms to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_goaway(imquic_connection *conn, const char *uri, uint64_t timeout);
 /*! \brief Function to send a \c GOAWAY for an existing request
  * @param conn The imquic_connection to send the request on
  * @param request_id The unique \c request_id value associated to the request to address
  * @param uri Where the client can connect to continue the session
- * @param timeout Timeout in ms to add to the request (added in v17, ignored for older versions)
+ * @param timeout Timeout in ms to add to the request
  * @returns 0 in case of success, a negative integer otherwise */
 int imquic_moq_request_goaway(imquic_connection *conn, uint64_t request_id, const char *uri, uint64_t timeout);
 ///@}

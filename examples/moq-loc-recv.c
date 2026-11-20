@@ -55,8 +55,7 @@ static void imquic_demo_handle_signal(int signum) {
 /* Subscriber state */
 static imquic_connection *moq_conn = NULL;
 static imquic_moq_version moq_version = IMQUIC_MOQ_VERSION_ANY;
-static uint64_t max_request_id = 100,
-	catalog_request_id = 0, catalog_fetch_request_id = 0,
+static uint64_t catalog_request_id = 0, catalog_fetch_request_id = 0,
 	audio_request_id = 0, video_request_id = 0, video_fetch_request_id = 0,
 	catalog_track_alias = 0, audio_track_alias = 0, video_track_alias = 0;
 static imquic_moq_namespace sub_namespace[32] = { 0 };
@@ -311,7 +310,7 @@ static void imquic_demo_process_video_buffer(void) {
 		skip += length;
 		GList *pvt_properties = NULL;
 		if(prop_len > 0) {
-			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);
+			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len, NULL);
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d private properties\n", g_list_length(pvt_properties));
 			if(pvt_properties != NULL)
 				imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, pvt_properties);
@@ -354,7 +353,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, max_request_id);
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Waiting for MoQ connection to be ready (SETUP)...\n",
 		imquic_get_connection_name(conn));
 }
@@ -371,8 +369,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 	/* Let's subscribe to the provided namespace/track(s) */
 	imquic_moq_request_parameters params;
 	imquic_moq_request_parameters_init_defaults(&params);
+	/* Legacy uses FORWARD, newer versions use PAUSED */
 	params.forward_set = TRUE;
 	params.forward = TRUE;
+	params.paused_set = TRUE;
+	params.paused = FALSE;
 	params.subscriber_priority_set = TRUE;
 	params.subscriber_priority = 128;
 	imquic_moq_request_parameters fill_parameters;
@@ -440,7 +441,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 		catalog_track_alias = track_alias;
 		if(moq_version < IMQUIC_MOQ_VERSION_20 && parameters->largest_object_set) {
 			/* There's a largest object, send a Joining FETCH */
-			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Object: %"SCNu64"/%"SCNu64"\n",
 				imquic_get_connection_name(conn),
 				parameters->largest_object.group, parameters->largest_object.object);
 			/* Send a Joining Fetch referencing this subscription */
@@ -465,7 +466,7 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 	else
 		audio_track_alias = track_alias;
 	if(parameters->largest_object_set) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Location: %"SCNu64"/%"SCNu64"\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Largest Object: %"SCNu64"/%"SCNu64"\n",
 			imquic_get_connection_name(conn),
 			parameters->largest_object.group, parameters->largest_object.object);
 		if(moq_version < IMQUIC_MOQ_VERSION_20 && video) {
@@ -483,12 +484,34 @@ static void imquic_demo_subscribe_accepted(imquic_connection *conn, uint64_t req
 }
 
 static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error subscribing via ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Check if it's a redirect (needs v18 at least) or an actual error */
 	if(error_code == IMQUIC_MOQ_REQERR_REDIRECT) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- This is a redirect:\n", imquic_get_connection_name(conn));
+		/* Parse the error details to find a redirect structure */
+		imquic_moq_redirect *redirect = NULL;
+		GList *temp = error_details;
+		while(temp != NULL) {
+			imquic_moq_error_detail *error_detail = (imquic_moq_error_detail *)temp->data;
+			if(error_detail->type == IMQUIC_MOQ_ERROR_DETAIL_REDIRECT) {
+				/* Found */
+				imquic_moq_error_code error = IMQUIC_MOQ_NO_ERROR;
+				redirect = imquic_moq_parse_redirect_error_detail(moq_version, error_detail, &error);
+				break;
+			}
+			temp = temp->next;
+		}
+		if(redirect == NULL) {
+			/* FIXME No redirect error detail, it's a malformed message */
+			IMQUIC_LOG(IMQUIC_LOG_ERR, "[%s]  -- No Redirect Error Detail found, malformed message\n",
+				imquic_get_connection_name(conn));
+			g_atomic_int_inc(&stop);
+			return;
+		}
 		if(redirect->connect_uri != NULL) {
 			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Connect URI: %s\n",
 				imquic_get_connection_name(conn), redirect->connect_uri);
@@ -515,12 +538,16 @@ static void imquic_demo_subscribe_error(imquic_connection *conn, uint64_t reques
 static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_object *object) {
 	/* We received an object */
 	if(!options.quiet) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
+		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d, end=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 			imquic_get_connection_name(conn), object->request_id, object->track_alias,
-			object->group_id, object->subgroup_id, object->first_of_subgroup, object->object_id,
-			object->priority, (object->priority_set ? "set" : "omitted"),
+			object->group_id, object->subgroup_id, object->first_of_subgroup, object->end_of_group,
+			object->object_id, object->priority, (object->priority_set ? "set" : "omitted"),
 			object->payload_len, g_list_length(object->properties), imquic_moq_delivery_str(object->delivery),
 			imquic_moq_object_status_str(object->object_status), object->end_of_stream);
+		if(object->delivery != IMQUIC_MOQ_USE_DATAGRAM) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- Object received on stream %"SCNu64"\n",
+				imquic_get_connection_name(conn), object->stream_id);
+		}
 	}
 	/* Check if we need to leave */
 	if(g_atomic_int_get(&stop))
@@ -638,8 +665,11 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 			/* Subscribe to the tracks we found */
 			imquic_moq_request_parameters params;
 			imquic_moq_request_parameters_init_defaults(&params);
+			/* Legacy uses FORWARD, newer versions use PAUSED */
 			params.forward_set = TRUE;
 			params.forward = TRUE;
+			params.paused_set = TRUE;
+			params.paused = FALSE;
 			params.subscriber_priority_set = TRUE;
 			params.subscriber_priority = 128;
 			if(audio_tn != NULL) {
@@ -787,7 +817,7 @@ static void imquic_demo_incoming_object(imquic_connection *conn, imquic_moq_obje
 		skip += length;
 		GList *pvt_properties = NULL;
 		if(prop_len > 0) {
-			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len);
+			pvt_properties = imquic_moq_parse_properties(moq_version, object->payload + skip, prop_len, NULL);
 			IMQUIC_LOG(IMQUIC_LOG_LOCPROP, "  -- %d private properties\n", g_list_length(pvt_properties));
 			if(pvt_properties != NULL)
 				imquic_moq_properties_print(moq_version, IMQUIC_LOG_VERB, pvt_properties);
