@@ -26,6 +26,7 @@ typedef struct demo_options {
 	gboolean track_status;
 	gboolean subscribe_namespace;
 	const char *filter_type;
+	gboolean new_group_request;
 	int64_t start_group;
 	int64_t start_object;
 	int64_t end_group;

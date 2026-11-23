@@ -50,8 +50,7 @@ static const char *pub_tns = NULL, *pub_tn = NULL, *pub_redirect = NULL;
 static uint8_t relay_auth[256];
 static size_t relay_authlen = 0;
 
-static volatile int started = 0, send_objects = 0, done_sent = 0;
-static uint64_t max_request_id = 100;
+static volatile int started = 0, send_objects = 0, done_sent = 0, new_group_request = 0;
 static imquic_moq_location sub_start = { 0 }, sub_end = { 0 };
 static uint64_t group_id = 0, object_id = 0;
 
@@ -64,7 +63,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, max_request_id);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
 		relay_authlen = sizeof(relay_auth);
@@ -117,8 +115,11 @@ static void imquic_demo_ready(imquic_connection *conn) {
 		imquic_moq_request_parameters_init_defaults(&params);
 		params.group_order_set = TRUE;
 		params.group_order = IMQUIC_MOQ_ORDERING_ASCENDING;
+		/* Legacy uses FORWARD, newer versions use PAUSED */
 		params.forward_set = TRUE;
 		params.forward = TRUE;
+		params.paused_set = TRUE;
+		params.paused = FALSE;
 		if(options.auth_info && strlen(options.auth_info) > 0) {
 			params.auth_token_set = TRUE;
 			params.auth_token_len = sizeof(params.auth_token);
@@ -129,19 +130,21 @@ static void imquic_demo_ready(imquic_connection *conn) {
 			}
 		}
 		/* Let's add a property just for fun (may be useful for testing filters) */
-		imquic_moq_property dynamic_groups = {
+		imquic_moq_property group_order = {
 			.id = IMQUIC_MOQ_PROPERTY_DEFAULT_GROUP_ORDER,
 			.value = {
 				.number = IMQUIC_MOQ_ORDERING_ASCENDING
 			}
 		};
-		GList *props = g_list_append(NULL, &dynamic_groups);
+		GList *props = g_list_append(NULL, &group_order);
 		imquic_moq_property prop = {0};
 		if(options.default_priority > -1 && options.default_priority < 256) {
 			prop.id = IMQUIC_MOQ_PROPERTY_DEFAULT_PUBLISHER_PRIORITY;
 			prop.value.number = options.default_priority;
 			props = g_list_append(props, &prop);
 		}
+		imquic_moq_property dynamic_groups = { .id = IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS, .value.number = 1 };
+		props = g_list_append(props, &dynamic_groups);
 		imquic_moq_publish(conn, moq_request_id, &pub_namespace[0], &pub_trackname, moq_track_alias, &params, props);
 		g_list_free(props);
 	}
@@ -153,9 +156,11 @@ static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint
 }
 
 static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace: error %d (%s)\n",
 		imquic_get_connection_name(conn), error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -166,18 +171,17 @@ static void imquic_demo_publish_accepted(imquic_connection *conn, uint64_t reque
 	/* Start sending objects */
 	sub_end.group = IMQUIC_MAX_VARINT;
 	sub_end.object = IMQUIC_MAX_VARINT;
-	gboolean forward = TRUE;	/* FIXME Subscribers can change this in REQUEST_UPDATE */
-	if(forward) {
-		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
-			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
-		g_atomic_int_set(&send_objects, 1);
-	}
+	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
+		imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
+	g_atomic_int_set(&send_objects, 1);
 }
 
 static void imquic_demo_publish_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error publishing with ID %"SCNu64": error %d (%s)\n",
 		imquic_get_connection_name(conn), request_id, error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -205,7 +209,12 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		imquic_moq_redirect redirect = {
 			.track_name = &pub_trackname
 		};
-		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_REDIRECT, "Redirecting alias", 0, &redirect);
+		/* Serialize the redirect structure to error details */
+		GList *error_details = NULL;
+		imquic_moq_error_detail *redirect_detail = imquic_moq_build_redirect_error_detail(moq_version, &redirect);
+		error_details = g_list_append(error_details, redirect_detail);
+		imquic_moq_reject_subscribe(conn, request_id, IMQUIC_MOQ_REQERR_REDIRECT, "Redirecting alias", 0, error_details);
+		g_list_free_full(error_details, (GDestroyNotify)imquic_moq_error_detail_destroy);
 		return;
 	}
 	if(strcasecmp(name, pub_tn)) {
@@ -292,7 +301,11 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- -- Start location: [%"SCNu64"/%"SCNu64"] --> [%"SCNu64"/%"SCNu64"]\n",
 			imquic_get_connection_name(conn), sub_start.group, sub_start.object, sub_end.group, sub_end.object);
 	}
-	gboolean forward = parameters->forward_set && parameters->forward;
+	/* By default we start sending objects, unless FORWARD/PAUSE tell us otherwise */
+	gboolean forward = TRUE;
+	if((moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && parameters->paused) ||
+			(moq_version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && !parameters->forward))
+		forward = FALSE;
 	/* Accept the subscription */
 	moq_request_id = request_id;
 	imquic_moq_request_parameters rparams;
@@ -312,6 +325,8 @@ static void imquic_demo_incoming_subscribe(imquic_connection *conn, uint64_t req
 		prop.value.number = options.default_priority;
 		props = g_list_append(props, &prop);
 	}
+	imquic_moq_property dynamic_groups = { .id = IMQUIC_MOQ_PROPERTY_DYNAMIC_GROUPS, .value.number = 1 };
+	props = g_list_append(props, &dynamic_groups);
 	imquic_moq_accept_subscribe(conn, moq_request_id, moq_track_alias, &rparams, props);
 	g_list_free(props);
 	if(forward) {
@@ -326,8 +341,18 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 		uint64_t sub_request_id, imquic_moq_request_parameters *parameters) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Incoming update (%"SCNu64") for request %"SCNu64"\n",
 		imquic_get_connection_name(conn), request_id, sub_request_id);
-	/* Check if we're forwarding stuff, now */
-	gboolean forward = parameters->forward_set && parameters->forward;
+	/* Check if a new group was requested */
+	if(parameters->new_group_request_set) {
+		/* FIXME We should check what group was requested */
+		g_atomic_int_set(&new_group_request, 1);
+	}
+	/* Also check if we're forwarding stuff, now */
+	gboolean forward_set = (moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set) ||
+		(moq_version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set);
+	if(!forward_set)
+		return;
+	gboolean forward = (moq_version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && !parameters->paused) ||
+		(moq_version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && parameters->forward);
 	if(forward && g_atomic_int_compare_and_exchange(&send_objects, 0, 1)) {
 		/* Start sending objects */
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]  -- Starting delivery of objects\n",
@@ -445,11 +470,23 @@ static void imquic_demo_send_data(char *text, gboolean first, gboolean last) {
 		.priority = (options.priority > -1 && options.priority < 256) ? options.priority : 0,
 		.first_of_subgroup = first,
 		.delivery = delivery,
+		/* We send all objects of the same group on the same stream, when
+		 * using SUBGROUP_HEADER: when using OBJECT_DATAGRAM, we only
+		 * mark the end of group bit on the last object in a group instead */
+		.end_of_group = last || (delivery == IMQUIC_MOQ_USE_SUBGROUP),
 		.end_of_stream = FALSE
 	};
-	if(imquic_moq_send_object(moq_conn, &object) == 0) {
+	int res = imquic_moq_send_object(moq_conn, &object);
+	if(res == 0) {
 		IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Sent object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
 			imquic_get_connection_name(moq_conn), object.request_id, object.track_alias,
+			object.group_id, object.subgroup_id, object.first_of_subgroup, object.object_id,
+			object.priority, (object.priority_set ? "set" : "omitted"),
+			object.payload_len, g_list_length(object.properties), imquic_moq_delivery_str(object.delivery),
+			imquic_moq_object_status_str(object.object_status), object.end_of_stream);
+	} else {
+		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] Error '%d' sending object: reqid=%"SCNu64", alias=%"SCNu64", group=%"SCNu64", subgroup=%"SCNu64" (first=%d), id=%"SCNu64", priority=%"SCNu8" (%s), payload=%zu bytes, properties=%d, delivery=%s, status=%s, eos=%d\n",
+			imquic_get_connection_name(moq_conn), res, object.request_id, object.track_alias,
 			object.group_id, object.subgroup_id, object.first_of_subgroup, object.object_id,
 			object.priority, (object.priority_set ? "set" : "omitted"),
 			object.payload_len, g_list_length(object.properties), imquic_moq_delivery_str(object.delivery),
@@ -751,7 +788,7 @@ int main(int argc, char *argv[]) {
 		}
 		seconds = &buffer[strlen(buffer)-2];
 		last = !strcasecmp(seconds, "59");
-		if(first || !strcasecmp(seconds, "00")) {
+		if(first || g_atomic_int_compare_and_exchange(&new_group_request, 1, 0) || !strcasecmp(seconds, "00")) {
 			/* Minute wrap, reset the group */
 			if(!first)
 				group_id++;

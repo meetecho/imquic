@@ -298,7 +298,6 @@ static void imquic_demo_new_connection(imquic_connection *conn, void *user_data)
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s]   -- %s (%s)\n", imquic_get_connection_name(conn),
 		imquic_is_connection_webtransport(conn) ? "WebTransport" : "Raw QUIC",
 		imquic_is_connection_webtransport(conn) ? imquic_get_connection_wt_protocol(conn) : imquic_get_connection_alpn(conn));
-	imquic_moq_set_max_request_id(conn, UINT64_MAX);
 	/* Check if we need to prepare an auth token to connect to the relay */
 	if(options.relay_auth_info && strlen(options.relay_auth_info) > 0) {
 		relay_authlen = sizeof(relay_auth);
@@ -347,9 +346,11 @@ static void imquic_demo_publish_namespace_accepted(imquic_connection *conn, uint
 }
 
 static void imquic_demo_publish_namespace_error(imquic_connection *conn, uint64_t request_id, imquic_moq_request_error_code error_code,
-		const char *reason, uint64_t retry_interval, imquic_moq_redirect *redirect) {
+		const char *reason, uint64_t retry_interval, GList *error_details) {
 	IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] Got an error announcing namespace: error %d (%s)\n",
 		imquic_get_connection_name(conn), error_code, reason);
+	if(error_details != NULL)
+		imquic_moq_error_details_print(imquic_moq_get_version(conn), IMQUIC_LOG_INFO, error_details);
 	/* Stop here */
 	g_atomic_int_inc(&stop);
 }
@@ -494,9 +495,15 @@ static void imquic_demo_request_updated(imquic_connection *conn, uint64_t reques
 	}
 	/* Update the subscription */
 	imquic_demo_moq_subscription *s = g_hash_table_lookup(sub->subscriptions_by_id, &sub_request_id);
-	if(s && !s->fetch && parameters->forward_set) {
+	/* Check if forwarding changed, depending on version we check FORWARD or PAUSE */
+	imquic_moq_version version = imquic_moq_get_version(conn);
+	gboolean forward_set = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set);
+	gboolean forward = (version >= IMQUIC_MOQ_VERSION_23 && parameters->paused_set && !parameters->paused) ||
+		(version < IMQUIC_MOQ_VERSION_23 && parameters->forward_set && parameters->forward);
+	if(s && !s->fetch && forward_set) {
 		/* TODO Update start location and end group too */
-		s->forward = parameters->forward;
+		s->forward = forward;
 	}
 	g_mutex_unlock(&mutex);
 }
@@ -763,6 +770,7 @@ static void *imquic_demo_tester_thread(void *data) {
 			.payload_len = (num_objects == 0) ? s->test[TUPLE_FIELD_OBJ0_SIZE] : s->test[TUPLE_FIELD_OBJS_SIZE],
 			.properties = props,
 			.delivery = delivery,
+			.end_of_group = s->test[TUPLE_FIELD_SEND_EOG],
 			.end_of_stream = (last_object || (!s->fetch && num_objects == (s->test[TUPLE_FIELD_OBJS_x_GROUP] - 1) && !s->test[TUPLE_FIELD_SEND_EOG]))
 		};
 		if(send_object) {

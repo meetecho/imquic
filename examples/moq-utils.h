@@ -33,6 +33,9 @@ void imquic_moq_property_cleanup(imquic_moq_property *property);
 /* Helper to print parameter filters */
 void imquic_moq_filters_print(imquic_moq_version version, imquic_moq_filters *filters);
 
+/* Helper to print a list of error details */
+void imquic_moq_error_details_print(imquic_moq_version version, int level, GList *error_details);
+
 /* Helpers to deal with auth info */
 int imquic_moq_auth_info_to_bytes(imquic_connection *conn, const char *auth_info, uint8_t *auth, size_t *authlen);
 void imquic_moq_print_auth_info(imquic_connection *conn, uint8_t *auth, size_t authlen);

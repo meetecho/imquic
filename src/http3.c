@@ -625,7 +625,7 @@ size_t imquic_http3_parse_request_headers(imquic_http3_connection *h3c, imquic_s
 			}
 		}
 		/* Prepare a response */
-		uint8_t es[100], rs[100];
+		uint8_t es[1024], rs[1024];
 		size_t es_len = 0, rs_len = 0;
 		if(imquic_http3_prepare_headers_response(h3c, error_code, wt_protocol, es, &es_len, rs, &rs_len) == 0) {
 			/* FIXME Prepare the necessary STREAM payload(s) */
@@ -816,7 +816,7 @@ void imquic_http3_check_send_connect(imquic_http3_connection *h3c) {
 	if(!h3c->is_server && h3c->settings_sent && h3c->settings_received) {
 		/* FIXME Let's prepare a CONNECT */
 		uint8_t buffer[1024];
-		uint8_t es[200], rs[200];
+		uint8_t es[1024], rs[1024];
 		size_t es_len = 0, rs_len = 0, offset = 0;
 		if(imquic_http3_prepare_headers_request(h3c, es, &es_len, rs, &rs_len) == 0) {
 			/* FIXME Prepare the necessary STREAM payload(s) */

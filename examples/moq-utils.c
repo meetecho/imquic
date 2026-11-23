@@ -144,6 +144,26 @@ void imquic_moq_filters_print(imquic_moq_version version, imquic_moq_filters *fi
 	}
 }
 
+/* Helper to print a list of error details */
+void imquic_moq_error_details_print(imquic_moq_version version, int level, GList *error_details) {
+	GList *temp = error_details;
+	while(temp) {
+		imquic_moq_error_detail *ed = (imquic_moq_error_detail *)temp->data;
+		const char *ed_name = imquic_moq_error_detail_type_str(version, ed->type);
+		if(ed->type % 2 == 0) {
+			IMQUIC_LOG(level, "  >> Error Detail '%"SCNu32"' (%s) = %"SCNu64"\n",
+				ed->type, (ed_name ? ed_name : "unknown"), ed->value.number);
+		} else {
+			IMQUIC_LOG(level, "  >> Error Detail '%"SCNu32"' (%s) = ",
+				ed->type, (ed_name ? ed_name : "unknown"));
+			for(size_t i=0; i<ed->value.data.length; ++i)
+				IMQUIC_LOG(level, "%02x", ed->value.data.buffer[i]);
+			IMQUIC_LOG(level, "\n");
+		}
+		temp = temp->next;
+	}
+}
+
 /* Helpers to deal with auth info */
 int imquic_moq_auth_info_to_bytes(imquic_connection *conn, const char *auth_info, uint8_t *auth, size_t *authlen) {
 	if(conn == NULL || auth_info == NULL || auth == NULL || authlen == 0)
@@ -182,7 +202,8 @@ gboolean imquic_moq_check_auth_info(imquic_connection *conn, const char *auth_in
 	auth_str[0] = '\0';
 	/* Unpack the token */
 	imquic_moq_auth_token token = { 0 };
-	if(imquic_moq_parse_auth_token(imquic_moq_get_version(conn), auth, authlen, &token) < 0)
+	imquic_moq_error_code error = IMQUIC_MOQ_NO_ERROR;
+	if(imquic_moq_parse_auth_token(imquic_moq_get_version(conn), auth, authlen, &token, &error) < 0)
 		return FALSE;
 	if(token.alias_type != IMQUIC_MOQ_AUTH_TOKEN_USE_VALUE) {
 		IMQUIC_LOG(IMQUIC_LOG_WARN, "[%s] This demo currently only supports %s as an auth token alias type, ignoring %s\n",
